@@ -18,7 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo, unflatten_user_output
-from ._logger import LogLevel, ORTModuleInitPhase, TrackTime
+from ._logger import ORTModuleInitPhase, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
 from .graph_optimizer_registry import GraphOptimizerRegistry
@@ -310,11 +310,22 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
-            if self._runtime_options.enable_zero_stage3_support:
+            if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
+            param_to_append_as_onnx_graph_inputs = []
+            if self._mem_efficient_grad_management_is_enabled:
+                from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
+
+                param_to_append_as_onnx_graph_inputs = get_params_not_connected_to_pull_param_trigger(
+                    self._flattened_module.named_parameters(), self._onnx_models.exported_model
+                )
+
+            else:
+                param_to_append_as_onnx_graph_inputs = self._graph_initializers
+
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
-                self._graph_initializers,
+                param_to_append_as_onnx_graph_inputs,
                 self._graph_info.user_input_names,
                 self._input_info,
                 self._flattened_module.named_buffers(),
@@ -432,11 +443,9 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
-        # When log level is <= INFO, we would collect memory optimization opportunities.
-        # (TODO: consider to enable by default once memory optimization feature is stable and well improved.)
         # Create a training agent without enabling memory optimization here is beneficial for memory analyzing
         # when we have an allocation plan in place, and reuse information is available.
-        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.log_level <= LogLevel.INFO:
+        if self._runtime_inspector.memory_ob.is_enabled():
             # Create a training agent without enabling memory optimization.
             execution_agent = TrainingAgent(
                 self._onnx_models.optimized_model.SerializeToString(),
@@ -451,7 +460,7 @@ class TrainingManager(GraphExecutionManager):
             )
 
             self._runtime_inspector.memory_ob.find_memory_optimization_opportunity(
-                execution_agent, self._runtime_options.memory_optimizer_config, self._runtime_options.probe_level
+                execution_agent, self._runtime_options
             )
 
             # Release it as early as possible.
@@ -462,7 +471,7 @@ class TrainingManager(GraphExecutionManager):
             "optimization.memory_optimizer_config", self._runtime_options.memory_optimizer_config
         )
         session_options.add_session_config_entry(
-            "optimization.enable_memory_probe_recompute_level", self._runtime_options.probe_level
+            "optimization.enable_memory_probe_recompute_config", self._runtime_options.recompute_probe_config
         )
 
         self._execution_agent = TrainingAgent(
@@ -494,10 +503,20 @@ class TrainingManager(GraphExecutionManager):
             if param.requires_grad and name in self._graph_initializer_names
         }
 
+        if self._mem_efficient_grad_management_is_enabled:
+            from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+
+            # Remove the inputs we added during model post-processing.
+            existing_require_grad_names = [
+                n for n in self._input_info.require_grad_names if n != MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+            ]
+        else:
+            existing_require_grad_names = self._input_info.require_grad_names
+
         # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
         # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
         if (
-            input_info.require_grad_names != self._input_info.require_grad_names
+            input_info.require_grad_names != existing_require_grad_names
             or initializer_names_to_train_set_user_model != self._graph_initializer_names_to_train
         ):
             self._input_info = input_info

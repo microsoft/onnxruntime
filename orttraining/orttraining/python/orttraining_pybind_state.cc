@@ -316,16 +316,18 @@ void addObjectMethodsForTraining(py::module& m) {
 
   m.def("register_forward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
+    size_t function_address = py::cast<size_t>(obj);
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterForwardRunner(obj.ptr());
+    pool.RegisterForwardRunner(function_address);
 #else
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_backward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
+    size_t function_address = py::cast<size_t>(obj);
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterBackwardRunner(obj.ptr());
+    pool.RegisterBackwardRunner(function_address);
 #else
         ORT_UNUSED_PARAMETER(obj);
 #endif

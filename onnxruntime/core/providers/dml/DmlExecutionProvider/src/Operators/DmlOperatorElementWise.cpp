@@ -479,17 +479,37 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 2);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
-        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+        auto constExpTensor = kernelInfo.TryGetConstantCpuInputTensor(1);
+        if (constExpTensor && constExpTensor->GetTotalElementCount() == 1)
+        {
+            std::vector<std::optional<uint32_t>> kernelInputIndices = {0};
 
-        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+            Initialize(kernelInfo, kernelInputIndices, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
 
-        DML_ELEMENT_WISE_POW_OPERATOR_DESC opDesc = {};
-        opDesc.InputTensor = &inputDescs[0];
-        opDesc.ExponentTensor = &inputDescs[1];
-        opDesc.OutputTensor = &outputDescs[0];
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_POW, &opDesc}, kernelInfo);
+            DML_ELEMENT_WISE_CONSTANT_POW_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.OutputTensor = &outputDescs[0];
+            opDesc.Exponent = static_cast<float>(ReadScalarTensorCastToFloat64(*constExpTensor));
+
+            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CONSTANT_POW, &opDesc}, kernelInfo);
+        }
+        else
+        {
+            Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+            DML_ELEMENT_WISE_POW_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.ExponentTensor = &inputDescs[1];
+            opDesc.OutputTensor = &outputDescs[0];
+
+            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_POW, &opDesc}, kernelInfo);
+        }
     }
 };
 
@@ -499,13 +519,16 @@ class DmlOperatorElementwiseQLinear : public DmlOperator
 public:
     DmlOperatorElementwiseQLinear(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 3);
+
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount()  == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt);
 
         std::vector<uint32_t> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
         const uint32_t outputShapeDimCount = gsl::narrow_cast<uint32_t>(outputShape.size());
-
-        Initialize(kernelInfo, std::nullopt, std::nullopt);
+        const DML_TENSOR_DATA_TYPE inputDataType = m_inputTensorDescs[0].GetDmlDataType();
+        bool hasZeroPointTensor = kernelInfo.IsInputValid(2);
 
         uint32_t axis = 0;
 
@@ -521,9 +544,14 @@ public:
             axis = Dml::HandleNegativeAxis(signedAxis, outputShapeDimCount, /*validateAxis*/ false);
         }
 
-        // Explicitly reshape each of the inputs after the first input (scale and zero point tensors).
+        // Explicitly reshape each of the inputs after the first input (scale tensor and optional zero point tensor).
         for (uint32_t index = 1, inputCount = gsl::narrow_cast<uint32_t>(m_inputTensorDescs.size()); index < inputCount; ++index)
         {
+            if (!kernelInfo.IsInputValid(index))
+            {
+                continue;
+            }
+
             auto edgeDesc = kernelInfo.GetInputEdgeDescription(index);
             assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
@@ -538,7 +566,11 @@ public:
             {
                 ML_CHECK_VALID_ARGUMENT(axis < outputShapeDimCount);
                 uint32_t broadcastAxisLength = outputShape[axis];
-                ML_CHECK_VALID_ARGUMENT(inputTensorShape[0] == broadcastAxisLength);
+                ML_CHECK_VALID_ARGUMENT(
+                    (inputTensorShape[0] == broadcastAxisLength) ||
+                    // Treat as broadcast dimension to match CPU behavior.
+                    (inputTensorShape[0] == 1)
+                );
                 inputTensorShape.insert(inputTensorShape.begin(), axis, 1);
                 inputTensorShape.insert(inputTensorShape.end(), outputShapeDimCount - 1 - axis, 1);
             }
@@ -563,9 +595,8 @@ public:
         TOperatorDesc opDesc = {};
         opDesc.InputTensor = &inputDescs[0];
         opDesc.ScaleTensor = &inputDescs[1];
-        opDesc.ZeroPointTensor = &inputDescs[2];
+        opDesc.ZeroPointTensor = hasZeroPointTensor ? &inputDescs[2] : nullptr;
         opDesc.OutputTensor = &outputDescs[0];
-
         SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
     }
 };

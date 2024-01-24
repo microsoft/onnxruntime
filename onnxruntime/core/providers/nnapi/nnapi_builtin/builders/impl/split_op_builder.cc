@@ -95,7 +95,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   NodeAttrHelper helper(node_unit);
   const auto axis = helper.Get("axis", 0);
 
-  const auto split_dims_at_axis = input_shape[HandleNegativeAxis(axis, input_shape.size())];
+  const auto split_dims_at_axis = input_shape[SafeInt<uint32_t>(HandleNegativeAxis(axis, input_shape.size()))];
   if (input_defs.size() > 1 && input_defs[1].node_arg.Exists()) {
     // if optional input `split` is provided
     auto split_initializer_it = initializers.find(input_defs[1].node_arg.Name());

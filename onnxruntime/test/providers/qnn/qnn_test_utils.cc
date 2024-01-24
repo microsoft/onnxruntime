@@ -13,6 +13,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -106,24 +107,31 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
   TryEnableQNNSaver(provider_options);
   RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
-                            helper.feeds_, verification_params, {}, verify_outputs);
+                            helper.feeds_, verification_params,
+                            {}, verify_outputs);
 }
 
 void InferenceModel(const std::string& model_data, const char* log_id,
-                    std::unique_ptr<IExecutionProvider> execution_provider,
+                    const ProviderOptions& provider_options,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<OrtValue>& output_vals) {
+                    std::vector<OrtValue>& output_vals,
+                    bool is_qnn_ep,
+                    const std::unordered_map<std::string, std::string>& session_option_pairs) {
   SessionOptions so;
   so.session_logid = log_id;
+  for (auto key_value : session_option_pairs) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(key_value.first.c_str(), key_value.second.c_str()));
+  }
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   std::string provider_type = kCpuExecutionProvider;
-  if (execution_provider) {
-    provider_type = execution_provider->Type();
-    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+  if (is_qnn_ep) {
+    auto qnn_ep = QnnExecutionProviderWithOptions(provider_options, &so);
+    provider_type = qnn_ep->Type();
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(qnn_ep)));
   }
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());

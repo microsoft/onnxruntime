@@ -88,9 +88,33 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
                                                                qnn_model);
   }
 
-  std::string external_qnn_context_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
-  std::filesystem::path context_binary_path = folder_path.append(external_qnn_context_binary_file_name);
+  std::string external_qnn_ctx_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
+  ORT_RETURN_IF(external_qnn_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
+#ifdef _WIN32
+  onnxruntime::PathString external_qnn_context_binary_path = onnxruntime::ToPathString(external_qnn_ctx_binary_file_name);
+  auto ctx_file_path = std::filesystem::path(external_qnn_context_binary_path.c_str());
+  ORT_RETURN_IF(ctx_file_path.is_absolute(), "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
+                external_qnn_ctx_binary_file_name);
+  auto relative_path = ctx_file_path.lexically_normal().make_preferred().wstring();
+  if (relative_path.find(L"..", 0) != std::string::npos) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
+  }
+
+  std::filesystem::path context_binary_path = folder_path.append(relative_path);
+#else
+  ORT_RETURN_IF(external_qnn_ctx_binary_file_name[0] == '/',
+                "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
+                external_qnn_ctx_binary_file_name);
+  if (external_qnn_ctx_binary_file_name.find("..", 0) != std::string::npos) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
+  }
+  std::filesystem::path context_binary_path = folder_path.append(external_qnn_ctx_binary_file_name);
+  std::string file_full_path = context_binary_path.string();
+#endif
+  if (!std::filesystem::is_regular_file(context_binary_path)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
+  }
 
   size_t buffer_size{0};
   std::ifstream cache_file(context_binary_path.string().c_str(), std::ifstream::binary);
@@ -160,7 +184,7 @@ bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
   if (!customer_context_cache_path.empty()) {
     context_cache_path = ToPathString(customer_context_cache_path);
   } else if (!model_pathstring.empty()) {
-    context_cache_path = model_pathstring + ToPathString("_qnn_ctx.onnx");
+    context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
   }
 
   return std::filesystem::is_regular_file(context_cache_path) && std::filesystem::exists(context_cache_path);
@@ -206,8 +230,7 @@ Status ValidateWithContextFile(const onnxruntime::PathString& context_cache_path
   return Status::OK();
 }
 
-Status GenerateCtxCacheOnnxModel(const std::string model_name,
-                                 const std::string model_description,
+Status GenerateCtxCacheOnnxModel(Model* model,
                                  unsigned char* buffer,
                                  uint64_t buffer_size,
                                  const std::string& sdk_build_version,
@@ -216,11 +239,7 @@ Status GenerateCtxCacheOnnxModel(const std::string model_name,
                                  const onnxruntime::PathString& context_cache_path,
                                  bool qnn_context_embed_mode,
                                  const logging::Logger& logger) {
-  std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
-  Model model(model_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              domain_to_version, {}, logger);
-  auto& graph = model.MainGraph();
-  graph.SetDescription(model_description);
+  auto& graph = model->MainGraph();
 
   using namespace ONNX_NAMESPACE;
   int index = 0;
@@ -246,7 +265,7 @@ Status GenerateCtxCacheOnnxModel(const std::string model_name,
                                   nullptr,
                                   kMSDomain);
 
-    // Only dump the context buffer once since all QNN graph are in one single context
+    // Only dump the context buffer once since all QNN graphs are in one single context
     if (0 == index) {
       if (qnn_context_embed_mode) {
         std::string cache_payload(buffer, buffer + buffer_size);
@@ -272,8 +291,6 @@ Status GenerateCtxCacheOnnxModel(const std::string model_name,
     ep_node.AddAttribute(SOURCE, kQnnExecutionProvider);
     ++index;
   }
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-  ORT_RETURN_IF_ERROR(Model::Save(model, context_cache_path));
 
   return Status::OK();
 }

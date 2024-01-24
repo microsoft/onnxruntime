@@ -17,6 +17,7 @@ from sympy.parsing.sympy_parser import parse_expr
 from onnxruntime.training.utils import PTable
 
 from ._execution_agent import TrainingAgent
+from .options import _MemoryOptimizationLevel, _RuntimeOptions
 
 
 class Phase(IntEnum):
@@ -529,20 +530,26 @@ class MemoryObserver:
                         dim_idx
                     ]
 
-    def find_memory_optimization_opportunity(
-        self, execution_agent: TrainingAgent, memory_optimizer_config, probe_level
-    ):
+    def find_memory_optimization_opportunity(self, execution_agent: TrainingAgent, runtime_options: _RuntimeOptions):
         """Find memory optimization opportunity.
 
         Args:
             execution_agent: TrainingAgent.
-            memory_optimizer_config: Memory optimization config.
-            probe_level: Memory probe level.
+            runtime_options: Runtime options.
         """
+
+        recompute_probe_config = runtime_options.recompute_probe_config
+        memory_optimizer_config = runtime_options.memory_optimizer_config
+
+        # If the memory optimization level is aggressive, we will first collect all
+        # recompute subgraph by passing empty memory_optimizer_config to get_serialized_ortmodule_memory_stat.
+        if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            memory_optimizer_config = ""
+
         (
             self.memory_optimization_opportunity_table_str,
             memory_optimization_saving_symbolics,
-        ) = execution_agent.get_serialized_ortmodule_memory_stat(memory_optimizer_config, probe_level)
+        ) = execution_agent.get_serialized_ortmodule_memory_stat(memory_optimizer_config, recompute_probe_config)
 
         cluster_id_to_saving_symbol_map: Dict[str, MemoryOptimizationSummary] = {}
         for cluster_id, memory_saving_stat in memory_optimization_saving_symbolics.items():
@@ -571,6 +578,20 @@ class MemoryObserver:
         for cluster_id, values in sorted_list:
             self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
 
+        # For aggressive memory optimization, we update the memory_optimizer_config using all.
+        if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            recompute_configs = []
+            for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
+                config_values = cluster_id.split(":")
+                opt_type = int(config_values[1])
+                # TODO(pengwa): use enum instead of 1 here.
+                if opt_type != 1:
+                    continue
+
+                recompute_configs.append(cluster_id)
+
+            runtime_options.memory_optimizer_config = ",".join(recompute_configs)
+
     def inspect_memory(self, cur_phase: Phase):
         """Inspect memory usage and print statistics.
 
@@ -590,7 +611,7 @@ class MemoryObserver:
         if self._rank != 0:
             return
 
-        if cur_phase < Phase.PRE_FORWARD or (cur_phase <= self._last_phase):
+        if cur_phase < Phase.PRE_FORWARD or (cur_phase > Phase.POST_BACKWARD):
             raise RuntimeError(f"Invalid phase detected: {cur_phase}, last_phase: {self._last_phase}")
 
         if (cur_phase - self._pre_phase) != 1:
@@ -637,12 +658,13 @@ class MemoryObserver:
     def _normalize(self, mem_size_in_bytes: Union[float, int]) -> str:
         return f"{float(mem_size_in_bytes) / MemoryObserver.NORMALIZER_FACTOR:.0f}"
 
-    def display_memory_optimization_plans(self, memory_optimizer_config) -> Tuple[List[str], PTable]:
+    def display_memory_optimization_plans(self, memory_optimizer_config, details=False) -> Tuple[List[str], PTable]:
         mem_plan_count = len(self.cluster_id_combination_to_saving_symbolics_map)
 
         if mem_plan_count > 0:
             mem_tbl = PTable()
-            mem_tbl.add_row(["", "", "", "", "Configs", "Freq", "Max Saving(Bytes)", "Saving Symbolic(Bytes)"])
+            if details:
+                mem_tbl.add_row(["", "", "", "", "Configs", "Freq", "Max Saving(Bytes)", "Saving Symbolic(Bytes)"])
 
             index = 1
 
@@ -660,7 +682,9 @@ class MemoryObserver:
 
                 return configs_with_out_freq
 
-            user_configs_with_out_freq = _get_user_config_without_freq(memory_optimizer_config)
+            user_configs_with_out_freq = []
+            if memory_optimizer_config:
+                user_configs_with_out_freq = _get_user_config_without_freq(memory_optimizer_config)
 
             for (
                 cluster_id,
@@ -681,26 +705,28 @@ class MemoryObserver:
                         else "OFF",
                         ":",
                         cluster_id,
-                        saving_symbolic.freq,
-                        saving_bytes,
-                        saving_symbolic.simplified_symbolic_saving_expr,
+                        saving_symbolic.freq if details else "",
+                        saving_bytes if details else "",
+                        saving_symbolic.simplified_symbolic_saving_expr if details else "",
                     ]
                 )
 
                 index += 1
 
-            saving_recommendation = (
-                "use comma as delimiter to enable multiple memory optimization plans at the same time:\n"
-            )
-            saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
-
             notes = []
-            notes.append(saving_recommendation)
+            if details:
+                notes.append(
+                    "[Memory Optimizer] Use ORTMODULE_MEMORY_OPT_LEVEL=1 to enable all recomputable subgraphs per transformer layer."
+                )
+                saving_recommendation = "[Memory Optimizer] Or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
+                saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
 
-            saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"
-            for dim_param, dim_value in self.symbolic_dim_name_to_value_map.items():
-                saving_recommendation += f"  {dim_param}={dim_value},"
-            notes.append(saving_recommendation)
+                notes.append(saving_recommendation)
+
+                saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"
+                for dim_param, dim_value in self.symbolic_dim_name_to_value_map.items():
+                    saving_recommendation += f"  {dim_param}={dim_value},"
+                notes.append(saving_recommendation)
 
             return notes, mem_tbl
 

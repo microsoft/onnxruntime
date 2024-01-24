@@ -3,37 +3,61 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {SerializableModeldata, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
+import {SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
+import {loadFile} from './wasm-utils-load-file';
 
-let ortEnvInitialized = false;
+// #region Initializations
 
 /**
- * get the input/output count of the session.
- * @param sessionHandle the handle representing the session. should be non-zero.
- * @returns a tuple including 2 numbers, representing the input count and output count.
+ * There are 4 different "initialization" steps for ORT. They happen in different places and different time.
+ *
+ * 1. JavaScript initialization for onnxruntime-common and onnxruntime-web.
+ *    This is the first initialization step. In this step, onnxruntime-web calls onnxruntime-common's registerBackend()
+ * function multiple times to register all the available backends. The backend registration is very fast. It only
+ * registers the backend name with the uninitialized backend object. No heavy initialization is done in this step.
+ *    Refer to web/lib/index.ts for the backend registration.
+ *
+ * 2. WebAssembly artifact initialization.
+ *    This happens when any registered wasm backend is used for the first time (ie. `ort.InferenceSession.create()` or
+ * `ort.TrainingSession.create()` is called). In this step, onnxruntime-web does the followings:
+ *     - create a proxy worker and make sure the proxy worker is ready to receive messages, if proxy is enabled.
+ *     - perform feature detection, locate correct WebAssembly artifact path and call the Emscripten generated
+ * JavaScript code to initialize the WebAssembly runtime.
+ *         - if proxy is enabled, this step happens in the proxy worker using message 'init-wasm'.
+ *         - downloading the 'ort-wasm{...}.wasm' file is done in this step.
+ *         - if multi-thread is enabled, one or more webworker will be created to initialize the PThread threadpool.
+ *
+ * 3. ORT environment initialization.
+ *    This happens after step 2. In this step, onnxruntime-web performs ONNX Runtime environment initialization.
+ * Function `_OrtInit()` is called in this step.
+ *     - if proxy is enabled, this step happens in the proxy worker using message 'init-ort'.
+ *     - logging level (ort.env.logLevel) and thread number (ort.env.wasm.numThreads) are set in this step.
+ *
+ * 4. Session initialization.
+ *    This happens when `ort.InferenceSession.create()` or `ort.TrainingSession.create()` is called. Unlike the first 3
+ * steps (they only called once), this step will be done for each session. In this step, onnxruntime-web does the
+ * followings:
+ *    If the parameter is a URL:
+ *    - download the model data from the URL.
+ *    - copy the model data to the WASM heap. (proxy: 'copy-from')
+ *    - dereference the model buffer. This step allows the original ArrayBuffer to be garbage collected.
+ *    - call `_OrtCreateSession()` to create the session. (proxy: 'create')
+ *
+ *    If the parameter is a Uint8Array object:
+ *    - copy the model data to the WASM heap. (proxy: 'copy-from')
+ *    - call `_OrtCreateSession()` to create the session. (proxy: 'create')
+ *
+ *
  */
-const getSessionInputOutputCount = (sessionHandle: number): [number, number] => {
-  const wasm = getInstance();
-  const stack = wasm.stackSave();
-  try {
-    const dataOffset = wasm.stackAlloc(8);
-    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + 4);
-    if (errorCode !== 0) {
-      checkLastError('Can\'t get session input/output count.');
-    }
-    return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
-  } finally {
-    wasm.stackRestore(stack);
-  }
-};
 
 /**
  * initialize ORT environment.
+ *
  * @param numThreads SetGlobalIntraOpNumThreads(numThreads)
  * @param loggingLevel CreateEnv(static_cast<OrtLoggingLevel>(logging_level))
  */
@@ -51,17 +75,40 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
 export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
   initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+};
 
-  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+/**
+ * perform EP specific initialization.
+ *
+ * @param env
+ * @param epName
+ */
+export const initEp = async(env: Env, epName: string): Promise<void> => {
+  if (!BUILD_DEFS.DISABLE_WEBGPU && epName === 'webgpu') {
+    // perform WebGPU availability check
+    if (typeof navigator === 'undefined' || !navigator.gpu) {
+      throw new Error('WebGPU is not supported in current environment');
+    }
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
+      throw new Error(
+          'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+    }
+
+    if (!env.wasm.simd) {
+      throw new Error(
+          'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using `webgpu` EP');
+    }
+
     // init JSEP if available
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
-    await initJsep(getInstance(), env);
+    await initJsep(getInstance(), env, adapter);
   }
-
-  ortEnvInitialized = true;
 };
+
+// #endregion Initializations
 
 /**
  * valid data locations for input/output tensors.
@@ -97,13 +144,33 @@ type SessionMetadata = [
 
 const activeSessions = new Map<number, SessionMetadata>();
 
-export const isOrtEnvInitialized = (): boolean => ortEnvInitialized;
+/**
+ * get the input/output count of the session.
+ * @param sessionHandle the handle representing the session. should be non-zero.
+ * @returns a tuple including 2 numbers, representing the input count and output count.
+ */
+const getSessionInputOutputCount = (sessionHandle: number): [number, number] => {
+  const wasm = getInstance();
+  const stack = wasm.stackSave();
+  try {
+    const dataOffset = wasm.stackAlloc(8);
+    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + 4);
+    if (errorCode !== 0) {
+      checkLastError('Can\'t get session input/output count.');
+    }
+    return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
+  } finally {
+    wasm.stackRestore(stack);
+  }
+};
 
 /**
- * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
+ * allocate the memory and memcpy the external buffer.
+ *
+ * @param model - the external buffer containing the model data. Must not be the same buffer as the WASM heap.
  * @returns a 2-elements tuple - the pointer and size of the allocated buffer
  */
-export const createSessionAllocate = (model: Uint8Array): [number, number] => {
+export const copyFromExternalBuffer = (model: Uint8Array): [number, number] => {
   const wasm = getInstance();
   const modelDataOffset = wasm._malloc(model.byteLength);
   if (modelDataOffset === 0) {
@@ -114,111 +181,131 @@ export const createSessionAllocate = (model: Uint8Array): [number, number] => {
 };
 
 /**
- * create an inference session using the prepared buffer containing the model data.
- * @param modelData a 2-elements tuple containing the pointer and size of the model data buffer.
+ * create an inference session from a model data buffer.
+ *
+ * @param modelData - either a Uint8Array object representing the model data, or a 2-elements tuple containing the
+ *     pointer and size of the model data buffer.
  * @param options an optional session options object.
  * @returns a 3-elements tuple containing [session handle, input names, output names]
  */
-export const createSessionFinalize =
-    (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
-      const wasm = getInstance();
+export const createSession = async(
+    modelData: Uint8Array|SerializableInternalBuffer,
+    options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {
+  let modelDataOffset: number, modelDataLength: number;
+  const wasm = getInstance();
 
-      let sessionHandle = 0;
-      let sessionOptionsHandle = 0;
-      let ioBindingHandle = 0;
-      let allocs: number[] = [];
-      const inputNamesUTF8Encoded = [];
-      const outputNamesUTF8Encoded = [];
+  if (Array.isArray(modelData)) {
+    // if model data is an array, it must be a 2-elements tuple containing the pointer and size of the model data
+    [modelDataOffset, modelDataLength] = modelData;
+  } else if (modelData.buffer === wasm.HEAPU8.buffer) {
+    // if model data uses the same buffer as the WASM heap, we don't need to copy it.
+    [modelDataOffset, modelDataLength] = [modelData.byteOffset, modelData.byteLength];
+  } else {
+    // otherwise, copy the model data to the WASM heap.
+    [modelDataOffset, modelDataLength] = copyFromExternalBuffer(modelData);
+  }
 
-      try {
-        [sessionOptionsHandle, allocs] = setSessionOptions(options);
+  let sessionHandle = 0;
+  let sessionOptionsHandle = 0;
+  let ioBindingHandle = 0;
+  let allocs: number[] = [];
+  const inputNamesUTF8Encoded = [];
+  const outputNamesUTF8Encoded = [];
 
-        sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
-        if (sessionHandle === 0) {
-          checkLastError('Can\'t create a session.');
-        }
+  try {
+    [sessionOptionsHandle, allocs] = setSessionOptions(options);
 
-        const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
-
-        const inputNames = [];
-        const outputNames = [];
-        const outputPreferredLocations: SupportedTensorDataLocationForInputOutput[] = [];
-        for (let i = 0; i < inputCount; i++) {
-          const name = wasm._OrtGetInputName(sessionHandle, i);
-          if (name === 0) {
-            checkLastError('Can\'t get an input name.');
-          }
-          inputNamesUTF8Encoded.push(name);
-          inputNames.push(wasm.UTF8ToString(name));
-        }
-        for (let i = 0; i < outputCount; i++) {
-          const name = wasm._OrtGetOutputName(sessionHandle, i);
-          if (name === 0) {
-            checkLastError('Can\'t get an output name.');
-          }
-          outputNamesUTF8Encoded.push(name);
-          const nameString = wasm.UTF8ToString(name);
-          outputNames.push(nameString);
-
-          if (!BUILD_DEFS.DISABLE_WEBGPU) {
-            const location = typeof options?.preferredOutputLocation === 'string' ?
-                options.preferredOutputLocation :
-                options?.preferredOutputLocation?.[nameString] ?? 'cpu';
-            if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer') {
-              throw new Error(`Not supported preferred output location: ${location}.`);
-            }
-            outputPreferredLocations.push(location);
-          }
-        }
-
-        // use IO binding only when at least one output is preffered to be on GPU.
-        let bindingState: IOBindingState|null = null;
-        if (!BUILD_DEFS.DISABLE_WEBGPU && outputPreferredLocations.some(l => l === 'gpu-buffer')) {
-          ioBindingHandle = wasm._OrtCreateBinding(sessionHandle);
-          if (ioBindingHandle === 0) {
-            checkLastError('Can\'t create IO binding.');
-          }
-
-          bindingState = {
-            handle: ioBindingHandle,
-            outputPreferredLocations,
-            outputPreferredLocationsEncoded: outputPreferredLocations.map(l => dataLocationStringToEnum(l)),
-          };
-        }
-
-        activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, bindingState]);
-        return [sessionHandle, inputNames, outputNames];
-      } catch (e) {
-        inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-        outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-
-        if (ioBindingHandle !== 0) {
-          wasm._OrtReleaseBinding(ioBindingHandle);
-        }
-
-        if (sessionHandle !== 0) {
-          wasm._OrtReleaseSession(sessionHandle);
-        }
-        throw e;
-      } finally {
-        wasm._free(modelData[0]);
-        if (sessionOptionsHandle !== 0) {
-          wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
-        }
-        allocs.forEach(alloc => wasm._free(alloc));
+    if (options?.externalData && wasm.mountExternalData) {
+      const loadingPromises = [];
+      for (const file of options.externalData) {
+        const path = typeof file === 'string' ? file : file.path;
+        loadingPromises.push(loadFile(typeof file === 'string' ? file : file.data).then(data => {
+          wasm.mountExternalData!(path, data);
+        }));
       }
-    };
 
+      // wait for all external data files to be loaded
+      await Promise.all(loadingPromises);
+    }
 
-/**
- * create an instance of InferenceSession.
- * @returns the metadata of InferenceSession. 0-value handle for failure.
- */
-export const createSession =
-    (model: Uint8Array, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
-      const modelData: SerializableModeldata = createSessionAllocate(model);
-      return createSessionFinalize(modelData, options);
-    };
+    sessionHandle = wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
+    if (sessionHandle === 0) {
+      checkLastError('Can\'t create a session.');
+    }
+
+    const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
+
+    const inputNames = [];
+    const outputNames = [];
+    const outputPreferredLocations: SupportedTensorDataLocationForInputOutput[] = [];
+    for (let i = 0; i < inputCount; i++) {
+      const name = wasm._OrtGetInputName(sessionHandle, i);
+      if (name === 0) {
+        checkLastError('Can\'t get an input name.');
+      }
+      inputNamesUTF8Encoded.push(name);
+      inputNames.push(wasm.UTF8ToString(name));
+    }
+    for (let i = 0; i < outputCount; i++) {
+      const name = wasm._OrtGetOutputName(sessionHandle, i);
+      if (name === 0) {
+        checkLastError('Can\'t get an output name.');
+      }
+      outputNamesUTF8Encoded.push(name);
+      const nameString = wasm.UTF8ToString(name);
+      outputNames.push(nameString);
+
+      if (!BUILD_DEFS.DISABLE_WEBGPU) {
+        const location = typeof options?.preferredOutputLocation === 'string' ?
+            options.preferredOutputLocation :
+            options?.preferredOutputLocation?.[nameString] ?? 'cpu';
+        if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer') {
+          throw new Error(`Not supported preferred output location: ${location}.`);
+        }
+        outputPreferredLocations.push(location);
+      }
+    }
+
+    // use IO binding only when at least one output is preffered to be on GPU.
+    let bindingState: IOBindingState|null = null;
+    if (!BUILD_DEFS.DISABLE_WEBGPU && outputPreferredLocations.some(l => l === 'gpu-buffer')) {
+      ioBindingHandle = wasm._OrtCreateBinding(sessionHandle);
+      if (ioBindingHandle === 0) {
+        checkLastError('Can\'t create IO binding.');
+      }
+
+      bindingState = {
+        handle: ioBindingHandle,
+        outputPreferredLocations,
+        outputPreferredLocationsEncoded: outputPreferredLocations.map(l => dataLocationStringToEnum(l)),
+      };
+    }
+
+    activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, bindingState]);
+    return [sessionHandle, inputNames, outputNames];
+  } catch (e) {
+    inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+    outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+
+    if (ioBindingHandle !== 0) {
+      wasm._OrtReleaseBinding(ioBindingHandle);
+    }
+
+    if (sessionHandle !== 0) {
+      wasm._OrtReleaseSession(sessionHandle);
+    }
+    throw e;
+  } finally {
+    wasm._free(modelDataOffset);
+    if (sessionOptionsHandle !== 0) {
+      wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+    }
+    allocs.forEach(alloc => wasm._free(alloc));
+
+    // unmount external data if necessary
+    wasm.unmountExternalData?.();
+  }
+};
 
 export const releaseSession = (sessionId: number): void => {
   const wasm = getInstance();
@@ -401,8 +488,8 @@ export const run = async(
       }
     }
 
+    wasm.jsepOnRunStart?.();
     let errorCode: number;
-
     if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState) {
       errorCode = await wasm._OrtRunWithBinding(
           sessionHandle, ioBindingState.handle, outputCount, outputValuesOffset, runOptionsHandle);

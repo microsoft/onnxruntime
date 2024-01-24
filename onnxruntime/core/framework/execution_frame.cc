@@ -223,7 +223,8 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
                            const std::unordered_map<int, OrtValue>& initializers,
                            const std::function<bool(const std::string& name)>& is_initializer_sparse_func,
                            gsl::span<const OrtValue> fetches) {
-  ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
+  ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size(), "Get feed size: ", feeds.size(), " but expected feed size: ",
+              feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
   // Need this for sparse conversions in host memory

@@ -48,6 +48,7 @@ export interface TrainingSessionHandler extends SessionHandler {
   readonly evalInputNames: readonly string[];
   readonly evalOutputNames: readonly string[];
 
+  lazyResetGrad(): Promise<void>;
   runTrainStep(
       feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
@@ -70,7 +71,7 @@ export interface Backend {
   /**
    * Initialize the backend asynchronously. Should throw when failed.
    */
-  init(): Promise<void>;
+  init(backendName: string): Promise<void>;
 
   createInferenceSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<InferenceSessionHandler>;

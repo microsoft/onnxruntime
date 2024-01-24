@@ -6,6 +6,12 @@ parameters:
   type: string
 - name: linux_trt_version
   type: string
+- name: buildJava
+  type: boolean
+  default: false
+- name: buildNodejs
+  type: boolean
+  default: false
 
 stages:
   # Linux CUDA without TensorRT Packaging
@@ -15,7 +21,7 @@ stages:
   - job:
     workspace:
       clean: all
-    timeoutInMinutes: 120
+    timeoutInMinutes: 150
     pool: 'Onnxruntime-Linux-GPU'
     variables:
       - name: CUDA_VERSION_MAJOR
@@ -40,7 +46,16 @@ stages:
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build and Test'
-
+# We only support Maven package for CUDA 11.8
+    - ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
+        parameters:
+          arch: 'linux-x64'
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-java-linux-x64-cuda'
+          version: '$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.so'
+          nativeLibraryName: 'libonnxruntime4j_jni.so'
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
@@ -57,9 +72,9 @@ stages:
   parameters:
     artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
     artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
-    buildJava: false
+    buildJava: ${{ parameters.buildJava }}
     buildJavaOption: '--build_java'
-    buildNodejs: false
+    buildNodejs: ${{ parameters.buildNodejs }}
     buildNodejsOption: '--build_nodejs'
     CudaVersion: ${{ parameters.CudaVersion }}
 # Linux CUDA Combined Testing and Publishing
@@ -81,6 +96,10 @@ stages:
           submodules: false
         - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux
           submodules: false
+
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
 
         - script: |
             set -e -x
@@ -150,7 +169,7 @@ stages:
           displayName: 'Test C API application for GPU package'
           inputs:
             script: |
-              docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
+              docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/models:/data/models --volume $(Build.SourcesDirectory):/src_dir \
               --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build \
               /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
             workingDirectory: '$(Build.ArtifactStagingDirectory)'
@@ -159,3 +178,6 @@ stages:
           inputs:
             targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
             artifactName: 'onnxruntime-linux-x64-gpu'
+        - template: ../templates/component-governance-component-detection-steps.yml
+          parameters:
+            condition: 'succeeded'

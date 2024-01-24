@@ -49,16 +49,16 @@ inline GEMMFASTGELU(T, ScalarT) {
 
   if (tuning_ctx->IsTunableOpEnabled()) {
     if (opa == BlasOp::N && opb == BlasOp::N) {
-      static internal::GemmFastGeluTunableOp<T, internal::Row, internal::Row> gemm_fast_gelu{};
+      static internal::GemmFastGeluTunableOp<T, BlasOp::N, BlasOp::N> gemm_fast_gelu{};
       return gemm_fast_gelu(&params);
     } else if (opa == BlasOp::T && opb == BlasOp::N) {
-      static internal::GemmFastGeluTunableOp<T, internal::Col, internal::Row> gemm_fast_gelu{};
+      static internal::GemmFastGeluTunableOp<T, BlasOp::T, BlasOp::N> gemm_fast_gelu{};
       return gemm_fast_gelu(&params);
     } else if (opa == BlasOp::N && opb == BlasOp::T) {
-      static internal::GemmFastGeluTunableOp<T, internal::Row, internal::Col> gemm_fast_gelu{};
+      static internal::GemmFastGeluTunableOp<T, BlasOp::N, BlasOp::T> gemm_fast_gelu{};
       return gemm_fast_gelu(&params);
     } else /*if (opa == BlasOp::T && opb == BlasOp::T)*/ {
-      static internal::GemmFastGeluTunableOp<T, internal::Col, internal::Col> gemm_fast_gelu{};
+      static internal::GemmFastGeluTunableOp<T, BlasOp::T, BlasOp::T> gemm_fast_gelu{};
       return gemm_fast_gelu(&params);
     }
   }

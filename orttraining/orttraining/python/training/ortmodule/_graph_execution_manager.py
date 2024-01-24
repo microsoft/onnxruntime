@@ -36,8 +36,7 @@ from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo
 from ._runtime_inspector import RuntimeInspector
 from ._utils import check_function_has_param, get_rank
-from ._zero_stage3_compatibility import stage3_export_context
-from .options import DebugOptions, LogLevel, _RuntimeOptions
+from .options import DebugOptions, LogLevel, _MemoryOptimizationLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
 
@@ -148,6 +147,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="ort_output", stats_overwrite=True)
 
+        # Will be reset everytime we re-initialize the graph builder.
+        # Be noted, we will never enable this feature for inference mode.
+        self._mem_efficient_grad_management_is_enabled = False
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -243,7 +246,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # requires PRIORITY_BASED order to work properly. So we use PRIORITY_BASED order when recompute is enabled.
         session_options.execution_order = (
             onnxruntime.ExecutionOrder.PRIORITY_BASED
-            if self._runtime_options.memory_optimizer_config != ""
+            if self._runtime_options.memory_optimizer_is_enabled()
             else onnxruntime.ExecutionOrder.DEFAULT
         )
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
@@ -388,6 +391,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
+            from ._zero_stage3_compatibility import stage3_export_context
+
             with torch.no_grad(), stage3_export_context(self._runtime_options.enable_zero_stage3_support, self):
                 required_export_kwargs = {
                     "input_names": self._input_info.names,
@@ -496,9 +501,35 @@ class GraphExecutionManager(GraphExecutionInterface):
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
+        self._mem_efficient_grad_management_is_enabled = (
+            self._export_mode != torch.onnx.TrainingMode.EVAL
+            and self._runtime_options.enable_mem_efficient_grad_management
+        )
+
+        # We post process the exported model because the trainable parame might be changed, so this path is
+        # re-triggered by reinitialize_graph_builder.
+        exported_model = copy.deepcopy(self._onnx_models.exported_model)
+        self._onnx_models.processed_exported_model = exported_model
+
+        if self._mem_efficient_grad_management_is_enabled:
+            from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
+
+            # Override the options if model is not modified.
+            (
+                self._mem_efficient_grad_management_is_enabled,
+                exported_model,
+            ) = post_processing_enable_mem_efficient_training(exported_model, self._flattened_module.named_parameters())
+
+            if self._runtime_options.run_symbolic_shape_infer:
+                exported_model = SymbolicShapeInference.infer_shapes(
+                    exported_model, auto_merge=True, guess_output_rank=True
+                )
+
         # All initializer names along with user inputs are a part of the onnx graph inputs
         # since the onnx model was exported with the flag keep_initializers_as_inputs=True
-        onnx_initializer_names = {p.name for p in self._onnx_models.exported_model.graph.input}
+        # We need to use the raw exported model here since the graph inputs include both user inputrs and
+        # parameters.
+        onnx_initializer_names = {p.name for p in exported_model.graph.input}
 
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
         initializer_names = [
@@ -521,6 +552,13 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             # Add stage3 pull weight trigger name to require_grad_names, so that it will be included in the gradient graph.
             input_names_require_grad.append(STAGE3_PULL_WEIGHT_TRIGGER_NAME)
+
+        if self._mem_efficient_grad_management_is_enabled:
+            from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+
+            # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
+            input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+
         grad_builder_config.input_names_require_grad = input_names_require_grad
         grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
         grad_builder_config.enable_caching = self._runtime_options.enable_grad_acc_optimization
@@ -532,12 +570,23 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
         # and are kept as they appear in the exported onnx model.
-        self._graph_builder.initialize(self._onnx_models.exported_model.SerializeToString(), grad_builder_config)
+        self._graph_builder.initialize(exported_model.SerializeToString(), grad_builder_config)
+
+        raw_onnx_initializer_names = {p.name for p in self._onnx_models.exported_model.graph.input}
+
+        raw_initializer_names = [
+            name for name, _ in self._flattened_module.named_parameters() if name in raw_onnx_initializer_names
+        ]
+        raw_initializer_names_to_train = [
+            name
+            for name, param in self._flattened_module.named_parameters()
+            if param.requires_grad and name in raw_onnx_initializer_names
+        ]
 
         # TODO: Explore ways to make self._graph_info.initializer_names and self._graph_info.initializer_names_to_train
         #       a set (unordered_set in the backend) that does not require a copy on each reference.
-        self._graph_initializer_names = set(initializer_names)
-        self._graph_initializer_names_to_train = set(initializer_names_to_train)
+        self._graph_initializer_names = set(raw_initializer_names)
+        self._graph_initializer_names_to_train = set(raw_initializer_names_to_train)
 
         # Initializers can be cached and used since they are expected not to be re-instantiated
         # between forward calls.
@@ -588,7 +637,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._runtime_options.enable_sparse_optimizer or self._runtime_options.print_input_density:
             self._runtime_inspector.enable_input_inspector(
-                self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
+                self._onnx_models.processed_exported_model, self._graph_builder.get_graph_info().user_input_names
             )
 
             if self._runtime_options.enable_sparse_optimizer:
@@ -596,11 +645,21 @@ class GraphExecutionManager(GraphExecutionInterface):
                     inputs, kwargs
                 )
 
-                if self._runtime_options.enable_zero_stage3_support:
+                if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
                     self._append_pull_weight_trigger_as_input(kwargs, detected_device)
 
+                param_to_append_as_onnx_graph_inputs = []
+                if self._mem_efficient_grad_management_is_enabled:
+                    from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
+
+                    param_to_append_as_onnx_graph_inputs = get_params_not_connected_to_pull_param_trigger(
+                        self._flattened_module.named_parameters(), self._onnx_models.exported_model
+                    )
+                else:
+                    param_to_append_as_onnx_graph_inputs = self._graph_initializers
+
                 _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
-                    self._graph_initializers,
+                    param_to_append_as_onnx_graph_inputs,
                     self._graph_builder.get_graph_info().user_input_names,
                     self._input_info,
                     self._flattened_module.named_buffers(),
@@ -632,28 +691,37 @@ class GraphExecutionManager(GraphExecutionInterface):
                 self._runtime_inspector.disable_input_inspector()
 
     def _append_pull_weight_trigger_as_input(self, kwargs: Dict, device: torch.device):
-        from ._zero_stage3_compatibility import (
-            STAGE3_PULL_WEIGHT_TRIGGER_NAME,
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
-        )
+        if self._runtime_options.enable_zero_stage3_support:
+            from ._zero_stage3_compatibility import (
+                STAGE3_PULL_WEIGHT_TRIGGER_NAME,
+                STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
+                STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+            )
 
-        kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros(
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
-            dtype=onnx_dtype_to_pytorch_dtype(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE),
-            device=device,
-        ).requires_grad_()
+            kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros(
+                STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+                dtype=onnx_dtype_to_pytorch_dtype(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE),
+                device=device,
+            ).requires_grad_()
 
-        return kwargs
+        if self._mem_efficient_grad_management_is_enabled:
+            from ._mem_efficient_grad_mgmt import (
+                MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
+                MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
+                MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+            )
+
+            kwargs[MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME] = torch.zeros(
+                MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+                dtype=onnx_dtype_to_pytorch_dtype(MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE),
+                device=device,
+            ).requires_grad_()
 
     def _log_feature_stats(self):
         if get_rank() != 0:
             return
 
-        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
-            self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
-
-        tbl = PTable()
+        tbl = PTable(sortable=True)
 
         def _add_record(tbl, columns):
             return tbl.add_row([columns[0], ":", "ON" if columns[1] else "OFF", ":", columns[2]])
@@ -678,29 +746,35 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
-        output_memory_optimization_details = self._debug_options.log_level <= LogLevel.INFO
+        if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
+        else:
+            opt_config_to_display = self._runtime_options.memory_optimizer_config
+
         mem_row = _add_record(
             tbl,
             [
                 "Memory Optimizer",
                 len(self._runtime_options.memory_optimizer_config) > 0,
                 (
-                    f"User config: {self._runtime_options.memory_optimizer_config}, probe level: {self._runtime_options.probe_level}"
+                    f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
+                    f"Optimization Config: [{opt_config_to_display}]"
                     if len(self._runtime_options.memory_optimizer_config) > 0
-                    else "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>"
+                    else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
                 ),
             ],
         )
 
-        if self._runtime_inspector.memory_ob.is_enabled() and output_memory_optimization_details:
+        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.logging.log_level < LogLevel.WARNING:
             mem_notes, mem_tbl = self._runtime_inspector.memory_ob.display_memory_optimization_plans(
-                self._runtime_options.memory_optimizer_config
+                self._runtime_options.memory_optimizer_config,
+                details=True,
             )
             if mem_tbl is not None:
                 mem_row.append_annotation_table(mem_tbl)
                 notes.extend(mem_notes)
 
-        _add_record(
+        compute_opt_row = _add_record(
             tbl,
             [
                 "Compute Optimizer",
@@ -708,10 +782,12 @@ class GraphExecutionManager(GraphExecutionInterface):
                 "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
             ],
         )
+
+        compute_opt_annotation_tbl = PTable()
         _add_record(
-            tbl,
+            compute_opt_annotation_tbl,
             [
-                " - FLOPReduction",
+                " - FLOP Reduction",
                 self._runtime_options.enable_compute_optimizer,
                 "Reduce FLOPs by upstreaming shrinking-sized ops",
             ],
@@ -720,13 +796,17 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._runtime_options.enable_compute_optimizer:
             if len(self._runtime_options.label_sparsity_ratio) > 0:
                 _add_record(
-                    tbl, [" - LabelSparsityOpt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}"]
+                    compute_opt_annotation_tbl,
+                    [" - Label Sparsity Opt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}"],
                 )
 
             if len(self._runtime_options.embed_sparsity_ratio) > 0:
                 _add_record(
-                    tbl, [" - EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}"]
+                    compute_opt_annotation_tbl,
+                    [" - Embed Sparsity Opt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}"],
                 )
+
+        compute_opt_row.append_annotation_table(compute_opt_annotation_tbl)
 
         # Add fallback
         _add_record(
@@ -739,7 +819,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         )
 
         # Add Triton
-        _add_record(
+        triton_row = _add_record(
             tbl,
             [
                 "TritonOp Enabled",
@@ -748,20 +828,24 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
+        triton_annotation_tbl = PTable()
+
         if self._runtime_options.enable_tuning:
             desc = "Enable tunning Ops online"
             if self._runtime_options.tuning_results_path:
                 desc += f", save tuning results to {self._runtime_options.tuning_results_path}"
-            _add_record(tbl, ["Online Op Tuning", True, desc])
+            _add_record(triton_annotation_tbl, ["Online Op Tuning", True, desc])
         elif self._runtime_options.tuning_results_path:
             _add_record(
-                tbl,
+                triton_annotation_tbl,
                 [
                     "Offline Op Tuning",
                     True,
                     f"Use offline tuning results from {self._runtime_options.tuning_results_path}",
                 ],
             )
+
+        triton_row.append_annotation_table(triton_annotation_tbl)
 
         _add_record(
             tbl,
