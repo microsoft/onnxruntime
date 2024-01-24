@@ -322,10 +322,9 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         split_initializer_proto.set_raw_data(split_value.data(), split_value.size() * sizeof(int64_t));
         NodeArg* split_arg = &graph_utils::AddInitializer(graph, split_initializer_proto);
 
-
         Node& split_node =
             graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for fused Gather-Slice fusion",
-                                                split_inputs, split_outputs);
+                                                {graph.GetNodeArg(node_arg->Name()), split_arg}, split_outputs);
 
         split_node.AddAttribute("axis", split_axis);
         // to do here
