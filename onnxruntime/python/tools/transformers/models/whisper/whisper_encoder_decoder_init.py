@@ -4,10 +4,10 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import copy
 import logging
 import os
 import tempfile
-import copy
 from pathlib import Path
 from typing import List, Optional
 
@@ -36,7 +36,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         decoder: torch.nn.Module,
         config: WhisperConfig,
         decoder_start_token_id: Optional[int] = None,
-        model_impl: str = 'hf',
+        model_impl: str = "hf",
         model: torch.nn.Module = None,
     ):
         super().__init__()
@@ -55,7 +55,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
     ):
         encoder_hidden_states: torch.FloatTensor = self.whisper_encoder(encoder_input_ids)
         # Decoder out: (logits, past_key_values, encoder_hidden_state)
-        if self.model_impl == 'openai':
+        if self.model_impl == "openai":
             encoder_hidden_states.unsqueeze(0)
             decinit_out, present = self.whisper_decoder_openai_init(decoder_input_ids, encoder_hidden_states)
             return decinit_out, encoder_hidden_states, present

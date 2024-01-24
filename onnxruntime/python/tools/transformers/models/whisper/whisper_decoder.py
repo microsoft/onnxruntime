@@ -68,7 +68,7 @@ class WhisperDecoderInit(torch.nn.Module):
 class WhisperDecoder(torch.nn.Module):
     """A Whisper decoder with past key values"""
 
-    def __init__(self, decoder, config, model_impl: str = 'hf', model=None):
+    def __init__(self, decoder, config, model_impl: str = "hf", model=None):
         super().__init__()
         self.decoder = decoder
         self.config = config
@@ -83,9 +83,11 @@ class WhisperDecoder(torch.nn.Module):
         encoder_outputs["hidden_states"] = dummy_encoder_hidden_states
         encoder_outputs["attentions"] = None
 
-        if self.model_impl == 'openai':
+        if self.model_impl == "openai":
             dummy_encoder_hidden_states.unsqueeze(0)
-            dec_out, present = self.whisper_decoder_openai_init(decoder_input_ids, dummy_encoder_hidden_states, past=past)
+            dec_out, present = self.whisper_decoder_openai_init(
+                decoder_input_ids, dummy_encoder_hidden_states, past=past
+            )
             return dec_out, present
 
         if len(past) == 0:

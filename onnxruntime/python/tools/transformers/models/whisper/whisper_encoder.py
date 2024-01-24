@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class WhisperEncoder(torch.nn.Module):
     """Whisper encoder outputs only the last hidden state"""
 
-    def __init__(self, encoder, config: WhisperConfig, model_impl: str = 'hf'):
+    def __init__(self, encoder, config: WhisperConfig, model_impl: str = "hf"):
         super().__init__()
         self.encoder = encoder
         self.config = config

@@ -127,10 +127,7 @@ class BartOnnxModel(BertOnnxModel):
         self.attention_mask = AttentionMask(self)
         if model_impl == "openai":
             self.attention_fusion = FusionBartAttentionOpenai(
-                self,
-                self.hidden_size,
-                self.num_heads,
-                self.attention_mask
+                self, self.hidden_size, self.num_heads, self.attention_mask
             )
         else:
             self.attention_fusion = FusionBartAttention(self, self.hidden_size, self.num_heads, self.attention_mask)

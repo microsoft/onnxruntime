@@ -350,7 +350,11 @@ class BertOnnxModel(OnnxModel):
 
         if options is not None:
             self.attention_mask.set_mask_format(options.attention_mask_format)
-            if options.use_multi_head_attention and not isinstance(self.attention_fusion, FusionBartAttention) and not isinstance(self.attention_fusion, FusionBartAttentionOpenai):
+            if (
+                options.use_multi_head_attention
+                and not isinstance(self.attention_fusion, FusionBartAttention)
+                and not isinstance(self.attention_fusion, FusionBartAttentionOpenai)
+            ):
                 self.attention_fusion = FusionAttention(
                     self,
                     self.hidden_size,

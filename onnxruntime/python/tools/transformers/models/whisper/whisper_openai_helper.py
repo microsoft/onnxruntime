@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class WhisperDecoderInitOpenai(torch.nn.Module):
     """WhisperDecoderInit for Openai."""
+
     def __init__(
         self,
         model: torch.nn.Module,
@@ -43,13 +44,12 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         audio_features,
         past=None,
     ):
-
         # Create a kv_cache for past_values
         past_kv_cache = dict()
         if past is not None:
             # Convert past values from 4D to 3D
             past = [torch.transpose(val, 1, 2) for val in past]
-            past = [val.reshape(val.shape[:2] + (-1, )) for val in past]
+            past = [val.reshape(val.shape[:2] + (-1,)) for val in past]
             half_idx = len(past) // 2
             for idx, block in enumerate(self.whisper_decoder.blocks):
                 past_kv_cache[block.attn.key] = past[2 * idx]
@@ -65,8 +65,12 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         # Add concat node for past values
         if past is not None:
             for idx, block in enumerate(self.whisper_decoder.blocks):
-                self.kv_cache[block.attn.key] = torch.cat([past_kv_cache[block.attn.key], self.kv_cache[block.attn.key]], dim=1).detach()
-                self.kv_cache[block.attn.value] = torch.cat([past_kv_cache[block.attn.value], self.kv_cache[block.attn.value]], dim=1).detach()
+                self.kv_cache[block.attn.key] = torch.cat(
+                    [past_kv_cache[block.attn.key], self.kv_cache[block.attn.key]], dim=1
+                ).detach()
+                self.kv_cache[block.attn.value] = torch.cat(
+                    [past_kv_cache[block.attn.value], self.kv_cache[block.attn.value]], dim=1
+                ).detach()
 
         present_self, present_cross = [], []
         # Group self and cross values
@@ -79,7 +83,7 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
 
         present_self = present_self + present_cross
         # Add reshape and transpose ops to convert from 3D to 4D
-        present_self = [present_val.reshape(
-                present_val.shape[:2] + (-1, 64)
-            ).transpose(1, 2) for present_val in present_self]
+        present_self = [
+            present_val.reshape(present_val.shape[:2] + (-1, 64)).transpose(1, 2) for present_val in present_self
+        ]
         return logits, present_self
