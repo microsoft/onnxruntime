@@ -301,9 +301,10 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
             }
         }
 
+        InlinedVector<NodeArg*> split_output_types;
 
         for (size_t i = 0; i < consumer_count; ++i) {
-            split_outputs.push_back(
+            split_output_types.push_back(
                 &graph.GetOrCreateNodeArg(
                     graph.GenerateNodeArgName("fused_split_" + std::to_string(i)), &split_output_type
                 )
