@@ -1155,6 +1155,8 @@ class TensorSeq final {
 
 class ModelMetadefIdGenerator {
  public:
+  static std::unique_ptr<ModelMetadefIdGenerator> Create() { return g_host->ModelMetadefIdGenerator__construct(); }
+  static void operator delete(void* p) { g_host->ModelMetadefIdGenerator__operator_delete(reinterpret_cast<ModelMetadefIdGenerator*>(p)); }
   int GenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) const { return g_host->ModelMetadefIdGenerator__GenerateId(this, graph_viewer, model_hash); }
 };
 

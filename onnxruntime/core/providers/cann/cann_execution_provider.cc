@@ -1035,6 +1035,7 @@ CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& in
 
   soc_name_ = aclrtGetSocName();
   ORT_ENFORCE(soc_name_ != nullptr, "aclrtGetSocName return nullptr");
+  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
 }
 
 CANNExecutionProvider::~CANNExecutionProvider() {
@@ -1196,7 +1197,7 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
 
   // Generate unique kernel name for CANN subgraph
   HashValue model_hash = 0;
-  int id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+  int id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   meta_def->name() = graph_viewer.Name() + "_" + std::to_string(model_hash) + "_" + std::to_string(id);
 

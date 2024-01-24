@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// if SHARED_PROVIDER is defined (in provider_api.h), use the definition in provider_wrappedytypes.h to avoid redefinition.
-// make sure provider_api.h is included before this header
-#ifndef SHARED_PROVIDER
 #pragma once
 #include <unordered_map>
 #include "core/common/basic_types.h"
@@ -32,4 +29,3 @@ class ModelMetadefIdGenerator {
 };
 
 }  // namespace onnxruntime
-#endif

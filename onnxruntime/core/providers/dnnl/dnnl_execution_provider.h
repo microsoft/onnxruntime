@@ -13,7 +13,6 @@
 #include "core/providers/dnnl/dnnl_op_manager.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_primitive.h"
-#include "core/framework/model_metadef_id_generator.h"
 
 namespace onnxruntime {
 
@@ -42,7 +41,7 @@ class DnnlExecutionProvider : public IExecutionProvider {
   bool debug_log_ = false;
   // enable fusion by default
   bool enable_fusion_ = true;
-  ModelMetadefIdGenerator metadef_id_generator_;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 
 }  // namespace onnxruntime
