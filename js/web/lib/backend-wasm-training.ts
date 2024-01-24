@@ -8,7 +8,7 @@ import {OnnxruntimeWebAssemblyTrainingSessionHandler} from './wasm/session-handl
 
 class OnnxruntimeTrainingWebAssemblyBackend extends OnnxruntimeWebAssemblyBackend {
   async createTrainingSessionHandler(
-      checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
+      _backend: string, checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
       evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
       options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler> {
     const handler = new OnnxruntimeWebAssemblyTrainingSessionHandler();

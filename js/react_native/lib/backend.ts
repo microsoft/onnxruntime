@@ -165,10 +165,11 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler> {
+  async createInferenceSessionHandler(
+      _backend: string, pathOrBuffer: string|Uint8Array,
+      options: InferenceSession.SessionOptions): Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
-    await handler.loadModel(options || {});
+    await handler.loadModel(options);
     return handler;
   }
 }

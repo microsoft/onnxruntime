@@ -67,14 +67,14 @@ export const registerBackend = (name: string, backend: Backend, priority: number
  *
  * @ignore
  */
-export const resolveBackend = async(backendHints: readonly string[]): Promise<Backend> => {
+export const resolveBackend = async(backendHints: readonly string[]): Promise<[name: string, backend: Backend]> => {
   const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
   const errors = [];
   for (const backendName of backendNames) {
     const backendInfo = backends.get(backendName);
     if (backendInfo) {
       if (backendInfo.initialized) {
-        return backendInfo.backend;
+        return [backendName, backendInfo.backend];
       } else if (backendInfo.aborted) {
         continue;  // current backend is unavailable; try next
       }
@@ -86,7 +86,7 @@ export const resolveBackend = async(backendHints: readonly string[]): Promise<Ba
         }
         await backendInfo.initPromise;
         backendInfo.initialized = true;
-        return backendInfo.backend;
+        return [backendName, backendInfo.backend];
       } catch (e) {
         if (!isInitializing) {
           errors.push({name: backendName, err: e});

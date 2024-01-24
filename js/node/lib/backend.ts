@@ -53,12 +53,13 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler> {
+  async createInferenceSessionHandler(
+      _name: string, pathOrBuffer: string|Uint8Array,
+      options: InferenceSession.SessionOptions): Promise<InferenceSessionHandler> {
     return new Promise((resolve, reject) => {
       process.nextTick(() => {
         try {
-          resolve(new OnnxruntimeSessionHandler(pathOrBuffer, options || {}));
+          resolve(new OnnxruntimeSessionHandler(pathOrBuffer, options));
         } catch (e) {
           // reject if any error is thrown
           reject(e);

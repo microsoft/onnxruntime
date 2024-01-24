@@ -198,8 +198,8 @@ export class InferenceSession implements InferenceSessionInterface {
     // get backend hints
     const eps = options.executionProviders || [];
     const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
-    const backend = await resolveBackend(backendHints);
-    const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, options);
+    const [name, backend] = await resolveBackend(backendHints);
+    const handler = await backend.createInferenceSessionHandler(name, filePathOrUint8Array, options);
     TRACE_FUNC_END();
     return new InferenceSession(handler);
   }

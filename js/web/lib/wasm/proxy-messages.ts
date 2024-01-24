@@ -62,7 +62,7 @@ interface MessageCopyFromExternalBuffer extends MessageError {
 
 interface MessageCreateSession extends MessageError {
   type: 'create';
-  in ?: {model: SerializableInternalBuffer|Uint8Array; options?: InferenceSession.SessionOptions};
+  in ?: {backend: string; model: SerializableInternalBuffer | Uint8Array; options?: InferenceSession.SessionOptions};
   out?: SerializableSessionMetadata;
 }
 

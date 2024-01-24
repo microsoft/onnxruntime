@@ -145,7 +145,7 @@ export const copyFromExternalBuffer = async(buffer: Uint8Array): Promise<Seriali
 };
 
 export const createSession =
-    async(model: SerializableInternalBuffer|Uint8Array, options?: InferenceSession.SessionOptions):
+    async(backend: string, model: SerializableInternalBuffer|Uint8Array, options?: InferenceSession.SessionOptions):
         Promise<SerializableSessionMetadata> => {
           if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
             // check unsupported options
@@ -155,7 +155,7 @@ export const createSession =
             ensureWorker();
             return new Promise<SerializableSessionMetadata>((resolve, reject) => {
               enqueueCallbacks('create', [resolve, reject]);
-              const message: OrtWasmMessage = {type: 'create', in : {model, options}};
+              const message: OrtWasmMessage = {type: 'create', in : {backend, model, options}};
               const transferable: Transferable[] = [];
               if (model instanceof Uint8Array) {
                 transferable.push(model.buffer);
@@ -163,7 +163,7 @@ export const createSession =
               proxyWorker!.postMessage(message, transferable);
             });
           } else {
-            return core.createSession(model, options);
+            return core.createSession(backend, model, options);
           }
         };
 

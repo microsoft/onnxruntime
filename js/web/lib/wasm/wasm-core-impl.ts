@@ -183,13 +183,14 @@ export const copyFromExternalBuffer = (model: Uint8Array): [number, number] => {
 /**
  * create an inference session from a model data buffer.
  *
+ * @param backend - the name of the backend that powers the session.
  * @param modelData - either a Uint8Array object representing the model data, or a 2-elements tuple containing the
  *     pointer and size of the model data buffer.
  * @param options an optional session options object.
  * @returns a 3-elements tuple containing [session handle, input names, output names]
  */
 export const createSession = async(
-    modelData: Uint8Array|SerializableInternalBuffer,
+    _backend: string, modelData: Uint8Array|SerializableInternalBuffer,
     options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {
   let modelDataOffset: number, modelDataLength: number;
   const wasm = getInstance();

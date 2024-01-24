@@ -73,12 +73,14 @@ export interface Backend {
    */
   init(backendName: string): Promise<void>;
 
-  createInferenceSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler>;
+  createInferenceSessionHandler(
+      backendName: string, uriOrBuffer: string|Uint8Array,
+      options: InferenceSession.SessionOptions): Promise<InferenceSessionHandler>;
 
   createTrainingSessionHandler?
-      (checkpointStateUriOrBuffer: TrainingSession.URIorBuffer, trainModelUriOrBuffer: TrainingSession.URIorBuffer,
-       evalModelUriOrBuffer: TrainingSession.URIorBuffer, optimizerModelUriOrBuffer: TrainingSession.URIorBuffer,
+      (backendName: string, checkpointStateUriOrBuffer: TrainingSession.URIorBuffer,
+       trainModelUriOrBuffer: TrainingSession.URIorBuffer, evalModelUriOrBuffer: TrainingSession.URIorBuffer,
+       optimizerModelUriOrBuffer: TrainingSession.URIorBuffer,
        options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler>;
 }
 

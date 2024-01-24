@@ -11,8 +11,9 @@ class OnnxjsBackend implements Backend {
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   async init(): Promise<void> {}
 
-  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler> {
+  async createInferenceSessionHandler(
+      _backend: string, pathOrBuffer: string|Uint8Array,
+      options?: InferenceSession.SessionOptions): Promise<InferenceSessionHandler> {
     // NOTE: Session.Config(from onnx.js) is not compatible with InferenceSession.SessionOptions(from
     // onnxruntime-common).
     //       In future we should remove Session.Config and use InferenceSession.SessionOptions.

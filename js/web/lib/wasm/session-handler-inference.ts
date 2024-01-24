@@ -37,6 +37,7 @@ export const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
 };
 
 export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHandler {
+  constructor(private backend: string) {}
   private sessionId: number;
 
   inputNames: string[];
@@ -49,7 +50,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
     TRACE_FUNC_BEGIN();
-    let model: Parameters<typeof createSession>[0];
+    let model: Parameters<typeof createSession>[1];
 
     if (typeof pathOrBuffer === 'string') {
       if (typeof process !== 'undefined' && process.versions && process.versions.node) {
@@ -64,7 +65,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
       model = pathOrBuffer;
     }
 
-    [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+    [this.sessionId, this.inputNames, this.outputNames] = await createSession(this.backend, model, options);
     TRACE_FUNC_END();
   }
 
