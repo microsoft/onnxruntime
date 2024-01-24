@@ -469,19 +469,19 @@ TEST(TrainingCApiTest, ModuleAndOptimizerWithNominalState) {
 
     ASSERT_EQ(complete_fetches.size(), nominal_fetches.size());
     ASSERT_GT(complete_fetches.size(), 0U);
-    for (size_t i = 0; i < complete_fetches.size(); ++i) {
-      ASSERT_TRUE(complete_fetches[i].IsTensor());
-      ASSERT_TRUE(nominal_fetches[i].IsTensor());
+    for (size_t j = 0; j < complete_fetches.size(); ++j) {
+      ASSERT_TRUE(complete_fetches[j].IsTensor());
+      ASSERT_TRUE(nominal_fetches[j].IsTensor());
 
-      auto complete_tensor_info = complete_fetches[i].GetTensorTypeAndShapeInfo();
-      auto nominal_tensor_info = nominal_fetches[i].GetTensorTypeAndShapeInfo();
+      auto complete_tensor_info = complete_fetches[j].GetTensorTypeAndShapeInfo();
+      auto nominal_tensor_info = nominal_fetches[j].GetTensorTypeAndShapeInfo();
 
       ASSERT_EQ(complete_tensor_info.GetShape(), nominal_tensor_info.GetShape());
       ASSERT_EQ(complete_tensor_info.GetElementType(), nominal_tensor_info.GetElementType());
 
-      gsl::span complete_data = gsl::span(complete_fetches[i].GetTensorMutableData<float>(),
+      gsl::span complete_data = gsl::span(complete_fetches[j].GetTensorMutableData<float>(),
                                           complete_tensor_info.GetElementCount());
-      gsl::span nominal_data = gsl::span(nominal_fetches[i].GetTensorMutableData<float>(),
+      gsl::span nominal_data = gsl::span(nominal_fetches[j].GetTensorMutableData<float>(),
                                          nominal_tensor_info.GetElementCount());
 
       ASSERT_EQ(complete_data, nominal_data);
