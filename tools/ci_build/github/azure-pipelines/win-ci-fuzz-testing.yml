@@ -28,7 +28,7 @@ jobs:
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: false
-      BuildArch: $(buildArch)
+      BuildArch: x64
       BuildConfig: $(BuildConfig)
       MachinePool: 'onnxruntime-Win-CPU-2022'
       WithCache: true
