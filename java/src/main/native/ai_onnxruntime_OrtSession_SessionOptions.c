@@ -8,7 +8,7 @@
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession_SessionOptions.h"
-#ifdef WIN32
+#ifdef _WIN32
 #include <Windows.h>
 #else
 #include <dlfcn.h>
