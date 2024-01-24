@@ -423,7 +423,7 @@ TEST(TrainingCApiTest, UpdateParameterDifferentDevices) {
 TEST(TrainingCApiTest, ModuleAndOptimizerWithNominalState) {
   auto training_model_uri = MODEL_FOLDER "training_model.onnx";
   auto eval_model_uri = MODEL_FOLDER "eval_model.onnx";
-  auto optimizer_model_uri = MODEL_FOLDER "optimizer_model.onnx";
+  auto optimizer_model_uri = MODEL_FOLDER "adamw.onnx";
 
   Ort::Env env;
   Ort::SessionOptions session_options_for_complete_state;
