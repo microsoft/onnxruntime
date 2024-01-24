@@ -122,9 +122,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
           query, key, value, bias,
           key_padding_mask, relative_position_bias,
           past_key, past_value, past_seq_len,
-          &attn,
-          num_heads_, false, /*is_unidirectional_*/ 
-          mask_filter_value_, scale_,
+          &attn, num_heads_, 
+          mask_filter_value_, scale_, false, /*is_unidirectional_*/ 
           past_present_share_buffer_, false, device_prop.maxThreadsPerBlock));
 
   if (attn_type_ == kDecoderMaskedMultiHeadAttention && attn.sequence_length != 1) {
