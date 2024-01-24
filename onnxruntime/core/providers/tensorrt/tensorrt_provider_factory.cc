@@ -32,7 +32,7 @@ struct ProviderInfo_TensorRT_Impl final : ProviderInfo_TensorRT {
     return nullptr;
   }
 
-  OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) override {
+  OrtStatus* GetTensorRTCustomOpDomainList(std::vector<std::shared_ptr<OrtCustomOpDomain>>& domain_list, const std::string extra_plugin_lib_paths) override {
     common::Status status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
     if (!status.IsOK()) {
       return CreateStatus(ORT_FAIL, "[TensorRT EP] Can't create custom ops for TRT plugins.");
@@ -113,8 +113,6 @@ struct Tensorrt_Provider : Provider {
     info.ep_context_file_path = options.trt_ep_context_file_path == nullptr ? "" : options.trt_ep_context_file_path;
     info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
     info.engine_cache_prefix = options.trt_engine_cache_prefix == nullptr ? "" : options.trt_engine_cache_prefix;
-
-    info.custom_op_domain_list = options.custom_op_domain_list;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }

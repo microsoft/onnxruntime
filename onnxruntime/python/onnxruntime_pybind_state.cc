@@ -745,13 +745,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
         }
-        // The OrtCustomOpDomains objects created by TRT EP's GetTensorRTCustomOpDomainList() should be released once session is finished.
-        // TRT EP needs to keep all the pointers OrtCustomOpDomain obejcts and releases them upon TRT EP destruction.
-        for (auto ptr : session_options.custom_op_domains_) {
-          if (ptr->domain_ == "trt.plugins") {
-            params->custom_op_domain_list.push_back(ptr);
-          }
-        }
         if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&params)) {
           return tensorrt_provider_factory->CreateProvider();
         }

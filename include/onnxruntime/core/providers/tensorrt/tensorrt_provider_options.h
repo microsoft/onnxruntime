@@ -70,6 +70,4 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_ep_context_embed_mode{0};               // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
 
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
-
-  std::vector<OrtCustomOpDomain*> custom_op_domain_list;
 };

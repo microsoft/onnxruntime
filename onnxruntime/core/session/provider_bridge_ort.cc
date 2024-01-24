@@ -1687,17 +1687,12 @@ void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, OrtTen
     return false;
   };
 
-  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  std::vector<std::shared_ptr<OrtCustomOpDomain>> custom_op_domains;
   onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
   provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
   for (auto ptr : custom_op_domains) {
     if (!is_already_in_domains(ptr->domain_, options->custom_op_domains_)) {
-      options->custom_op_domains_.push_back(ptr);
-      // The OrtCustomOpDomains objects created by TRT EP's GetTensorRTCustomOpDomainList() should be released once session is finished.
-      // TRT EP needs to keep all the pointers OrtCustomOpDomain obejcts and releases them upon TRT EP destruction.
-      if (tensorrt_options) {
-        tensorrt_options->custom_op_domain_list.push_back(ptr);
-      }
+      options->custom_op_domains_.push_back(ptr.get());
     } else {
       LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
     }
@@ -1877,7 +1872,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
 
   std::string extra_plugin_lib_paths = (tensorrt_options == nullptr || tensorrt_options->trt_extra_plugin_lib_paths == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
-  new_tensorrt_options.custom_op_domain_list.clear();
   AddTensorRTCustomOpDomainToSessionOption(options, &new_tensorrt_options, extra_plugin_lib_paths);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
