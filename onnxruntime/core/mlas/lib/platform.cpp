@@ -60,6 +60,10 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #define HWCAP2_SVEI8MM (1 << 9)
 #endif
 
+#ifndef HWCAP2_BF16
+#define HWCAP2_BF16 (1 << 14)
+#endif
+
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
@@ -70,6 +74,8 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 
     has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
+
+    has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
 }
 #endif
 

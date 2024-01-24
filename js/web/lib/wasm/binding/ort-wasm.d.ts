@@ -182,6 +182,10 @@ export interface OrtWasmModule extends EmscriptenModule {
   jsepCreateDownloader:
       (gpuBuffer: GPUBuffer, size: number,
        type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
+  /**
+   *  [exported from js_internal_api.js] Called when InferenceSession.run started.
+   */
+  jsepOnRunStart: () => void;
   // #endregion
 }
 

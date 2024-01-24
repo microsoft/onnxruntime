@@ -176,7 +176,10 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 // types and shapes.
 static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false,
                                std::string htp_graph_finalization_opt_mode = "",
-                               std::string qnn_context_priority = "") {
+                               std::string qnn_context_priority = "",
+                               std::string soc_model = "",
+                               std::string htp_arch = "",
+                               std::string device_id = "") {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -203,6 +206,18 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
 
   if (!qnn_context_priority.empty()) {
     options["qnn_context_priority"] = std::move(qnn_context_priority);
+  }
+
+  if (!soc_model.empty()) {
+    options["soc_model"] = std::move(soc_model);
+  }
+
+  if (!htp_arch.empty()) {
+    options["htp_arch"] = std::move(htp_arch);
+  }
+
+  if (!device_id.empty()) {
+    options["device_id"] = std::move(device_id);
   }
 
   so.AppendExecutionProvider("QNN", options);
@@ -516,6 +531,45 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
                        true,   // use_htp
                        false,  // enable_qnn_saver
                        mode);  // htp_graph_finalization_opt_mode
+  }
+}
+
+// Test that models run with various SoC model values
+TEST_F(QnnHTPBackendTests, HTPSocModels) {
+  constexpr std::array<const char*, 3> soc_models = { "",   // No explicit SoC model specified
+                                                      "0",  // "Unknown"
+#if defined(_M_ARM64)
+                                                      "37" };  // SC8280X
+#elif defined(__linux__)
+                                                      "30" };  // SM8350
+#else
+                                                      "" };
+#endif
+
+  for (auto soc_model : soc_models) {
+    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                       true,   // use_htp
+                       false,  // enable_qnn_saver
+                       "",     // htp_graph_finalization_opt_mode
+                       "",     // qnn_context_priority
+                       soc_model);
+  }
+}
+
+// Test that models run with various HTP architecture values (and set device_id)
+TEST_F(QnnHTPBackendTests, HTPArchValues) {
+  constexpr std::array<const char*, 3> htp_archs = {"",     // No explicit arch specified
+                                                    "0",    // "None"
+                                                    "68"};  // v68
+  for (auto htp_arch : htp_archs) {
+    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                       true,      // use_htp
+                       false,     // enable_qnn_saver
+                       "",        // htp_graph_finalization_opt_mode
+                       "",        // qnn_context_priority
+                       "",        // soc_model
+                       htp_arch,  // htp_arch
+                       "0");      // device_id
   }
 }
 
