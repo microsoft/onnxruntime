@@ -496,6 +496,7 @@ typedef struct OrtROCMProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
+        enable_hip_graph{false},
         tunable_op_enable{false},
         tunable_op_tuning_enable{false},
         tunable_op_max_tuning_duration_ms{} {}
@@ -547,6 +548,8 @@ typedef struct OrtROCMProviderOptions {
   /** \brief ROCM memory arena configuration parameters
    */
   OrtArenaCfg* default_memory_arena_cfg;
+
+  int enable_hip_graph;
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
