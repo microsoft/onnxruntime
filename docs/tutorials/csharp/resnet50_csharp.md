@@ -27,7 +27,7 @@ The source code for this sample is available [here](https://github.com/microsoft
 To run this sample, you'll need the following things:
 
 1. Install [.NET Core 3.1](https://dotnet.microsoft.com/download/dotnet-core/3.1) or higher for you OS (Mac, Windows or Linux).
-2. Download the [ResNet50 v2](https://github.com/onnx/models/blob/master/vision/classification/resnet/model/resnet50-v2-7.onnx) ONNX model to your local system.
+2. Download the [ResNet50 v2](https://github.com/onnx/models/blob/main/validated/vision/classification/resnet/model/resnet50-v2-7.onnx) ONNX model to your local system.
 3. Download [this picture of a dog](/images/dog.jpeg) to test the model. You can also use any image you like.
 
 ## Getting Started
@@ -74,7 +74,7 @@ Note, we're doing a centered crop resize to preserve aspect ratio.
 
 ### Preprocess image
 
-Next, we will preprocess the image according to the [requirements of the model](https://github.com/onnx/models/tree/master/vision/classification/resnet#preprocessing):
+Next, we will preprocess the image according to the [requirements of the model](https://github.com/onnx/models/tree/main/validated/vision/classification/resnet#preprocessing):
 
 ```cs
 // We use DenseTensor for multi-dimensional access to populate the image data
