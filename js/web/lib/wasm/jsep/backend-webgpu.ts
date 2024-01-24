@@ -222,16 +222,6 @@ export class WebGpuBackend {
   getCommandEncoder(): GPUCommandEncoder {
     if (!this.commandEncoder) {
       this.commandEncoder = this.device.createCommandEncoder();
-
-      if (this.queryType !== 'none' && typeof this.querySet === 'undefined') {
-        this.querySet = this.device.createQuerySet({
-          type: 'timestamp',
-          count: this.maxDispatchNumber * 2,
-        });
-        this.queryResolveBuffer = this.device.createBuffer(
-            // eslint-disable-next-line no-bitwise
-            {size: this.maxDispatchNumber * 2 * 8, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE});
-      }
     }
     return this.commandEncoder;
   }
@@ -653,6 +643,16 @@ export class WebGpuBackend {
         this.queryType = 'inside-passes';
       } else if (this.device.features.has('timestamp-query')) {
         this.queryType = 'at-passes';
+      }
+
+      if (this.queryType !== 'none' && typeof this.querySet === 'undefined') {
+        this.querySet = this.device.createQuerySet({
+          type: 'timestamp',
+          count: this.maxDispatchNumber * 2,
+        });
+        this.queryResolveBuffer = this.device.createBuffer(
+            // eslint-disable-next-line no-bitwise
+            {size: this.maxDispatchNumber * 2 * 8, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE});
       }
     }
   }
