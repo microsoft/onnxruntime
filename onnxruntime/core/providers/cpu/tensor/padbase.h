@@ -24,7 +24,7 @@ class PadBase {
   /// <summary>
   /// Handle the case when the input shape has zero dim values.
   /// Depending on the mode, the input dim with zero value must match the output dim value.
-  /// 
+  ///
   /// </summary>
   /// <param name="mode">Padding mode enum value</param>
   /// <param name="input_shape">actual input shape</param>
