@@ -2021,7 +2021,7 @@
 				aria-labelledby="ot_selectHardwareAcceleration"
 				aria-describedby="ot_decriptionHardwareAcceleration"
 			>
-				<div class="grid grid-cols-3 gap-4 ot_hardwareAcceleration">
+				<div class="grid grid-cols-4 gap-4 ot_hardwareAcceleration">
 					{#each TrainingVersions as version, i}
 						<a
 							class="r-option version join-item btn rounded"
