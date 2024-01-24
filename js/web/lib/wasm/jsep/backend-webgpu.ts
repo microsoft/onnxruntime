@@ -208,7 +208,7 @@ export class WebGpuBackend {
 
     Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
 
-    // init queryType, which is necessary for createKernel
+    // init queryType, which is necessary for InferenceSession.create
     this.setQueryType();
   }
 
@@ -223,8 +223,6 @@ export class WebGpuBackend {
     if (!this.commandEncoder) {
       this.commandEncoder = this.device.createCommandEncoder();
 
-      // refresh queryType, as sometimes we only need to enable query for a specific run
-      this.setQueryType();
       if (this.queryType !== 'none' && typeof this.querySet === 'undefined') {
         this.querySet = this.device.createQuerySet({
           type: 'timestamp',
@@ -639,6 +637,7 @@ export class WebGpuBackend {
       return createView(data.buffer, type);
     };
   }
+  // #endregion
   writeTimestamp(index: number): void {
     if (this.queryType !== 'inside-passes') {
       return;
@@ -657,5 +656,7 @@ export class WebGpuBackend {
       }
     }
   }
-  // #endregion
+  onRunStart(): void {
+    this.setQueryType();
+  }
 }

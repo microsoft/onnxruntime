@@ -153,7 +153,7 @@ static bool AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
 
     // Empty node provider means CPU EP
     if (!node_provider.empty() &&
-        node_provider != kCudaExecutionProvider &&
+        !(node_provider == kCudaExecutionProvider || node_provider == kRocmExecutionProvider) &&
         node_provider != kCpuExecutionProvider) {
       nodes_on_cpu_and_cuda_eps_only = false;
       break;
@@ -1164,6 +1164,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
+                                                       session_options_.config_options, *session_logger_,
                                                        mode, debug_graph_fn));
 
   // apply Level2 and higher transformers.
@@ -1458,7 +1459,9 @@ namespace {
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
-                               SessionState& session_state) {
+                               SessionState& session_state,
+                               const ConfigOptions& config_options,
+                               const logging::Logger& logger) {
   layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1479,6 +1482,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
+                                            config_options,
+                                            logger,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
   return Status::OK();
@@ -1710,7 +1715,8 @@ common::Status InferenceSession::Initialize() {
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
-      // Currently CUDA graph is only considered by CUDA EP and TRT EP.
+      // Currently CUDA graph is only considered by CUDA EP and TRT EP, and
+      // HIP graph is only considered by ROCM EP.
       //
       // Check for CUDA EP:
       // If the CUDA EP is part of the providers list for this session AND
@@ -1723,47 +1729,58 @@ common::Status InferenceSession::Initialize() {
       // The TRT EP is configured to do a graph capture AND
       // All the graph nodes have been assigned to the TRT EP,
       // Then the TRT EP is cached for triggering a ReplayGraph() in Run().
-      std::vector<const char*> cuda_graph_support_ep_list = {onnxruntime::kTensorrtExecutionProvider, onnxruntime::kCudaExecutionProvider};
+      //
+      // Check for ROCM EP:
+      // If the ROCM EP is part of the providers list for this session AND
+      // The ROCM EP is configured to do a graph capture AND
+      // All the "compute" graph nodes have been assigned to the ROCM EP,
+      // Then the ROCM EP is cached for triggering a ReplayGraph() in Run().
+      //
+      std::vector<const char*> graph_support_ep_list = {
+          onnxruntime::kTensorrtExecutionProvider,
+          onnxruntime::kCudaExecutionProvider,
+          onnxruntime::kRocmExecutionProvider};
 
-      for (auto& it : cuda_graph_support_ep_list) {
+      for (auto& it : graph_support_ep_list) {
         auto* target_ep = execution_providers_.Get(it);
 
         if (target_ep && target_ep->IsGraphCaptureEnabled()) {
-          // CUDA Graphs can't work with control flow nodes
+          // CUDA/HIP Graphs can't work with control flow nodes
           if (HasControlflowNodes(graph)) {
-            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                          << "as the model has control flow nodes which can't be supported by CUDA Graphs.";
+            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA/HIP Graph feature as requested by the user "
+                                          << "as the model has control flow nodes which can't be supported by CUDA/HIP Graphs.";
 
             ORT_RETURN_IF_ERROR_SESSIONID_(
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                "This session cannot use the CUDA Graph feature as requested by the user "
-                                "as the model has control flow nodes which can't be supported by CUDA Graphs."));
+                                "This session cannot use the CUDA/HIP Graph feature as requested by the user "
+                                "as the model has control flow nodes which can't be supported by CUDA/HIP Graphs."));
           }
 
-          if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0) {
+          if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
+              strcmp(target_ep->Type().c_str(), onnxruntime::kRocmExecutionProvider) == 0) {
             // Ensure that all nodes have been partitioned to CUDA or CPU EP && there are no memcpy nodes
             // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
             // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
             // which is all we care about.
             if (!AreAllComputeNodesAssignedToCudaEp(graph)) {
-              LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                            << " as all compute graph nodes have not been partitioned to the CUDA EP.";
+              LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA/HIP Graph feature as requested by the user "
+                                            << " as all compute graph nodes have not been partitioned to the CUDA/HIP EP.";
 
               ORT_RETURN_IF_ERROR_SESSIONID_(
                   ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "This session cannot use the CUDA Graph feature as requested by the user "
-                                  " as all compute graph nodes have not been partitioned to the CUDA EP."));
+                                  "This session cannot use the CUDA/HIP Graph feature as requested by the user "
+                                  " as all compute graph nodes have not been partitioned to the CUDA/HIP EP."));
             }
 
             // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
             if (HasShapeSubgraphNodes(graph)) {
               LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
-                                              << "Use the CUDA Graph feature with caution. "
+                                              << "Use the CUDA/HIP Graph feature with caution. "
                                               << "As long as the intermediate shapes produced in the model "
-                                              << "using the representative input used to capture the CUDA graph, "
+                                              << "using the representative input used to capture the CUDA/HIP graph, "
                                               << "will match the shapes produced in the model for other inputs "
                                               << "of the same shape as the representative input (common case), "
-                                              << "it is safe to use the CUDA Graph feature.";
+                                              << "it is safe to use the CUDA/HIP Graph feature.";
             }
           } else {
             // Following code path is for TRT EP currently.
@@ -1782,7 +1799,7 @@ common::Status InferenceSession::Initialize() {
             }
           }
 
-          LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
+          LOGS(*session_logger_, INFO) << "This session will use the CUDA/HIP Graph feature as requested by the user.";
           cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
           break;  // Make sure only one ep can run CUDA graph.
         }
@@ -1833,7 +1850,7 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD)
     } else {
       ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                             *session_state_));
+                                                             *session_state_, session_options_.config_options, *session_logger_));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
@@ -2472,7 +2489,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
   // so that users just need one session run to capture the graph.
-  // N is defined in min_num_runs_before_cuda_graph_capture_ for CUDA EP, and the value could be different for other EP.
+  // N is defined in min_num_runs_before_cuda_graph_capture_ for CUDA EP,
+  // N is defined in min_num_runs_before_hip_graph_capture_ for ROCM EP,
+  // and the value could be different for other EP.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";

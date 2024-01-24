@@ -17,6 +17,7 @@
 #include <vector>
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
+#include "QnnTypes.h"
 #include "System/QnnSystemInterface.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -35,13 +36,19 @@ class QnnBackendManager {
                     uint32_t rpc_control_latency,
                     HtpPerformanceMode htp_performance_mode,
                     ContextPriority context_priority,
-                    std::string&& qnn_saver_path)
+                    std::string&& qnn_saver_path,
+                    uint32_t device_id,
+                    QnnHtpDevice_Arch_t htp_arch,
+                    uint32_t soc_model)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
         htp_performance_mode_(htp_performance_mode),
         context_priority_(context_priority),
-        qnn_saver_path_(qnn_saver_path) {
+        qnn_saver_path_(qnn_saver_path),
+        device_id_(device_id),
+        htp_arch_(htp_arch),
+        soc_model_(soc_model) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -233,6 +240,9 @@ class QnnBackendManager {
 #endif
   const std::string qnn_saver_path_;
   uint32_t htp_power_config_client_id_ = 0;
+  uint32_t device_id_ = 0;
+  QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
+  uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
 };
 
 }  // namespace qnn
