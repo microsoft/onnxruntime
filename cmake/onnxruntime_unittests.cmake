@@ -829,7 +829,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 endif()
 
-if (IOS OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+   message("Disable model tests in onnxruntime_test_all")
    list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/providers/cpu/providers/cpu/model_tests.cc"
     )
