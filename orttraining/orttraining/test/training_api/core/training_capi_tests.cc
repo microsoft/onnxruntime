@@ -450,7 +450,7 @@ TEST(TrainingCApiTest, ModuleAndOptimizerWithNominalState) {
     std::vector<int64_t> x_shape{2, 784};
     GenerateRandomData(x);
 
-    std::vector<int64_t> labels{0, 8};
+    std::vector<int32_t> labels{0, 8};
     std::vector<int64_t> labels_shape{2};
 
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -460,9 +460,9 @@ TEST(TrainingCApiTest, ModuleAndOptimizerWithNominalState) {
                                                      x_shape.data(), x_shape.size(),
                                                      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
     ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, labels.data(),
-                                                     labels.size() * sizeof(int64_t),
+                                                     labels.size() * sizeof(int32_t),
                                                      labels_shape.data(), labels_shape.size(),
-                                                     ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64));
+                                                     ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32));
 
     std::vector<Ort::Value> complete_fetches = complete_training_session.TrainStep(ort_inputs);
     std::vector<Ort::Value> nominal_fetches = nominal_training_session.TrainStep(ort_inputs);

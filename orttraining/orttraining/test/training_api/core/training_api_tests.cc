@@ -590,8 +590,8 @@ TEST(TrainingApiTest, ModuleAndOptimizerWithNominalState) {
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  target = onnxruntime::test::CreateInputOrtValueOnCPU<int64_t>(
-      std::array<int64_t, 1>{2}, std::vector<int64_t>(2, 1));
+  target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {

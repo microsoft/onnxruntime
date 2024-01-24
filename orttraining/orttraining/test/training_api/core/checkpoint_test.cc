@@ -443,10 +443,10 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
  * Saves the checkpoint, and loads it again. Checks for nominal flag, and that the state is empty.
  */
 TEST(CheckpointApiTest, LoadAndSaveNominalCheckpoint) {
-  auto checkpoint_uri = "testdata/training_api/nominal_checkpoint";
+  PathString nominal_checkpoint_path{ORT_TSTR("testdata/training_api/nominal_checkpoint")};
 
   CheckpointState checkpoint_state;
-  ASSERT_STATUS_OK(LoadCheckpoint(onnxruntime::ToUTF8String(checkpoint_uri), checkpoint_state));
+  ASSERT_STATUS_OK(LoadCheckpoint(nominal_checkpoint_path, checkpoint_state));
   ASSERT_TRUE(checkpoint_state.module_checkpoint_state.is_nominal_state);
   for (auto& [name, param] : checkpoint_state.module_checkpoint_state.named_parameters) {
     ASSERT_TRUE(param->Data().IsTensor());

@@ -650,6 +650,10 @@ Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
   ORT_RETURN_IF_NOT(frozen_params,
                     "Checkpoint is invalid. Expected: Valid non-trainable params flatbuffer. Actual: nullptr.");
 
+  ORT_RETURN_IF(module_state->is_nominal_state(),
+                "Cannot load a nominal checkpoint to a model proto. "
+                "Expected: Complete checkpoint. Actual: Nominal checkpoint.");
+
   InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
   param_tensor_protos.reserve(
       static_cast<size_t>(requires_grad_params->size()) + static_cast<size_t>(frozen_params->size()));
