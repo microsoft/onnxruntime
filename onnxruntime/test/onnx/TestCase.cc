@@ -511,7 +511,6 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
 
   std::vector<PATH_STRING_TYPE> test_data_pb_files;
 
-  
   std::filesystem::path dir_fs_path = test_data_dirs_[id];
   if (!std::filesystem::exists(dir_fs_path)) return;
 
