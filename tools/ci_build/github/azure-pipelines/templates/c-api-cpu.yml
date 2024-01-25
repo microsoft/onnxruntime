@@ -500,11 +500,12 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-- stage: Nodejs_Packaging_CPU
+- stage: Nodejs_Packaging
   dependsOn:
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_CI_GPU_DML_Dev
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
@@ -565,7 +566,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-x64'
+        artifactName: 'drop-onnxruntime-nodejs-win-x64-dml'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
     - task: DownloadPipelineArtifact@0
@@ -591,6 +592,10 @@ stages:
       inputs:
         artifactName: 'drop-onnxruntime-nodejs-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
+    - script: |
+        dir
+      workingDirectory: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
+      displayName: 'List Nodejs artifacts from $(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Linux aarch64)'
@@ -632,7 +637,7 @@ stages:
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64\lib'
+        SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\x64'
         Contents: '*.dll'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
     - task: CopyFiles@2
