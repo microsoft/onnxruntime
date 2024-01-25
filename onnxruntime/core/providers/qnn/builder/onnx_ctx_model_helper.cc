@@ -17,8 +17,14 @@ bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
   for (const auto& node : graph_viewer.Nodes()) {
     if (EPCONTEXT_OP == node.OpType()) {
       NodeAttrHelper node_helper(node);
-      const std::string cache_source = node_helper.Get(SOURCE, "");
-      if (cache_source == kQnnExecutionProvider || cache_source == "QNN") {
+      std::string cache_source = node_helper.Get(SOURCE, "");
+
+      std::transform(cache_source.begin(),
+                     cache_source.end(),
+                     cache_source.begin(),
+                     [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+
+      if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
         return true;
       }
     }
