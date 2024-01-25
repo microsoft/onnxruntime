@@ -699,6 +699,7 @@ class OnnxModel:
                     "node_block_list",
                     "force_fp16_initializers",
                     "force_fp16_inputs",
+                    "use_bfloat16_as_blocked_nodes_dtype",
                 ]
                 if key in kwargs
             }
@@ -1033,7 +1034,6 @@ class OnnxModel:
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        #print("bugbug")
         OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
 
     @staticmethod

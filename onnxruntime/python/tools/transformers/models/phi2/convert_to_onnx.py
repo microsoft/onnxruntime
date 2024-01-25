@@ -52,6 +52,7 @@ class ConvertPhi2ToONNX:
             if index != -1:
                 node.op_type = node.op_type[index:]
 
+        return onnx_model
 
     def __process_graph_io(self, config: AutoConfig, onnx_model: ModelProto, use_gqa=False):
         graph = onnx_model.graph
@@ -111,6 +112,8 @@ class ConvertPhi2ToONNX:
 
         graph.ClearField("output")
         graph.output.extend(new_outputs)
+
+        return onnx_model
 
     def __update_edges(self, model: onnx.ModelProto, edge_mapping: dict):
         """
@@ -174,6 +177,23 @@ class ConvertPhi2ToONNX:
 
         return self.__update_edges(model, edge_mapping)
 
+    def __remove_dropout_layer(self, model: onnx.ModelProto):
+        """
+        Removes the dropout layer in the model.
+        """
+        edge_mapping = {}
+        nodes_to_remove = []
+        for node in model.graph.node:
+            if node.op_type.find("Dropout") != -1:
+                assert len(node.input) == 1
+                assert len(node.output) == 1
+                edge_mapping[node.output[0]] = node.input[0]
+                nodes_to_remove.append(node)
+        for node in nodes_to_remove:
+            model.graph.node.remove(node)
+
+        return self.__update_edges(model, edge_mapping)
+
     def __get_phi2_torch_model(self):
         if self.phi_model is not None:
             return
@@ -222,7 +242,7 @@ class ConvertPhi2ToONNX:
         onnx.checker.check_model(onnx_path)
         onnx.shape_inference.infer_shapes_path(onnx_path)
 
-    def preprocess_onnx(self, onnx_path_in: str, onnx_path_out: str, func_name: List[str]):
+    def preprocess_onnx(self, onnx_path_in: str, onnx_path_out: str, func_name: List[str], use_gqa=False):
         model = onnx.load_model(onnx_path_in, load_external_data=True)
         function_name = None
         for func in model.functions:
@@ -232,8 +252,9 @@ class ConvertPhi2ToONNX:
         assert function_name is not None
         model = self.__inline_function(model, function_name)
         model = self.__update_edges(model, self.phi2_edge_dict)
-        self.__simplify_phi2_op_type_name(model)
-        self.__process_graph_io(self.phi_config, model, use_gqa=True)
+        model = self.__simplify_phi2_op_type_name(model)
+        model = self.__process_graph_io(self.phi_config, model, use_gqa)
+        model = self.__remove_dropout_layer(model)
         onnx.save_model(
             model,
             onnx_path_out,
@@ -258,9 +279,15 @@ class ConvertPhi2ToONNX:
         )
 
         if use_fp16:
-            node_block_list = ["GroupQueryAttention_0_29", "GroupQueryAttention_0_30", "GroupQueryAttention_0_31"]
-            # bugbug: support for bfloat16
-            optimizer.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)
+            node_block_list = ["GroupQueryAttention_0_29", 
+                               "GroupQueryAttention_0_30", 
+                               "GroupQueryAttention_0_31"]
+            optimizer.convert_float_to_float16(
+                keep_io_types=False,
+                node_block_list=node_block_list,
+                use_symbolic_shape_infer=True,
+                use_bfloat16_as_blocked_nodes_dtype=True,
+            )
 
         optimizer.save_model_to_file(onnx_path_opt, use_external_data_format=True)
         optimizer.get_operator_statistics()
@@ -270,11 +297,13 @@ model_class = "microsoft/phi-2"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 converter = ConvertPhi2ToONNX(model_class, device)
-# converter.dynamo_export("phi-2_temp.onnx")
-# converter.preprocess_onnx(
-#     "phi-2_temp.onnx",
-#     "phi-2.onnx",
-#     "modeling_phi_PhiModel_model_1",
-# )
-# converter.erase_onnx_model("phi-2_temp.onnx")
-converter.optimize_phi2_onnx("phi-2.onnx", "phi-2_opt.onnx")
+converter.dynamo_export("phi-2_temp.onnx")
+# TODO:preprocessed onnx model takes up large disk space
+converter.preprocess_onnx(
+    "phi-2_temp.onnx",
+    "phi-2.onnx",
+    "modeling_phi_PhiModel_model_1",
+    use_gqa=True,
+)
+converter.erase_onnx_model("phi-2_temp.onnx")
+converter.optimize_phi2_onnx("phi-2.onnx", "phi-2_opt.onnx", use_fp16=True)
