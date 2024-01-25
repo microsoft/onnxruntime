@@ -1845,7 +1845,10 @@ void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<std::shared_pt
       extra_plugin_lib_paths = extra_plugin_lib_paths_env;
     }
   }
-  CreateTensorRTCustomOpDomainList(custom_op_domain_list, extra_plugin_lib_paths);
+  auto status = CreateTensorRTCustomOpDomainList(custom_op_domain_list, extra_plugin_lib_paths);
+  if (status != Status::OK()) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+  }
 }
 
 // Check the graph is the subgraph of control flow op

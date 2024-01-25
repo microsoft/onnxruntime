@@ -85,26 +85,6 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<std::shared_ptr<OrtC
   return Status::OK();
 }
 
-common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info) {
-  std::vector<OrtCustomOpDomain*> domain_list;
-  std::string extra_plugin_lib_paths{""};
-  if (info.has_trt_options) {
-    if (!info.extra_plugin_lib_paths.empty()) {
-      extra_plugin_lib_paths = info.extra_plugin_lib_paths;
-    }
-  } else {
-    const std::string extra_plugin_lib_paths_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kExtraPluginLibPaths);
-    if (!extra_plugin_lib_paths_env.empty()) {
-      extra_plugin_lib_paths = extra_plugin_lib_paths_env;
-    }
-  }
-  auto status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
-  if (!domain_list.empty()) {
-    info.custom_op_domain_list = domain_list;
-  }
-  return Status::OK();
-}
-
 void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain) {
   if (domain != nullptr) {
     for (auto ptr : domain->custom_ops_) {
