@@ -1677,7 +1677,7 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
 
 }  // namespace onnxruntime
 
-void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, OrtTensorRTProviderOptionsV2* tensorrt_options, std::string extra_plugin_lib_paths) {
+void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, std::string extra_plugin_lib_paths) {
   auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
     for (auto ptr : domains) {
       if (domain_name == ptr->domain_) {
@@ -1865,15 +1865,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 
   std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
 
-  // This function might need to update the "const" OrtTensorRTProviderOptionsV2 object which can't be modified.
-  // Therefore, we need to create a new OrtTensorRTProviderOptionsV2 object and copy from tensorrt_options and use this new object to create the factory instead.
-  // Note: No need to worry about new_tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
-  // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
-  OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
-
-  std::string extra_plugin_lib_paths = (tensorrt_options == nullptr || tensorrt_options->trt_extra_plugin_lib_paths == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
-  AddTensorRTCustomOpDomainToSessionOption(options, &new_tensorrt_options, extra_plugin_lib_paths);
-
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
@@ -1882,11 +1873,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   // if provider options already have the EP context configs provided, the configs in session options will be ignored
   // since provider options has higher priority than session options.
   if (!ep_context_cache_enabled_from_provider_options && ep_context_cache_enabled_from_sess_options) {
+    // This function might need to update the "const" OrtTensorRTProviderOptionsV2 object which can't be modified.
+    // Therefore, we need to create a new OrtTensorRTProviderOptionsV2 object and copy from tensorrt_options and use this new object to create the factory instead.
+    // Note: No need to worry about new_tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
+    // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
+    OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
     onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &new_tensorrt_options);
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
+  } else {
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   }
-  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
 #else
-  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
 #endif
 
   if (!factory) {
@@ -1894,6 +1892,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   }
 
   options->provider_factories.push_back(factory);
+
+  std::string extra_plugin_lib_paths = (tensorrt_options == nullptr || tensorrt_options->trt_extra_plugin_lib_paths == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
+  AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
 
   return nullptr;
   API_IMPL_END
