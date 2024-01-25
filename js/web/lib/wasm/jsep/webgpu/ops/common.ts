@@ -336,8 +336,11 @@ export const getElementAt =
     (name: string, index: number|string, length: number, type?: UniformDataElementType): string => {
       if (name.startsWith('uniforms.') && length > 4) {
         if (typeof (index) === 'string') {
-          return `${name}[(${index}) / 4][(${index}) % 4]`;
-
+          if (type === 'f16') {
+            return `${name}[(${index}) / 8][(${index}) % 8 / 4][(${index}) % 8 % 4]`;
+          } else {
+            return `${name}[(${index}) / 4][(${index}) % 4]`;
+          }
         } else {
           if (type === 'f16') {
             return `${name}[${Math.floor(index / 8)}][${Math.floor(index % 8 / 4)}][${index % 8 % 4}]`;
