@@ -297,13 +297,13 @@ model_class = "microsoft/phi-2"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 converter = ConvertPhi2ToONNX(model_class, device)
-converter.dynamo_export("phi-2_temp.onnx")
-# TODO:preprocessed onnx model takes up large disk space
-converter.preprocess_onnx(
-    "phi-2_temp.onnx",
-    "phi-2.onnx",
-    "modeling_phi_PhiModel_model_1",
-    use_gqa=True,
-)
-converter.erase_onnx_model("phi-2_temp.onnx")
+# converter.dynamo_export("phi-2_temp.onnx")
+# # TODO:preprocessed onnx model takes up large disk space
+# converter.preprocess_onnx(
+#     "phi-2_temp.onnx",
+#     "phi-2.onnx",
+#     "modeling_phi_PhiModel_model_1",
+#     use_gqa=True,
+# )
+# converter.erase_onnx_model("phi-2_temp.onnx")
 converter.optimize_phi2_onnx("phi-2.onnx", "phi-2_opt.onnx", use_fp16=True)
