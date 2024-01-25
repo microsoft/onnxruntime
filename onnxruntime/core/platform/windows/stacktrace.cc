@@ -10,6 +10,7 @@
 #include <stacktrace>
 #endif
 #endif
+#include <absl/base/config.h>
 
 #include "core/common/logging/logging.h"
 #include "core/common/gsl.h"
@@ -43,7 +44,7 @@ std::vector<std::string> GetStackTrace() {
 
 namespace detail {
 #ifndef NDEBUG
-#if (defined __cpp_lib_stacktrace) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#if (defined __cpp_lib_stacktrace) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK) && !(defined ABSL_HAVE_ADDRESS_SANITIZER)
 
 std::vector<std::string> CaptureStackTrace::Trace() const {
   std::vector<std::string> stacktrace;
