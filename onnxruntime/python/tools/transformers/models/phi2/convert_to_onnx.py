@@ -8,14 +8,15 @@ import torch
 import onnx
 from transformers import AutoConfig, AutoModelForCausalLM
 
+#--------------------------------------------------------------------------
+# The following code is used when this file is not in the ORT package
 import sys, os
-
 sys.path.append(os.path.dirname(__file__))
 
 transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if transformers_dir not in sys.path:
     sys.path.append(transformers_dir)
-
+# --------------------------------------------------------------------------
 
 class ConvertPhi2ToONNX:
     def __init__(self, model_class: str, device: torch.device, cache_dir: str = "./cache"):
@@ -29,7 +30,24 @@ class ConvertPhi2ToONNX:
         self.batch_size = 2
         self.sequence_length = 8
 
-    def __inline_update_edges(self, model: onnx.ModelProto, edge_mapping: dict) -> onnx.ModelProto:
+        self.phi2_edge_dict = self.__get_phi2_edge_dict(self.phi_config)
+
+
+    def __get_phi2_edge_dict(self, config: AutoConfig) -> dict:
+        edge_dict = {}
+        edge_dict["lm_head_1"] = "logits"
+        edge_dict["l_input_ids_"] = "input_ids"
+        edge_dict["key_states"] = "past_key_0"
+        edge_dict["value_states"] = "past_value_0"
+        for i in range(config.num_hidden_layers):
+            edge_dict[f"key_states_{i}"] = f"past_key_{i}"
+            edge_dict[f"value_states_{i}"] = f"past_value_{i}"
+            edge_dict[f"model_layers_{i}_1"] = f"present_key_{i}"
+            edge_dict[f"model_layers_{i}_1_1"] = f"present_value_{i}"
+        return edge_dict
+
+
+    def __update_edges(self, model: onnx.ModelProto, edge_mapping: dict) -> onnx.ModelProto:
         """
         Updates the edges in the model according to the given mapping.
         """
@@ -89,7 +107,7 @@ class ConvertPhi2ToONNX:
             if k != v:
                 edge_mapping[k] = v
 
-        return self.__inline_update_edges(model, edge_mapping)
+        return self.__update_edges(model, edge_mapping)
 
     def __get_phi2_torch_model(self):
         if self.phi_model is not None:
@@ -142,6 +160,7 @@ class ConvertPhi2ToONNX:
         model = onnx.load_model(onnx_path_in, load_external_data=True)
         for function_name in function_names:
             model = self.__inline_function(model, function_name)
+        model = self.__update_edges(model, self.phi2_edge_dict)
         onnx.save_model(
             model,
             onnx_path_out,
@@ -169,6 +188,7 @@ class ConvertPhi2ToONNX:
             node_block_list = ["GroupQueryAttention_0_29",
                                "GroupQueryAttention_0_30",
                                "GroupQueryAttention_0_31"]
+            # bugbug: support for bfloat16
             optimizer.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)
 
         optimizer.save_model_to_file(onnx_path_opt,
@@ -188,5 +208,3 @@ converter = ConvertPhi2ToONNX(model_class, device)
 # )
 # converter.erase_onnx_model("phi-2_temp.onnx")
 converter.optimize_phi2_onnx("phi-2.onnx", "phi-2_opt.onnx")
-
-
