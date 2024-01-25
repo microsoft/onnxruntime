@@ -57,7 +57,7 @@ namespace OperatorHelper
     }
 
     template <typename T>
-    void ExpandToAxes(/*inout*/ std::vector<T>& originalValues, gsl::span<int32_t> axes, std::vector<T> expanded)
+    void ExpandToAxes(/*inout*/ std::vector<T>& originalValues, const gsl::span<int32_t> axes, std::vector<T> expanded)
     {
         assert(originalValues.size() == axes.size());
         // Fill in roi and scales/sizes
@@ -65,7 +65,7 @@ namespace OperatorHelper
         {
             expanded[axes[i]] = originalValues[i];
         }
-        originalValues = expanded;
+        originalValues = std::move(expanded);
     }
 
     float CastFloat16ToFloat32(uint16_t input)
