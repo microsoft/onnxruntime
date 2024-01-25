@@ -494,8 +494,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     CUDA_RETURN_IF_ERROR(cudaMemcpy(const_cast<int32_t*>(sequences->GetSequence(0).data()),
                                          sequences->GetCurrentDeviceSequences().data(),
                                          sequences->GetSequence(0).size_bytes() * batch_beam_size,
-                                         cudaMemcpyDeviceToHost,
-                                         cuda_stream));
+                                         cudaMemcpyDeviceToHost));
     // sequences->GetCurrentDeviceSequences().data() -> GPU pointer
     std::cout << "Sequences length post:" << sequences->GetSequenceLength() << std::endl;
     std::cout << "Sequences CPU size:" << sequences->GetSequence(0).size() << std::endl;
