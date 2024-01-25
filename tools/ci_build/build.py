@@ -443,7 +443,7 @@ def parse_arguments():
         "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer. Windows/Linux/MacOS only."
     )
     # The following flag is mostly designed to be used in ONNX Runtime's Azure DevOps/Github build pipelines. Its main purpose is to make the built binaries pass BinSkim scan.
-    parser.add_argument("--use_preset_compile_flags", action="store_true", help="Use preset compile flags.")
+    parser.add_argument("--use_binskim_compliant_compile_flags", action="store_true", help="Use preset compile flags.")
     parser.add_argument(
         "--disable_memleak_checker",
         action="store_true",
@@ -1501,7 +1501,7 @@ def generate_build_tree(
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
-            (args.use_preset_compile_flags or args.enable_address_sanitizer)
+            (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
             and not args.ios
             and not args.android
             and not args.build_wasm

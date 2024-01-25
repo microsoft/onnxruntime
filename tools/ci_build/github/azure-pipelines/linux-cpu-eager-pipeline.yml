@@ -80,7 +80,7 @@ jobs:
               --config Release \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel --use_preset_compile_flags \
+              --parallel --use_binskim_compliant_compile_flags \
               --enable_lazy_tensor --enable_training --build_wheel --skip_test \
       workingDirectory: $(Build.SourcesDirectory)
 

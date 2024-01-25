@@ -22,7 +22,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_dir ${BUILD_DIR} --cmake_generator Ninja \
     --config Debug \
     --skip_submodule_sync \
-    --parallel --use_preset_compile_flags \
+    --parallel --use_binskim_compliant_compile_flags \
     --build_wheel \
     --skip_tests \
     --enable_training_ops \
