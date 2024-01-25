@@ -23,6 +23,107 @@ Abstract:
 
 #include "sqnbitgemm.h"
 
+//
+// Quantized B data packing function implementation.
+//
+
+namespace
+{
+
+size_t
+SQ4BitGemmPackQuantBDataSize(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
+
+    constexpr size_t BlkBitWidth = 4;
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    return PackedQuantBDataSize;
+}
+
+void
+SQ4BitGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    constexpr size_t BlkBitWidth = 4;
+
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t Iterations = N * BlockCountK;  // one iteration per block
+
+    const size_t SubBlkLen = (ComputeType == CompInt8)
+                                 ? ((BlkLen == 16) ? 16 : 32)
+                                 : 16;
+
+    const size_t SubBlkDataSize = SubBlkLen / 2;
+    const size_t SubBlkBytePairCount = SubBlkLen / 4;
+
+    //
+    // For SubBlkLen == 16, pack 16 4-bit values (8 bytes) at a time like this:
+    //
+    // src: | v0 v1 | v2 v3 | v4 v5 | v6 v7 | v8 v9 | vA vB | vC vD | vE vF |
+    //   =>
+    // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
+    //
+
+    //
+    // For SubBlkLen == 32, pack 32 4-bit values (16 bytes) at a time like this:
+    //
+    // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 |
+    //   =>
+    // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
+    //
+
+    MlasTrySimpleParallel(
+        ThreadPool, Iterations,
+        [&](ptrdiff_t tid) {
+            const size_t n = tid / BlockCountK;
+            const size_t k_blk = tid % BlockCountK;
+
+            const size_t data_offset = n * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
+            const std::byte* QuantBData = QuantBDataBegin + data_offset;
+            std::byte* PackedQuantBData = PackedQuantBDataBegin + data_offset;
+
+            for (size_t kk = 0; kk < BlkLen; kk += SubBlkLen) {
+                for (size_t byte_pair_idx = 0; byte_pair_idx < SubBlkBytePairCount; ++byte_pair_idx) {
+                    const std::byte src0 = QuantBData[byte_pair_idx];
+                    const std::byte src1 = QuantBData[byte_pair_idx + SubBlkDataSize / 2];
+
+                    std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
+                    std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
+
+                    dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
+                    dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
+                }
+
+                QuantBData += SubBlkDataSize;
+                PackedQuantBData += SubBlkDataSize;
+            }
+        }
+    );
+}
+
+}  // namespace
+
+//
+// General helpers.
+//
+
 namespace
 {
 
@@ -95,9 +196,18 @@ LoadFloatData(const float* src, size_t count, float32x4_t (&dst)[Capacity / 4])
     }
 }
 
-template <size_t NCols, size_t SubBlkLen>
+}  // namespace
+
+//
+// CompFp32 kernel implementation.
+//
+
+namespace
+{
+
+template <size_t NCols>
 MLAS_FORCEINLINE void
-ComputeDotProducts_BlkBitWidth4_CompFp32_Impl(
+ComputeDotProducts_BlkBitWidth4_CompFp32(
     size_t BlkLen,
     const float* ARowPtr,
     const std::byte* QuantBDataColPtr,
@@ -112,9 +222,9 @@ ComputeDotProducts_BlkBitWidth4_CompFp32_Impl(
 )
 {
     constexpr size_t BlkBitWidth = 4;
+    constexpr size_t SubBlkLen = 16;
 
     static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
-    static_assert(SubBlkLen == 16 || SubBlkLen == 32, "SubBlkLen must be 16 or 32");
 
     assert(BlkLen >= SubBlkLen && BlkLen % SubBlkLen == 0);
 
@@ -167,98 +277,70 @@ ComputeDotProducts_BlkBitWidth4_CompFp32_Impl(
 
             // load `SubBlkLen` elements from A, padded with 0's if there aren't enough
             const size_t k_subblk_len = std::min(k_blk_len - k_idx_in_blk, SubBlkLen);
-            float32x4_t av[SubBlkLen / 4]{};
+            float32x4_t av[4]{};
             LoadFloatData<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len, av);
 
             // load B column vectors
 
-            uint16x8_t bv_u16[NCols][SubBlkLen / 8];
+            uint16x8_t bv_u16[NCols][2];
 
             const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
 
-            if constexpr (SubBlkLen == 16) {
-                const uint8x8_t LowMask = vdup_n_u8(0x0F);
+            const uint8x8_t LowMask = vdup_n_u8(0x0F);
 
-                uint8x8_t bv_packed[NCols];
-                UnrolledLoop<NCols>([&](size_t i) {
-                    bv_packed[i] = vld1_u8(
-                        reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
-                    );
-                });
+            uint8x8_t bv_packed[NCols];
+            UnrolledLoop<NCols>([&](size_t i) {
+                bv_packed[i] = vld1_u8(
+                    reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
+                );
+            });
 
-                uint8x8_t bv_u8[NCols][2];
-                UnrolledLoop<NCols>([&](size_t i) {
-                    bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
-                    bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
-                });
+            uint8x8_t bv_u8[NCols][2];
+            UnrolledLoop<NCols>([&](size_t i) {
+                bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
+                bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
+            });
 
-                // shift left 3 and widen to 16 bits
-                UnrolledLoop<NCols>([&](size_t i) {
-                    constexpr int shift = 3;
-                    bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
-                    bv_u16[i][1] = vshll_n_u8(bv_u8[i][1], shift);
-                });
-            } else {
-                static_assert(SubBlkLen == 32);
-
-                const uint8x16_t LowMask = vdupq_n_u8(0x0F);
-
-                uint8x16_t bv_packed[NCols];
-                UnrolledLoop<NCols>([&](size_t i) {
-                    bv_packed[i] = vld1q_u8(
-                        reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
-                    );
-                });
-
-                uint8x16_t bv_u8[NCols][2];
-                UnrolledLoop<NCols>([&](size_t i) {
-                    bv_u8[i][0] = vandq_u8(bv_packed[i], LowMask);
-                    bv_u8[i][1] = vshrq_n_u8(bv_packed[i], 4);
-                });
-
-                // shift left 3 and widen to 16 bits
-                UnrolledLoop<NCols>([&](size_t i) {
-                    constexpr int shift = 3;
-                    bv_u16[i][0] = vshll_n_u8(vget_low_u8(bv_u8[i][0]), shift);
-                    bv_u16[i][1] = vshll_n_u8(vget_high_u8(bv_u8[i][0]), shift);
-                    bv_u16[i][2] = vshll_n_u8(vget_low_u8(bv_u8[i][1]), shift);
-                    bv_u16[i][3] = vshll_n_u8(vget_high_u8(bv_u8[i][1]), shift);
-                });
-            }
+            // shift left 3 and widen to 16 bits
+            UnrolledLoop<NCols>([&](size_t i) {
+                constexpr int shift = 3;
+                bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
+                bv_u16[i][1] = vshll_n_u8(bv_u8[i][1], shift);
+            });
 
             // combine 4 bits with float high half template
             UnrolledLoop<NCols>([&](size_t i) {
-                UnrolledLoop<SubBlkLen / 8>([&](size_t j) {
+                UnrolledLoop<2>([&](size_t j) {
                     bv_u16[i][j] = vorrq_u16(bv_u16[i][j], float_high_half_template_v);
                 });
             });
 
             // `SubBlkLen` floats of B
-            float32x4_t bv[NCols][SubBlkLen / 4];
+            float32x4_t bv[NCols][4];
 
             // shift left 16, widen to 32 bits, and reinterpret as float
             UnrolledLoop<NCols>([&](size_t i) {
-                UnrolledLoop<SubBlkLen / 8>([&](size_t j) {
-                    constexpr int shift = 16;
-                    bv[i][2 * j] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][j]), shift));
-                    bv[i][2 * j + 1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][j], shift));
-                });
+                constexpr int shift = 16;
+                bv[i][0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][0]), shift));
+                bv[i][1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][0], shift));
+                bv[i][2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][1]), shift));
+                bv[i][3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][1], shift));
             });
 
             // subtract float conversion offset (16) and zero point
             UnrolledLoop<NCols>([&](size_t i) {
                 const float32x4_t offset_v = vdupq_n_f32(offset[i]);
-                UnrolledLoop<SubBlkLen / 4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
+                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
             });
 
             // multiply by scale
             UnrolledLoop<NCols>([&](size_t i) {
                 const float32x4_t scale_v = vdupq_n_f32(scale[i]);
-                UnrolledLoop<SubBlkLen / 4>([&](size_t j) { bv[i][j] = vmulq_f32(bv[i][j], scale_v); });
+                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vmulq_f32(bv[i][j], scale_v); });
             });
 
             // c[m,n] += a[m,k] * b[k,n]
-            UnrolledLoop<SubBlkLen / 4>([&](size_t j) {
+            UnrolledLoop<4>([&](size_t j) {
                 UnrolledLoop<NCols>([&](size_t i) { acc[i] = vfmaq_f32(acc[i], av[j], bv[i][j]); });
             });
         }
@@ -284,39 +366,6 @@ ComputeDotProducts_BlkBitWidth4_CompFp32_Impl(
                 SumPtr[i] += BiasPtr[i];
             }
         }
-    }
-}
-
-template <size_t NCols>
-MLAS_FORCEINLINE void
-ComputeDotProducts_BlkBitWidth4_CompFp32(
-    size_t BlkLen,
-    const float* ARowPtr,
-    const std::byte* QuantBDataColPtr,
-    const float* QuantBScaleColPtr,
-    const std::byte* QuantBZeroPointColPtr,
-    float* SumPtr,
-    size_t CountK,
-    size_t StrideQuantBData,
-    size_t StrideQuantBScale,
-    size_t StrideQuantBZeroPoint,
-    const float* BiasPtr
-)
-{
-    if (BlkLen == 16) {
-        ComputeDotProducts_BlkBitWidth4_CompFp32_Impl<NCols, 16>(
-            BlkLen,
-            ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
-        );
-    } else {
-        ComputeDotProducts_BlkBitWidth4_CompFp32_Impl<NCols, 32>(
-            BlkLen,
-            ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
-        );
     }
 }
 
@@ -415,8 +464,7 @@ Q4BitBlkDequantBForSgemm_CompFp32(
 {
     auto impl0_reference = [&]() {
         constexpr size_t BlkBitWidth = 4;
-
-        const size_t SubBlkLen = BlkLen == 16 ? 16 : 32;
+        constexpr size_t SubBlkLen = 16;
 
         float* Dst = FpData;
 
@@ -479,7 +527,7 @@ Q4BitBlkDequantBForSgemm_CompFp32(
 }
 
 //
-// CompInt8 kernel implementation and related helpers
+// CompInt8 kernel implementation.
 //
 
 template <size_t SubBlkLen>
@@ -594,7 +642,7 @@ QuantizeARow_CompInt8(
 
 template <size_t NCols, size_t SubBlkLen>
 MLAS_FORCEINLINE void
-ComputeDotProducts_BlkBitWidth4_CompInt8_Impl(
+ComputeDotProducts_BlkBitWidth4_CompInt8(
     size_t BlkLen,
     const std::byte* QuantARowPtr,
     const std::byte* QuantBDataColPtr,
@@ -746,42 +794,9 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_Impl(
     }
 }
 
-template <size_t NCols>
+template <size_t NCols, size_t SubBlkLen>
 MLAS_FORCEINLINE void
-ComputeDotProducts_BlkBitWidth4_CompInt8(
-    size_t BlkLen,
-    const std::byte* QuantARowPtr,
-    const std::byte* QuantBDataColPtr,
-    const float* QuantBScaleColPtr,
-    const std::byte* QuantBZeroPointColPtr,
-    float* SumPtr,
-    size_t CountK,
-    size_t StrideQuantBData,
-    size_t StrideQuantBScale,
-    size_t StrideQuantBZeroPoint,
-    const float* BiasPtr
-)
-{
-    if (BlkLen == 16) {
-        ComputeDotProducts_BlkBitWidth4_CompInt8_Impl<NCols, 16>(
-            BlkLen,
-            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
-        );
-    } else {
-        ComputeDotProducts_BlkBitWidth4_CompInt8_Impl<NCols, 32>(
-            BlkLen,
-            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
-        );
-    }
-}
-
-MLAS_FORCEINLINE
-void
-SQ4BitGemmM1Kernel_CompInt8(
+SQ4BitGemmM1Kernel_CompInt8_Impl(
     size_t BlkLen,
     const std::byte* QuantA,
     const std::byte* QuantBData,
@@ -795,7 +810,6 @@ SQ4BitGemmM1Kernel_CompInt8(
 )
 {
     constexpr size_t BlkBitWidth = 4;
-    constexpr size_t NCols = 4;
 
     const std::byte* QuantARowPtr = QuantA;
     float* CRowPtr = C;
@@ -817,7 +831,7 @@ SQ4BitGemmM1Kernel_CompInt8(
     int64_t nblk = static_cast<int64_t>(CountN) - NCols;
 
     while (nblk >= 0) {
-        ComputeDotProducts_BlkBitWidth4_CompInt8<NCols>(
+        ComputeDotProducts_BlkBitWidth4_CompInt8<NCols, SubBlkLen>(
             BlkLen,
             QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
             StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
@@ -841,7 +855,7 @@ SQ4BitGemmM1Kernel_CompInt8(
     // left over columns less than `NCols`?
     nblk += NCols;
     for (int64_t n = 0; n < nblk; ++n) {
-        ComputeDotProducts_BlkBitWidth4_CompInt8<1>(
+        ComputeDotProducts_BlkBitWidth4_CompInt8<1, SubBlkLen>(
             BlkLen,
             QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
             StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
@@ -861,6 +875,50 @@ SQ4BitGemmM1Kernel_CompInt8(
     }
 }
 
+MLAS_FORCEINLINE
+void
+SQ4BitGemmM1Kernel_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockStrideQuantB,
+    const float* Bias
+)
+{
+    if (BlkLen == 16) {
+        SQ4BitGemmM1Kernel_CompInt8_Impl<4, 16>(
+            BlkLen,
+            QuantA,
+            QuantBData,
+            QuantBScale,
+            QuantBZeroPoint,
+            C,
+            CountN,
+            CountK,
+            BlockStrideQuantB,
+            Bias
+        );
+    } else {
+        SQ4BitGemmM1Kernel_CompInt8_Impl<4, 32>(
+            BlkLen,
+            QuantA,
+            QuantBData,
+            QuantBScale,
+            QuantBZeroPoint,
+            C,
+            CountN,
+            CountK,
+            BlockStrideQuantB,
+            Bias
+        );
+    }
+}
+
 }  // namespace
 
 //
@@ -870,8 +928,12 @@ SQ4BitGemmM1Kernel_CompInt8(
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     MLAS_SQNBIT_GEMM_DISPATCH d;
 
+    d.SQ4BitGemmPackQuantBDataSize = SQ4BitGemmPackQuantBDataSize;
+    d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
+
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32;
+
     d.SQ4BitGemmM1Kernel_CompInt8 = SQ4BitGemmM1Kernel_CompInt8;
     d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;
 
