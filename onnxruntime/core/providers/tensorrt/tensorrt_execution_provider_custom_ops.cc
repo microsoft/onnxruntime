@@ -26,11 +26,11 @@ extern TensorrtLogger& GetTensorrtLogger();
  * Note: Current TRT plugin doesn't have APIs to get number of inputs/outputs of the plugin.
  * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
-common::Status CreateTensorRTCustomOpDomainList(std::vector<std::shared_ptr<OrtCustomOpDomain>>& domain_list, const std::string extra_plugin_lib_paths) {
-  static std::shared_ptr<OrtCustomOpDomain> custom_op_domain = std::make_shared<OrtCustomOpDomain>();
-  static std::unordered_set<std::shared_ptr<TensorRTCustomOp>> custom_op_set;
+common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
+  static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+  static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
-    domain_list.push_back(custom_op_domain);
+    domain_list.push_back(custom_op_domain.get());
     return Status::OK();
   }
 
@@ -73,14 +73,13 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<std::shared_ptr<OrtC
         continue;
       }
 
-      std::shared_ptr<TensorRTCustomOp> trt_custom_op = std::make_shared<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
-      trt_custom_op->SetName(plugin_creator->getPluginName());
-      custom_op_domain->custom_ops_.push_back(trt_custom_op.get());
-      custom_op_set.insert(trt_custom_op);  // Make sure trt_custom_op object won't be cleaned up
+      created_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr));  // Make sure TensorRTCustomOp object won't be cleaned up
+      created_custom_op_list.back().get()->SetName(plugin_creator->getPluginName());
+      custom_op_domain->custom_ops_.push_back(created_custom_op_list.back().get());
       registered_plugin_names.insert(plugin_name);
     }
     custom_op_domain->domain_ = "trt.plugins";
-    domain_list.push_back(custom_op_domain);
+    domain_list.push_back(custom_op_domain.get());
   } catch (const std::exception&) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
   }

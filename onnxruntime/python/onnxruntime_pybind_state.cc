@@ -443,11 +443,11 @@ void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOpti
     if (it != options.end()) {
       trt_extra_plugin_lib_paths = it->second;
     }
-    std::vector<std::shared_ptr<OrtCustomOpDomain>> custom_op_domains;
+    std::vector<OrtCustomOpDomain*> custom_op_domains;
     tensorrt_provider_info->GetTensorRTCustomOpDomainList(custom_op_domains, trt_extra_plugin_lib_paths);
     for (auto ptr : custom_op_domains) {
       if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
-        so.custom_op_domains_.push_back(ptr.get());
+        so.custom_op_domains_.push_back(ptr);
       } else {
         LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
       }

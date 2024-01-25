@@ -1687,12 +1687,12 @@ void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, std::s
     return false;
   };
 
-  std::vector<std::shared_ptr<OrtCustomOpDomain>> custom_op_domains;
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
   onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
   provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
   for (auto ptr : custom_op_domains) {
     if (!is_already_in_domains(ptr->domain_, options->custom_op_domains_)) {
-      options->custom_op_domains_.push_back(ptr.get());
+      options->custom_op_domains_.push_back(ptr);
     } else {
       LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
     }

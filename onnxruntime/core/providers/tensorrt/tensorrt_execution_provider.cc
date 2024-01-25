@@ -1833,7 +1833,7 @@ nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder() const {
   return builder_.get();
 }
 
-void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<std::shared_ptr<OrtCustomOpDomain>>& custom_op_domain_list) const {
+void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
   std::string extra_plugin_lib_paths{""};
   if (info_.has_trt_options) {
     if (!info_.extra_plugin_lib_paths.empty()) {

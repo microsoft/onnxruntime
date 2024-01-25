@@ -664,7 +664,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Register Custom Op if EP requests it
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  std::vector<std::shared_ptr<OrtCustomOpDomain>> candidate_custom_op_domains;
+  std::vector<OrtCustomOpDomain*> candidate_custom_op_domains;
   p_exec_provider->GetCustomOpDomainList(candidate_custom_op_domains);
 
   auto registry_kernels = kernel_registry_manager_.GetKernelRegistriesByProviderType(p_exec_provider->Type());
@@ -672,7 +672,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   // Register the custom op domain only if it has not been registered before
   if (registry_kernels.empty()) {
     for (auto candidate_custom_op_domain : candidate_custom_op_domains) {
-      custom_op_domains.push_back(candidate_custom_op_domain.get());
+      custom_op_domains.push_back(candidate_custom_op_domain);
     }
   } else {
     for (auto candidate_custom_op_domain : candidate_custom_op_domains) {
@@ -688,7 +688,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
           }
         }
         if (need_register) {
-          custom_op_domains.push_back(candidate_custom_op_domain.get());
+          custom_op_domains.push_back(candidate_custom_op_domain);
         }
       }
     }

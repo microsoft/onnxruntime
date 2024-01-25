@@ -155,7 +155,7 @@ class IExecutionProvider {
      kernel implementation is needed for custom op since the real implementation is inside TRT. This custom op acts as
      a role to help pass ONNX model validation.
    */
-  virtual void GetCustomOpDomainList(std::vector<std::shared_ptr<OrtCustomOpDomain>>& /*provider custom op domain list*/) const {};
+  virtual void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& /*provider custom op domain list*/) const {};
 
   /**
      Returns an opaque handle whose exact type varies based on the provider
