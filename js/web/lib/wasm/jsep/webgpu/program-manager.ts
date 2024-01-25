@@ -7,7 +7,7 @@ import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
 
 import {createShaderHelper} from './ops/common';
-import {Artifact, GpuData, ProgramInfo, StatusType} from './types';
+import {Artifact, GpuData, ProgramInfo} from './types';
 
 /**
  * ProgramManager is the main class behind running computations
@@ -51,7 +51,7 @@ export class ProgramManager {
     const bindGroup = device.createBindGroup(
         {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
 
-    if (this.backend.status === StatusType.capture) {
+    if (this.backend.sessionStatus === 'capturing') {
       const commandInfo = {
         kernelId: this.backend.currentKernelId!,
         computePipeline: buildArtifact.computePipeline,

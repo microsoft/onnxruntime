@@ -5,11 +5,7 @@ import {TensorView} from '../tensor-view';
 
 import {ShaderHelper} from './ops/common';
 
-export enum StatusType {
-  default = 0,
-  capture = 1,
-  replay = 2
-}
+export type SessionState = 'default'|'capturing'|'replaying';
 
 export enum GpuDataType {
   default = 0,

@@ -4,7 +4,7 @@
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
 
-import {GpuData, GpuDataId, GpuDataType, StatusType} from './types';
+import {GpuData, GpuDataId, GpuDataType} from './types';
 
 /**
  * manages GpuDataId -> GpuBuffer
@@ -331,7 +331,7 @@ class GpuDataManagerImpl implements GpuDataManager {
       return;
     }
 
-    if (this.backend.status === StatusType.default) {
+    if (this.backend.sessionStatus === 'default') {
       for (const buffer of this.buffersPending) {
         // eslint-disable-next-line no-bitwise
         if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {

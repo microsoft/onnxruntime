@@ -10,7 +10,7 @@ import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, StatusType, TimestampQuery} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
 
 interface CommandInfo {
   readonly kernelId: number;
@@ -111,9 +111,9 @@ export class WebGpuBackend {
   programManager: ProgramManager;
 
   /**
-   * representing the session ID of which is currently being captured/replay.
-   * `null` means no session is being captured.
-   * only valid when captureGraphEnabled = true.
+   * representing the session ID of which is currently being run.
+   * `null` means no session is being run.
+   * only valid when session.run is executed.
    */
   currentSessionId: number|null = null;
 
@@ -169,9 +169,9 @@ export class WebGpuBackend {
   queryType: TimestampQuery;
 
   env: Env;
-  status: StatusType = StatusType.default;
+  sessionStatus: SessionState = 'default';
   /**
-   * a SessionID -> CommandInfo[] mapping.
+   * a SessionID -> CommandInfo[] mapping. It's used to record all GPU commands for corresponding session.
    */
   capturedCommandList: Map<number, CommandInfo[]> = new Map();
 
@@ -513,7 +513,7 @@ export class WebGpuBackend {
         () => `[ProgramManager] run "${program.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
 
-    if (this.queryType !== 'none' || this.status === StatusType.capture) {
+    if (this.queryType !== 'none' || this.sessionStatus === 'capturing') {
       const pendingKernelInfo: PendingKernelInfo = {
         kernelId: this.currentKernelId!,
         programName: artifact.programInfo.name,
@@ -685,32 +685,29 @@ export class WebGpuBackend {
     }
   }
 
-  captureBegin(sessionHandle: number): void {
-    LOG_DEBUG('info', () => `captureBegin ${sessionHandle}`);
-    this.currentSessionId = sessionHandle;
-    let sessionCommandList = this.capturedCommandList.get(sessionHandle);
-    let sessionPendingKernels = this.capturedPendingKernels.get(sessionHandle);
+  captureBegin(): void {
+    LOG_DEBUG('info', () => 'captureBegin');
+    let sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
+    let sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
     if (!sessionCommandList) {
       sessionCommandList = [];
-      this.capturedCommandList.set(sessionHandle, sessionCommandList);
+      this.capturedCommandList.set(this.currentSessionId!, sessionCommandList);
       sessionPendingKernels = [];
-      this.capturedPendingKernels.set(sessionHandle, sessionPendingKernels);
+      this.capturedPendingKernels.set(this.currentSessionId!, sessionPendingKernels);
     }
-    this.status = StatusType.capture;
+    this.sessionStatus = 'capturing';
   }
-  captureEnd(sessionHandle: number): void {
-    LOG_DEBUG('info', () => `captureEnd ${sessionHandle}`);
+  captureEnd(): void {
+    LOG_DEBUG('info', () => 'captureEnd');
     // flush the left commands before we change the status.
     this.flush();
-    this.currentSessionId = null;
-    this.status = StatusType.default;
+    this.sessionStatus = 'default';
   }
-  replay(sessionHandle: number): void {
-    LOG_DEBUG('info', () => `replay ${sessionHandle}`);
-    this.currentSessionId = sessionHandle;
-    this.status = StatusType.replay;
-    const sessionCommandList = this.capturedCommandList.get(sessionHandle);
-    const sessionPendingKernels = this.capturedPendingKernels.get(sessionHandle);
+  replay(): void {
+    LOG_DEBUG('info', () => 'replay');
+    this.sessionStatus = 'replaying';
+    const sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
+    const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
     const length = sessionCommandList!.length;
     this.pendingKernels = [];
     for (let i = 0; i < length; i++) {
@@ -734,7 +731,7 @@ export class WebGpuBackend {
     }
     // flush the left commands before we change the status.
     this.flush();
-    this.status = StatusType.default;
+    this.sessionStatus = 'default';
   }
 
   onReleaseSession(sessionId: number): void {
@@ -748,7 +745,8 @@ export class WebGpuBackend {
     this.gpuDataManager.onReleaseSession(sessionId);
   }
 
-  onRunStart(): void {
+  onRunStart(sessionId: number): void {
+    this.currentSessionId = sessionId;
     this.setQueryType();
   }
 }

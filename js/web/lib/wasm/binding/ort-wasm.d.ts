@@ -13,9 +13,9 @@ export declare namespace JSEP {
   type ReleaseKernelFunction = (kernel: number) => void;
   type RunFunction =
       (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => number;
-  type CaptureBeginFunction = (sessionHandle: number) => void;
-  type CaptureEndFunction = (sessionHandle: number) => void;
-  type ReplayFunction = (sessionHandle: number) => void;
+  type CaptureBeginFunction = () => void;
+  type CaptureEndFunction = () => void;
+  type ReplayFunction = () => void;
 }
 
 export interface OrtWasmModule extends EmscriptenModule {
@@ -181,11 +181,14 @@ export interface OrtWasmModule extends EmscriptenModule {
       (gpuBuffer: GPUBuffer, size: number,
        type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
   /**
-   *  [exported from js_internal_api.js] Called when InferenceSession.run started.
+   *  [exported from js_internal_api.js] Called when InferenceSession.run started. This function will be called before
+   * _OrtRun[WithBinding]() is called.
+   * @param sessionId - specify the session ID.
    */
-  jsepOnRunStart: () => void;
+  jsepOnRunStart: (sessionId: number) => void;
   /**
-   * [exported from js_internal_api.js] Release a session.
+   * [exported from js_internal_api.js] Release a session. This function will be called before _OrtReleaseSession() is
+   * called.
    * @param sessionId - specify the session ID.
    * @returns
    */
