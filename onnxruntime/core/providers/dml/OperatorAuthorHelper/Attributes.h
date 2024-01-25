@@ -150,5 +150,6 @@ namespace AttrValue
     static constexpr const char* NearestNeighbor = "NN";
     static constexpr const char* NotSet = "NOTSET";
     static constexpr const char* Reflect = "reflect";
+    static constexpr const char* Wrap = "wrap";
 
 } // namespace AttrValue

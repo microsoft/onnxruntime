@@ -100,8 +100,8 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     ${calculateAlpha}
     ${(() => {
       if (c != null) {
-        return `let cOffset = ${c.broadcastedIndicesToOffset('vec2(m, n)', output)}; value += uniforms.beta * ${
-            c.getByOffset('cOffset')};`;
+        return `let cOffset = ${c.broadcastedIndicesToOffset('vec2(m, n)', output)}; value += ${
+            dataType}(uniforms.beta) * ${c.getByOffset('cOffset')};`;
       }
       return '';
     })()}

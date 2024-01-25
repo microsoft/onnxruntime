@@ -79,8 +79,14 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
       }
       case 'create': {
         const {model, options} = message!;
-        const sessionMetadata = createSession(model, options);
-        postMessage({type, out: sessionMetadata} as OrtWasmMessage);
+        createSession(model, options)
+            .then(
+                sessionMetadata => {
+                  postMessage({type, out: sessionMetadata} as OrtWasmMessage);
+                },
+                err => {
+                  postMessage({type, err});
+                });
         break;
       }
       case 'release':

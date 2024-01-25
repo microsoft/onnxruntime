@@ -70,7 +70,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #else
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
       if (global_context_.disable_dynamic_shapes && dev_prec != "CPU_FP16") {
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.LoadNetwork(
@@ -82,12 +81,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
-#else
-      ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-      exe_network_ = global_context_.ie_core.LoadNetwork(
-          ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-#endif
 #endif
     } else {
       ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
@@ -126,13 +119,11 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     device_config.emplace(ov::enable_profiling(true));
   }
 #endif
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVION_2023_2)
   if (global_context_.device_type.find("NPU") != std::string::npos) {
     std::pair<std::string, ov::Any> device_property;
     device_property = std::make_pair("NPU_COMPILER_TYPE", "DRIVER");
     device_config.emplace(ov::device::properties("NPU", device_property));
   }
-#endif
 }
 
 void BasicBackend::EnableCaching() {
@@ -463,8 +454,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 
 #ifdef IO_BUFFER_ENABLED
     if ((global_context_.device_type.find("GPU") != std::string::npos) &&
-        (global_context_.context != nullptr) &&
-        (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
+        (global_context_.context != nullptr) && global_context_.is_wholly_supported_graph) {
       try {
         StartRemoteAsyncInference(context, infer_request);
       } catch (std::string const& msg) {
