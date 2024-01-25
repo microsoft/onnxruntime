@@ -507,6 +507,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
 #if DML_TARGET_VERSION >= 0x6300
 DML_OP_EXTERN_CREATION_FUNCTION(Col2Im);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize18);
+DML_OP_EXTERN_CREATION_FUNCTION(Resize19);
 #endif
 
 DML_OP_EXTERN_CREATION_FUNCTION(Shape);
@@ -965,6 +966,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 13,  Resize,                             typeNameListTwo,                supportedTypeListResize13,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
 #if DML_TARGET_VERSION >= 0x6300
     {REG_INFO_VER( 18,  Resize,                             typeNameListTwo,                supportedTypeListResize18,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
+    {REG_INFO_VER( 19,  Resize,                             typeNameListTwo,                supportedTypeListResize18,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
 #endif
     // Activation Functions
     {REG_INFO(      7,  Sigmoid,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
