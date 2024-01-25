@@ -28,6 +28,7 @@ extern TensorrtLogger& GetTensorrtLogger();
  */
 common::Status CreateTensorRTCustomOpDomainList(std::vector<std::shared_ptr<OrtCustomOpDomain>>& domain_list, const std::string extra_plugin_lib_paths) {
   static std::shared_ptr<OrtCustomOpDomain> custom_op_domain = std::make_shared<OrtCustomOpDomain>();
+  static std::unordered_set<std::shared_ptr<TensorRTCustomOp>> custom_op_set;
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain);
     return Status::OK();
@@ -75,6 +76,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<std::shared_ptr<OrtC
       std::shared_ptr<TensorRTCustomOp> trt_custom_op = std::make_shared<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
       trt_custom_op->SetName(plugin_creator->getPluginName());
       custom_op_domain->custom_ops_.push_back(trt_custom_op.get());
+      custom_op_set.insert(trt_custom_op);  // Make sure trt_custom_op object won't be cleaned up
       registered_plugin_names.insert(plugin_name);
     }
     custom_op_domain->domain_ = "trt.plugins";
