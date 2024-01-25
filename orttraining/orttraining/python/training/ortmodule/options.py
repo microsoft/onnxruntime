@@ -379,7 +379,7 @@ class _RuntimeOptions:
                 import triton  # noqa: F401
             except ImportError:
                 pass
-                self._logger.warning("triton is not found. Please install triton with `pip install triton`")
+                self._logger.warning("triton library missing. Please install triton with `pip install triton`. Triton feature will be off.")
             else:
                 self.enable_triton = True
 
