@@ -850,7 +850,7 @@ void Node::Init(std::string_view name,
                 gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes,
                 std::string_view domain) {
-  isForwardNode_ = true;
+  is_forward_node_ = true;
   name_ = name;
   op_type_ = op_type;
   description_ = description;
@@ -871,12 +871,8 @@ void Node::Init(std::string_view name,
   if (attributes) {
     attributes_ = *attributes;
 
-    isForwardNode_ = true;
+    is_forward_node_ = true;
     for (auto& name_to_attr : attributes_) {
-      if (!isForwardNode_ && name_to_attr.first == kBackwardNodeAttributeName) {
-        isForwardNode_ = false;
-      }
-
       if (utils::HasGraph(name_to_attr.second)) {
 #if !defined(ORT_MINIMAL_BUILD)
         CreateSubgraph(name_to_attr.first);
@@ -920,9 +916,6 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 void Node::AddAttributeProto(AttributeProto value) {
-  if (value.name() == kBackwardNodeAttributeName) {
-    isForwardNode_ = false;
-  }
   utils::SetNodeAttribute(std::move(value), attributes_);
   if (graph_) {
     graph_->SetGraphResolveNeeded();
@@ -959,7 +952,6 @@ ADD_ATTR_IMPLS(TypeProto)
 #undef ADD_ATTR_LIST_IMPL
 #undef ADD_ATTR_IMPLS
 
-// TODO why isn't attr_name a const&?
 void Node::AddAttribute(std::string attr_name, GraphProto value) {
   // Do not move attr_name as it is needed below
   AttributeProto a = utils::MakeAttribute(attr_name, std::move(value));
@@ -975,11 +967,7 @@ void Node::AddAttribute(std::string attr_name, GraphProto value) {
 bool Node::ClearAttribute(const std::string& attr_name) {
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
-  size_t erased = attributes_.erase(attr_name);
-  if (erased && attr_name == kBackwardNodeAttributeName) {
-    isForwardNode_ = true;
-  }
-  return erased > 0;
+  return attributes_.erase(attr_name) > 0;
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -989,11 +977,7 @@ int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attrib
   graph_->SetGraphProtoSyncNeeded();
   int n_removed = 0;
   for (const auto& name : removable_attributes) {
-    bool erased = attributes_.erase(name);
-    if (erased && name == kBackwardNodeAttributeName) {
-      isForwardNode_ = true;
-    }
-    n_removed += static_cast<int>(erased);
+    n_removed += static_cast<int>(attributes_.erase(name));
   }
   can_be_saved_ = can_be_saved_ && n_removed == 0;
   return n_removed;
@@ -1811,9 +1795,9 @@ void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
-  std::vector<size_t> in_degree(MaxNodeIndex(), 0);
+  InlinedVector<size_t> in_degree(MaxNodeIndex(), 0);
   std::priority_queue<const Node*, std::vector<const Node*>, decltype(comp)> to_visit(comp);
-  std::vector<NodeIndex> topo_order;
+  InlinedVector<NodeIndex> topo_order;
 
   for (auto& node : Nodes()) {
     size_t input_edge_count = node.GetInputEdgesCount();
@@ -2034,7 +2018,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     }
   }
 
-  std::vector<TypeProto> const& InferredOutputTypes() const { return node_output_types_; }
+  std::vector<TypeProto> const& InferredOutputTypes() const noexcept { return node_output_types_; }
 
   const AttributeProto* getAttribute(const std::string& name) const override {
     auto& attribute_value_map = node_.GetAttributes();

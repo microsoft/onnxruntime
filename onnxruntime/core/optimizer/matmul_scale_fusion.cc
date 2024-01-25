@@ -255,11 +255,7 @@ Status ProcessNode(
 
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
 #ifdef USE_ROCM
-  // forward the __backwardpass, if present
-  auto& attrs = node.GetAttributes();
-  if (attrs.count("__backwardpass")) {
-    matmul_scale_node.AddAttribute("__backwardpass", static_cast<int64_t>(attrs.at("__backwardpass").i()));
-  }
+  matmul_scale_node.setForwardNode(node.GetForwardNode());
 #endif
 
   {

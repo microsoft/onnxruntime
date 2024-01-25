@@ -399,7 +399,10 @@ class Node {
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
 
   /** @returns true if the Node is a forward node, false otherwise. **/
-  bool isForwardNode() const noexcept { return isForwardNode_; }
+  bool isForwardNode() const noexcept { return is_forward_node_; }
+
+  /* Sets the forward node status  */
+  void setForwardNode(bool is_forward_node) noexcept { is_forward_node_ = is_forward_node; }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
@@ -464,7 +467,7 @@ class Node {
   std::unordered_map<std::string, gsl::not_null<const Graph*>> GetAttributeNameToSubgraphMap() const;
 
   /** Gets the execution ProviderType that this node will be executed by. */
-  ProviderType const& GetExecutionProviderType() const noexcept { return execution_provider_type_; }
+  ProviderType GetExecutionProviderType() const noexcept { return execution_provider_type_; }
 
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type) {
@@ -633,9 +636,8 @@ class Node {
   // Execution priority, lower value for higher priority
   int priority_ = 0;
 
-  // True is Node is a forwardNode and thus doesn't contain a attribute
-  // named kBackwardNodeAttributeName. False otherwise.
-  bool isForwardNode_;
+  // This node is a forward node if value, otherwise it is a backward node.
+  bool is_forward_node_;
 
   // set from op_->SinceVersion() or via deserialization when OpSchema is not available
   int since_version_ = -1;

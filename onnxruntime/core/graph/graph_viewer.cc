@@ -36,12 +36,8 @@ struct PriorityNodeCompare {
     }
 
     // nodes of forward pass will be output first
-    auto const& n1_attrs = n1->GetAttributes();
-    auto const& n2_attrs = n2->GetAttributes();
-    int64_t n1_is_forward = static_cast<int64_t>(n1->isForwardNode()) ||
-                            (n1_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
-    int64_t n2_is_forward = static_cast<int64_t>(n2->isForwardNode()) ||
-                            (n2_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
+    int64_t n1_is_forward = n1->isForwardNode();
+    int64_t n2_is_forward = n2->isForwardNode();
     if (n1_is_forward != n2_is_forward) {
       return n2_is_forward > n1_is_forward;
     }
