@@ -293,14 +293,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// The gradients can be lazily reset by invoking the LazyResetGrad function.
         /// Example usage:
         /// <code>
-        /// using (var inputValues = new DisposableList<OrtValue>(numInputs))
+        /// using OrtValue x = OrtValue.CreateTensorValueFromMemory(...);
+        /// using OrtValue label = OrtValue.CreateTensorValueFromMemory(...);
+        /// List<OrtValue> inputValues = new List<OrtValue> { x, label };
+        /// using (var loss = trainingSession.TrainStep(inputValues))
         /// {
-        ///     inputValues.Add(OrtValue.CreateTensorValue(...));
-        ///     inputValues.Add(OrtValue.CreateTensorValue(...));
-        ///     using (var results = trainingSession.TrainStep(inputValues))
-        ///     {
-        ///         // process output values
-        ///     }
+        ///     // process output values
         /// }
         /// </code>
         /// </summary>
@@ -420,14 +418,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// provided to the training session.
         /// Example usage:
         /// <code>
-        /// using (var inputValues = new DisposableList<OrtValue>(numInputs))
+        /// using OrtValue x = OrtValue.CreateTensorValueFromMemory(...);
+        /// using OrtValue label = OrtValue.CreateTensorValueFromMemory(...);
+        /// List<OrtValue> inputValues = new List<OrtValue> { x, label };
+        /// using (var loss = trainingSession.EvalSteps(inputValues))
         /// {
-        ///     inputValues.Add(OrtValue.CreateTensorValue(...));
-        ///     inputValues.Add(OrtValue.CreateTensorValue(...));
-        ///     using (var results = trainingSession.EvalSteps(inputValues))
-        ///     {
-        ///         // process output values
-        ///     }
+        ///     // process output values
         /// }
         /// </code>
         /// </summary>
