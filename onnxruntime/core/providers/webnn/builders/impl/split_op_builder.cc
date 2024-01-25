@@ -136,10 +136,10 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   int32_t axis = helper.Get("axis", 0);
   axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
 
-  if (input_defs.size() == 2) {
-    // Inputs contain optional 'split' input.
-    const auto& split_name = input_defs[1]->Name();
-    if (!split_name.empty() && !Contains(initializers, split_name)) {
+  const std::string split_name = GetTensorName(input_defs, 1);
+  // Inputs contain optional 'split' input.
+  if (!split_name.empty()) {
+    if (!Contains(initializers, split_name)) {
       LOGS(logger, VERBOSE) << "The split must be a constant initializer.";
       return false;
     }
@@ -166,7 +166,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       LOGS(logger, VERBOSE) << "Sum of the split's values must be equal to the dim value at 'axis' specified.";
       return false;
     }
-  } else if (input_defs.size() == 1) {
+  } else {
     if (helper.HasAttr("num_outputs")) {
       // Split has 'num_outputs' attribute when opset is 18.
       const int32_t num_outputs = helper.Get("num_outputs", 1);

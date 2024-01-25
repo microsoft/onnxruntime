@@ -120,8 +120,9 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<float> scales_hw;
   std::vector<int32_t> sizes_hw;
   std::vector<int32_t> axes;
+  std::string scales_name = GetTensorName(input_defs, 2);
   const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
-  if (input_defs.size() == 3 || !input_defs[2]->Name().empty()) {  // Use scales.
+  if (!scales_name.empty()) {  // Use scales.
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
     if (is_nhwc) {
       scales_hw = {scales[1], scales[2]};
@@ -129,7 +130,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       scales_hw = {scales[2], scales[3]};
     }
     options.set("scales", emscripten::val::array(scales_hw));
-  } else {  // We already checked number of inputs in IsOpSupportedImpl.
+  } else {  // Use sizes, we already checked inputs in IsOpSupportedImpl.
     std::vector<int64_t> output_sizes;
     ORT_RETURN_IF_NOT(GetResizeOutputSizes(initializers, node, output_sizes, logger),
                       "Error getting resize output_sizes");
@@ -203,30 +204,21 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   }
 
   {  // scales and sizes (if present) must be initializers.
-    if (input_defs.size() < 3 && node.SinceVersion() == 11) {
-      LOGS(logger, VERBOSE) << "Input scales of Resize must be known for opset 11";
+    const std::string scales_name = GetTensorName(input_defs, 2);
+    const std::string sizes_name = GetTensorName(input_defs, 3);
+
+    // scales (scales may be empty tensor)
+    bool has_scales = !scales_name.empty();
+    if ((has_scales && !Contains(initializers, scales_name)) || (!has_scales && node.SinceVersion() == 11)) {
+      LOGS(logger, VERBOSE) << "Input scales of Resize must be known";
       return false;
     }
 
-    // scales (scales maybe empty tensor)
-    bool has_scales = false;
-    if (input_defs.size() == 3) {
-      has_scales = !input_defs[2]->Name().empty();
-      if ((has_scales && !Contains(initializers, input_defs[2]->Name())) ||
-          (!has_scales && node.SinceVersion() == 11)) {
-        LOGS(logger, VERBOSE) << "Input scales of Resize must be known";
-        return false;
-      }
-    }
-
-    // sizes (sizes maybe empty tensor)
-    bool has_sizes = false;
-    if (input_defs.size() > 3) {
-      has_sizes = !input_defs[3]->Name().empty();
-      if (has_sizes && !Contains(initializers, input_defs[3]->Name())) {
-        LOGS(logger, VERBOSE) << "Input sizes of Resize must be known";
-        return false;
-      }
+    // sizes (sizes may be empty tensor)
+    bool has_sizes = !sizes_name.empty();
+    if (has_sizes && !Contains(initializers, sizes_name)) {
+      LOGS(logger, VERBOSE) << "Input sizes of Resize must be known";
+      return false;
     }
 
     if (has_scales && has_sizes) {
