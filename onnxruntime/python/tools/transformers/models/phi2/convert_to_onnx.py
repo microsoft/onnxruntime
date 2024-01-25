@@ -1,16 +1,17 @@
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-from itertools import chain
-from typing import TYPE_CHECKING, List, Tuple
+from typing import List
 import numpy as np
 import torch
 import onnx
+from onnx import ModelProto, TensorProto, helper
 from transformers import AutoConfig, AutoModelForCausalLM
 
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # The following code is used when this file is not in the ORT package
 import sys, os
+
 sys.path.append(os.path.dirname(__file__))
 
 transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -18,20 +19,18 @@ if transformers_dir not in sys.path:
     sys.path.append(transformers_dir)
 # --------------------------------------------------------------------------
 
+
 class ConvertPhi2ToONNX:
     def __init__(self, model_class: str, device: torch.device, cache_dir: str = "./cache"):
         self.model_class = model_class
         self.device = device
         self.cache_dir = cache_dir
-        self.phi_config = AutoConfig.from_pretrained(self.model_class,
-                                                     trust_remote_code=True,
-                                                     cache_dir=self.cache_dir)
+        self.phi_config = AutoConfig.from_pretrained(self.model_class, trust_remote_code=True, cache_dir=self.cache_dir)
         self.phi_model = None
         self.batch_size = 2
         self.sequence_length = 8
 
         self.phi2_edge_dict = self.__get_phi2_edge_dict(self.phi_config)
-
 
     def __get_phi2_edge_dict(self, config: AutoConfig) -> dict:
         edge_dict = {}
@@ -46,8 +45,74 @@ class ConvertPhi2ToONNX:
             edge_dict[f"model_layers_{i}_1_1"] = f"present_value_{i}"
         return edge_dict
 
+    def __simplify_phi2_op_type_name(self, onnx_model: ModelProto):
+        phi2_transformer_layer_name = "modeling_phi_PhiDecoderLayer_model_layers"
+        for node in onnx_model.graph.node:
+            index = node.op_type.find(phi2_transformer_layer_name)
+            if index != -1:
+                node.op_type = node.op_type[index:]
 
-    def __update_edges(self, model: onnx.ModelProto, edge_mapping: dict) -> onnx.ModelProto:
+
+    def __process_graph_io(self, config: AutoConfig, onnx_model: ModelProto, use_gqa=False):
+        graph = onnx_model.graph
+        new_inputs = []
+        for i, vi in enumerate(graph.input):
+            if "input_ids" in vi.name:
+                vi = helper.make_tensor_value_info(
+                    vi.name,
+                    elem_type=TensorProto.INT32,
+                    shape=["batch_size", "seq_len"],
+                )
+                vi_mask = helper.make_tensor_value_info(
+                    "attention_mask",
+                    elem_type=TensorProto.INT64 if use_gqa else TensorProto.INT32,
+                    shape=["batch_size", "seq_len"],
+                )
+                vi_pid = helper.make_tensor_value_info(
+                    "step",
+                    elem_type=TensorProto.INT64,
+                    shape=[1],
+                )
+                new_inputs.extend([vi, vi_pid, vi_mask])
+            if "past_key" in vi.name or "past_value" in vi.name:
+                vi_cache = helper.make_tensor_value_info(
+                    vi.name,
+                    elem_type=vi.type.tensor_type.elem_type,
+                    shape=[
+                        "batch_size",
+                        config.num_attention_heads,
+                        "past_seq_len",
+                        config.hidden_size // config.num_attention_heads,
+                    ],
+                )
+                new_inputs.extend([vi_cache])
+
+        graph.ClearField("input")
+        graph.input.extend(new_inputs)
+
+        new_outputs = []
+        for i, vi in enumerate(graph.output):
+            if i == 0:
+                vi = helper.make_tensor_value_info(
+                    vi.name, elem_type=vi.type.tensor_type.elem_type, shape=["batch_size", "seq_len", config.vocab_size]
+                )
+            else:
+                vi = helper.make_tensor_value_info(
+                    vi.name,
+                    elem_type=vi.type.tensor_type.elem_type,
+                    shape=[
+                        "batch_size",
+                        config.num_attention_heads,
+                        "total_seq_len",
+                        config.hidden_size // config.num_attention_heads,
+                    ],
+                )
+            new_outputs.extend([vi])
+
+        graph.ClearField("output")
+        graph.output.extend(new_outputs)
+
+    def __update_edges(self, model: onnx.ModelProto, edge_mapping: dict):
         """
         Updates the edges in the model according to the given mapping.
         """
@@ -145,6 +210,7 @@ class ConvertPhi2ToONNX:
         self.phi_model(input_ids, attention_mask=attention_mask, past_key_values=past_key_values)
 
         from torch._dynamo import config
+
         config.capture_scalar_outputs = True
         torch.onnx.dynamo_export(
             self.phi_model,
@@ -156,11 +222,18 @@ class ConvertPhi2ToONNX:
         onnx.checker.check_model(onnx_path)
         onnx.shape_inference.infer_shapes_path(onnx_path)
 
-    def inline_onnx(self, onnx_path_in: str, onnx_path_out: str, function_names: List[str]):
+    def preprocess_onnx(self, onnx_path_in: str, onnx_path_out: str, func_name: List[str]):
         model = onnx.load_model(onnx_path_in, load_external_data=True)
-        for function_name in function_names:
-            model = self.__inline_function(model, function_name)
+        function_name = None
+        for func in model.functions:
+            if func.name.endswith(func_name):
+                function_name = func.name
+                break
+        assert function_name is not None
+        model = self.__inline_function(model, function_name)
         model = self.__update_edges(model, self.phi2_edge_dict)
+        self.__simplify_phi2_op_type_name(model)
+        self.__process_graph_io(self.phi_config, model, use_gqa=True)
         onnx.save_model(
             model,
             onnx_path_out,
@@ -185,14 +258,11 @@ class ConvertPhi2ToONNX:
         )
 
         if use_fp16:
-            node_block_list = ["GroupQueryAttention_0_29",
-                               "GroupQueryAttention_0_30",
-                               "GroupQueryAttention_0_31"]
+            node_block_list = ["GroupQueryAttention_0_29", "GroupQueryAttention_0_30", "GroupQueryAttention_0_31"]
             # bugbug: support for bfloat16
             optimizer.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)
 
-        optimizer.save_model_to_file(onnx_path_opt,
-                                     use_external_data_format=True)
+        optimizer.save_model_to_file(onnx_path_opt, use_external_data_format=True)
         optimizer.get_operator_statistics()
 
 
@@ -201,10 +271,10 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 converter = ConvertPhi2ToONNX(model_class, device)
 # converter.dynamo_export("phi-2_temp.onnx")
-# converter.inline_onnx(
+# converter.preprocess_onnx(
 #     "phi-2_temp.onnx",
 #     "phi-2.onnx",
-#     ["transformers_modules_microsoft_phi-2_85d00b03fee509307549d823fdd095473ba5197c_modeling_phi_PhiModel_model_1"],
+#     "modeling_phi_PhiModel_model_1",
 # )
 # converter.erase_onnx_model("phi-2_temp.onnx")
 converter.optimize_phi2_onnx("phi-2.onnx", "phi-2_opt.onnx")

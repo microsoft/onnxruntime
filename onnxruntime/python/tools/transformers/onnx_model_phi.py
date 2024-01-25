@@ -7,7 +7,7 @@ from logging import getLogger
 from typing import List, Optional
 from fusion_base import Fusion
 from fusion_utils import FusionUtils, NumpyHelper
-from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper, inliner, numpy_helper
+from onnx import NodeProto, ModelProto, TensorProto, ValueInfoProto, helper, inliner, numpy_helper
 from onnx_model import OnnxModel
 from fusion_options import FusionOptions
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
@@ -15,37 +15,45 @@ import numpy as np
 
 logger = getLogger(__name__)
 
+
 # TODO: handle the hard-coded values
 class ProcessGemmWFunc:
     def __call__(self, x):
         return np.transpose(x, (1, 0))
 
+
 class ProcessMatMulQFunc:
     def __call__(self, x):
         return np.transpose(np.split(x, 3, 0)[0], (1, 0))
+
 
 class ProcessMatMulKFunc:
     def __call__(self, x):
         return np.transpose(np.split(x, 3, 0)[1], (1, 0))
 
+
 class ProcessMatMulVFunc:
     def __call__(self, x):
         return np.transpose(np.split(x, 3, 0)[2], (1, 0))
+
 
 class ProcessBiasQFunc:
     def __call__(self, x):
         x = np.split(x, 3, -1)[0]
         return x
 
+
 class ProcessBiasKFunc:
     def __call__(self, x):
         x = np.split(x, 3, -1)[1]
         return x
 
+
 class ProcessBiasVFunc:
     def __call__(self, x):
         x = np.split(x, 3, -1)[2]
         return x
+
 
 class ProcessRotCacheFunc:
     def __call__(self, x):
@@ -116,6 +124,24 @@ class Fission(Fusion):
         )
         self.model.graph().value_info.extend([new_value_info])
 
+    def set_unique_name(self, subgraph_nodes: List[NodeProto], layer_id: int, layer_known_edges_names: List[str]):
+        for new_node in subgraph_nodes:
+            for i, name in enumerate(new_node.input):
+                if name == "":
+                    continue
+                elif name not in layer_known_edges_names:
+                    new_node.input[i] = self.get_uname(layer_id, name)
+                    self.add_fp32_value_info(new_node.input[i])
+            for i, name in enumerate(new_node.output):
+                if name == "":
+                    continue
+                elif name not in layer_known_edges_names:
+                    new_node.output[i] = self.get_uname(layer_id, name)
+                    self.add_fp32_value_info(new_node.output[i])
+            new_node.name = self.get_uname(layer_id, new_node.name)
+            self.nodes_to_add.append(new_node)
+            self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
 
 class FissionTransformerCausalLMHeadPhi(Fission):
     def __init__(
@@ -124,11 +150,7 @@ class FissionTransformerCausalLMHeadPhi(Fission):
     ):
         super().__init__(model, ["torch_nn_modules_linear_Linear_lm_head_1"])
 
-    def fuse(self,
-             node,
-             input_name_to_nodes,
-             output_name_to_node
-        ):
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
         input = node.input[2]
         output = node.output[0]
 
@@ -153,22 +175,7 @@ class FissionTransformerCausalLMHeadPhi(Fission):
             ),
         ]
 
-        for new_node in subgraph_nodes:
-            for i, name in enumerate(new_node.input):
-                if name == "":
-                    continue
-                elif name not in layer_known_edges_names:
-                    new_node.input[i] = self.get_uname(99, name)
-                    self.add_fp32_value_info(new_node.input[i])
-            for i, name in enumerate(new_node.output):
-                if name == "":
-                    continue
-                elif name not in layer_known_edges_names:
-                    new_node.output[i] = self.get_uname(99, name)
-                    self.add_fp32_value_info(new_node.output[i])
-            new_node.name = self.get_uname(99, new_node.name)
-            self.nodes_to_add.append(new_node)
-            self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+        self.set_unique_name(subgraph_nodes, 99, layer_known_edges_names)
 
         self.replace_fp32_value_info(input, ["batch_size", "seq_len", "hidden_size"])
         self.replace_fp32_value_info(output, ["batch_size", "seq_len", 51200])
@@ -185,7 +192,7 @@ class FissionTransformerBlockPhi(Fission):
         self.func_to_layer_id = {}
         nodes_to_find = []
         for layer in range(32):
-            func_name = f"transformers_modules_microsoft_phi-2_85d00b03fee509307549d823fdd095473ba5197c_modeling_phi_PhiDecoderLayer_model_layers_{layer}_1"
+            func_name = f"modeling_phi_PhiDecoderLayer_model_layers_{layer}_1"
             nodes_to_find.append(func_name)
             self.func_to_layer_id[func_name] = layer
 
@@ -340,49 +347,62 @@ class FissionTransformerBlockPhi(Fission):
         layer_id = self.get_layer_id(node)
         print(f"fuse layer {layer_id}")
 
-        i_hidden_states = node.input[0] #if layer_id == 0 else node.input[1]
+        i_hidden_states = node.input[0]
         i_key_cache = self.get_io_by_name(node, "past_key")
         i_value_cache = self.get_io_by_name(node, "past_value")
 
-        o_hidden_states = node.output[3] # or 3
+        o_hidden_states = node.output[3]
         o_key_cache = self.get_io_by_name(node, "present_key")
         o_value_cache = self.get_io_by_name(node, "present_value")
 
-        # internal nodes weights
         ln_weight = self.get_io_by_name(node, "input_layernorm.weight")
         ln_bias = self.get_io_by_name(node, "input_layernorm.bias")
         attn_q_weight = self.process_initializer(
-            self.get_io_by_name(node, "self_attn.q_proj.weight"), ProcessGemmWFunc())
-        attn_q_bias = self.get_io_by_name(node, "self_attn.q_proj.bias")
+            self.get_io_by_name(node, "self_attn.q_proj.weight"), ProcessGemmWFunc()
+        )
         attn_k_weight = self.process_initializer(
-            self.get_io_by_name(node, "self_attn.k_proj.weight"), ProcessGemmWFunc())
-        attn_k_bias = self.get_io_by_name(node, "self_attn.k_proj.bias")
+            self.get_io_by_name(node, "self_attn.k_proj.weight"), ProcessGemmWFunc()
+        )
         attn_v_weight = self.process_initializer(
-            self.get_io_by_name(node, "self_attn.v_proj.weight"), ProcessGemmWFunc())
-        attn_v_bias = self.get_io_by_name(node, "self_attn.v_proj.bias")
-
-        cos_cache = self.process_initializer(
-            self.get_io_by_name(node, "rotary_emb.cos_cached"), ProcessRotCacheFunc())
-        sin_cache = self.process_initializer(
-            self.get_io_by_name(node, "rotary_emb.sin_cached"), ProcessRotCacheFunc())
-
+            self.get_io_by_name(node, "self_attn.v_proj.weight"), ProcessGemmWFunc()
+        )
         attn_out_weight = self.process_initializer(
-            self.get_io_by_name(node, "self_attn.dense.weight"), ProcessGemmWFunc())
+            self.get_io_by_name(node, "self_attn.dense.weight"), ProcessGemmWFunc()
+        )
+
+        attn_q_bias = self.get_io_by_name(node, "self_attn.q_proj.bias")
+        attn_k_bias = self.get_io_by_name(node, "self_attn.k_proj.bias")
+        attn_v_bias = self.get_io_by_name(node, "self_attn.v_proj.bias")
         attn_out_bias = self.get_io_by_name(node, "self_attn.dense.bias")
-        mlp_fc1_weight = self.process_initializer(
-            self.get_io_by_name(node, "mlp.fc1.weight"), ProcessGemmWFunc())
+
+        cos_cache = self.process_initializer(self.get_io_by_name(node, "rotary_emb.cos_cached"), ProcessRotCacheFunc())
+        sin_cache = self.process_initializer(self.get_io_by_name(node, "rotary_emb.sin_cached"), ProcessRotCacheFunc())
+
+        mlp_fc1_weight = self.process_initializer(self.get_io_by_name(node, "mlp.fc1.weight"), ProcessGemmWFunc())
+        mlp_fc2_weight = self.process_initializer(self.get_io_by_name(node, "mlp.fc2.weight"), ProcessGemmWFunc())
         mlp_fc1_bias = self.get_io_by_name(node, "mlp.fc1.bias")
-        mlp_fc2_weight = self.process_initializer(
-            self.get_io_by_name(node, "mlp.fc2.weight"), ProcessGemmWFunc())
         mlp_fc2_bias = self.get_io_by_name(node, "mlp.fc2.bias")
 
         layer_known_edges_names = []
         layer_known_edges_names.extend([i_hidden_states, i_key_cache, i_value_cache])
         layer_known_edges_names.extend([o_hidden_states, o_key_cache, o_value_cache])
         layer_known_edges_names.extend([ln_weight, ln_bias])
-        layer_known_edges_names.extend([attn_q_weight, attn_q_bias, attn_k_weight, attn_k_bias, attn_v_weight, attn_v_bias, cos_cache, sin_cache, attn_out_weight, attn_out_bias])
+        layer_known_edges_names.extend(
+            [
+                attn_q_weight,
+                attn_q_bias,
+                attn_k_weight,
+                attn_k_bias,
+                attn_v_weight,
+                attn_v_bias,
+                cos_cache,
+                sin_cache,
+                attn_out_weight,
+                attn_out_bias,
+            ]
+        )
         layer_known_edges_names.extend([mlp_fc1_weight, mlp_fc1_bias, mlp_fc2_weight, mlp_fc2_bias])
-        layer_known_edges_names.extend(["attention_mask", "step"])
+        layer_known_edges_names.extend(["attention_mask", "step", "seqlens_k", "total_sequence_length"])
 
         # opt graph construction.
         subgraph_nodes = [
@@ -448,24 +468,6 @@ class FissionTransformerBlockPhi(Fission):
                 name="V_Bias",
             ),
             helper.make_node(
-                "MultiHeadAttention",
-                inputs=[
-                    "query_rot",
-                    "key_rot",
-                    "value",
-                    "",
-                    "attention_mask",
-                    "",
-                    i_key_cache,
-                    i_value_cache,
-                ],
-                outputs=["attn_out", o_key_cache, o_value_cache],
-                name="MultiHeadAttention_0",
-                domain="com.microsoft",
-                num_heads=num_heads,
-                unidirectional=1,
-            ),
-            helper.make_node(
                 "MatMul",
                 inputs=["attn_out", attn_out_weight],
                 outputs=["matmul_out"],
@@ -522,22 +524,92 @@ class FissionTransformerBlockPhi(Fission):
             ),
         ]
 
-        for new_node in subgraph_nodes:
-            for i, name in enumerate(new_node.input):
-                if name == "":
-                    continue
-                elif name not in layer_known_edges_names:
-                    new_node.input[i] = self.get_uname(layer_id, name)
-                    self.add_fp32_value_info(new_node.input[i])
-            for i, name in enumerate(new_node.output):
-                if name == "":
-                    continue
-                elif name not in layer_known_edges_names:
-                    new_node.output[i] = self.get_uname(layer_id, name)
-                    self.add_fp32_value_info(new_node.output[i])
-            new_node.name = self.get_uname(layer_id, new_node.name)
-            self.nodes_to_add.append(new_node)
-            self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+        use_mha = False
+        if use_mha:
+            subgraph_nodes.append(
+                helper.make_node(
+                    "MultiHeadAttention",
+                    inputs=[
+                        "query_rot",
+                        "key_rot",
+                        "value",
+                        "",
+                        "attention_mask",
+                        "",
+                        i_key_cache,
+                        i_value_cache,
+                    ],
+                    outputs=["attn_out", o_key_cache, o_value_cache],
+                    name="MultiHeadAttention_0",
+                    domain="com.microsoft",
+                    num_heads=num_heads,
+                    unidirectional=1,
+                )
+            )
+        else:
+            subgraph_nodes.append(
+                helper.make_node(
+                    "GroupQueryAttention",
+                    inputs=[
+                        "query_rot",
+                        "key_rot",
+                        "value",
+                        i_key_cache,
+                        i_value_cache,
+                        "seqlens_k",
+                        "total_sequence_length",
+                    ],
+                    outputs=["attn_out", o_key_cache, o_value_cache],
+                    name="GroupQueryAttention_0",
+                    domain="com.microsoft",
+                    num_heads=num_heads,
+                    kv_num_heads=num_heads,
+                ),
+            )
+            if layer_id == 0:
+                gqa_aux_nodes = [
+                    helper.make_node(
+                        "ReduceSum",
+                        inputs=["attention_mask", "one"],
+                        outputs=["attention_mask_row_sums"],
+                        name="ReduceSum_gqa_aux",
+                    ),
+                    helper.make_node(
+                        "Sub", inputs=["attention_mask_row_sums", "one"], outputs=["seqlens_k_int64"], name="Sub_gqa_aux"
+                    ),
+                    helper.make_node(
+                        "Cast",
+                        inputs=["seqlens_k_int64"],
+                        outputs=["seqlens_k"],
+                        name="Cast_gqa_aux_0",
+                        to=TensorProto.INT32,
+                    ),
+                    helper.make_node(
+                        "Shape", inputs=["attention_mask"], outputs=["attention_mask_shape"], name="Shape_gqa_aux_0"
+                    ),
+                    helper.make_node(
+                        "Gather",
+                        inputs=["attention_mask_shape", "one"],
+                        outputs=["total_seq_len_int64"],
+                        name="Gather_gqa_aux_0",
+                        axis=0,
+                    ),
+                    helper.make_node(
+                        "Cast",
+                        inputs=["total_seq_len_int64"],
+                        outputs=["total_sequence_length"],
+                        name="Cast_gqa_aux_1",
+                        to=TensorProto.INT32,
+                    ),
+                ]
+                for new_node in gqa_aux_nodes:
+                    self.nodes_to_add.append(new_node)
+                    self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+                self.model.add_initializer(
+                    numpy_helper.from_array(np.array([1], dtype="int64"), name="one"), self.this_graph_name
+                )
+
+        self.set_unique_name(subgraph_nodes, layer_id, layer_known_edges_names)
 
         self.replace_fp32_value_info(i_hidden_states, ["batch_size", "seq_len", "hidden_size"])
         self.replace_fp32_value_info(o_hidden_states, ["batch_size", "seq_len", "hidden_size"])
@@ -830,60 +902,11 @@ class FissionTransformerBlockPhi(Fission):
     ):
         # self.fuse_with_attn(node, input_name_to_nodes, output_name_to_node)
         self.fuse_with_mha(node, input_name_to_nodes, output_name_to_node)
-        #self.fuse_with_gqa(node, input_name_to_nodes, output_name_to_node)
+        # self.fuse_with_gqa(node, input_name_to_nodes, output_name_to_node)
 
 
 def shape_of(vi):
     return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
-
-
-def postprocess_io_split_kv(model: ModelProto, use_gqa=False):
-    graph = model.graph
-    new_inputs = []
-    for i, vi in enumerate(graph.input):
-        if "input_ids" in vi.name:
-            vi = helper.make_tensor_value_info(
-                vi.name,
-                elem_type=TensorProto.INT32,
-                shape=["batch_size", "seq_len"],
-            )
-            vi_mask = helper.make_tensor_value_info(
-                "attention_mask",
-                elem_type=TensorProto.INT64 if use_gqa else TensorProto.INT32,
-                shape=["batch_size", "seq_len"],
-            )
-            vi_pid = helper.make_tensor_value_info(
-                "step",
-                elem_type=TensorProto.INT64,
-                shape=[1],
-            )
-            new_inputs.extend([vi, vi_pid, vi_mask])
-        if "past_key" in vi.name or "past_value" in vi.name:
-            vi_cache = helper.make_tensor_value_info(
-                vi.name,
-                elem_type=vi.type.tensor_type.elem_type,
-                shape=["batch_size", 32, "past_seq_len", 80],
-            )
-            new_inputs.extend([vi_cache])
-
-    graph.ClearField("input")
-    graph.input.extend(new_inputs)
-
-    new_outputs = []
-    for i, vi in enumerate(graph.output):
-        if i == 0:
-            vi = helper.make_tensor_value_info(
-                vi.name, elem_type=vi.type.tensor_type.elem_type, shape=["batch_size", "seq_len", 51200]
-            )
-        else:
-            vi = helper.make_tensor_value_info(
-                vi.name,
-                elem_type=vi.type.tensor_type.elem_type,
-                shape=["batch_size", 32, "total_seq_len", 80],
-            )
-        new_outputs.extend([vi])
-    graph.ClearField("output")
-    graph.output.extend(new_outputs)
 
 
 def postprocess_io(model: ModelProto):
@@ -988,7 +1011,6 @@ class PhiOnnxModel(OnnxModel):
     def postprocess(self):
         print("post process")
         # postprocess_io(self.model)
-        postprocess_io_split_kv(self.model, False)
         # postprocess_io_split_kv(self.model, True)
 
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
