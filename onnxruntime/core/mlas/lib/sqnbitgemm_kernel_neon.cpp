@@ -283,12 +283,8 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
             LoadFloatData<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len, av);
 
             // load B column vectors
-
-            uint16x8_t bv_u16[NCols][2];
-
-            const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
-
             uint8x8_t bv_packed[NCols];
+            const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
             UnrolledLoop<NCols>([&](size_t i) {
                 bv_packed[i] = vld1_u8(
                     reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
@@ -302,6 +298,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
             });
 
             // shift left 3 and widen to 16 bits
+            uint16x8_t bv_u16[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
                 constexpr int shift = 3;
                 bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
@@ -310,9 +307,8 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 
             // combine 4 bits with float high half template
             UnrolledLoop<NCols>([&](size_t i) {
-                UnrolledLoop<2>([&](size_t j) {
-                    bv_u16[i][j] = vorrq_u16(bv_u16[i][j], float_high_half_template_v);
-                });
+                bv_u16[i][0] = vorrq_u16(bv_u16[i][0], float_high_half_template_v);
+                bv_u16[i][1] = vorrq_u16(bv_u16[i][1], float_high_half_template_v);
             });
 
             // `SubBlkLen` floats of B
@@ -323,6 +319,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
                 constexpr int shift = 16;
                 bv[i][0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][0]), shift));
                 bv[i][1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][0], shift));
+
                 bv[i][2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][1]), shift));
                 bv[i][3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][1], shift));
             });
