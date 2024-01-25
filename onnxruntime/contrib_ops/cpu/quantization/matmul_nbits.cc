@@ -29,7 +29,7 @@ int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level
   ORT_UNUSED_PARAMETER(block_size);
 
   // Neural Speed APIs already expect a minimum accuracy level so just use the given value.
-  return accuracy_level_attr;
+  return accuracy_level;
 
 #else  // defined(ORT_NEURAL_SPEED)
 
