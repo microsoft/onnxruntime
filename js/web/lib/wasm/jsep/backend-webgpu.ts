@@ -208,7 +208,7 @@ export class WebGpuBackend {
 
     Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
 
-    // init queryType, which is necessary for createKernel
+    // init queryType, which is necessary for InferenceSession.create
     this.setQueryType();
   }
 
@@ -222,18 +222,6 @@ export class WebGpuBackend {
   getCommandEncoder(): GPUCommandEncoder {
     if (!this.commandEncoder) {
       this.commandEncoder = this.device.createCommandEncoder();
-
-      // refresh queryType, as sometimes we only need to enable query for a specific run
-      this.setQueryType();
-      if (this.queryType !== 'none' && typeof this.querySet === 'undefined') {
-        this.querySet = this.device.createQuerySet({
-          type: 'timestamp',
-          count: this.maxDispatchNumber * 2,
-        });
-        this.queryResolveBuffer = this.device.createBuffer(
-            // eslint-disable-next-line no-bitwise
-            {size: this.maxDispatchNumber * 2 * 8, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE});
-      }
     }
     return this.commandEncoder;
   }
@@ -639,6 +627,7 @@ export class WebGpuBackend {
       return createView(data.buffer, type);
     };
   }
+  // #endregion
   writeTimestamp(index: number): void {
     if (this.queryType !== 'inside-passes') {
       return;
@@ -655,7 +644,19 @@ export class WebGpuBackend {
       } else if (this.device.features.has('timestamp-query')) {
         this.queryType = 'at-passes';
       }
+
+      if (this.queryType !== 'none' && typeof this.querySet === 'undefined') {
+        this.querySet = this.device.createQuerySet({
+          type: 'timestamp',
+          count: this.maxDispatchNumber * 2,
+        });
+        this.queryResolveBuffer = this.device.createBuffer(
+            // eslint-disable-next-line no-bitwise
+            {size: this.maxDispatchNumber * 2 * 8, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE});
+      }
     }
   }
-  // #endregion
+  onRunStart(): void {
+    this.setQueryType();
+  }
 }

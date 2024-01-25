@@ -66,7 +66,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSes
     }
   }
   wchar_t* optimizerStr = NULL;
-  if (optimizerPath == NULL) {
+  if (optimizerPath != NULL) {
     optimizerStr = copyAndPad(jniEnv, optimizerPath);
     if (optimizerStr == NULL) {
       // exception has been thrown in Java, go to cleanup and return null.
