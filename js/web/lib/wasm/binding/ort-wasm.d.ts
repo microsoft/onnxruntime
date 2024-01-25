@@ -31,7 +31,7 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
 
-  _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
+  _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): Promise<number>;
   _OrtReleaseSession(sessionHandle: number): void;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
   _OrtGetInputName(sessionHandle: number, index: number): number;
