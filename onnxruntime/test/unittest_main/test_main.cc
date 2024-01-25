@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#if defined(__wasm__)
+#include <emscripten.h>
+#endif
 
 #ifndef USE_ONNXRUNTIME_DLL
 #ifdef __GNUC__
@@ -22,14 +25,9 @@
 
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/ort_env.h"
 #include "core/util/thread_utils.h"
 #include "test/test_environment.h"
-
-std::unique_ptr<Ort::Env> ort_env;
-void ortenv_setup() {
-  OrtThreadingOptions tpo;
-  ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
-}
 
 #ifdef USE_TENSORRT
 // TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for
@@ -55,12 +53,82 @@ auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInf
 #endif
 #endif
 
+std::unique_ptr<Ort::Env> ort_env;
+static onnxruntime::Status ortenv_setup() {
+  OrtThreadingOptions tpo;
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
+  onnxruntime::Status status;
+  OrtEnv* out = OrtEnv::GetInstance(lm_info, status, &tpo);
+  if (!status.IsOK()) return status;
+  ort_env = std::make_unique<Ort::Env>(out);
+  return status;
+}
+
+#if defined(__wasm__)
+enum class EmStage {
+  INIT,
+  SETUP_ENV,
+  RUN_TEST,
+  FINI,
+};
+
+struct EmState {
+  int ret = 0;
+  EmStage stage = EmStage::INIT;
+  int argc;
+  char** argv;
+};
+
+void MainLoop(void* arg) {
+  printf("Entering MainLoop ...\n");
+  if (arg == nullptr) return;
+  EmState& state = *(EmState*)arg;
+  printf("stage %d ...\n", (int)state.stage);
+  onnxruntime::Status status;
+  switch (state.stage) {
+    case EmStage::SETUP_ENV:
+      ::testing::InitGoogleTest(&state.argc, state.argv);
+      state.stage = EmStage::RUN_TEST;
+      break;
+    case EmStage::INIT: {
+      status = ortenv_setup();
+      if (!status.IsOK()) {
+        state.ret = -1;
+        state.stage = EmStage::FINI;
+      } else {
+        state.stage = EmStage::SETUP_ENV;
+      }
+    } break;
+    case EmStage::RUN_TEST:
+      state.ret = RUN_ALL_TESTS();
+      state.stage = EmStage::FINI;
+      break;
+    default:
+      emscripten_cancel_main_loop();
+      break;
+  }
+  printf("Exiting MainLoop ...\n");
+  return;
+}
+
+int TEST_MAIN(int argc, char** argv) {
+  std::cout << "start: argc=" << argc << std::endl;
+  EmState s;
+  s.argc = argc;
+  s.argv = argv;
+  emscripten_set_main_loop_arg(MainLoop, &s, 0, 0);
+  return s.ret;
+}
+#else
 int TEST_MAIN(int argc, char** argv) {
   int status = 0;
 
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
-    ortenv_setup();
+    auto st = ortenv_setup();
+    if (!st.IsOK()) {
+      return -1;
+    }
 
     // allow verbose logging to be enabled by setting this environment variable to a numeric log level
     constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
@@ -91,3 +159,4 @@ int TEST_MAIN(int argc, char** argv) {
 #endif
   return status;
 }
+#endif
