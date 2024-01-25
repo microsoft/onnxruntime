@@ -104,6 +104,7 @@ void MainLoop(void* arg) {
       state.stage = EmStage::FINI;
       break;
     default:
+      ort_env.reset();
       emscripten_cancel_main_loop();
       break;
   }
