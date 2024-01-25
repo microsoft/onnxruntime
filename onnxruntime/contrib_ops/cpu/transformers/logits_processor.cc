@@ -17,6 +17,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+/*
 #ifdef DEBUG_GENERATION
 template <typename T>
 void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
@@ -24,7 +25,7 @@ void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
   ORT_UNUSED_PARAMETER(next_token_scores);
 }
 #endif
-
+*/
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
 MinLengthLogitsProcessor<T>::MinLengthLogitsProcessor(int min_length, int eos_token_id)

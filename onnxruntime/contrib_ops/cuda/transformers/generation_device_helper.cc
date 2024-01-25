@@ -346,6 +346,11 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   ORT_UNUSED_PARAMETER(dumper);
 #endif
 
+  std::cout << "Sequences Start!" << std::endl;
+
+  for (auto x : sequences->GetSequence(0)) {
+    std::cout << x << std::endl;
+  }
   int batch_size = parameters->batch_size;
   int num_beams = parameters->num_beams;
   int vocab_size = parameters->vocab_size;
@@ -431,6 +436,11 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   int extra_decoding_len = static_cast<int>(parameters->extra_decoding_ids.size() / parameters->batch_size);
   const bool need_handle_extra_decoding_ids = is_whisper_model && (!parameters->extra_decoding_ids.empty()) && (extra_decoding_len >= step);
   std::cout << "Here1" << std::endl;
+  std::cout << "Sequences Preprocess!" << std::endl;
+
+  for (auto x : sequences->GetSequence(0)) {
+    std::cout << x << std::endl;
+  }
   cuda::LaunchLogitsProcessKernel<float>(
       next_token_scores.data(),
       parameters->vocab_mask.data(),
@@ -450,6 +460,11 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->no_repeat_ngram_size,
       cuda_stream);
 
+  std::cout << "Sequences PostProcess!" << std::endl;
+
+  for (auto x : sequences->GetSequence(0)) {
+    std::cout << x << std::endl;
+  }
   std::cout << "Here2" << std::endl;
   std::cout << "Here2.5" << std::endl;
   // Whisper time stamp generation.
@@ -468,17 +483,34 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
     std::cout << "Here3?" << std::endl;
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(const_cast<int32_t*>(sequences->GetSequence(0).data()),
+    // Is this copy method wrong?
+    std::cout << "Sequences Before Copy" << std::endl;
+    for (auto x : sequences->GetSequence(0)) {
+      std::cout << x << std::endl;
+    }
+    std::cout << "Sequences CPU size:" << sequences->GetSequence(0).size() << std::endl;
+    std::cout << "Sequences GPU size:" << sequences->GetCurrentDeviceSequences().size() << std::endl;
+    std::cout << "Sequence byte sizes:" << sequences->GetSequence(0).size_bytes() << std::endl;
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(const_cast<int32_t*>(sequences->GetSequence(0).data()),
                                          sequences->GetCurrentDeviceSequences().data(),
                                          sequences->GetSequence(0).size_bytes() * batch_beam_size,
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
+    // sequences->GetCurrentDeviceSequences().data() -> GPU pointer
+    std::cout << "Sequences length post:" << sequences->GetSequenceLength() << std::endl;
+    std::cout << "Sequences CPU size:" << sequences->GetSequence(0).size() << std::endl;
+    std::cout << "Sequences GPU size:" << sequences->GetCurrentDeviceSequences().size() << std::endl;
+    std::cout << "Sequences CPU!" << std::endl;
+    for (auto x : sequences->GetSequence(0)) {
+      std::cout << x << std::endl;
+    }
+
     std::cout << "Here4?" << std::endl;
     constexpr int max_initial_timestamp_index = 50;
     onnxruntime::contrib::transformers::TimestampLogitsProcessor<float> time_logit_processor(parameters->eos_token_id, max_initial_timestamp_index);
     onnxruntime::contrib::transformers::NextTokenScores<float> next_token_scores_timestamp({cpu_next_token_scores_span, batch_beam_size, vocab_size});
     std::cout << "Here5?" << std::endl;
-    //CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream)); // cudaDeviceSynchronize
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream)); // cudaDeviceSynchronize
     CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize()); // cudaDeviceSynchronize
     std::cout << "Here6?" << std::endl;
     time_logit_processor.Process(sequences, next_token_scores_timestamp);
@@ -489,7 +521,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                          cudaMemcpyHostToDevice,
                                          cuda_stream));
     std::cout << "Here8?" << std::endl;
-    //CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
     std::cout << "Here9?" << std::endl;
   }

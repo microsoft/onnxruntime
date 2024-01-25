@@ -10,11 +10,11 @@
 #include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
 #include "contrib_ops/cpu/transformers/sampling_parameters.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
-
 template <typename T>
 struct NextTokenScores {
   gsl::span<T>& scores;
@@ -33,6 +33,14 @@ struct NextTokenScores {
     }
   }
 };
+
+#ifdef DEBUG_GENERATION
+template <typename T>
+void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
+  std::cout << name << std::endl;
+  ORT_UNUSED_PARAMETER(next_token_scores);
+}
+#endif
 
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
@@ -155,6 +163,8 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override {
+
+    std::cout << "Process1" << std::endl;
     // TODO: translate_token_id_ and transcribe_token_id_ need to support both multilingual and English-only models.
     const int beg_token_id_ = eos_token_id_ + 107;
     const int not_token_id_ = eos_token_id_ + 106;
@@ -179,6 +189,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
 
+      std::cout << "Process2" << std::endl;
       // Suppress tokens
       for (int j = 0; j < vocab_size; j++) {
         // Suppress notimestamps and solm tokens
@@ -194,6 +205,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
 
+      std::cout << "Process3" << std::endl;
       // Timestamps should be in pair except the first one
       const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
       const bool penultimate_was_timestamp = seq_length <= sample_begin || sequence[seq_length - 2] >= beg_token_id_;
@@ -211,6 +223,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
 
+      std::cout << "Processmiddle" << std::endl;
       // Find timestamp tokens
       std::vector<int32_t> timestamps;
       for (const auto& word_id : sequence) {
@@ -219,30 +232,46 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
 
+      std::cout << "Timestamps len:" << timestamps.size() << std::endl;
+      if (timestamps.size() >= 1){
+        std::cout << "Timestamps val:" << timestamps[0] << std::endl;
+      }
+      std::cout << "beg_token_id:" << beg_token_id_ << std::endl;
+      std::cout << "Process4" << std::endl;
       // Timestamps will not decrease
       const size_t timestamps_len = timestamps.size();
+      std::cout << "Process4.1" << std::endl;
       if (timestamps_len > 0) {
         int timestamp_last = 0;
+        std::cout << "Process4.2" << std::endl;
         if (last_was_timestamp && !penultimate_was_timestamp) {
           // For single timestamp at the end, next timestamp must not be smaller
+          std::cout << "Process4.3" << std::endl;
           timestamp_last = timestamps.back();
         } else {
+          std::cout << "Process4.4" << std::endl;
           // For paired timestamp at the end, next timestamp must be greater
           timestamp_last = timestamps.back() + 1;
         }
 
+        std::cout << "Process4.5" << std::endl;
         for (int j = beg_token_id_; j < timestamp_last; j++) {
-          beam_token_scores[j] = std::numeric_limits<T>::lowest();
+          beam_token_scores[j] = std::numeric_limits<T>::lowest(); // Crash location
+          std::cout << j << timestamp_last << std::endl;
         }
       }
-
+      std::cout << "Process4.7" << std::endl;
       if (seq_length == sample_begin) {
+        std::cout << "Process4.8" << std::endl;
         const int last_allowed = beg_token_id_ + max_initial_timestamp_index_;
+        std::cout << "Process4.9" << std::endl;
         for (int j = last_allowed + 1; j < vocab_size; j++) {
+          std::cout << "Process4.10" << std::endl;
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
       }
 
+      std::cout << "Process5" << std::endl;
       // Caculate logsumexp on timestamps
       float timestamp_logprob = std::numeric_limits<T>::lowest();
       {
@@ -258,6 +287,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
 
+      std::cout << "Process6" << std::endl;
       const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beg_token_id_);
       if (timestamp_logprob > max_text_token_logprob) {
         for (int j = 0; j < beg_token_id_; ++j) {
@@ -269,6 +299,8 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
 #ifdef DEBUG_GENERATION
     DumpScores("TimestampLogitsProcessor", next_token_scores);
 #endif
+
+  std::cout << "Processend" << std::endl;
   }
 
  private:

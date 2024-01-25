@@ -670,8 +670,8 @@ Status EfficientAttention(
   p.has_custom_right_padding = true;
   run_memory_efficient_attention(p);
 
-  DUMP_TENSOR_INIT();
-  DUMP_TENSOR("efficient attention output", data.output, batch_size, sequence_length, num_heads, head_size);
+ // DUMP_TENSOR_INIT();
+ // DUMP_TENSOR("efficient attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
   return Status::OK();
 }

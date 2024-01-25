@@ -257,6 +257,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
   if (current_length + 1 < parameters->max_length) {
     ++iteration_counter;
+    std::cout << "Generating Token from encoder_fetches" << std::endl;
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
                                                 beam_next_tokens,
                                                 beam_state,
@@ -405,6 +406,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 #endif
 
     const OrtValue& logits = decoder_fetches[0];
+    std::cout << "Generating next token from decoder_fetches" << std::endl;
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
                                                 beam_next_tokens,
                                                 beam_state,
