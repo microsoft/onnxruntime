@@ -150,7 +150,7 @@ TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
 // Run QDQ model on HTP 3 times
 // 1st run will generate the Qnn context cache onnx file
 // 2nd run directly loads and run from Qnn context cache model
-TEST_F(QnnHTPBackendTests, ContextBinaryCacheEmbedModeTest) {
+TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheEmbedModeTest) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -198,7 +198,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheEmbedModeTest) {
 // Run QDQ model on HTP 3 times
 // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
 // 2nd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
-TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
+TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -254,7 +254,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
 // Run QDQ model on HTP 2 times
 // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
 // Then delete the context bin file to make the 2nd sesssion.Initialize() return the status with code INVALID_GRAPH
-TEST_F(QnnHTPBackendTests, ContextBinaryCache_InvalidGraph) {
+TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -450,7 +450,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryFileEmptyStringTest) {
 // Run QDQ model on HTP with 2 inputs
 // 1st run will generate the Qnn context cache onnx file
 // 2nd run directly loads and run from Qnn context cache model
-TEST_F(QnnHTPBackendTests, ContextBinary2InputsTest) {
+TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
