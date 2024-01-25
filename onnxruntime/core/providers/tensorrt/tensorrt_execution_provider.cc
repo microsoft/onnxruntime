@@ -1834,13 +1834,21 @@ nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder() const {
 }
 
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
-  if (info_.custom_op_domain_list.empty()) {
-    common::Status status = CreateTensorRTCustomOpDomainList(info_);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+  std::string extra_plugin_lib_paths{""};
+  if (info_.has_trt_options) {
+    if (!info_.extra_plugin_lib_paths.empty()) {
+      extra_plugin_lib_paths = info_.extra_plugin_lib_paths;
+    }
+  } else {
+    const std::string extra_plugin_lib_paths_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kExtraPluginLibPaths);
+    if (!extra_plugin_lib_paths_env.empty()) {
+      extra_plugin_lib_paths = extra_plugin_lib_paths_env;
     }
   }
-  custom_op_domain_list = info_.custom_op_domain_list;
+  auto status = CreateTensorRTCustomOpDomainList(custom_op_domain_list, extra_plugin_lib_paths);
+  if (status != Status::OK()) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+  }
 }
 
 // Check the graph is the subgraph of control flow op

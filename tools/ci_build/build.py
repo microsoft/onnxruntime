@@ -329,6 +329,12 @@ def parse_arguments():
         "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument(
+        "--rv64",
+        action="store_true",
+        help="[cross-compiling] Create riscv64 makefiles. Requires --update and no existing cache "
+        "CMake setup. Delete CMakeCache.txt if needed",
+    )
+    parser.add_argument(
         "--arm",
         action="store_true",
         help="[cross-compiling] Create ARM makefiles. Requires --update and no existing cache "
@@ -350,6 +356,18 @@ def parse_arguments():
         "--buildasx",
         action="store_true",
         help="[cross-compiling] Create ARM64X Binary.",
+    )
+    parser.add_argument(
+        "--riscv_toolchain_root",
+        type=str,
+        default="",
+        help="Path to RISC-V toolchain root dir. e.g. --riscv_toolchain_root=$HOME/riscv-tools/",
+    )
+    parser.add_argument(
+        "--riscv_qemu_path",
+        type=str,
+        default="",
+        help="Path to RISC-V qemu. e.g. --riscv_qemu_path=$HOME/qemu-dir/qemu-riscv64",
     )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
@@ -1077,6 +1095,19 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
     ]
 
+    if args.rv64:
+        add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
+        if not args.riscv_toolchain_root:
+            raise BuildError("The --riscv_toolchain_root option is required to build for riscv64.")
+        if not args.skip_tests and not args.riscv_qemu_path:
+            raise BuildError("The --riscv_qemu_path option is required for testing riscv64.")
+
+        cmake_args += [
+            "-DRISCV_TOOLCHAIN_ROOT:PATH=" + args.riscv_toolchain_root,
+            "-DRISCV_QEMU_PATH:PATH=" + args.riscv_qemu_path,
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
+        ]
+
     # By default on Windows we currently support only cross compiling for ARM/ARM64
     # (no native compilation supported through this script).
     if args.arm64 or args.arm64ec or args.arm:
@@ -1553,7 +1584,9 @@ def generate_build_tree(
                     ]
                 if is_linux() and platform.machine() == "x86_64":
                     # The following flags needs GCC 8 and newer
-                    cflags += ["-fstack-clash-protection", "-fcf-protection"]
+                    cflags += ["-fstack-clash-protection"]
+                    if not args.rv64:
+                        cflags += ["-fcf-protection"]
                 cxxflags = cflags.copy()
                 if args.use_cuda:
                     cudaflags = cflags.copy()
