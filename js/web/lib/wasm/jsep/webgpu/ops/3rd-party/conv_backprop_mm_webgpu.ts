@@ -21,8 +21,8 @@
 
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
-import {ProgramInfo, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from '../common';
+import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 import {getActivationSnippet} from '../fuse-utils';
 
@@ -74,21 +74,21 @@ const conv2dTransposeCommonSnippet =
       col % outWidth);
     `;
 
-      const xHeight = isChannelsLast ? 'outBackprop[1]' : 'outBackprop[2]';
-      const xWidth = isChannelsLast ? 'outBackprop[2]' : 'outBackprop[3]';
+      const xHeight = isChannelsLast ? 'i32(uniforms.x_shape[1])' : 'i32(uniforms.x_shape[2])';
+      const xWidth = isChannelsLast ? 'i32(uniforms.x_shape[2])' : 'i32(uniforms.x_shape[3])';
       const row = isChannelsLast ? 'row' : 'col';
       const col = isChannelsLast ? 'col' : 'row';
 
       const readASnippet = `
-      let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
+      let inChannels = ${isChannelsLast ? 'i32(uniforms.x_shape[3])' : 'i32(uniforms.x_shape[1])'};
       let outWidth = ${isChannelsLast ? 'i32(uniforms.result_shape[2])' : 'i32(uniforms.result_shape[3])'};
       let outRow = ${row} / outWidth;
       let outCol = ${row} % outWidth;
 
-      let WRow = ${col} / (filterDims[1] * inChannels);
-      let WCol = ${col} / inChannels % filterDims[1];
-      let xR = f32(outRow - pads[0] + dilation[0] * WRow) / f32(strides[0]);
-      let xC = f32(outCol - pads[1] + dilation[1] * WCol) / f32(strides[1]);
+      let WRow = ${col} / (uniforms.filter_dims[1] * inChannels);
+      let WCol = ${col} / inChannels % uniforms.filter_dims[1];
+      let xR = f32(outRow - uniforms.pads[0] + uniforms.dilations[0] * WRow) / f32(uniforms.strides[0]);
+      let xC = f32(outCol - uniforms.pads[1] + uniforms.dilations[1] * WCol) / f32(uniforms.strides[1]);
       if (xR < 0.0 || xR >= f32(${xHeight}) || fract(xR) > 0.0) {
         return ${type}(0.0);
       }
@@ -103,25 +103,25 @@ const conv2dTransposeCommonSnippet =
 
       const sampleA = isChannelsLast ? `
       let col = colIn * ${innerElementSize};
-      if (row < uniforms.dimAOuter && col < uniforms.dimInner) {
+      if (row < uniforms.dim_a_outer && col < uniforms.dim_inner) {
         ${readASnippet}
       }
       return ${type}(0.0);` :
                                        `
       let col = colIn * ${innerElementSize};
-      if (row < uniforms.dimInner && col < uniforms.dimBOuter) {
+      if (row < uniforms.dim_inner && col < uniforms.dim_b_outer) {
         ${readASnippet}
       }
       return ${type}(0.0);`;
 
       const sampleW = `
       let col = colIn * ${innerElementSize};
-      let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
-      let coordX = filterDims.x - 1 - row / (filterDims[1] * inChannels);
-      let coordY = filterDims.y - 1 - (row / inChannels) % filterDims[1];
+      let inChannels = ${isChannelsLast ? 'i32(uniforms.x_shape[3])' : 'i32(uniforms.x_shape[1])'};
+      let coordX = uniforms.filter_dims[0] - 1 - row / (uniforms.filter_dims[1] * inChannels);
+      let coordY = uniforms.filter_dims[1] - 1 - (row / inChannels) % uniforms.filter_dims[1];
       if (${
-          isChannelsLast ? 'row < uniforms.dimInner && col < uniforms.dimBOuter' :
-                           'row < uniforms.dimInner && col < uniforms.dimAOuter'}  && coordX >= 0 && coordY >= 0) {
+          isChannelsLast ? 'row < uniforms.dim_inner && col < uniforms.dim_b_outer' :
+                           'row < uniforms.dim_inner && col < uniforms.dim_a_outer'}  && coordX >= 0 && coordY >= 0) {
         let rowInner = row % inChannels;
         let coord = vec4<i32>(coordX, coordY, col, rowInner);
         ${getWSnippet(innerElementSize)}
@@ -129,9 +129,8 @@ const conv2dTransposeCommonSnippet =
       return ${type}(0.0);
       `;
 
-      const {activationFunction, applyActivation} = getActivationSnippet(attributes, type);
+      const applyActivation = getActivationSnippet(attributes, type);
       const userCode = `
-      ${activationFunction}
   fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${type} {
     ${isChannelsLast ? sampleA : sampleW}
   }
@@ -142,7 +141,7 @@ const conv2dTransposeCommonSnippet =
 
   fn mm_write(batch: i32, row : i32, colIn : i32, valueInput : ${type}) {
     let col = colIn * ${innerElementSize};
-    if (row < uniforms.dimAOuter && col < uniforms.dimBOuter) {
+    if (row < uniforms.dim_a_outer && col < uniforms.dim_b_outer) {
       var value = valueInput;
       let outWidth = ${isChannelsLast ? 'i32(uniforms.result_shape[2])' : 'i32(uniforms.result_shape[3])'};
       ${coordResSnippet}
@@ -186,65 +185,64 @@ export const createConv2DTransposeMatMulProgramInfo =
       const innerElementSize = isVec4 ? 4 : 1;
       const tileInner = Math.max(workGroupSize[0] * innerElementSize, workGroupSize[1]);
       const components = isVec4 ? 4 : 1;
-      const programUniforms: ProgramUniform[] =
-          [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
-      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components);
-      const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, 1);
-      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
-      const inputVariables = [x, w];
-      programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
-      programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
+      const filterDims =
+          [attributes.kernelShape[isChannelsLast ? 1 : 2], attributes.kernelShape[isChannelsLast ? 2 : 3]];
+      const effectiveFilterDims = [
+        filterDims[0] + (attributes.dilations[0] <= 1 ? 0 : (filterDims[0] - 1) * (attributes.dilations[0] - 1)),
+        filterDims[1] + (attributes.dilations[1] <= 1 ? 0 : (filterDims[1] - 1) * (attributes.dilations[1] - 1))
+      ];
+      const pads = [
+        effectiveFilterDims[0] - 1 - Math.floor((attributes.pads[0] + attributes.pads[2]) / 2),
+        effectiveFilterDims[1] - 1 - Math.floor((attributes.pads[1] + attributes.pads[3]) / 2)
+      ];
 
-      let declareFunctions = '';
-      if (hasBias) {
-        const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, components);
-        inputVariables.push(bias);
-        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
-
-        declareFunctions += `
-        fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? 'vec4<f32>' : 'f32'} {
-          return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
-        }`;
+      const programUniforms: ProgramUniform[] = [
+        {type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner},
+        {type: 'int32', data: attributes.strides}, {type: 'int32', data: attributes.dilations},
+        {type: 'int32', data: filterDims}, {type: 'int32', data: pads}
+      ];
+      if (attributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
       }
+      programUniforms.push(
+          ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
 
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
+      if (hasBias) {
+        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+        inputDependencies.push('rank');
+      }
       programUniforms.push(...createTensorShapeVariables(outputShape));
 
-      return {
-        name: 'Conv2DTransposeMatMul',
-        shaderCache: {hint: attributes.cacheKey},
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
-          programUniforms
-        }),
-        getShaderSource: (shaderHelper: ShaderHelper) => `
+      const getShaderSource = (shaderHelper: ShaderHelper) => {
+        const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components);
+        const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, 1);
+        const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
+        const inputVariables = [x, w];
+
+        let declareFunctions = '';
+        if (hasBias) {
+          const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, components);
+          inputVariables.push(bias);
+          declareFunctions += `
+          fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? 'vec4<f32>' : 'f32'} {
+            return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
+          }`;
+        }
+
+        const uniforms: UniformsArrayType = [
+          {name: 'dim_a_outer', type: 'i32'}, {name: 'dim_b_outer', type: 'i32'}, {name: 'dim_inner', type: 'i32'},
+          {name: 'strides', type: 'i32', length: 2}, {name: 'dilations', type: 'i32', length: 2},
+          {name: 'filter_dims', type: 'i32', length: filterDims.length},
+          {name: 'pads', type: 'i32', length: pads.length}
+        ];
+        if (attributes.activation === 'Clip') {
+          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
+        }
+        return `
         ${utilFunctions('uniforms.result_strides')}
-        ${
-            shaderHelper.registerUniform('dimAOuter', 'i32')
-                .registerUniform('dimBOuter', 'i32')
-                .registerUniform('dimInner', 'i32')
-                .declareVariables(...inputVariables, output)};
-        const outBackprop : vec4<i32> = vec4<i32>(${inputs[0].dims.join(',')});
-        const filterDims : vec2<i32> = vec2<i32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
-            attributes.kernelShape[isChannelsLast ? 2 : 3]});
-        const effectiveFilterDims : vec2<i32> = filterDims + vec2<i32>(
-              ${
-            attributes.dilations[0] <= 1 ?
-                0 :
-                (attributes.kernelShape[isChannelsLast ? 1 : 2] - 1) * (attributes.dilations[0] - 1)},
-              ${
-            attributes.dilations[1] <= 1 ?
-                0 :
-                (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
-        const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${
-            attributes.pads[0] + attributes.pads[2]})/2,
-                                         i32(effectiveFilterDims[1]) - 1 - (${
-            attributes.pads[1] + attributes.pads[3]})/2);
-        const strides : vec2<i32> = vec2<i32>(${attributes.strides[0]}, ${attributes.strides[1]});
-        const dilation : vec2<i32> = vec2<i32>(${attributes.dilations[0]}, ${attributes.dilations[1]});
-        const dimAOuter : i32 = ${dimAOuter};
-        const dimBOuter : i32 = ${dimBOuter};
-        const dimInner : i32 = ${dimInner};
+        ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)};
         ${declareFunctions}
         ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, attributes, innerElementSize)}
         ${
@@ -252,6 +250,18 @@ export const createConv2DTransposeMatMulProgramInfo =
                          elementsPerThread, workGroupSize, 'f32', undefined, !isChannelsLast, tileInner) :
                      makeMatMulPackedSource(
                          elementsPerThread, workGroupSize, 'f32', undefined, !isChannelsLast, tileInner, false,
-                         undefined, sequentialAccessByThreads)}`
+                         undefined, sequentialAccessByThreads)}`;
+      };
+
+      return {
+        name: 'Conv2DTransposeMatMul',
+        shaderCache:
+            {hint: `${attributes.cacheKey};${elementsPerThread};${workGroupSize};${isVec4}`, inputDependencies},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
+          programUniforms
+        }),
+        getShaderSource
       };
     };
