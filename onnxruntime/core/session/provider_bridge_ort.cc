@@ -2380,6 +2380,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProvider
   options->has_user_compute_stream = 0;
   options->user_compute_stream = nullptr;
   options->default_memory_arena_cfg = nullptr;
+  options->enable_hip_graph = false;
   options->tunable_op_enable = 0;
   options->tunable_op_tuning_enable = 0;
   options->tunable_op_max_tuning_duration_ms = 0;
