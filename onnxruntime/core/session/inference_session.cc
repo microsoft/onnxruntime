@@ -671,9 +671,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   // Register the custom op domain only if it has not been registered before
   if (registry_kernels.empty()) {
-    for (auto candidate_custom_op_domain : candidate_custom_op_domains) {
-      custom_op_domains.push_back(candidate_custom_op_domain);
-    }
+    custom_op_domains = candidate_custom_op_domains;
   } else {
     for (auto candidate_custom_op_domain : candidate_custom_op_domains) {
       for (auto registry_kernel : registry_kernels) {
