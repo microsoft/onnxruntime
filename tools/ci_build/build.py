@@ -1484,14 +1484,13 @@ def generate_build_tree(
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
                     f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
                 ]
-    cflags = None
-    cxxflags = None
-    ldflags = None
-    cudaflags = None
+
     for config in configs:
         cflags = []
+        cxxflags = None
+        ldflags = None
         cudaflags = []
-        if is_windows():
+        if is_windows() and not args.ios and not args.android and not args.build_wasm:
             njobs = number_of_parallel_jobs(args)
             if njobs > 1:
                 if args.parallel == 0:
