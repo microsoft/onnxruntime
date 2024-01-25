@@ -228,6 +228,8 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 
     assert(BlkLen >= SubBlkLen && BlkLen % SubBlkLen == 0);
 
+    const uint8x8_t LowMask = vdup_n_u8(0x0F);
+
     // Manual conversion to float takes place in two steps:
     // 1. Map 4-bit values from [0, 15] to float values from [16.0f, 31.0f].
     //    This target float range is convenient because the 4-bit source values can be placed directly into the
@@ -285,8 +287,6 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
             uint16x8_t bv_u16[NCols][2];
 
             const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
-
-            const uint8x8_t LowMask = vdup_n_u8(0x0F);
 
             uint8x8_t bv_packed[NCols];
             UnrolledLoop<NCols>([&](size_t i) {
@@ -663,6 +663,9 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
 
     assert(BlkLen >= SubBlkLen && BlkLen % SubBlkLen == 0);
 
+    const uint8x8_t LowMaskU8x8 = vdup_n_u8(0x0F);
+    const uint8x16_t LowMaskU8x16 = vdupq_n_u8(0x0F);
+
     const std::byte* QuantA = QuantARowPtr;
 
     const std::byte* QuantBData = QuantBDataColPtr;
@@ -708,8 +711,6 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
             const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
 
             if constexpr (SubBlkLen == 16) {
-                const uint8x8_t LowMask = vdup_n_u8(0x0F);
-
                 uint8x8_t bv_packed[NCols];
                 UnrolledLoop<NCols>([&](size_t i) {
                     bv_packed[i] = vld1_u8(
@@ -718,14 +719,12 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
                 });
 
                 UnrolledLoop<NCols>([&](size_t i) {
-                    const int8x8_t lo = vreinterpret_s8_u8(vand_u8(bv_packed[i], LowMask));
+                    const int8x8_t lo = vreinterpret_s8_u8(vand_u8(bv_packed[i], LowMaskU8x8));
                     const int8x8_t hi = vreinterpret_s8_u8(vshr_n_u8(bv_packed[i], 4));
                     bv[i][0] = vcombine_s8(lo, hi);
                 });
             } else {
                 static_assert(SubBlkLen == 32);
-
-                const uint8x16_t LowMask = vdupq_n_u8(0x0F);
 
                 uint8x16_t bv_packed[NCols];
                 UnrolledLoop<NCols>([&](size_t i) {
@@ -735,7 +734,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
                 });
 
                 UnrolledLoop<NCols>([&](size_t i) {
-                    bv[i][0] = vreinterpretq_s8_u8(vandq_u8(bv_packed[i], LowMask));
+                    bv[i][0] = vreinterpretq_s8_u8(vandq_u8(bv_packed[i], LowMaskU8x16));
                     bv[i][1] = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed[i], 4));
                 });
             }
