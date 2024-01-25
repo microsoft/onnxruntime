@@ -631,6 +631,14 @@ class TestInferenceSession(unittest.TestCase):
         if "ROCMExecutionProvider" in onnxrt.get_available_providers():
             do_test_get_and_set_tuning_results("ROCMExecutionProvider")
 
+    def test_run_model_with_optional_sequence_input(self):
+        sess = onnxrt.InferenceSession(get_name("identity_opt.onnx"))
+        x = [np.array([1, 2, 3, 4, 5]).astype(np.float32)]
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+        res = sess.run([output_name], {input_name: x})
+        np.testing.assert_allclose(res[0], x)
+
     def test_run_model(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
