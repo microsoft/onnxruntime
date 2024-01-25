@@ -96,7 +96,7 @@ template <
     /// Element type for quant offsets
     typename ElementQOffset_,
     /// Layout type for quant scales and offsets
-    typename LayoutQScale_,
+    typename LayoutQMeta_,
     /// Blocking dimensions for quantization
     typename QuantBlocking_,
     /// Access granularity of quant scales in units of elements
@@ -167,7 +167,7 @@ template <
     /// Element type for quant offsets
     typename ElementQOffset,
     /// Layout type for quant scales
-    typename LayoutQScale,
+    typename LayoutQMeta,
     /// Blocking dimensions for quantization
     typename QuantBlocking,
     /// Access granularity of quant scales in units of elements
@@ -207,7 +207,7 @@ template <
     typename PermuteBLayout
 >
 struct DefaultQuantBGemm<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB,
-                         ElementQScale, ElementQOffset, LayoutQScale, QuantBlocking,
+                         ElementQScale, ElementQOffset, LayoutQMeta, QuantBlocking,
                          ElementC, LayoutC, ElementAccumulator,
                          arch::OpClassTensorOp, arch::Sm80, ThreadblockShape, WarpShape,
                          InstructionShape, EpilogueOutputOp, ThreadblockSwizzle, Stages,
@@ -221,7 +221,7 @@ struct DefaultQuantBGemm<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAli
   /// Define the threadblock-scoped matrix multiply-accumulate
   using Mma = typename cutlass::gemm::threadblock::DefaultQuantBMma<
       ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB,
-      ElementQScale, ElementQOffset, LayoutQScale, QuantBlocking,
+      ElementQScale, ElementQOffset, LayoutQMeta, QuantBlocking,
       ElementAccumulator, LayoutC, arch::OpClassTensorOp, arch::Sm80,
       ThreadblockShape, WarpShape, InstructionShape, Stages,
       Operator, false, GatherA, GatherB,

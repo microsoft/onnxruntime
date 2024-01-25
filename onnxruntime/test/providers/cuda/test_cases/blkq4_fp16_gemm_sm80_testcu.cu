@@ -323,11 +323,10 @@ void run_blkq4_gemm(int m, int n, int k) {
 
   cutlass::HostTensor<ElementW, LayoutInputWPack> tensor_weight_prepacked(
     cutlass::make_Coord(problem_size.k(), problem_size.n()/2));
-  prepack_weights_ref(problem_size.k(), problem_size.n(),
-                      make_ConstMatrixRef(tensor_weight),
-                      make_MatrixRef(tensor_weight_prepacked));
-
-  // std::cout << "Matrix Weight Prepacked:\n" << tensor_weight_prepacked.host_view() << "\n";
+  onnxruntime::test::sm80_prepack_weights_ref(
+    problem_size.k(), problem_size.n(),
+    make_ConstMatrixRef(tensor_weight),
+    make_MatrixRef(tensor_weight_prepacked));
 
   cutlass::HostTensor<ElementQScale, LayoutInputQScale> tensor_scale_prepacked(
       {problem_size.k()/QuantBlocking::kRow, problem_size.n()/QuantBlocking::kColumn});
@@ -335,23 +334,15 @@ void run_blkq4_gemm(int m, int n, int k) {
       {problem_size.k()/QuantBlocking::kRow, problem_size.n()/QuantBlocking::kColumn});
 
   auto scale_ref = make_ConstMatrixRef(tensor_scale);
-  prepack_quant_scales_ref<ElementQScale, typename decltype(scale_ref)::Layout, QuantBlocking>(
+  onnxruntime::test::sm80_prepack_quant_scales_ref<ElementQScale, typename decltype(scale_ref)::Layout, QuantBlocking>(
       problem_size.k(), problem_size.n(), scale_ref,
       make_MatrixRef(tensor_scale_prepacked));
   if constexpr (has_offsets) {
     auto offset_ref = make_ConstMatrixRef(tensor_offset);
-    prepack_quant_offsets_ref<typename decltype(offset_ref)::Layout, QuantBlocking>(
+    onnxruntime::test::sm80_prepack_quant_offsets_ref<typename decltype(offset_ref)::Layout, QuantBlocking>(
         problem_size.k(), problem_size.n(), offset_ref,
         make_MatrixRef(tensor_offset_prepacked));
   }
-
-  // std::cout << "================== Matrix Scale ==========================\n";
-  // for (int row = 0; row < tensor_scale_prepacked.extent().row(); ++row){
-  //   for (int col = 0; col < tensor_scale_prepacked.extent().column(); ++col){
-  //     printf("%.0f, ", float(tensor_scale_prepacked.at({row, col})));
-  //   }
-  //   printf("\n");
-  // }
 
   // Copy data from host to GPU...
   tensor_a.sync_device();
@@ -365,11 +356,6 @@ void run_blkq4_gemm(int m, int n, int k) {
   cutlass::TensorRef<ElementWPack const, LayoutInputWPack> ref_W(
     reinterpret_cast<ElementWPack const *>(tensor_weight_prepacked.device_data()),
     LayoutInputWPack::packed({problem_size.k()/2, problem_size.n()/2}));
-
-  // Construct events
-  cudaEvent_t finish_gemm_event;
-  auto cuda_err = cudaEventCreate(&finish_gemm_event);
-  ORT_ENFORCE(cuda_err == cudaSuccess, "Failed to create CUDA event.");
 
   // run GEMM
   cutlass::Status status;
@@ -385,16 +371,6 @@ void run_blkq4_gemm(int m, int n, int k) {
       tensor_c.device_ref(), tensor_d.device_ref());
   }
   ORT_ENFORCE(status == cutlass::Status::kSuccess, "Kernel execution failed: ", cutlassGetStatusString(status));
-
-  // Record an event when the GEMMs are complete
-  cuda_err = cudaEventRecord(finish_gemm_event);
-  ORT_ENFORCE(cuda_err == cudaSuccess, "Failed to record CUDA event: ", cudaGetErrorString(cuda_err));
-
-  // Wait for work on the device to complete.
-  cuda_err = cudaEventSynchronize(finish_gemm_event);
-  ORT_ENFORCE(cuda_err == cudaSuccess, "Failure during sync CUDA event: ", cudaGetErrorString(cuda_err));
-
-  cudaEventDestroy(finish_gemm_event);
 
   // Preparing reference kernel arguments
   // Dequantizing weights and running reference kernel

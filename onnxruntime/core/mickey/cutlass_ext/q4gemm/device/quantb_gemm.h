@@ -85,7 +85,7 @@ template <
     /// Element type for quant offsets
     typename ElementQOffset_,
     /// Layout type for quant scales and offsets
-    typename LayoutQScale_,
+    typename LayoutQMeta_,
     /// Blocking dimensions for quantization
     typename QuantBlocking_,
     /// Element type for C and D matrix operands
@@ -180,7 +180,7 @@ class QuantBGemm {
                 "InstructionShape::kK must be a multiple of 16 (2 tiles), required by 4b weight packing layout.");
   using ElementQScale = ElementQScale_;
   using ElementQOffset = ElementQOffset_;
-  using LayoutQScale = LayoutQScale_;
+  using LayoutQMeta = LayoutQMeta_;
   using QuantBlocking = QuantBlocking_;
   static constexpr bool kHasQOffset = !(std::is_same<ElementQOffset, std::monostate>::value);
 
@@ -197,7 +197,7 @@ class QuantBGemm {
     kAlignmentB,
     ElementQScale,
     ElementQOffset,
-    LayoutQScale,
+    LayoutQMeta,
     QuantBlocking,
     ElementC,
     LayoutC,
@@ -230,8 +230,8 @@ class QuantBGemm {
     TensorRef<ElementB const, LayoutB> ref_B;
     TensorRef<ElementC const, LayoutC> ref_C;
     TensorRef<ElementC, LayoutC> ref_D;
-    TensorRef<ElementQScale const, LayoutQScale> ref_Qscale;
-    TensorRef<ElementQOffset const, LayoutQScale> ref_Qoffset;
+    TensorRef<ElementQScale const, LayoutQMeta> ref_Qscale;
+    TensorRef<ElementQOffset const, LayoutQMeta> ref_Qoffset;
 
     typename EpilogueOutputOp::Params epilogue;
 
@@ -258,7 +258,7 @@ class QuantBGemm {
       GemmCoord problem_size_,
       TensorRef<ElementA const, LayoutA> ref_A_,
       TensorRef<ElementB const, LayoutB> ref_B_,
-      TensorRef<ElementQScale const, LayoutQScale> ref_Qscale_,
+      TensorRef<ElementQScale const, LayoutQMeta> ref_Qscale_,
       TensorRef<ElementC const, LayoutC> ref_C_,
       TensorRef<ElementC, LayoutC> ref_D_,
       typename EpilogueOutputOp::Params epilogue_ =
@@ -279,8 +279,8 @@ class QuantBGemm {
       GemmCoord problem_size_,
       TensorRef<ElementA const, LayoutA> ref_A_,
       TensorRef<ElementB const, LayoutB> ref_B_,
-      TensorRef<ElementQScale const, LayoutQScale> ref_Qscale_,
-      TensorRef<ElementQOffset const, LayoutQScale> ref_Qoffset_,
+      TensorRef<ElementQScale const, LayoutQMeta> ref_Qscale_,
+      TensorRef<ElementQOffset const, LayoutQMeta> ref_Qoffset_,
       TensorRef<ElementC const, LayoutC> ref_C_,
       TensorRef<ElementC, LayoutC> ref_D_,
       typename EpilogueOutputOp::Params epilogue_ =

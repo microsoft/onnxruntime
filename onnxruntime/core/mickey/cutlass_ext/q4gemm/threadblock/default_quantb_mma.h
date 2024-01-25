@@ -82,7 +82,7 @@ template <
     /// Element type for quant offsets
     typename ElementQOffset_,
     /// Layout for quant scales and offsets
-    typename LayoutQScale_,
+    typename LayoutQMeta_,
     /// Blocking size for quantization
     typename QuantBlocking_,
     /// Element type for internal accumulation
@@ -138,7 +138,7 @@ template <
     /// Element type for quant offsets
     typename ElementQOffset,
     /// Layout for quant scales and offsets
-    typename LayoutQScale,
+    typename LayoutQMeta,
     /// Blocking size for quantization
     typename QuantBlocking,
     /// Element type for internal accumulation
@@ -168,7 +168,7 @@ template <
     >
 struct DefaultQuantBMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
                   kAlignmentB, ElementQScale, ElementQOffset,
-                  LayoutQScale, QuantBlocking,
+                  LayoutQMeta, QuantBlocking,
                   ElementAccumulator, LayoutC,
                   arch::OpClassTensorOp, ArchTag, ThreadblockShape, WarpShape,
                   InstructionShape, Stages, Operator, false,
@@ -191,7 +191,7 @@ struct DefaultQuantBMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
   // Define the MmaCore components
   using MmaCore = typename cutlass::gemm::threadblock::DefaultQuantBMmaCore<
       ThreadblockShape, WarpShape, InstructionShape, ElementA, LayoutA,
-      ElementB, LayoutB, ElementQScale, ElementQOffset, LayoutQScale, QuantBlocking,
+      ElementB, LayoutB, ElementQScale, ElementQOffset, LayoutQMeta, QuantBlocking,
       ElementAccumulator, LayoutC, arch::OpClassTensorOp,
       Stages, Operator, false, CacheOpA, CacheOpB>;
 
@@ -218,14 +218,14 @@ struct DefaultQuantBMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
   using IteratorQScale =
       cutlass::transform::threadblock::PredicatedTileAccessIterator<
           typename MmaCore::ThreadblockQShape,
-          ElementQScale, LayoutQScale, 0, ThreadMapQScale, AccessTypeQScale>;
+          ElementQScale, LayoutQMeta, 0, ThreadMapQScale, AccessTypeQScale>;
 
   using ThreadMapQOffset = typename MmaCore::IteratorThreadMapQOffset;
   using AccessTypeQOffset =
       cutlass::Array<ElementQOffset, ThreadMapQOffset::kElementsPerAccess>;
   using IteratorQOffset =
       cutlass::transform::threadblock::OptionalPredicatedTileAccessIterator<
-            typename MmaCore::ThreadblockQShape, ElementQOffset, LayoutQScale,
+            typename MmaCore::ThreadblockQShape, ElementQOffset, LayoutQMeta,
             0, ThreadMapQOffset, AccessTypeQOffset, MmaCore::kThreads>;
 
   // Define the threadblock-scoped multistage matrix multiply

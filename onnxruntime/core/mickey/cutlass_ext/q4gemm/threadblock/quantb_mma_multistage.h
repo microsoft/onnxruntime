@@ -277,7 +277,7 @@ class QuantBMmaBase {
     }
 
     CUTLASS_HOST_DEVICE
-    static typename Operator::SmemLayoutQScale LayoutQScale() {
+    static typename Operator::SmemLayoutQScale LayoutQMeta() {
       return Operator::SmemLayoutQScale::packed({ShapeQScale::kRow, ShapeQScale::kColumn});
     }
 
@@ -301,7 +301,7 @@ class QuantBMmaBase {
     /// Returns a TensorRef to the quantization scales
     CUTLASS_HOST_DEVICE
     TensorRefQScale operand_QScale_ref() {
-      return TensorRefQScale{operand_QScale.data(), LayoutQScale()};
+      return TensorRefQScale{operand_QScale.data(), LayoutQMeta()};
     }
 
     CUTLASS_HOST_DEVICE

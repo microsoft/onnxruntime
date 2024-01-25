@@ -93,7 +93,7 @@ template <
     /// Element data type of quant offset
     typename ElementQOffset,
     /// Layout of quant scale
-    typename LayoutQScale,
+    typename LayoutQMeta,
     /// Blocking dimensions for quantization
     typename QuantBlocking,
     /// Data type of accumulator
@@ -157,7 +157,7 @@ template <
     /// Element data type of quant offset
     typename ElementQOffset_,
     /// Layout of quant scale
-    typename LayoutQScale_,
+    typename LayoutQMeta_,
     /// Blocking dimensions for quantization
     typename QuantBlocking_,
     /// Data type of accumulator
@@ -174,7 +174,7 @@ template <
     cutlass::arch::CacheOperation::Kind CacheOpB>
 struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
                       layout::RowMajor, ElementB_, layout::ColumnMajor,
-                      ElementQScale_, ElementQOffset_, LayoutQScale_, QuantBlocking_,
+                      ElementQScale_, ElementQOffset_, LayoutQMeta_, QuantBlocking_,
                       ElementC_, LayoutC_, arch::OpClassTensorOp, Stages,
                       Operator_, false, CacheOpA, CacheOpB> {
   using Shape = Shape_;
@@ -187,7 +187,7 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
 
   using ElementQScale = ElementQScale_;
   using ElementQOffset = ElementQOffset_;
-  using LayoutQScale = LayoutQScale_;
+  using LayoutQMeta = LayoutQMeta_;
   using QuantBlocking = QuantBlocking_;
 
   using ElementC = ElementC_;
@@ -269,8 +269,8 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
       MatrixShape<Shape::kK/2, Shape::kN/2>, ElementB, SmemLayoutB, 1,
       IteratorThreadMapB>;
 
-  using SmemLayoutQScale = LayoutQScale;
-  using SmemLayoutQOffset = LayoutQScale;
+  using SmemLayoutQScale = LayoutQMeta;
+  using SmemLayoutQOffset = LayoutQMeta;
 
   /// Threadblock-level quantization meta data shape
   using ThreadblockQShape = MatrixShape<Shape::kK / QuantBlocking::kRow, Shape::kN / QuantBlocking::kColumn>;
@@ -279,12 +279,12 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
   static_assert(ThreadblockQShape::kCount > 0, "QuantBlocking too big to fit in a thread block!");
   static_assert(QuantBlocking::kRow == 1 || QuantBlocking::kColumn == 1,
         "Only support single column or row quantize blocking!");
-  static_assert(QuantBlocking::kColumn != 1 || std::is_same<LayoutQScale, layout::RowMajor>::value,
+  static_assert(QuantBlocking::kColumn != 1 || std::is_same<LayoutQMeta, layout::RowMajor>::value,
         "Quant scale matrix's major dimension must have more elements, to facilitate fast loading!");
 
   /// Threadblock-level quantization meta data shape in pitch-linear layout
   using TBQPitchLinearShape = typename std::conditional<
-      std::is_same<LayoutQScale, layout::RowMajor>::value,
+      std::is_same<LayoutQMeta, layout::RowMajor>::value,
       layout::PitchLinearShape<ThreadblockQShape::kColumn, ThreadblockQShape::kRow>,
       layout::PitchLinearShape<ThreadblockQShape::kRow, ThreadblockQShape::kColumn>>::type;
 

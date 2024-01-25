@@ -255,7 +255,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
   std::vector<ElementW> packed_w_ref(q_weight_shape.product());
   MatrixRef<ElementW, LayoutWPack, true> tensor_packed_w_ref(
       packed_w_ref, make_Position(rows, columns / 2));
-  onnxruntime::cuda::test::prepack_weights_ref(rows, columns, tensor_q_weight, tensor_packed_w_ref);
+  onnxruntime::test::sm80_prepack_weights_ref(rows, columns, tensor_q_weight, tensor_packed_w_ref);
 
   std::vector<ElementW> packed_w(q_weight_shape.product());
   MatrixRef<ElementW, LayoutWPack, true> tensor_packed_w(
@@ -277,7 +277,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
       Base::ShouldRearrangeMeta ? make_MatrixRef<ElementT, LayoutQmeta, true>(packed_scales_ref, meta_shape)
                                 : tensor_scale;
   if (Base::ShouldRearrangeMeta) {
-    onnxruntime::cuda::test::prepack_quant_scales_ref<ElementT, LayoutQmeta, QuantBlocking>(
+    onnxruntime::test::sm80_prepack_quant_scales_ref<ElementT, LayoutQmeta, QuantBlocking>(
         rows, columns, tensor_scale.const_ref(), tensor_packed_s_ref);
   }
 
@@ -302,7 +302,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
         Base::ShouldRearrangeMeta ? make_MatrixRef<ElementQOffset, LayoutQmeta, true>(packed_zp_ref, meta_shape)
                                   : tensor_offset;
     if (Base::ShouldRearrangeMeta) {
-      onnxruntime::cuda::test::prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
+      onnxruntime::test::sm80_prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
           rows, columns, tensor_offset.const_ref(), tensor_packed_zp_ref);
     }
 
