@@ -90,7 +90,7 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
     ${assignment}`;
   };
 
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
+  const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: outputSize}];
   if (enableInputShapeUniform) {
     programUniforms.push(...createTensorShapeVariables(inputShape));
   }

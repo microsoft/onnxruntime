@@ -40,8 +40,10 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
   const enableOutputShapesUniforms = enableShapesUniforms(outputShape.length);
   const outputShapeOrRank = enableOutputShapesUniforms ? outputShape.length : outputShape;
 
-  const programUniforms: ProgramUniform[] =
-      [{type: 'uint32', data: outputSize}, {type: 'int32', data: axisDimLimit}, {type: 'uint32', data: axis}];
+  const programUniforms: ProgramUniform[] = [
+    {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: axisDimLimit},
+    {type: DataType.uint32, data: axis}
+  ];
   if (enableInputShapesUniforms) {
     programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
   }

@@ -19,6 +19,7 @@
 //
 // modified to fit the needs of the project
 
+import {DataType} from '../../../../wasm-common';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
@@ -408,7 +409,7 @@ const matMulReadWriteFnSource =
         ${
           hasBias ?
               `value = value + ${isChannelsLast ? 'bias[colIn]' : `${typeSnippet(component, dataType)}(bias[row])`};` :
-                                                  ''                                    }
+                                                  ''}
         ${applyActivation}
         ${outputVariable.setByIndices('vec3<u32>(coords)', 'value')}
       }
@@ -447,12 +448,14 @@ export const createMatmulProgramInfo =
       const bShapeTemp = [...outerDimsB, dimInner, dimBOuter / components];
       const bShapeOrRank = bShapeTemp.length;
       const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
-      const programUniforms: ProgramUniform[] =
-          [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
+      const programUniforms: ProgramUniform[] = [
+        {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
+        {type: DataType.int32, data: dimInner}
+      ];
       if (activationAttributes.activation === 'Clip') {
         programUniforms.push(
-            {type: 'float32', data: activationAttributes.clipMax!},
-            {type: 'float32', data: activationAttributes.clipMin!});
+            {type: DataType.float, data: activationAttributes.clipMax!},
+            {type: DataType.float, data: activationAttributes.clipMin!});
       }
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShapeTemp),

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -96,7 +97,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
   const inputDependencies: ProgramInputTensorInfoDependency[] = [];
   const inputShapeOrRanks = [];
   const enableInputShapesUniforms = [];
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
+  const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: outputSize}];
   for (let i = 0; i < inputs.length; ++i) {
     previousSum += inputs[i].dims[adjustedAxis];
     sizeInConcatAxis[i] = previousSum;
@@ -104,7 +105,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
     inputShapeOrRanks.push(enableInputShapesUniforms[i] ? inputs[i].dims.length : inputs[i].dims);
     inputVars[i] = inputVariable(`input${i}`, dataType, inputShapeOrRanks[i]);
     inputDependencies.push(enableInputShapesUniforms[i] ? 'rank' : 'dims');
-    programUniforms.push({type: 'uint32', data: sizeInConcatAxis[i]});
+    programUniforms.push({type: DataType.uint32, data: sizeInConcatAxis[i]});
   }
   for (let i = 0; i < inputs.length; ++i) {
     if (enableInputShapesUniforms[i]) {

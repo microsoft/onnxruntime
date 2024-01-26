@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
@@ -28,13 +29,14 @@ export const createGroupedConvProgramInfo =
       const outputSize = ShapeUtil.size(outputShape);
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: outputSize}, {type: 'uint32', data: attributes.dilations},
-        {type: 'uint32', data: [attributes.strides[0], attributes.strides[1]]},
-        {type: 'uint32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'uint32', data: outputChannelsPerGroup}
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: attributes.dilations},
+        {type: DataType.uint32, data: [attributes.strides[0], attributes.strides[1]]},
+        {type: DataType.uint32, data: [attributes.pads[0], attributes.pads[1]]},
+        {type: DataType.uint32, data: outputChannelsPerGroup}
       ];
       if (attributes.activation === 'Clip') {
         programUniforms.push(
-            {type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
+            {type: DataType.float, data: attributes.clipMax!}, {type: DataType.float, data: attributes.clipMin!});
       }
       programUniforms.push(
           ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
@@ -132,8 +134,8 @@ export const createGroupedConvVectorizeProgramInfo =
       const outputShapeInShader = [outputShape[0], outputShape[1], outputShape[2], outputShape[3] / components];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: outputSize}, {type: 'int32', data: attributes.strides},
-        {type: 'int32', data: attributes.pads}, ...createTensorShapeVariables(xShape),
+        {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: attributes.strides},
+        {type: DataType.int32, data: attributes.pads}, ...createTensorShapeVariables(xShape),
         ...createTensorShapeVariables(wShape), ...createTensorShapeVariables(outputShapeInShader)
       ];
       const xNumber = (outputNumber - 1) * attributes.strides[1] + wShape[1];
