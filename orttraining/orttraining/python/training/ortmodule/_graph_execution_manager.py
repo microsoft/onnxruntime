@@ -402,8 +402,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                     "training": self._export_mode,
                     "dynamic_axes": self._input_info.dynamic_axes,
                     "verbose": torch_exporter_verbose_log,
-                    "export_params": False,
-                    "keep_initializers_as_inputs": True,
+                    "export_params": self._export_mode == torch.onnx.TrainingMode.EVAL,
+                    "keep_initializers_as_inputs": self._export_mode != torch.onnx.TrainingMode.EVAL,
                 }
 
                 if check_function_has_param(torch.onnx.export, "autograd_inlining"):
