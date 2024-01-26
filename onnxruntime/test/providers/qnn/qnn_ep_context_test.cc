@@ -30,14 +30,14 @@ namespace test {
 // input1 -> Add -> Q -> DQ \
 //                           Add -> Q -> DQ -> output
 //        input2 -> Q -> DQ /
-static GetTestModelFn BuildGraphWithQAndNonQ() {
-  return [](ModelTestBuilder& builder) {
-    // Creat non-quantized Add node
+static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
+  return [single_ep_node](ModelTestBuilder& builder) {
+    // Creat non-quantized Add node1
     NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({2, 3}, false, {0, 1, 0, 1, 0, 1}));
-    NodeArg* add1_ini_input1 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, {0, 0, 0, 0, 0, 0}));
+    NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, {0, 0, 0, 0, 0, 0}));
 
     auto* add1_output = builder.MakeIntermediate();
-    builder.AddNode("Add", {input1, add1_ini_input1}, {add1_output});
+    builder.AddNode("Add", {input1, add1_ini_input2}, {add1_output});
 
     // Create quantized Add node2
     std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
@@ -45,21 +45,39 @@ static GetTestModelFn BuildGraphWithQAndNonQ() {
     QuantParams<uint8_t> q_parameter = GetDataQuantParams<uint8_t>(data_range);
     auto* add2_input1_qdq = AddQDQNodePair<uint8_t>(builder, add1_output, q_parameter.scale, q_parameter.zero_point);
 
-    NodeArg* add2_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, false, data));
+    NodeArg* add2_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, data));
     auto* add2_input2_qdq = AddQDQNodePair<uint8_t>(builder, add2_input2, q_parameter.scale, q_parameter.zero_point);
 
     auto* add2_output = builder.MakeIntermediate();
 
     builder.AddNode("Add", {add2_input1_qdq, add2_input2_qdq}, {add2_output});
 
-    // add_output -> Q -> DQ -> output
-    AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
+    if (single_ep_node) {
+      // add_output -> Q -> DQ -> output
+      AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
+    } else {
+      auto* add3_input1_qdq = AddQDQNodePair<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
+      NodeArg* add3_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, {0, 0, 0, 0, 0, 0}));
+
+      auto* add3_output = builder.MakeIntermediate();
+      builder.AddNode("Add", {add3_input1_qdq, add3_ini_input2}, {add3_output});
+
+      // Create quantized Add node4
+      auto* add4_input1_qdq = AddQDQNodePair<uint8_t>(builder, add3_output, q_parameter.scale, q_parameter.zero_point);
+
+      NodeArg* add4_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, data));
+      auto* add4_input2_qdq = AddQDQNodePair<uint8_t>(builder, add4_input2, q_parameter.scale, q_parameter.zero_point);
+
+      auto* add4_output = builder.MakeIntermediate();
+
+      builder.AddNode("Add", {add4_input1_qdq, add4_input2_qdq}, {add4_output});
+      // add_output -> Q -> DQ -> output
+      AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add4_output, q_parameter.scale, q_parameter.zero_point);
+    }
   };
 }
 
-// Test that models with 1 non-quantized Add node and 1 quantized Add node can still generate the context binary
-// The generated Onnx model has 1 Add node and 1 EPContext node
-TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport) {
+void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -77,7 +95,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport) {
                            logging_manager.DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
-  BuildGraphWithQAndNonQ()(helper);
+  BuildGraphWithQAndNonQ(single_ep_node)(helper);
   helper.SetGraphOutputs();
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
@@ -112,11 +130,12 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport) {
     }
   }
 
-  ASSERT_EQ(ep_context_node_count, 1);
-  ASSERT_EQ(non_ep_context_node_count, 1);
+  int expected_node_count = single_ep_node ? 1 : 2;
+  ASSERT_EQ(ep_context_node_count, expected_node_count);
+  ASSERT_EQ(non_ep_context_node_count, expected_node_count);
 
   Ort::SessionOptions so2;
-  // context file path is required if it's non-embed mode and the model is loaded from memroy
+  // context file path is required if it's non-embed mode and the model is loaded from memory
   so2.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
   so2.AppendExecutionProvider("QNN", provider_options);
 
@@ -126,6 +145,21 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport) {
 
   // clean up
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
+}
+
+// Test that models with 1 non-quantized Add node and 1 quantized Add node can still generate the context binary
+// The generated Onnx model has 1 Add node and 1 EPContext node
+TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {
+  bool single_ep_node = true;
+  QnnContextBinaryMultiPartitionTestBody(single_ep_node);
+}
+
+
+// Test that models with 2 non-quantized Add nodes and 2 quantized Add nodes can still generate the context binary
+// The generated Onnx model has 2 Add nodes and 1 EPContext nodes
+TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
+  bool single_ep_node = false;
+  QnnContextBinaryMultiPartitionTestBody(single_ep_node);
 }
 
 // Create a model with Case + Add (quantized)
