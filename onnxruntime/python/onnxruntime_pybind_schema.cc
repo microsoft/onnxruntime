@@ -50,10 +50,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::MIGraphXProviderFactoryCreator::Create(0),
 #endif
 #ifdef USE_VITISAI
-            []() {
-              ProviderOptions provider_options_map;
-              return onnxruntime::VitisAIProviderFactoryCreator::Create(&provider_options_map);
-            }(),
+            onnxruntime::VitisAIProviderFactoryCreator::Create(ProviderOptions{}),
 #endif
 #ifdef USE_ACL
             onnxruntime::ACLProviderFactoryCreator::Create(0),
