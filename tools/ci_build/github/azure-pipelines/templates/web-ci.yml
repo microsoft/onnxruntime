@@ -54,42 +54,7 @@ parameters:
   default: false
 
 stages:
-- stage: Precheck_and_extract_commit
-  jobs:
-  - job: Precheck_and_extract_commit
-    pool: ${{ parameters.PoolName }}
-    variables:
-      runCodesignValidationInjection: false
-    timeoutInMinutes: 30
-    workspace:
-      clean: all
-    steps:
-    - checkout: self
-      submodules: false
-    - script: |
-       git submodule sync -- cmake/external/onnx
-       git submodule update --init -- cmake/external/onnx
-      workingDirectory: '$(Build.SourcesDirectory)'
-      displayName: 'Checkout submodule onnx'
-    - task: NodeTool@0
-      inputs:
-        versionSpec: '18.x'
-    - template: linux-web-init-and-check.yml
-    - task: Bash@3
-      displayName: 'Extract commit SHA and save to __commit.txt'
-      inputs:
-        targetType: 'inline'
-        script: |
-          echo $(Build.SourceVersion)
-          echo $(Build.SourceVersion) > "$(Build.ArtifactStagingDirectory)"/__commit.txt
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish __commit.txt'
-      inputs:
-        artifactName: '__commit'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
 - stage: Build_wasm_Debug
-  dependsOn: Precheck_and_extract_commit
   jobs:
   - template: ${{ parameters.WASMTemplate }}
     parameters:
