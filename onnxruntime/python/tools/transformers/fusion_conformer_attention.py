@@ -92,8 +92,6 @@ class FusionConformerAttention(FusionAttention):
             logger.debug("fuse_conformer_attention: failed to match q path")
             return
 
-
-
         k_nodes = self.model.match_parent_path(
             matmul_qk,
             ["Transpose", "Concat", "Transpose", "Reshape", "Add", "MatMul"],
