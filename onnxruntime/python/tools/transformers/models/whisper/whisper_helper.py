@@ -16,8 +16,8 @@ import torch
 from packaging import version
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from transformers import __version__ as transformers_version
-from whisper import _MODELS, _ALIGNMENT_HEADS, _download
-from whisper.model import Whisper, ModelDimensions
+from whisper import _ALIGNMENT_HEADS, _MODELS, _download
+from whisper.model import ModelDimensions, Whisper
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
