@@ -1589,6 +1589,7 @@ using ShapeInferenceHelper_Pad7 = VersionedOpsetHelper<PaddingHelper, 7>;
 using ShapeInferenceHelper_Pad11 = VersionedOpsetHelper<PaddingHelper, 11>;
 using ShapeInferenceHelper_Pad13 = VersionedOpsetHelper<PaddingHelper, 13>;
 using ShapeInferenceHelper_Pad18 = VersionedOpsetHelper<PaddingHelper, 18>;
+using ShapeInferenceHelper_Pad19 = VersionedOpsetHelper<PaddingHelper, 19>;
 
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1606,6 +1607,7 @@ using ShapeInferenceHelper_Expand = ExpandHelper;
 using ShapeInferenceHelper_Reshape7 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape13 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape14 = ReshapeHelper;
+using ShapeInferenceHelper_Reshape19 = ReshapeHelper;
 using ShapeInferenceHelper_ConstantOfShape = ConstantOfShapeHelper;
 using ShapeInferenceHelper_Tile = TileHelper;
 using ShapeInferenceHelper_Resize10 = VersionedOpsetHelper<ResizeHelper, 10>;
@@ -1725,6 +1727,7 @@ using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity16 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Identity19 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
@@ -1750,6 +1753,7 @@ using ShapeInferenceHelper_CumSum14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CastLike19 = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_DmlFusedConv = ConvHelper;
 using ShapeInferenceHelper_DmlFusedConvTranspose = ConvTransposeHelper;

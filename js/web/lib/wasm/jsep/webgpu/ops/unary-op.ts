@@ -242,6 +242,26 @@ export const sigmoid = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sigmoid', a => `(1.0 / (1.0 + exp(-${a})))`));
 };
 
+export interface HardSigmoidAttributes extends AttributeWithCacheKey {
+  readonly alpha: number;
+  readonly beta: number;
+}
+
+export const parseHardSigmoidAttributes = (attributes: Record<string, unknown>): HardSigmoidAttributes =>
+    createAttributeWithCacheKey(attributes as {
+      alpha: number;
+      beta: number;
+    });
+
+export const hardSigmoid = (context: ComputeContext, attributes: HardSigmoidAttributes): void => {
+  const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
+  context.compute(createElementwiseProgramInfo(
+      context.inputs[0], 'HardSigmoid',
+      a => `max(vec4<${dataType}>(0.0), min(vec4<${dataType}>(1.0), ${attributes.alpha} * ${a} + vec4<${dataType}>(${
+          attributes.beta})))`,
+      undefined, attributes.cacheKey));
+};
+
 export const sin = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sin', 'sin'));
 };
@@ -259,7 +279,9 @@ export const tan = (context: ComputeContext): void => {
 };
 
 export const tanh = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Tanh', 'tanh'));
+  // TODO: revisit after https://github.com/gpuweb/gpuweb/issues/4458 is resolved
+  context.compute(createElementwiseProgramInfo(
+      context.inputs[0], 'Tanh', a => `sign(${a}) * (1 - exp(-2 * abs(${a}))) / (1 + exp(-2 * abs(${a})))`));
 };
 
 export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttributes): number => {

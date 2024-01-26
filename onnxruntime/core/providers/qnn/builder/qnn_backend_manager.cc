@@ -17,6 +17,7 @@
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+#include "core/providers/qnn/builder/qnn_configs_helper.h"
 
 #ifdef _WIN32
 #include <winmeta.h>
@@ -329,9 +330,37 @@ Status QnnBackendManager::CreateDevice() {
     return Status::OK();
   }
 
+  qnn::QnnConfigsBuilder<QnnDevice_Config_t, QnnHtpDevice_CustomConfig_t> device_configs_builder(QNN_DEVICE_CONFIG_INIT,
+                                                                                                 {});
+  if (qnn_backend_type_ == QnnBackendType::HTP) {
+    // Set SoC Model. The *enum* Qnn_SocModel_t is deprecated and will not be updated in the future. Therefore,
+    // must use the latest SDK documentation to get the SoC model of the latest HW.
+    if (soc_model_ != QNN_SOC_MODEL_UNKNOWN) {
+      QnnHtpDevice_CustomConfig_t& custom_config = device_configs_builder.PushCustomConfig();
+      custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_SOC;
+      custom_config.socModel = soc_model_;
+
+      QnnDevice_Config_t& device_config = device_configs_builder.PushConfig();
+      device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+      device_config.customConfig = &custom_config;
+    }
+
+    // Set the minimum HTP architecture. The driver will use ops that are compatible with this minimum architecture.
+    if (htp_arch_ != QNN_HTP_DEVICE_ARCH_NONE) {
+      QnnHtpDevice_CustomConfig_t& custom_config = device_configs_builder.PushCustomConfig();
+      custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
+      custom_config.arch.arch = htp_arch_;
+      custom_config.arch.deviceId = device_id_;
+
+      QnnDevice_Config_t& device_config = device_configs_builder.PushConfig();
+      device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+      device_config.customConfig = &custom_config;
+    }
+  }
+
   LOGS_DEFAULT(INFO) << "Create device.";
   if (nullptr != qnn_interface_.deviceCreate) {
-    auto result = qnn_interface_.deviceCreate(log_handle_, nullptr, &device_handle_);
+    auto result = qnn_interface_.deviceCreate(log_handle_, device_configs_builder.GetQnnConfigs(), &device_handle_);
     if (QNN_SUCCESS != result) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", result);
     }

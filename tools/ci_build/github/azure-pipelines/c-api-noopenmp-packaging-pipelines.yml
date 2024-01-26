@@ -1023,7 +1023,7 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-T4'
+    AgentPool : 'onnxruntime-Win2022-GPU-A10'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
@@ -1034,7 +1034,7 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-T4'
+    AgentPool : 'onnxruntime-Win2022-GPU-A10'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
@@ -1046,7 +1046,7 @@ stages:
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU
+    AgentPool : Onnxruntime-Linux-GPU-A10
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
@@ -1055,7 +1055,7 @@ stages:
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU
+    AgentPool : Onnxruntime-Linux-GPU-A10
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     MoreSuffix: '_Linux'

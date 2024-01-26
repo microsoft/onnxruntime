@@ -53,9 +53,9 @@ def chain_model(args):
 
     beam_outputs = ["sequences"]
     if args.output_sequence_scores:
-        beam_outputs.append("sequence_scores")
+        beam_outputs.append("sequence_scores_fp16" if args.precision == Precision.FLOAT16 else "sequence_scores")
     if args.output_scores:
-        beam_outputs.append("scores")
+        beam_outputs.append("scores_fp16" if args.precision == Precision.FLOAT16 else "scores")
 
     if args.use_whisper_beamsearch:
         assert len(beam_inputs) == 12
@@ -75,6 +75,7 @@ def chain_model(args):
             beam_outputs.extend(["no_speech_probs_beam"])
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
+    output_scores_cast_node = output_sequence_scores_cast_node = None
     if args.precision == Precision.FLOAT16:
         input_features_cast_node = helper.make_node(
             "Cast",
@@ -97,6 +98,22 @@ def chain_model(args):
             name="CastRepetitionPenaltyToFp16",
             to=TensorProto.FLOAT16,
         )
+        if args.output_sequence_scores:
+            output_sequence_scores_cast_node = helper.make_node(
+                "Cast",
+                inputs=["sequence_scores_fp16"],
+                outputs=["sequence_scores"],
+                name="CastOutputSequenceScoresToFp32",
+                to=TensorProto.FLOAT,
+            )
+        if args.output_scores:
+            output_scores_cast_node = helper.make_node(
+                "Cast",
+                inputs=["scores_fp16"],
+                outputs=["scores"],
+                name="CastScoresToFp32",
+                to=TensorProto.FLOAT,
+            )
 
     operator_type = "WhisperBeamSearch" if args.use_whisper_beamsearch else "BeamSearch"
     node = helper.make_node(operator_type, inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
@@ -214,10 +231,18 @@ def chain_model(args):
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
     graph_nodes = (
-        [input_features_cast_node, len_pen_cast_node, rep_pen_cast_node, node]
+        [
+            input_features_cast_node,
+            len_pen_cast_node,
+            rep_pen_cast_node,
+            node,
+            output_sequence_scores_cast_node,
+            output_scores_cast_node,
+        ]
         if args.precision == Precision.FLOAT16
         else [node]
     )
+    graph_nodes = [node for node in graph_nodes if node is not None]
     if args.output_no_speech_probs:
         prob_cast_node = helper.make_node(
             "Cast",
