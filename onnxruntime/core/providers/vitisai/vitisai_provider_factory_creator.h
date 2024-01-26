@@ -10,6 +10,6 @@
 
 namespace onnxruntime {
 struct VitisAIProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const void* provider_options);
 };
 }  // namespace onnxruntime

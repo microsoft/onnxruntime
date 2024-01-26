@@ -150,11 +150,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "VitisAI") == 0) {
-#if !defined(ORT_MINIMAL_BUILD)
-    options->provider_factories.push_back(VitisAIProviderFactoryCreator::Create(provider_options));
-#else
-    status = create_not_supported_status();
-#endif
+    OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, &provider_options);
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
@@ -498,5 +494,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
+                    _In_ OrtSessionOptions* options, _In_ const void* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateNotEnabledStatus("VitisAI");
 }
 #endif

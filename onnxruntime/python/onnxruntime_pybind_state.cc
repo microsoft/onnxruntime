@@ -989,7 +989,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
     }
     const auto& vitis_option_map = it->second;
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(vitis_option_map)
+    return onnxruntime::VitisAIProviderFactoryCreator::Create(&vitis_option_map)
         ->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {

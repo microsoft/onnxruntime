@@ -1692,8 +1692,8 @@ std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(co
   return s_library_dnnl.Get().CreateExecutionProviderFactory(dnnl_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
-  return s_library_vitisai.Get().CreateExecutionProviderFactory(&provider_options);
+std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(const void* provider_options) {
+  return s_library_vitisai.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
@@ -2577,4 +2577,15 @@ ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProvid
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_ OrtSessionOptions* options, _In_ const void* provider_options) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_VitisAI: Failed to load shared library");
+  }
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
 }

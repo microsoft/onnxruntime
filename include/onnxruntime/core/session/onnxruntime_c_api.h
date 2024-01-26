@@ -4558,6 +4558,18 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
+
+  /** \brief Append VitisAI provider to session options
+   *
+   * If VitisAI is not available (due to a non VitisAI enabled build, or if VitisAI is not installed on the system), this function will return failure.
+   *
+   * \param[in] options
+   * \param[in] vitisai_options
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_VitisAI,
+                  _In_ OrtSessionOptions* options, _In_ const void* vitisai_options);
 };
 
 /*
