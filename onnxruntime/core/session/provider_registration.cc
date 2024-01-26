@@ -149,8 +149,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
-  } else if (strcmp(provider_name, "VitisAI") == 0) {
-    OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, &provider_options);
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
