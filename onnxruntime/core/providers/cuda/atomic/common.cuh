@@ -25,6 +25,16 @@
 namespace onnxruntime {
 namespace cuda {
 
+__device__ __forceinline__ void atomic_add(int8_t* address, int8_t val) {
+    int* address_as_int = reinterpret_cast<int*>(address);
+    int old = *address_as_int, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_int, assumed,
+                        static_cast<int>(val) + assumed);
+    } while (assumed != old);
+}
+
 __device__ __forceinline__ void atomic_add(float *address, float value) {
     atomicAdd(address, value);
 }
@@ -120,6 +130,55 @@ __device__ __forceinline__ void AtomicAdd<half>(half* start_addr, size_t index, 
     atomicAdd(start_addr + index, value);
   }
 #endif
+}
+
+__device__ __forceinline__ void atomic_mul(half* address, half val) {
+    unsigned short int* address_as_short = reinterpret_cast<unsigned short int*>(address);
+    unsigned short int old = *address_as_short, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_short, assumed,
+                        __half_as_short(val * __short_as_half(assumed)));
+    } while (assumed != old);
+}
+
+__device__ __forceinline__ void atomic_mul(float* address, float val) {
+    int* address_as_int = reinterpret_cast<int*>(address);
+    int old = *address_as_int, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_int, assumed,
+                        __float_as_int(val * __int_as_float(assumed)));
+    } while (assumed != old);
+}
+
+__device__ __forceinline__ void atomic_mul(double* address, double val) {
+    unsigned long long int* address_as_long_long = reinterpret_cast<unsigned long long int*>(address);
+    unsigned long long int old = *address_as_long_long, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_long_long, assumed,
+                        __double_as_longlong(val * __longlong_as_double(assumed)));
+    } while (assumed != old);
+}
+
+//  Obtained from pytorch/aten/src/ATen/cuda/Atomic.cuh.
+__device__ __forceinline__ void atomic_mul(int8_t* address, int8_t val) {
+    size_t offset = (size_t)address & 3;                                                                               \
+    uint32_t * address_as_ui = (uint32_t *)((char *)address - offset);                                                 \
+    uint32_t old = *address_as_ui;                                                                                     \
+    uint32_t shift = offset * 8;                                                                                       \
+    uint32_t old_byte;                                                                                                 \
+    uint32_t newval;                                                                                                   \
+    uint32_t assumed;                                                                                                  \
+                                                                                                                       \
+    do {                                                                                                               \
+      assumed = old;                                                                                                   \
+      old_byte = (old >> shift) & 0xff;                                                                                \
+      newval = static_cast<uint8_t>(val * static_cast<int8_t>(old_byte));                                              \
+      newval = (old & ~(0x000000ff << shift)) | (newval << shift);                                                     \
+      old = atomicCAS(address_as_ui, assumed, newval);                                                                 \
+    } while (assumed != old);                                                                                          \
 }
 
 }  // namespace cuda
