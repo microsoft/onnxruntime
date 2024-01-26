@@ -2,17 +2,19 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 import argparse
+import logging
 import onnx
+import os
 import torch
 
 from enum import Enum
 from onnx import ModelProto, TensorProto, helper
+from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 from transformers import AutoConfig, AutoModelForCausalLM
-from typing import List
 
 # --------------------------------------------------------------------------
 # The following code is used when this file is not in the ORT package
-import sys, os
+import sys
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -25,12 +27,18 @@ from benchmark_helper import Precision
 
 
 class AttentionOpType(Enum):
-    Attention = "attention"
-    MultiHeadAttention = "mha"
-    GroupQueryAttention = "gqa"
+    Attention = "Attention"
+    MultiHeadAttention = "MultiHeadAttention"
+    GroupQueryAttention = "GroupQueryAttention"
 
     def __str__(self):
         return self.value
+
+
+def env_reset():
+    for flag in ["AttentionOpType"]:
+        if flag in os.environ:
+            del os.environ[flag]
 
 
 class ConvertPhi2ToONNX:
@@ -48,10 +56,16 @@ class ConvertPhi2ToONNX:
         self.batch_size = 2
         self.sequence_length = 8
         self.phi2_edge_dict = self.__get_phi2_edge_dict(self.phi_config)
+        self.attn_op_type = None
+        self.precision = None
+        self.optimized_model = False
 
     def init_attn_type_and_precision(self, attn_op_type: AttentionOpType, precision: Precision):
         self.attn_op_type = attn_op_type
         self.precision = precision
+
+        env_reset()
+        os.environ["AttentionOpType"] = str(attn_op_type)
 
     def __get_phi2_edge_dict(self, config: AutoConfig) -> dict:
         edge_dict = {}
@@ -77,6 +91,7 @@ class ConvertPhi2ToONNX:
 
     def __process_graph_io(self, config: AutoConfig, onnx_model: ModelProto):
         use_gqa = self.attn_op_type == AttentionOpType.GroupQueryAttention
+        use_attn = self.attn_op_type == AttentionOpType.Attention
         graph = onnx_model.graph
         new_inputs = []
         for i, vi in enumerate(graph.input):
@@ -96,19 +111,34 @@ class ConvertPhi2ToONNX:
                     elem_type=TensorProto.INT64 if use_gqa else TensorProto.INT32,
                     shape=["batch_size", "seq_len"],
                 )
-                new_inputs.extend([vi, vi_pid, vi_mask])
-            if "past_key" in vi.name or "past_value" in vi.name:
-                vi_cache = helper.make_tensor_value_info(
-                    vi.name,
-                    elem_type=vi.type.tensor_type.elem_type,
-                    shape=[
-                        "batch_size",
-                        config.num_attention_heads,
-                        "past_seq_len",
-                        config.hidden_size // config.num_attention_heads,
-                    ],
-                )
-                new_inputs.extend([vi_cache])
+                new_inputs.extend([vi, vi_pid, vi_mask]) if not use_attn else new_inputs.extend([vi, vi_mask])
+            if not use_attn:
+                if "past_key" in vi.name or "past_value" in vi.name:
+                    vi_cache = helper.make_tensor_value_info(
+                        vi.name,
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=[
+                            "batch_size",
+                            config.num_attention_heads,
+                            "past_seq_len",
+                            config.hidden_size // config.num_attention_heads,
+                        ],
+                    )
+                    new_inputs.extend([vi_cache])
+            else:
+                if "past_key" in vi.name:
+                    vi_cache = helper.make_tensor_value_info(
+                        vi.name.replace("past_key", "past"),
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=[
+                            2,
+                            "batch_size",
+                            config.num_attention_heads,
+                            "seq_len",
+                            config.hidden_size // config.num_attention_heads,
+                        ],
+                    )
+                    new_inputs.extend([vi_cache])
 
         graph.ClearField("input")
         graph.input.extend(new_inputs)
@@ -119,18 +149,34 @@ class ConvertPhi2ToONNX:
                 vi = helper.make_tensor_value_info(
                     vi.name, elem_type=vi.type.tensor_type.elem_type, shape=["batch_size", "seq_len", config.vocab_size]
                 )
+                new_outputs.extend([vi])
             else:
-                vi = helper.make_tensor_value_info(
-                    vi.name,
-                    elem_type=vi.type.tensor_type.elem_type,
-                    shape=[
-                        "batch_size",
-                        config.num_attention_heads,
-                        "total_seq_len",
-                        config.hidden_size // config.num_attention_heads,
-                    ],
-                )
-            new_outputs.extend([vi])
+                if not use_attn:
+                    vi = helper.make_tensor_value_info(
+                        vi.name,
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=[
+                            "batch_size",
+                            config.num_attention_heads,
+                            "total_seq_len",
+                            config.hidden_size // config.num_attention_heads,
+                        ],
+                    )
+                    new_outputs.extend([vi])
+                else:
+                    if "present_key" in vi.name:
+                        vi = helper.make_tensor_value_info(
+                            vi.name.replace("present_key", "present"),
+                            elem_type=vi.type.tensor_type.elem_type,
+                            shape=[
+                                2,
+                                "batch_size",
+                                config.num_attention_heads,
+                                "seq_len",
+                                config.hidden_size // config.num_attention_heads,
+                            ],
+                        )
+                        new_outputs.extend([vi])
 
         graph.ClearField("output")
         graph.output.extend(new_outputs)
@@ -162,6 +208,7 @@ class ConvertPhi2ToONNX:
         """
         Unrolls the function with the given name in the model.
         """
+        logging.info(f"Unrolling function {func_name}...")
         nodes_to_remove = []
         nodes_to_add = []
         edges_to_remove = []
@@ -203,6 +250,7 @@ class ConvertPhi2ToONNX:
         """
         Removes the dropout layer in the model.
         """
+        logging.info("Removing dropout layer...")
         edge_mapping = {}
         nodes_to_remove = []
         for node in model.graph.node:
@@ -217,6 +265,7 @@ class ConvertPhi2ToONNX:
         return self.__update_edges(model, edge_mapping)
 
     def __get_phi2_torch_model(self):
+        logging.info("Loading phi2 torch model...")
         if self.phi_model is not None:
             return
         self.phi_model = AutoModelForCausalLM.from_pretrained(
@@ -225,9 +274,16 @@ class ConvertPhi2ToONNX:
         self.phi_model.eval()
         self.phi_model.to(self.device)
 
+    def optimized_model_exists(self):
+        return self.optimized_model
+
     def get_phi2_torch_inputs(self, batch_size: int, sequence_length: int):
         input_ids = torch.randint(
-            low=0, high=self.phi_config.vocab_size, size=(batch_size, sequence_length), dtype=torch.int64, device=device
+            low=0,
+            high=self.phi_config.vocab_size,
+            size=(batch_size, sequence_length),
+            dtype=torch.int64,
+            device=self.device,
         )
         self.__get_phi2_torch_model()
         torch_inputs = self.phi_model.prepare_inputs_for_generation(
@@ -239,14 +295,17 @@ class ConvertPhi2ToONNX:
         assert onnx_path.endswith(".onnx")
         if not os.path.exists(onnx_path):
             return
+
         model = onnx.load_model(onnx_path, load_external_data=False)
         onnx_data_path = None
         for initializer in model.graph.initializer:
             if initializer.data_location == 1 and initializer.external_data[0].key == "location":
                 onnx_data_path = "./" + initializer.external_data[0].value
                 break
+        logging.info(f"Erasing {onnx_path}...")
         os.remove(onnx_path)
         if onnx_data_path is not None:
+            logging.info(f"Erasing {onnx_data_path}...")
             os.remove(onnx_data_path)
 
     def dynamo_export(self, onnx_path: str):
@@ -256,6 +315,8 @@ class ConvertPhi2ToONNX:
         from torch._dynamo import config
 
         config.capture_scalar_outputs = True
+
+        logging.info("Exporting Phi2 torch model to ONNX...")
         torch.onnx.dynamo_export(
             self.phi_model,
             input_ids,
@@ -277,7 +338,6 @@ class ConvertPhi2ToONNX:
         model = self.__unroll_function(model, function_name)
         model = self.__update_edges(model, self.phi2_edge_dict)
         model = self.__simplify_phi2_op_type(model)
-        model = self.__process_graph_io(self.phi_config, model)
         model = self.__remove_dropout_layer(model)
         onnx.save_model(
             model,
@@ -287,13 +347,26 @@ class ConvertPhi2ToONNX:
             location=onnx_path_out + ".data",
         )
 
-    def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str, use_fp16: bool = False):
+    def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
+        self.optimized_model = True
+
         from fusion_options import FusionOptions
         from optimizer import optimize_model
 
+        processed_onnx_path = "phi2_processed.onnx"
+        model = onnx.load_model(onnx_path, load_external_data=True)
+        model = self.__process_graph_io(self.phi_config, model)
+        onnx.save_model(
+            model,
+            processed_onnx_path,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location=processed_onnx_path + ".data",
+        )
+
         optimization_options = FusionOptions("phi")
         optimizer = optimize_model(
-            onnx_path,
+            processed_onnx_path,
             model_type="phi",
             num_heads=self.phi_config.num_attention_heads,
             hidden_size=self.phi_config.hidden_size,
@@ -302,17 +375,45 @@ class ConvertPhi2ToONNX:
             only_onnxruntime=False,
         )
 
-        if use_fp16:
-            node_block_list = ["GroupQueryAttention_0_29", "GroupQueryAttention_0_30", "GroupQueryAttention_0_31"]
+        self.erase_onnx_model(processed_onnx_path)
+
+        if self.precision == Precision.FLOAT32:
+            optimizer.save_model_to_file(onnx_path_opt, use_external_data_format=True)
+            return
+
+        if (
+            self.precision == Precision.FLOAT16 or self.precision == Precision.INT4
+        ) and self.attn_op_type != AttentionOpType.MultiHeadAttention:
+            node_block_list = [
+                "GroupQueryAttention_29",
+                "GroupQueryAttention_30",
+                "GroupQueryAttention_31",
+                "Attention_29",
+                "Attention_30",
+                "Attention_31",
+            ]
+            logging.info(f"Converting onnx model to float16/bfloat16...")
             optimizer.convert_float_to_float16(
                 keep_io_types=False,
                 node_block_list=node_block_list,
                 use_symbolic_shape_infer=True,
-                use_bfloat16_as_blocked_nodes_dtype=True,
+                use_bfloat16_as_blocked_nodes_dtype=True
+                if self.attn_op_type == AttentionOpType.GroupQueryAttention
+                else False,
             )
 
-        optimizer.save_model_to_file(onnx_path_opt, use_external_data_format=True)
-        optimizer.get_operator_statistics()
+        if self.precision == Precision.FLOAT16:
+            optimizer.save_model_to_file(onnx_path_opt, use_external_data_format=True)
+            return
+        else:
+            assert self.precision == Precision.INT4
+            quant = MatMul4BitsQuantizer(
+                model=optimizer.model,
+                block_size=16,
+                is_symmetric=True,
+            )
+            quant.process()
+            quant.model.save_model_to_file(onnx_path_opt, use_external_data_format=True)
 
 
 def parse_arguments():
@@ -322,56 +423,56 @@ def parse_arguments():
         "--fp32_cpu",
         required=False,
         action="store_true",
-        help="Generate fp32 onnx model for CPU",
+        help="Generate fp32 ONNX model for CPU",
     )
 
     parser.add_argument(
         "--int4_cpu",
         required=False,
         action="store_true",
-        help="Generate int4 onnx model for CPU",
+        help="Generate int4 ONNX model for CPU",
     )
 
     parser.add_argument(
         "--fp32_gpu",
         required=False,
         action="store_true",
-        help="Generate fp32 onnx model for Nvidia GPUs",
+        help="Generate fp32 ONNX model for Nvidia GPUs",
     )
 
     parser.add_argument(
         "--fp16_gpu",
         required=False,
         action="store_true",
-        help="Generate fp16 onnx model for Nvidia GPUs",
+        help="Generate fp16 ONNX model for Nvidia GPUs",
     )
 
     parser.add_argument(
         "--int4_gpu",
         required=False,
         action="store_true",
-        help="Generate int4 onnx model for Nvidia GPUs",
+        help="Generate int4 ONNX model for Nvidia GPUs",
     )
 
     parser.add_argument(
         "--fp16_a100",
         required=False,
         action="store_true",
-        help="Generate fp16 onnx model for Nvidia A100",
+        help="Generate fp16 ONNX model for Nvidia A100",
     )
 
     parser.add_argument(
         "--int4_a100",
         required=False,
         action="store_true",
-        help="Generate int4 onnx model for Nvidia A100",
+        help="Generate int4 ONNX model for Nvidia A100",
     )
 
     parser.add_argument(
         "--overwrite",
         required=False,
         action="store_true",
-        help="Overwrite existing onnx models",
+        help="Overwrite existing ONNX models",
     )
 
     args = parser.parse_args()
@@ -394,40 +495,39 @@ def main():
             temp_onnx_path,
             original_onnx_path,
             func_name="modeling_phi_PhiModel_model_1",  # The function to unroll
-            use_gqa=True,
         )
         converter.erase_onnx_model(temp_onnx_path)
 
-    # TODO: support batch export
     if args.fp32_cpu:
         converter.init_attn_type_and_precision(AttentionOpType.MultiHeadAttention, Precision.FLOAT32)
-        converter.optimize_phi2_onnx(original_onnx_path, "fp32_cpu/phi2_opt.onnx")
-    elif args.int4_cpu:
+        converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp32_cpu_opt.onnx")
+    if args.int4_cpu:
         converter.init_attn_type_and_precision(AttentionOpType.MultiHeadAttention, Precision.INT4)
-        converter.optimize_phi2_onnx(original_onnx_path, "int4_cpu/phi2_opt.onnx")
-    elif args.fp32_gpu:
+        converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_cpu_opt.onnx")
+    if args.fp32_gpu:
         converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.FLOAT32)
-        converter.optimize_phi2_onnx(original_onnx_path, "fp32_gpu/phi2_opt.onnx")
-    elif args.fp16_gpu:
+        converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp32_gpu_opt.onnx")
+    if args.fp16_gpu:
         converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.FLOAT16)
-        converter.optimize_phi2_onnx(original_onnx_path, "fp16_gpu/phi2_opt.onnx")
-    elif args.int4_gpu:
+        converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp16_gpu_opt.onnx")
+    if args.int4_gpu:
         converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.INT4)
-        converter.optimize_phi2_onnx(original_onnx_path, "int4_gpu/phi2_opt.onnx")
-    elif args.fp16_a100:
+        converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_gpu_opt.onnx")
+    if args.fp16_a100:
         converter.init_attn_type_and_precision(AttentionOpType.GroupQueryAttention, Precision.FLOAT16)
-        converter.optimize_phi2_onnx(original_onnx_path, "fp16_a100/phi2_opt.onnx")
-    elif args.int4_a100:
+        converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp16_a100_opt.onnx")
+    if args.int4_a100:
         converter.init_attn_type_and_precision(AttentionOpType.GroupQueryAttention, Precision.INT4)
-        converter.optimize_phi2_onnx(original_onnx_path, "int4_a100/phi2_opt.onnx")
-    else:
-        print(
+        converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_a100_opt.onnx")
+
+    if not converter.optimized_model_exists():
+        logging.warning(
             "Please specify a valid option from --fp32_cpu, --int4_cpu, --fp32_gpu, --fp16_gpu, --int4_gpu, --fp16_a100, --int4_a100"
         )
         return
 
     # converter.erase_onnx_model(original_onnx_path)
-    print("done")
+    logging.info("done")
 
 
 if __name__ == "__main__":

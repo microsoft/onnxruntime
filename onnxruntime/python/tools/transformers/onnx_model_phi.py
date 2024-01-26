@@ -12,6 +12,7 @@ from onnx_model import OnnxModel
 from fusion_options import FusionOptions
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 import numpy as np
+import os
 
 logger = getLogger(__name__)
 
@@ -244,7 +245,7 @@ class FissionTransformerEmbeddingPhi(Fission):
         super().__init__(model, ["torch_nn_modules_sparse_Embedding_model_embed_tokens_1"])
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        print(node.name)
+        logger.info("Optimizing %s...", node.name)
 
         assert len(node.input) == 2
         assert len(node.output) == 1
@@ -278,7 +279,7 @@ class FissionTransformerLayerNormPhi(Fission):
         super().__init__(model, ["torch_nn_modules_normalization_LayerNorm_model_final_layernorm_1"])
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        print(node.name)
+        logger.info("Optimizing %s...", node.name)
 
         assert len(node.input) == 3
         assert len(node.output) == 1
@@ -311,7 +312,7 @@ class FissionTransformerCausalLMHeadPhi(Fission):
         super().__init__(model, ["torch_nn_modules_linear_Linear_lm_head_1"])
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        print(node.name)
+        logger.info("Optimizing %s...", node.name)
 
         assert len(node.input) == 5
         assert len(node.output) == 1
@@ -538,7 +539,10 @@ class FissionTransformerBlockPhi(Fission):
         input_name_to_nodes,
         output_name_to_node,
     ):
-        print(node.name)
+        logger.info("Optimizing %s...", node.name)
+
+        attn_type = os.environ.get("AttentionOpType")
+        logger.info(f"AttentionOpType: {attn_type}")
 
         layer_id = self.get_layer_id(node)
 
@@ -552,26 +556,35 @@ class FissionTransformerBlockPhi(Fission):
 
         ln_weight = self.get_io_by_name(node, "input_layernorm.weight")
         ln_bias = self.get_io_by_name(node, "input_layernorm.bias")
-        attn_q_weight = self.process_initializer(
-            self.get_io_by_name(node, "self_attn.q_proj.weight"), ProcessGemmWFunc()
-        )
-        attn_k_weight = self.process_initializer(
-            self.get_io_by_name(node, "self_attn.k_proj.weight"), ProcessGemmWFunc()
-        )
-        attn_v_weight = self.process_initializer(
-            self.get_io_by_name(node, "self_attn.v_proj.weight"), ProcessGemmWFunc()
-        )
+
+        if attn_type != "Attention":
+            attn_q_weight = self.process_initializer(
+                self.get_io_by_name(node, "self_attn.q_proj.weight"), ProcessGemmWFunc()
+            )
+            attn_k_weight = self.process_initializer(
+                self.get_io_by_name(node, "self_attn.k_proj.weight"), ProcessGemmWFunc()
+            )
+            attn_v_weight = self.process_initializer(
+                self.get_io_by_name(node, "self_attn.v_proj.weight"), ProcessGemmWFunc()
+            )
+            attn_q_bias = self.get_io_by_name(node, "self_attn.q_proj.bias")
+            attn_k_bias = self.get_io_by_name(node, "self_attn.k_proj.bias")
+            attn_v_bias = self.get_io_by_name(node, "self_attn.v_proj.bias")
+
+            cos_cache = self.process_initializer(
+                self.get_io_by_name(node, "rotary_emb.cos_cached"), ProcessRotCacheFunc()
+            )
+            sin_cache = self.process_initializer(
+                self.get_io_by_name(node, "rotary_emb.sin_cached"), ProcessRotCacheFunc()
+            )
+        else:
+            attn_qkv_weight = None
+            attn_qkv_bias = None
+
         attn_out_weight = self.process_initializer(
             self.get_io_by_name(node, "self_attn.dense.weight"), ProcessGemmWFunc()
         )
-
-        attn_q_bias = self.get_io_by_name(node, "self_attn.q_proj.bias")
-        attn_k_bias = self.get_io_by_name(node, "self_attn.k_proj.bias")
-        attn_v_bias = self.get_io_by_name(node, "self_attn.v_proj.bias")
         attn_out_bias = self.get_io_by_name(node, "self_attn.dense.bias")
-
-        cos_cache = self.process_initializer(self.get_io_by_name(node, "rotary_emb.cos_cached"), ProcessRotCacheFunc())
-        sin_cache = self.process_initializer(self.get_io_by_name(node, "rotary_emb.sin_cached"), ProcessRotCacheFunc())
 
         mlp_fc1_weight = self.process_initializer(self.get_io_by_name(node, "mlp.fc1.weight"), ProcessGemmWFunc())
         mlp_fc2_weight = self.process_initializer(self.get_io_by_name(node, "mlp.fc2.weight"), ProcessGemmWFunc())
@@ -582,60 +595,64 @@ class FissionTransformerBlockPhi(Fission):
         layer_known_edges_names.extend([i_hidden_states, i_key_cache, i_value_cache])
         layer_known_edges_names.extend([o_hidden_states, o_key_cache, o_value_cache])
         layer_known_edges_names.extend([ln_weight, ln_bias])
+        if attn_type != "Attention":
+            layer_known_edges_names.extend(
+                [
+                    attn_q_weight,
+                    attn_q_bias,
+                    attn_k_weight,
+                    attn_k_bias,
+                    attn_v_weight,
+                    attn_v_bias,
+                    cos_cache,
+                    sin_cache,
+                ]
+            )
+        else:
+            layer_known_edges_names.extend([attn_qkv_weight, attn_qkv_bias])
         layer_known_edges_names.extend(
-            [
-                attn_q_weight,
-                attn_q_bias,
-                attn_k_weight,
-                attn_k_bias,
-                attn_v_weight,
-                attn_v_bias,
-                cos_cache,
-                sin_cache,
-                attn_out_weight,
-                attn_out_bias,
-            ]
+            [attn_out_weight, attn_out_bias, mlp_fc1_weight, mlp_fc1_bias, mlp_fc2_weight, mlp_fc2_bias]
         )
-        layer_known_edges_names.extend([mlp_fc1_weight, mlp_fc1_bias, mlp_fc2_weight, mlp_fc2_bias])
         layer_known_edges_names.extend(["attention_mask", "step", "seqlens_k", "total_sequence_length"])
 
         subgraph_nodes = []
         subgraph_nodes.extend(self.layernorm([i_hidden_states, ln_weight, ln_bias], ["ln_out"]))
-        subgraph_nodes.extend(self.gemm(["ln_out", attn_q_weight, attn_q_bias], ["query"], "Q_"))
-        subgraph_nodes.extend(self.gemm(["ln_out", attn_k_weight, attn_k_bias], ["key"], "K_"))
-        subgraph_nodes.extend(self.gemm(["ln_out", attn_v_weight, attn_v_bias], ["value"], "V_"))
-        subgraph_nodes.extend(self.rotary(["query", "step", cos_cache, sin_cache], ["query_rot"], "Q_"))
-        subgraph_nodes.extend(self.rotary(["key", "step", cos_cache, sin_cache], ["key_rot"], "K_"))
         subgraph_nodes.extend(self.gemm(["attn_out", attn_out_weight, attn_out_bias], ["attn_add_out"], "OutProj_"))
         subgraph_nodes.extend(self.gemm(["ln_out", mlp_fc1_weight, mlp_fc1_bias], ["fc1_out"], "FC1_"))
         subgraph_nodes.extend(self.fastgelu(["fc1_out"], ["gelu_out"]))
         subgraph_nodes.extend(self.gemm(["gelu_out", mlp_fc2_weight, mlp_fc2_bias], ["fc2_out"], "FC2_"))
         subgraph_nodes.extend(self.add(["attn_add_out", "fc2_out"], ["residual_1_out"], "Residual_1"))
         subgraph_nodes.extend(self.add([i_hidden_states, "residual_1_out"], [o_hidden_states], "Residual_2"))
-
-        use_mha = False
-        if use_mha:
-            subgraph_nodes.extend(
-                self.mha(
-                    ["query_rot", "key_rot", "value", "", "attention_mask", "", i_key_cache, i_value_cache],
-                    ["attn_out", o_key_cache, o_value_cache],
+        if attn_type != "Attention":
+            subgraph_nodes.extend(self.gemm(["ln_out", attn_q_weight, attn_q_bias], ["query"], "Q_"))
+            subgraph_nodes.extend(self.gemm(["ln_out", attn_k_weight, attn_k_bias], ["key"], "K_"))
+            subgraph_nodes.extend(self.gemm(["ln_out", attn_v_weight, attn_v_bias], ["value"], "V_"))
+            subgraph_nodes.extend(self.rotary(["query", "step", cos_cache, sin_cache], ["query_rot"], "Q_"))
+            subgraph_nodes.extend(self.rotary(["key", "step", cos_cache, sin_cache], ["key_rot"], "K_"))
+            if attn_type == "MultiHeadAttention":
+                subgraph_nodes.extend(
+                    self.mha(
+                        ["query_rot", "key_rot", "value", "", "attention_mask", "", i_key_cache, i_value_cache],
+                        ["attn_out", o_key_cache, o_value_cache],
+                    )
                 )
-            )
+            elif attn_type == "GroupQueryAttention":
+                subgraph_nodes.extend(
+                    self.gqa(
+                        ["query_rot", "key_rot", "value", i_key_cache, i_value_cache, "seqlens_k", "total_sequence_length"],
+                        ["attn_out", o_key_cache, o_value_cache],
+                    )
+                )
+                if layer_id == 0:
+                    gqa_aux_nodes = self.get_gqa_aux_nodes()
+                    for new_node in gqa_aux_nodes:
+                        self.nodes_to_add.append(new_node)
+                        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+                    self.model.add_initializer(
+                        numpy_helper.from_array(np.array([1], dtype="int64"), name="one"), self.this_graph_name
+                    )
         else:
-            subgraph_nodes.extend(
-                self.gqa(
-                    ["query_rot", "key_rot", "value", i_key_cache, i_value_cache, "seqlens_k", "total_sequence_length"],
-                    ["attn_out", o_key_cache, o_value_cache],
-                )
-            )
-            if layer_id == 0:
-                gqa_aux_nodes = self.get_gqa_aux_nodes()
-                for new_node in gqa_aux_nodes:
-                    self.nodes_to_add.append(new_node)
-                    self.node_name_to_graph_name[new_node.name] = self.this_graph_name
-                self.model.add_initializer(
-                    numpy_helper.from_array(np.array([1], dtype="int64"), name="one"), self.this_graph_name
-                )
+            print("bugbug")
 
         self.set_unique_name_and_add_nodes(subgraph_nodes, layer_id, layer_known_edges_names)
 
@@ -650,88 +667,6 @@ def shape_of(vi):
     return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
 
 
-def postprocess_io(model: ModelProto):
-    graph = model.graph
-    new_inputs = []
-    for i, vi in enumerate(graph.input):
-        if "attention_mask" in vi.name:
-            vi = helper.make_tensor_value_info(
-                IO_MAPPING[vi.name],
-                elem_type=TensorProto.INT32,
-                shape=["batch_size", "seq_len"],
-            )
-            # vi_pid = helper.make_tensor_value_info(
-            #     "step",
-            #     elem_type=TensorProto.INT64,
-            #     shape=[1],
-            # )
-            new_inputs.extend([vi])
-        if "input_ids" in vi.name:
-            vi = helper.make_tensor_value_info(
-                IO_MAPPING[vi.name],
-                elem_type=TensorProto.INT32,
-                shape=["batch_size", "seq_len"],
-            )
-            new_inputs.extend([vi])
-        if "kv_cache" in vi.name:
-            vi = helper.make_tensor_value_info(
-                IO_MAPPING[vi.name],
-                elem_type=vi.type.tensor_type.elem_type,
-                shape=[2, "batch_size", 32, "past_seq_len", 80],
-            )
-            new_inputs.extend([vi])
-    # add past_sequence_length
-    # vi = helper.make_tensor_value_info(
-    #     "past_sequence_length",
-    #     elem_type=TensorProto.INT32,
-    #     shape=[],
-    # )
-    # new_inputs.extend([vi])
-
-    graph.ClearField("input")
-    graph.input.extend(new_inputs)
-
-    new_outputs = []
-    for i, vi in enumerate(graph.output):
-        if i == 0:
-            vi = helper.make_tensor_value_info(
-                IO_MAPPING[vi.name], elem_type=vi.type.tensor_type.elem_type, shape=["batch_size", "seq_len", 51200]
-            )
-        else:
-            shape = shape_of(vi)
-            vi = helper.make_tensor_value_info(
-                IO_MAPPING[vi.name],
-                elem_type=vi.type.tensor_type.elem_type,
-                shape=[2, "batch_size", 32, "total_seq_len", 80],
-            )
-        new_outputs.extend([vi])
-
-    graph.ClearField("output")
-    graph.output.extend(new_outputs)
-
-    for node in graph.node:
-        for i, name in enumerate(node.input):
-            if name in IO_MAPPING:
-                node.input[i] = IO_MAPPING[name]
-        for i, name in enumerate(node.output):
-            if name in IO_MAPPING:
-                node.output[i] = IO_MAPPING[name]
-
-
-# def postprocess_value_info(model: ModelProto):
-#     for value_info in model.graph.value_info:
-#         shape = shape_of(value_info)
-#         if len(shape) == 3 and shape[0] == 2:
-#             print("value info: ", value_info.name, shape)
-#             new_value_info = helper.make_tensor_value_info(
-#                 value_info.name,
-#                 elem_type=value_info.type.tensor_type.elem_type,
-#                 shape=["batch_size", shape[1], shape[2]],
-#             )
-#             model.graph.value_info.remove(value_info)
-#             model.graph.value_info.extend([new_value_info])
-
-
 class PhiOnnxModel(OnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, head_size: int = 0):
         super().__init__(model)
@@ -742,16 +677,13 @@ class PhiOnnxModel(OnnxModel):
         self.fuse_sln = FusionSkipLayerNormalization(self)
         self.fuse_bias_sln = FusionBiasSkipLayerNormalization(self)
 
-    def postprocess(self):
-        print("post process")
-        # postprocess_io(self.model)
-        # postprocess_io_split_kv(self.model, True)
-
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
         self.fission_transformer_block.apply()
         self.fission_transformer_layernorm.apply()
         self.fission_causal_lm_head.apply()
         self.fission_transformer_embedding.apply()
+
+        super().prune_graph()
+
         self.fuse_sln.apply()
         self.fuse_bias_sln.apply()
-        self.postprocess()
