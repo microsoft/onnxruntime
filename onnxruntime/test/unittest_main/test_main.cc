@@ -58,7 +58,7 @@ auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInf
 
 std::unique_ptr<Ort::Env> ort_env;
 static onnxruntime::Status ortenv_setup() {
-  printf("XXXXXXXXXXXXXXXXXXXX:ortenv_setup start\n");
+  emscripten_log(EM_LOG_CONSOLE,"XXXXXXXXXXXXXXXXXXXX:ortenv_setup start\n");
   OrtThreadingOptions tpo;
 
   onnxruntime::Status status;
@@ -74,7 +74,7 @@ static onnxruntime::Status ortenv_setup() {
   ORT_RETURN_IF_ERROR(onnxruntime::Environment::Create(std::move(lmgr), env, &tpo, true));
   std::unique_ptr<OrtEnv> env2=std::make_unique<OrtEnv>(std::move(env));
   ort_env = std::make_unique<Ort::Env>(env2.release());
-  printf("XXXXXXXXXXXXXXXXXXXX:ortenv_setup end\n");
+  emscripten_log(EM_LOG_CONSOLE,"XXXXXXXXXXXXXXXXXXXX:ortenv_setup end\n");
   return status;
 }
 
