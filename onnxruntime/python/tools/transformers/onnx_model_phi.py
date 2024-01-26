@@ -418,9 +418,9 @@ class FissionTransformerBlockPhi(Fission):
         q_weight = self.model.get_initializer(q_w)
         k_weight = self.model.get_initializer(k_w)
         v_weight = self.model.get_initializer(v_w)
-        qw = NumpyHelper.to_array(q_weight)
-        kw = NumpyHelper.to_array(k_weight)
-        vw = NumpyHelper.to_array(v_weight)
+        qw = np.transpose(NumpyHelper.to_array(q_weight), (1, 0))
+        kw = np.transpose(NumpyHelper.to_array(k_weight), (1, 0))
+        vw = np.transpose(NumpyHelper.to_array(v_weight), (1, 0))
         qkv_weight = np.stack((qw, kw, vw), axis=1)
 
         q_bias = self.model.get_initializer(q_b)
@@ -431,11 +431,13 @@ class FissionTransformerBlockPhi(Fission):
         vb = NumpyHelper.to_array(v_bias)
         qkv_bias = np.stack((qb, kb, vb), axis=0)
 
+        hidden_size = qkv_weight.shape[0]
+
         # bugbug: shape is wrong
         weight = helper.make_tensor(
             weight_name,
             data_type=TensorProto.FLOAT,
-            dims=qkv_weight.shape,
+            dims=[hidden_size, hidden_size * 3],
             vals=qkv_weight.flatten().tobytes(),
             raw=True,
         )
@@ -444,7 +446,7 @@ class FissionTransformerBlockPhi(Fission):
         bias = helper.make_tensor(
             bias_name,
             data_type=TensorProto.FLOAT,
-            dims=qkv_bias.shape,
+            dims=[hidden_size * 3],
             vals=qkv_bias.flatten().tobytes(),
             raw=True,
         )

@@ -58,7 +58,6 @@ class ConvertPhi2ToONNX:
         self.phi2_edge_dict = self.__get_phi2_edge_dict(self.phi_config)
         self.attn_op_type = None
         self.precision = None
-        self.optimized_model = False
 
     def init_attn_type_and_precision(self, attn_op_type: AttentionOpType, precision: Precision):
         self.attn_op_type = attn_op_type
@@ -134,7 +133,7 @@ class ConvertPhi2ToONNX:
                             2,
                             "batch_size",
                             config.num_attention_heads,
-                            "seq_len",
+                            "past_seq_len",
                             config.hidden_size // config.num_attention_heads,
                         ],
                     )
@@ -172,7 +171,7 @@ class ConvertPhi2ToONNX:
                                 2,
                                 "batch_size",
                                 config.num_attention_heads,
-                                "seq_len",
+                                "total_seq_len",
                                 config.hidden_size // config.num_attention_heads,
                             ],
                         )
@@ -274,9 +273,6 @@ class ConvertPhi2ToONNX:
         self.phi_model.eval()
         self.phi_model.to(self.device)
 
-    def optimized_model_exists(self):
-        return self.optimized_model
-
     def get_phi2_torch_inputs(self, batch_size: int, sequence_length: int):
         input_ids = torch.randint(
             low=0,
@@ -348,12 +344,11 @@ class ConvertPhi2ToONNX:
         )
 
     def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
-        self.optimized_model = True
-
         from fusion_options import FusionOptions
         from optimizer import optimize_model
-
-        processed_onnx_path = "phi2_processed.onnx"
+        import uuid 
+  
+        processed_onnx_path = f"{uuid.uuid1()}.onnx"
         model = onnx.load_model(onnx_path, load_external_data=True)
         model = self.__process_graph_io(self.phi_config, model)
         onnx.save_model(
@@ -475,6 +470,14 @@ def parse_arguments():
         help="Overwrite existing ONNX models",
     )
 
+    parser.add_argument(
+        "--cache_dir",
+        required=False,
+        type=str,
+        default="./cache",
+        help="The cache directory for the pytorch model",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -484,7 +487,7 @@ def main():
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    converter = ConvertPhi2ToONNX(device)
+    converter = ConvertPhi2ToONNX(device, cache_dir=args.cache_dir)
 
     temp_onnx_path = "phi2_temp.onnx"
     original_onnx_path = "phi2.onnx"
@@ -512,8 +515,6 @@ def main():
 
     processes = []
     if args.fp32_cpu:
-        # converter.init_attn_type_and_precision(AttentionOpType.MultiHeadAttention, Precision.FLOAT32)
-        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp32_cpu_opt.onnx")
         p = Process(
             target=run_optimize_phi2_onnx,
             args=(
@@ -521,15 +522,13 @@ def main():
                 AttentionOpType.MultiHeadAttention,
                 Precision.FLOAT32,
                 original_onnx_path,
-                "phi2_fp32_cpu_opt.onnx",
+                "phi2_decoder_fp32_cpu_opt.onnx",
             ),
         )
         p.start()
         processes.append(p)
 
     if args.int4_cpu:
-        # converter.init_attn_type_and_precision(AttentionOpType.MultiHeadAttention, Precision.INT4)
-        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_cpu_opt.onnx")
         p = Process(
             target=run_optimize_phi2_onnx,
             args=(
@@ -537,15 +536,13 @@ def main():
                 AttentionOpType.MultiHeadAttention,
                 Precision.INT4,
                 original_onnx_path,
-                "phi2_int4_cpu_opt.onnx",
+                "phi2_decoder_int4_cpu_opt.onnx",
             ),
         )
         p.start()
         processes.append(p)
 
     if args.fp32_gpu:
-        # converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.FLOAT32)
-        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp32_gpu_opt.onnx")
         p = Process(
             target=run_optimize_phi2_onnx,
             args=(
@@ -553,15 +550,13 @@ def main():
                 AttentionOpType.Attention,
                 Precision.FLOAT32,
                 original_onnx_path,
-                "phi2_fp32_gpu_opt.onnx",
+                "phi2_decoder_fp32_gpu_opt.onnx",
             ),
         )
         p.start()
         processes.append(p)
 
     if args.fp16_gpu:
-        # converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.FLOAT16)
-        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp16_gpu_opt.onnx")
         p = Process(
             target=run_optimize_phi2_onnx,
             args=(
@@ -569,15 +564,13 @@ def main():
                 AttentionOpType.Attention,
                 Precision.FLOAT16,
                 original_onnx_path,
-                "phi2_fp16_gpu_opt.onnx",
+                "phi2_decoder_fp16_gpu_opt.onnx",
             ),
         )
         p.start()
         processes.append(p)
 
     if args.int4_gpu:
-        # converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.INT4)
-        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_gpu_opt.onnx")
         p = Process(
             target=run_optimize_phi2_onnx,
             args=(
@@ -585,15 +578,13 @@ def main():
                 AttentionOpType.Attention,
                 Precision.INT4,
                 original_onnx_path,
-                "phi2_int4_gpu_opt.onnx",
+                "phi2_decoder_int4_gpu_opt.onnx",
             ),
         )
         p.start()
         processes.append(p)
 
     if args.fp16_a100:
-        # converter.init_attn_type_and_precision(AttentionOpType.GroupQueryAttention, Precision.FLOAT16)
-        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp16_a100_opt.onnx")
         p = Process(
             target=run_optimize_phi2_onnx,
             args=(
@@ -601,15 +592,13 @@ def main():
                 AttentionOpType.GroupQueryAttention,
                 Precision.FLOAT16,
                 original_onnx_path,
-                "phi2_fp16_a100_opt.onnx",
+                "phi2_decoder_fp16_a100_opt.onnx",
             ),
         )
         p.start()
         processes.append(p)
 
     if args.int4_a100:
-        # converter.init_attn_type_and_precision(AttentionOpType.GroupQueryAttention, Precision.INT4)
-        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_a100_opt.onnx")
         p = Process(
             target=run_optimize_phi2_onnx,
             args=(
@@ -617,7 +606,7 @@ def main():
                 AttentionOpType.GroupQueryAttention,
                 Precision.INT4,
                 original_onnx_path,
-                "phi2_int4_a100_opt.onnx",
+                "phi2_decoder_int4_a100_opt.onnx",
             ),
         )
         p.start()
@@ -625,15 +614,6 @@ def main():
 
     for p in processes:
         p.join()
-
-    if not converter.optimized_model_exists():
-        logging.warning(
-            "Please specify a valid option from --fp32_cpu, --int4_cpu, --fp32_gpu, --fp16_gpu, --int4_gpu, --fp16_a100, --int4_a100"
-        )
-        return
-
-    # converter.erase_onnx_model(original_onnx_path)
-    logging.info("done")
 
 
 if __name__ == "__main__":
