@@ -58,22 +58,23 @@ auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInf
 
 std::unique_ptr<Ort::Env> ort_env;
 static onnxruntime::Status ortenv_setup() {
+  printf("XXXXXXXXXXXXXXXXXXXX:ortenv_setup start\n");
   OrtThreadingOptions tpo;
 
   onnxruntime::Status status;
 
   std::unique_ptr<onnxruntime::logging::LoggingManager> lmgr;
   std::string name = "Default";
-
   lmgr = std::make_unique<onnxruntime::logging::LoggingManager>(std::make_unique<onnxruntime::logging::CLogSink>(),
                                                                 onnxruntime::logging::Severity::kWARNING,
                                                                 false,
                                                                 onnxruntime::logging::LoggingManager::InstanceType::Default,
                                                                 &name);
-
   std::unique_ptr<onnxruntime::Environment> env;
   ORT_RETURN_IF_ERROR(onnxruntime::Environment::Create(std::move(lmgr), env, &tpo, true));
-  ort_env = std::make_unique<Ort::Env>(env.release());
+  std::unique_ptr<OrtEnv> env2=std::make_unique<OrtEnv>(std::move(env));
+  ort_env = std::make_unique<Ort::Env>(env2.release());
+  printf("XXXXXXXXXXXXXXXXXXXX:ortenv_setup end\n");
   return status;
 }
 
@@ -93,10 +94,10 @@ struct EmState {
 };
 
 void MainLoop(void* arg) {
-  printf("Entering MainLoop ...\n");
+  emscripten_log(EM_LOG_CONSOLE, "Entering MainLoop ...\n");
   if (arg == nullptr) return;
   EmState& state = *(EmState*)arg;
-  printf("stage %d ...\n", (int)state.stage);
+  emscripten_log(EM_LOG_CONSOLE, "stage %d ...\n", (int)state.stage);
   onnxruntime::Status status;
   switch (state.stage) {
     case EmStage::INIT: {
@@ -121,7 +122,7 @@ void MainLoop(void* arg) {
       emscripten_cancel_main_loop();
       break;
   }
-  printf("Exiting MainLoop ...\n");
+  emscripten_log(EM_LOG_CONSOLE, "Exiting MainLoop ...\n");
   return;
 }
 
@@ -131,7 +132,7 @@ int TEST_MAIN(int argc, char** argv) {
   em_global_state.argc = argc;
   em_global_state.argv = argv;
   emscripten_set_main_loop_arg(MainLoop, &em_global_state, 0, 0);
-  return s.ret;
+  return em_global_state.ret;
 }
 #else
 int TEST_MAIN(int argc, char** argv) {
