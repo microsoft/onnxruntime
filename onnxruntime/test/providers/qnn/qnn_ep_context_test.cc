@@ -33,19 +33,19 @@ namespace test {
 static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   return [single_ep_node](ModelTestBuilder& builder) {
     // Creat non-quantized Add node1
-    NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({2, 3}, false, {0, 1, 0, 1, 0, 1}));
-    NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, {0, 0, 0, 0, 0, 0}));
+    NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({2, 2}, false, {0, 1, 0, 1}));
+    NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, {0, 0, 0, 0}));
 
     auto* add1_output = builder.MakeIntermediate();
-    builder.AddNode("Add", {input1, add1_ini_input2}, {add1_output});
+    builder.AddNode("FusedMatMul", {input1, add1_ini_input2}, {add1_output}, kMSDomain);
 
     // Create quantized Add node2
-    std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
+    std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f};
     gsl::span<float> data_range = gsl::make_span(data);
     QuantParams<uint8_t> q_parameter = GetDataQuantParams<uint8_t>(data_range);
     auto* add2_input1_qdq = AddQDQNodePair<uint8_t>(builder, add1_output, q_parameter.scale, q_parameter.zero_point);
 
-    NodeArg* add2_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, data));
+    NodeArg* add2_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, data));
     auto* add2_input2_qdq = AddQDQNodePair<uint8_t>(builder, add2_input2, q_parameter.scale, q_parameter.zero_point);
 
     auto* add2_output = builder.MakeIntermediate();
@@ -57,15 +57,15 @@ static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
       AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
     } else {
       auto* add3_input1_qdq = AddQDQNodePair<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
-      NodeArg* add3_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, {0, 0, 0, 0, 0, 0}));
+      NodeArg* add3_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, {0, 0, 0, 0}));
 
       auto* add3_output = builder.MakeIntermediate();
-      builder.AddNode("Add", {add3_input1_qdq, add3_ini_input2}, {add3_output});
+      builder.AddNode("FusedMatMul", {add3_input1_qdq, add3_ini_input2}, {add3_output}, kMSDomain);
 
       // Create quantized Add node4
       auto* add4_input1_qdq = AddQDQNodePair<uint8_t>(builder, add3_output, q_parameter.scale, q_parameter.zero_point);
 
-      NodeArg* add4_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, true, data));
+      NodeArg* add4_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, data));
       auto* add4_input2_qdq = AddQDQNodePair<uint8_t>(builder, add4_input2, q_parameter.scale, q_parameter.zero_point);
 
       auto* add4_output = builder.MakeIntermediate();
