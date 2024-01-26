@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array} from '@petamoriken/float16';
 import {Tensor} from 'onnxruntime-common';
+
+interface Float16ArrayConstructor {
+  new(): Float16Array;
+}
 
 // This file includes common definitions. They do NOT have dependency on the WebAssembly instance.
 
@@ -112,12 +117,13 @@ export const getTensorElementSize = (dateType: number): number|
 /**
  * get typed array constructor by the given tensor type
  */
-export const tensorTypeToTypedArrayConstructor = (type: Tensor.Type): Float32ArrayConstructor|Uint8ArrayConstructor|
-    Int8ArrayConstructor|Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|
-    Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
+export const tensorTypeToTypedArrayConstructor =
+    (type: Tensor.Type): Float16ArrayConstructor|Float32ArrayConstructor|Uint8ArrayConstructor|Int8ArrayConstructor|
+    Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|Uint8ArrayConstructor|
+    Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
       switch (type) {
         case 'float16':
-          return Uint16Array;
+          return Float16Array;
         case 'float32':
           return Float32Array;
         case 'uint8':

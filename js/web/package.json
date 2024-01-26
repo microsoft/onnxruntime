@@ -11,6 +11,7 @@
   "version": "1.18.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
+    "@petamoriken/float16": "^3.8.4",
     "flatbuffers": "^1.12.0",
     "guid-typescript": "^1.0.9",
     "long": "^5.2.3",

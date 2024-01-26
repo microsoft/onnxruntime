@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array} from '@petamoriken/float16';
 import {expect} from 'chai';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
@@ -393,11 +394,12 @@ export class TensorResultValidator {
       case 'string':
         return this.strictEqual(actual.stringData, expected.stringData);
 
+      case 'float16':
       case 'float32':
       case 'float64':
         return this.floatEqual(
-            actual.numberData as number[] | Float32Array | Float64Array,
-            expected.numberData as number[] | Float32Array | Float64Array);
+            actual.numberData as number[] | Float16Array | Float32Array | Float64Array,
+            expected.numberData as number[] | Float16Array | Float32Array | Float64Array);
 
       case 'uint8':
       case 'int8':
@@ -425,7 +427,10 @@ export class TensorResultValidator {
       return false;
     }
   }
-  floatEqual(actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array): boolean {
+
+  floatEqual(
+      actual: number[]|Float16Array|Float32Array|Float64Array,
+      expected: number[]|Float16Array|Float32Array|Float64Array): boolean {
     if (actual.length !== expected.length) {
       return false;
     }

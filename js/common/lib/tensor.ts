@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array} from '@petamoriken/float16';
+
 import {TensorFactory} from './tensor-factory.js';
 import {Tensor as TensorImpl} from './tensor-impl.js';
 import {TypedTensorUtils} from './tensor-utils.js';
@@ -74,7 +76,7 @@ export declare namespace Tensor {
     int64: BigInt64Array;
     string: string[];
     bool: Uint8Array;
-    float16: Uint16Array;  // Keep using Uint16Array until we have a concrete solution for float 16.
+    float16: Float16Array;  // Keep using Uint16Array until we have a concrete solution for float 16.
     float64: Float64Array;
     uint32: Uint32Array;
     uint64: BigUint64Array;

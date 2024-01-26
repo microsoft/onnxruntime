@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array} from '@petamoriken/float16';
 import assert from 'assert/strict';
 import {Tensor} from 'onnxruntime-common';
 
@@ -34,7 +35,7 @@ export const BIGINT_TYPES = [
 /**
  * float16 type, data represented by Uint16Array
  */
-export const FLOAT16_TYPE = ['float16', Uint16Array, false] as const;
+export const FLOAT16_TYPE = ['float16', Float16Array, false] as const;
 
 /**
  * A list of all numerical types.

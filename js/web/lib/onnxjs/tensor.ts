@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array, isFloat16Array} from '@petamoriken/float16';
 import {Guid} from 'guid-typescript';
 import Long from 'long';
 
@@ -13,6 +14,7 @@ import ortFbs = onnxruntime.experimental.fbs;
 export declare namespace Tensor {
   export interface DataTypeMap {
     bool: Uint8Array;
+    float16: Float16Array;
     float32: Float32Array;
     float64: Float64Array;
     string: string[];
@@ -31,7 +33,7 @@ export declare namespace Tensor {
   export type BooleanType = Tensor.DataTypeMap['bool'];
   export type IntegerType = Tensor.DataTypeMap['int8']|Tensor.DataTypeMap['uint8']|Tensor.DataTypeMap['int16']|
                             Tensor.DataTypeMap['uint16']|Tensor.DataTypeMap['int32']|Tensor.DataTypeMap['uint32'];
-  export type FloatType = Tensor.DataTypeMap['float32']|Tensor.DataTypeMap['float64'];
+  export type FloatType = Tensor.DataTypeMap['float16']|Tensor.DataTypeMap['float32']|Tensor.DataTypeMap['float64'];
   export type NumberType = BooleanType|IntegerType|FloatType;
 
   export type Id = Guid;
@@ -93,6 +95,7 @@ export class Tensor {
    */
   get floatData() {
     switch (this.type) {
+      case 'float16':
       case 'float32':
       case 'float64':
         return this.data as Tensor.FloatType;
@@ -188,7 +191,7 @@ export class Tensor {
     } else {
       if (cache !== undefined) {
         const constructor = dataviewConstructor(type);
-        if (!(cache instanceof constructor)) {
+        if (!(cache instanceof constructor) && !isFloat16Array(cache)) {
           throw new TypeError(`cache should be type ${constructor.name}`);
         }
       }
@@ -357,6 +360,7 @@ function sizeof(type: Tensor.DataType): number {
       return 1;
     case 'int16':
     case 'uint16':
+    case 'float16':
       return 2;
     case 'int32':
     case 'uint32':
@@ -412,6 +416,8 @@ function dataviewConstructor(type: Tensor.DataType) {
       return Uint32Array;
     case 'int64':
       return BigInt64Array;
+    case 'float16':
+      return Float16Array;
     case 'float32':
       return Float32Array;
     case 'float64':

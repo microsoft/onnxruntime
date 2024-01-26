@@ -30,5 +30,8 @@
     "ONNXRuntime",
     "ONNX Runtime"
   ],
-  "description": "ONNXRuntime JavaScript API library"
+  "description": "ONNXRuntime JavaScript API library",
+  "dependencies": {
+    "@petamoriken/float16": "^3.8.4"
+  }
 }

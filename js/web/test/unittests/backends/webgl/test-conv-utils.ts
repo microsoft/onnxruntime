@@ -1,14 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array} from '@petamoriken/float16';
+
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 
 /* eslint-disable no-bitwise */
 
+type FloatTypedArray = Float16Array|Float32Array|Float64Array;
+
 // eslint-disable-next-line no-underscore-dangle
 function matMul2d_(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, alpha: number,
-    beta: number, M: number, N: number, K: number) {
+    A: FloatTypedArray, B: FloatTypedArray, C: FloatTypedArray, alpha: number, beta: number, M: number, N: number,
+    K: number) {
   let offsetA = 0, offsetB = 0, offsetC = 0;
   for (let mm = 0; mm < M; mm++) {
     for (let nn = 0; nn < N; nn++) {
@@ -30,8 +34,8 @@ function matMul2d_(
 }
 
 function matMul2d_tA(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, alpha: number,
-    beta: number, M: number, N: number, K: number) {
+    A: FloatTypedArray, B: FloatTypedArray, C: FloatTypedArray, alpha: number, beta: number, M: number, N: number,
+    K: number) {
   let offsetA = 0, offsetB = 0, offsetC = 0;
   for (let mm = 0; mm < M; mm++) {
     for (let nn = 0; nn < N; nn++) {
@@ -53,8 +57,8 @@ function matMul2d_tA(
 }
 
 function matMul2d_tB(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, alpha: number,
-    beta: number, M: number, N: number, K: number) {
+    A: FloatTypedArray, B: FloatTypedArray, C: FloatTypedArray, alpha: number, beta: number, M: number, N: number,
+    K: number) {
   let offsetA = 0, offsetB = 0, offsetC = 0;
   for (let mm = 0; mm < M; mm++) {
     for (let nn = 0; nn < N; nn++) {
@@ -76,8 +80,8 @@ function matMul2d_tB(
 }
 
 function matMul2d_tAtB(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, alpha: number,
-    beta: number, M: number, N: number, K: number) {
+    A: FloatTypedArray, B: FloatTypedArray, C: FloatTypedArray, alpha: number, beta: number, M: number, N: number,
+    K: number) {
   let offsetA = 0, offsetB = 0, offsetC = 0;
   for (let mm = 0; mm < M; mm++) {
     for (let nn = 0; nn < N; nn++) {
@@ -105,8 +109,8 @@ function matMul2d_tAtB(
  * @param C data of tensor C, whose shape is [M,N]
  */
 export function matMul2d(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, transA: boolean,
-    transB: boolean, alpha: number, beta: number, M: number, N: number, K: number): void {
+    A: FloatTypedArray, B: FloatTypedArray, C: FloatTypedArray, transA: boolean, transB: boolean, alpha: number,
+    beta: number, M: number, N: number, K: number): void {
   if (transA && transB) {
     matMul2d_tAtB(A, B, C, alpha, beta, M, N, K);
   } else if (transA) {
@@ -119,9 +123,9 @@ export function matMul2d(
 }
 
 function im2col(
-    data_im: Float32Array|Float64Array, data_col: Float32Array|Float64Array, channels: number, height: number,
-    width: number, kernel_h: number, kernel_w: number, dilation_h: number, dilation_w: number, pad_t: number,
-    pad_l: number, pad_b: number, pad_r: number, stride_h: number, stride_w: number) {
+    data_im: FloatTypedArray, data_col: FloatTypedArray, channels: number, height: number, width: number,
+    kernel_h: number, kernel_w: number, dilation_h: number, dilation_w: number, pad_t: number, pad_l: number,
+    pad_b: number, pad_r: number, stride_h: number, stride_w: number) {
   const output_h = ~~((height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h) + 1;
   const output_w = ~~((width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w) + 1;
 
