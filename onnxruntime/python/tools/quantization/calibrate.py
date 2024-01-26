@@ -1125,6 +1125,7 @@ def create_calibrator(
         moving_average = extra_options.get("moving_average", False)
         averaging_constant = extra_options.get("averaging_constant", 0.01)
         max_intermediate_outputs = extra_options.get("max_intermediate_outputs", None)
+        per_channel = extra_options.get("per_channel", False)
         calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
@@ -1134,6 +1135,7 @@ def create_calibrator(
             moving_average=moving_average,
             averaging_constant=averaging_constant,
             max_intermediate_outputs=max_intermediate_outputs,
+            per_channel=per_channel,
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
