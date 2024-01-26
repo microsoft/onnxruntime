@@ -164,21 +164,103 @@ __device__ __forceinline__ void atomic_mul(double* address, double val) {
 
 //  Obtained from pytorch/aten/src/ATen/cuda/Atomic.cuh.
 __device__ __forceinline__ void atomic_mul(int8_t* address, int8_t val) {
-    size_t offset = (size_t)address & 3;                                                                               \
-    uint32_t * address_as_ui = (uint32_t *)((char *)address - offset);                                                 \
-    uint32_t old = *address_as_ui;                                                                                     \
-    uint32_t shift = offset * 8;                                                                                       \
-    uint32_t old_byte;                                                                                                 \
-    uint32_t newval;                                                                                                   \
-    uint32_t assumed;                                                                                                  \
-                                                                                                                       \
-    do {                                                                                                               \
-      assumed = old;                                                                                                   \
-      old_byte = (old >> shift) & 0xff;                                                                                \
-      newval = static_cast<uint8_t>(val * static_cast<int8_t>(old_byte));                                              \
-      newval = (old & ~(0x000000ff << shift)) | (newval << shift);                                                     \
-      old = atomicCAS(address_as_ui, assumed, newval);                                                                 \
-    } while (assumed != old);                                                                                          \
+    // Number of bytes to the lower 4-byte aligned address.
+    // If the current address is b1010"10", then offset = b10 = 2,
+    // which means the current address is 2 bytes away from
+    // the lower 4-byte aligned address b1010"00".
+    size_t offset = (size_t)address & 3;
+    // Find an new 4-byte aligned address `address_as_ui` lower than
+    // or equal to `address`. Lower than `address` so that the actual
+    // int8_t byte is in the 4-byte word that we load.
+    //
+    // This address has the following properties:
+    //   1. It is 4-byte aligned.
+    //   2. It is lower than or equal to `address`.
+    //   3. De-referencing this address may return
+    //      a uint32_t value that contains the same int8_t
+    //      value indicated by `address`.
+    //
+    // E.g.,
+    //  address = b101010
+    //  offset = b101010 & b000011 = b10 = 2
+    //  (char*)address - offset => (char*)b101010 - b000010 => b1010"00",
+    // which is (32-bit aligned).
+    uint32_t * address_as_ui = (uint32_t*)((char*)address - offset);
+    uint32_t old = *address_as_ui;
+    // E.g., offset = 2.
+    // address_as_ui is an address 2 bytes lower than `address`.
+    //
+    // ..... byte 3 ..... | ..... byte 2 ..... | ..... byte 1 ..... | ..... byte 0 .....
+    //                  ^                    ^                                         ^
+    //                  |                    |                                         |
+    //                  |                  address <--- offset * 8 (bit)----->  address_as_ui
+    //                  |                                                              ^
+    //                  |                                                              |
+    //                  ------------------------- *address_as_ui -----------------------
+    //
+    // This visualization shows
+    //  1. the 32-bit word at address_as_ui.
+    //  2. the gap between address_as_ui and address.
+    //  3. *address_as_ui contains the int8_t value at `address`.
+    uint32_t shift = offset * 8;
+    uint32_t old_byte;
+    uint32_t newval;
+    uint32_t assumed;
+    do {
+      assumed = old;
+      // Select 8-bit value from 32-bit word. Assume offset = 2 (byte), so
+      // we want to select the 3rd byte (byte 2 below) from the word.
+      //
+      // Journey of a 32-bit value:
+      //
+      // ..... byte 3 ..... | ..... byte 2 ..... | ..... byte 1 ..... | ..... byte 0 .....
+      //
+      //                                         |
+      //                                         |  old >> offset * 8, where offset = 2.
+      //                                         |  Effectively, push lower two bytes
+      //                                         |  out of the word.
+      //                                         V
+      //
+      //      00000000      |      00000000      | ..... byte 3 ..... | ..... byte 2 .....
+      //
+      //                                                              |  apply bit-wise AND,
+      //                                                              |  & 0xff (i.e., & b11111111),
+      //                                                              |  so that we only keep
+      //                                                              |  the byte of interest.
+      //                                                              |  Otherwise, overflow may
+      //                                                              |  happen when casting this
+      //                                                              |  32-bit value to int8_t.
+      //                                                              V
+      //
+      //      00000000      |      00000000      |      00000000      | ..... byte 2 .....
+      old_byte = (old >> shift) & 0xff;
+      // Use + for atomic addition, * for atomic multiplication, / for atomic division.
+      newval = static_cast<uint32_t>(val * static_cast<int8_t>(old_byte));
+      // Journey of a 32-bit value (cont'd):
+      //
+      // old
+      // ..... byte 3 ..... | ..... byte 2 ..... | ..... byte 1 ..... | ..... byte 0 .....
+      //
+      // 0x000000ff
+      //      00000000      |      00000000      |      00000000      |      11111111
+      //
+      // 0x000000ff << shift
+      //      00000000      |      11111111      |      00000000      |      00000000
+      //
+      // ~(0x000000ff << shift)
+      //      11111111      |      00000000      |      11111111      |      11111111
+      //
+      // old & ~(0x000000ff << shift)
+      // ..... byte 3 ..... |      00000000      | ..... byte 1 ..... | ..... byte 0 .....
+      //
+      // newval << shift
+      //      00000000      | ... new byte 2 ... |      00000000      |      00000000
+      //
+      // (old & ~(0x000000ff << shift)) | (newval << shift)
+      // ..... byte 3 ..... | ... new byte 2 ... | ..... byte 1 ..... | ..... byte 0 .....
+      newval = (old & ~(0x000000ff << shift)) | (newval << shift);
+      old = atomicCAS(address_as_ui, assumed, newval);
+    } while (assumed != old);
 }
 
 }  // namespace cuda
