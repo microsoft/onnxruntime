@@ -43,9 +43,10 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
                       std::vector<NodeArg*>& node_args,
                       onnxruntime::Graph& graph);
 
-bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                              const onnxruntime::PathString& model_pathstring,
-                              onnxruntime::PathString& context_cache_path);
+bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
+                                  const std::string& customer_context_cache_path,
+                                  const onnxruntime::PathString& model_pathstring,
+                                  onnxruntime::PathString& context_cache_path);
 
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,

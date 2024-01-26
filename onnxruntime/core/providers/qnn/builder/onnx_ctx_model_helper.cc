@@ -162,14 +162,23 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                              const onnxruntime::PathString& model_pathstring,
-                              onnxruntime::PathString& context_cache_path) {
-  // Use user provided context cache file path if exist, otherwise try model_file.onnx_ctx.onnx by default
+// Figure out the real context cache file path
+// return true if context cache file exists
+bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
+                                  const std::string& customer_context_cache_path,
+                                  const onnxruntime::PathString& model_pathstring,
+                                  onnxruntime::PathString& context_cache_path) {
+  // always try the path set by user first, it's the only way to set it if load model from memory
   if (!customer_context_cache_path.empty()) {
     context_cache_path = ToPathString(customer_context_cache_path);
-  } else if (!model_pathstring.empty()) {
-    context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
+  } else if (!model_pathstring.empty()) { // model loaded from file
+    if (is_qnn_ctx_model) {
+      // it's a context cache model, just use the model path
+      context_cache_path = model_pathstring;
+    } else if (!model_pathstring.empty()) {
+      // this is not a normal Onnx model, no customer path, create a default path for generation: model_path + _ctx.onnx
+      context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
+    }
   }
 
   return std::filesystem::is_regular_file(context_cache_path) && std::filesystem::exists(context_cache_path);

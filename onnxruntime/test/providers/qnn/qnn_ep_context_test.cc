@@ -18,8 +18,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 
-#define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
-
 // in test_main.cc
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -94,8 +92,6 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
-  so.SetLogSeverityLevel(0);
-
   so.AppendExecutionProvider("QNN", provider_options);
 
   Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
@@ -232,7 +228,6 @@ TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
-
   so.AppendExecutionProvider("QNN", provider_options);
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx_2_inputs_order_test.onnx"), so);
@@ -309,8 +304,8 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
-  const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
-  std::string qnn_ctx_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
+  const std::string context_binary_file = "./testdata/qnn_context_cache_non_embed.onnx";
+  std::string qnn_ctx_bin = "./testdata/qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
 
   std::unordered_map<std::string, std::string> session_option_pairs;
   session_option_pairs.emplace(kOrtSessionOptionEpContextEnable, "1");
@@ -340,6 +335,9 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
   // Check the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(qnn_ctx_bin));
 
+  std::unordered_map<std::string, std::string> session_option_pairs2;
+  // Need to set the context file path since TestQDQModelAccuracy load the model from memory
+  session_option_pairs2.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
   // 2nd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
                        BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
@@ -348,7 +346,29 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
                        ExpectedEPNodeAssignment::All,
                        QDQTolerance(),
                        logging::Severity::kERROR,
-                       context_binary_file);
+                       context_binary_file,
+                       session_option_pairs2);
+
+  // load the model from file
+  std::vector<char> buffer;
+  {
+    std::ifstream file(context_binary_file, std::ios::binary | std::ios::ate);
+    if (!file)
+      ORT_THROW("Error reading model");
+    buffer.resize(narrow<size_t>(file.tellg()));
+    file.seekg(0, std::ios::beg);
+    if (!file.read(buffer.data(), buffer.size()))
+      ORT_THROW("Error reading model");
+  }
+
+  Ort::SessionOptions so; // No need to set the context file path in so since it's load from file
+  so.AppendExecutionProvider("QNN", provider_options);
+#ifdef _WIN32
+  std::wstring ctx_model_file(context_binary_file.begin(), context_binary_file.end());
+#else
+  std::string ctx_model_file(context_binary_file.begin(), context_binary_file.end());
+#endif
+  Ort::Session session(*ort_env.get(), ctx_model_file.c_str(), so);
 
   // Clean up
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
