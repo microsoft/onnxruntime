@@ -7,7 +7,7 @@ import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../
 
 import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
-import {getActivationSnippet} from './fuse-utils';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet} from './fuse-utils';
 
 /**
  * naive grouped conv implementation, supports 1d/2d conv
@@ -32,10 +32,7 @@ export const createGroupedConvProgramInfo =
         {type: 'uint32', data: [attributes.strides[0], attributes.strides[1]]},
         {type: 'uint32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'uint32', data: outputChannelsPerGroup}
       ];
-      if (attributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
-      }
+      appendActivationUniformsData(attributes, programUniforms);
       programUniforms.push(
           ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
           ...createTensorShapeVariables(outputShape));
@@ -61,9 +58,7 @@ export const createGroupedConvProgramInfo =
           {name: 'strides', type: 'u32', length: 2}, {name: 'pads', type: 'u32', length: 2},
           {name: 'output_channels_per_group', type: 'u32'}
         ];
-        if (attributes.activation === 'Clip') {
-          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
-        }
+        appendActivationUniforms(attributes, uniforms);
         return `
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, output)}
 
