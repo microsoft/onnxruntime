@@ -682,10 +682,13 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 using namespace js;
 
-JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
+JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info, const SessionOptions* session_options)
     : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), true},
-      preferred_data_layout_{info.data_layout},
-      graph_capture_enabled_(info.graph_capture_enabled) {
+      preferred_data_layout_{info.data_layout} {
+  if (session_options) {
+    enable_graph_capture_ = session_options->config_options.GetConfigOrDefault("enableGraphCapture", "false") == "true";
+    LOGS_DEFAULT(VERBOSE) << "Graph capture enable: " << enable_graph_capture_;
+  }
 }
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
@@ -775,7 +778,7 @@ Status JsExecutionProvider::OnRunEnd(bool sync_stream) {
 }
 
 bool JsExecutionProvider::IsGraphCaptureEnabled() const {
-  return graph_capture_enabled_;
+  return enable_graph_capture_;
 }
 
 bool JsExecutionProvider::IsGraphCaptured() const {

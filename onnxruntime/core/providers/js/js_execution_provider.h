@@ -5,6 +5,7 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/session_options.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 
@@ -30,22 +31,15 @@ struct JsExecutionProviderInfo {
         data_layout = DataLayout::NHWC;
       }
     }
-    const std::string& graph_capture_enabled_str = po.at("graph_capture_enabled");
-    if (graph_capture_enabled_str == "true") {
-      graph_capture_enabled = true;
-    } else {
-      graph_capture_enabled = false;
-    }
   }
 
   // JSEP default preferred layout is NHWC
   DataLayout data_layout = DataLayout::NHWC;
-  bool graph_capture_enabled = false;
 };
 
 class JsExecutionProvider : public IExecutionProvider {
  public:
-  JsExecutionProvider(const JsExecutionProviderInfo& info);
+  JsExecutionProvider(const JsExecutionProviderInfo& info, const SessionOptions* session_options);
   ~JsExecutionProvider() override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
@@ -76,7 +70,7 @@ class JsExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureAllowed() const;
   void IncrementRegularRunCountBeforeGraphCapture();
   DataLayout preferred_data_layout_;
-  bool graph_capture_enabled_ = false;
+  bool enable_graph_capture_ = false;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.

@@ -11,7 +11,6 @@ import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
 import {loadFile} from './wasm-utils-load-file';
 
-let currentEpName: string;
 // #region Initializations
 
 /**
@@ -107,7 +106,6 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
     const initJsep = require('./jsep/init').init;
     await initJsep(getInstance(), env, adapter);
   }
-  currentEpName = epName;
 };
 
 // #endregion Initializations
@@ -141,7 +139,7 @@ type IOBindingState = {
  */
 type SessionMetadata = [
   inferenceSessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[],
-  bindingState: IOBindingState|null, graphCaptureEnabled: boolean, inputOutputBounded: boolean
+  bindingState: IOBindingState|null, enableGraphCapture: boolean, inputOutputBounded: boolean
 ];
 
 const activeSessions = new Map<number, SessionMetadata>();
@@ -237,18 +235,7 @@ export const createSession = async(
 
     const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
 
-    let graphCaptureEnabled = false;
-    if (currentEpName === 'webgpu') {
-      const executionProviders = options?.executionProviders;
-      for (const ep of executionProviders!) {
-        const epName = typeof ep === 'string' ? ep : ep.name;
-        if (epName === 'webgpu') {
-          const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
-          graphCaptureEnabled =
-              webgpuOptions.graphCaptureEnabled === undefined ? false : webgpuOptions.graphCaptureEnabled;
-        }
-      }
-    }
+    const enableGraphCapture = options?.enableGraphCapture === undefined ? false : options.enableGraphCapture;
 
     const inputNames = [];
     const outputNames = [];
@@ -271,7 +258,7 @@ export const createSession = async(
       outputNames.push(nameString);
 
       if (!BUILD_DEFS.DISABLE_WEBGPU) {
-        if (graphCaptureEnabled) {
+        if (enableGraphCapture) {
           outputPreferredLocations.push('gpu-buffer');
           continue;
         }
@@ -302,7 +289,7 @@ export const createSession = async(
 
     activeSessions.set(
         sessionHandle,
-        [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, bindingState, graphCaptureEnabled, false]);
+        [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, bindingState, enableGraphCapture, false]);
     return [sessionHandle, inputNames, outputNames];
   } catch (e) {
     inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
@@ -350,7 +337,7 @@ export const releaseSession = (sessionId: number): void => {
 
 export const prepareInputOutputTensor =
     (tensor: TensorMetadata|null, tensorHandles: number[], allocs: number[], sessionId: number, index: number,
-     graphCaptureEnabled = false): void => {
+     enableGraphCapture = false): void => {
       if (!tensor) {
         tensorHandles.push(0);
         return;
@@ -369,9 +356,9 @@ export const prepareInputOutputTensor =
         throw new Error('String tensor is not supported on GPU.');
       }
 
-      if (graphCaptureEnabled && location !== 'gpu-buffer') {
+      if (enableGraphCapture && location !== 'gpu-buffer') {
         throw new Error(
-            `External buffer must be provided for input/output index ${index} when graphCaptureEnabled is true.`);
+            `External buffer must be provided for input/output index ${index} when enableGraphCapture is true.`);
       }
 
       if (location === 'gpu-buffer') {
@@ -434,7 +421,7 @@ export const run = async(
   const inputNamesUTF8Encoded = session[1];
   const outputNamesUTF8Encoded = session[2];
   const ioBindingState = session[3];
-  const graphCaptureEnabled = session[4];
+  const enableGraphCapture = session[4];
   const inputOutputBounded = session[5];
 
   const inputCount = inputIndices.length;
@@ -459,14 +446,14 @@ export const run = async(
     // create input tensors
     for (let i = 0; i < inputCount; i++) {
       prepareInputOutputTensor(
-          inputTensors[i], inputTensorHandles, inputOutputAllocs, sessionId, inputIndices[i], graphCaptureEnabled);
+          inputTensors[i], inputTensorHandles, inputOutputAllocs, sessionId, inputIndices[i], enableGraphCapture);
     }
 
     // create output tensors
     for (let i = 0; i < outputCount; i++) {
       prepareInputOutputTensor(
           outputTensors[i], outputTensorHandles, inputOutputAllocs, sessionId, inputCount + outputIndices[i],
-          graphCaptureEnabled);
+          enableGraphCapture);
     }
 
     let inputValuesIndex = inputValuesOffset / 4;
@@ -483,7 +470,7 @@ export const run = async(
     }
 
     if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState) {
-      if (!graphCaptureEnabled || (graphCaptureEnabled && !inputOutputBounded)) {
+      if (!enableGraphCapture || (enableGraphCapture && !inputOutputBounded)) {
         const {handle, outputPreferredLocations, outputPreferredLocationsEncoded} = ioBindingState;
 
         if (inputNamesUTF8Encoded.length !== inputCount) {
@@ -522,7 +509,7 @@ export const run = async(
         }
         activeSessions.set(
             sessionId,
-            [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, graphCaptureEnabled, true]);
+            [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture, true]);
       }
     }
 
@@ -633,7 +620,7 @@ export const run = async(
       }
     }
 
-    if (ioBindingState && !graphCaptureEnabled) {
+    if (ioBindingState && !enableGraphCapture) {
       wasm._OrtClearBoundOutputs(ioBindingState.handle);
     }
     return output;

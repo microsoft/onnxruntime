@@ -111,7 +111,7 @@ export declare namespace InferenceSession {
     optimizedModelFilePath?: string;
 
     /**
-     * Wether enable profiling.
+     * Whether enable profiling.
      *
      * This setting is a placeholder for a future use.
      */
@@ -153,6 +153,12 @@ export declare namespace InferenceSession {
      * This setting is available only in ONNXRuntime Web for WebGL and WebGPU EP.
      */
     preferredOutputLocation?: OnnxValueDataLocation|{readonly [outputName: string]: OnnxValueDataLocation};
+
+    /**
+     * Whether enable graph capture.
+     * This setting is available only in ONNXRuntime Web for WebGPU EP.
+     */
+    enableGraphCapture?: boolean;
 
     /**
      * Store configurations for a session. See
@@ -238,7 +244,6 @@ export declare namespace InferenceSession {
   export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgpu';
     preferredLayout?: 'NCHW'|'NHWC';
-    graphCaptureEnabled?: boolean;
   }
   export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webnn';
