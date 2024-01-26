@@ -116,6 +116,8 @@ def chain_model(args):
         helper.make_attribute("eos_token_id", config.eos_token_id),
         helper.make_attribute("pad_token_id", config.pad_token_id),
         helper.make_attribute("decoder_start_token_id", config.decoder_start_token_id),
+        helper.make_attribute("transcribe_token_id", tokenizer.convert_tokens_to_ids(['<|transcribe|>'])[0]),
+        helper.make_attribute("translate_token_id", tokenizer.convert_tokens_to_ids(['<|translate|>'])[0]),
         helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         helper.make_attribute("early_stopping", True),
         helper.make_attribute("model_type", 2),

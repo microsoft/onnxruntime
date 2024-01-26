@@ -10,6 +10,7 @@
 #include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
 #include "contrib_ops/cpu/transformers/sampling_parameters.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -33,6 +34,14 @@ struct NextTokenScores {
     }
   }
 };
+
+#ifdef DEBUG_GENERATION
+template <typename T>
+void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
+  std::cout << name << std::endl;
+  ORT_UNUSED_PARAMETER(next_token_scores);
+}
+#endif
 
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
@@ -150,18 +159,23 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TimestampLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TimestampLogitsProcessor(int eos_token_id, int max_initial_timestamp_index)
-      : eos_token_id_(eos_token_id), max_initial_timestamp_index_(max_initial_timestamp_index) {}
+  TimestampLogitsProcessor(int eos_token_id,
+                           int transcribe_token_id,
+                           int translate_token_id,
+                           int max_initial_timestamp_index)
+      : eos_token_id_(eos_token_id),
+        transcribe_token_id_(transcribe_token_id),
+        translate_token_id_(translate_token_id),
+        max_initial_timestamp_index_(max_initial_timestamp_index) {}
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override {
-    // TODO: translate_token_id_ and transcribe_token_id_ need to support both multilingual and English-only models.
     const int beg_token_id_ = eos_token_id_ + 107;
     const int not_token_id_ = eos_token_id_ + 106;
     const int solm_token_id_ = eos_token_id_ + 105;
     const int sot_token_id_ = eos_token_id_ + 1;
-    constexpr int translate_token_id_ = 50358;
-    constexpr int transcribe_token_id_ = 50359;
+    std::cout << "Transcribe token id: " << transcribe_token_id_ << std::endl;
+    std::cout << "Translate token id: " << translate_token_id_ << std::endl;
 
     const int batch_beam_size = next_token_scores.batch_beam_size;
     const int vocab_size = next_token_scores.vocab_size;
@@ -273,6 +287,8 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
 
  private:
   int eos_token_id_;
+  int transcribe_token_id_;
+  int translate_token_id_;
   int max_initial_timestamp_index_;
 };
 
@@ -334,7 +350,10 @@ class LogitsProcessorList : public ILogitsProcessorList {
     // Add timestamp processor for whisper model
     if (parameters.model_type == IGenerationParameters::kModelTypeWhisper && parameters.logits_processor == IGenerationParameters::kLogitsProcessorTypeWhisper) {
       constexpr int max_initial_timestamp_index = 50;
-      timestamp_processor_ = std::make_unique<TimestampLogitsProcessor<float>>(parameters.eos_token_id, max_initial_timestamp_index);
+      timestamp_processor_ = std::make_unique<TimestampLogitsProcessor<float>>(parameters.eos_token_id,
+                                                                               parameters.transcribe_token_id,
+                                                                               parameters.translate_token_id,
+                                                                               max_initial_timestamp_index);
       processor_list_.push_back(timestamp_processor_.get());
     }
 

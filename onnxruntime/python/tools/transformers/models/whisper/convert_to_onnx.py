@@ -370,7 +370,6 @@ def export_onnx_models(
                 onnx_path,
                 verbose,
                 use_external_data_format,
-                use_decoder_input_ids=use_forced_decoder_ids,
                 use_int32_inputs=use_int32_inputs,
             )
         else:
