@@ -22,8 +22,6 @@
 
  */
 
-#ifdef USE_CUTLASS
-
 #pragma once
 
 #include "cutlass/layout/matrix.h"
@@ -153,5 +151,3 @@ struct MixedGemmArchTraits<
 }  // namespace kernel
 }  // namespace gemm
 }  // namespace cutlass
-
-#endif

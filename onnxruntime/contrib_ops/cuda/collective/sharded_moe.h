@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUTLASS
-
 #pragma once
 
 #include "contrib_ops/cuda/moe/ft_moe/moe_kernel.h"
@@ -36,5 +34,3 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif
