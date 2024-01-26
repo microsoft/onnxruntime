@@ -606,6 +606,10 @@ struct ProviderHostImpl : ProviderHost {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
     } else if (data_type->s() == "float16") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+    } else if (data_type->s() == "uint16") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
+    } else if (data_type->s() == "int16") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT16;
     } else {
       return;
     }
