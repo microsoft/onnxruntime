@@ -498,27 +498,133 @@ def main():
         )
         converter.erase_onnx_model(temp_onnx_path)
 
+    from multiprocessing import Process
+
+    def run_optimize_phi2_onnx(
+        converter: ConvertPhi2ToONNX,
+        attention_type: AttentionOpType,
+        precision: Precision,
+        original_onnx_path: str,
+        optimized_onnx_path: str,
+    ):
+        converter.init_attn_type_and_precision(attention_type, precision)
+        converter.optimize_phi2_onnx(original_onnx_path, optimized_onnx_path)
+
+    processes = []
     if args.fp32_cpu:
-        converter.init_attn_type_and_precision(AttentionOpType.MultiHeadAttention, Precision.FLOAT32)
-        converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp32_cpu_opt.onnx")
+        # converter.init_attn_type_and_precision(AttentionOpType.MultiHeadAttention, Precision.FLOAT32)
+        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp32_cpu_opt.onnx")
+        p = Process(
+            target=run_optimize_phi2_onnx,
+            args=(
+                converter,
+                AttentionOpType.MultiHeadAttention,
+                Precision.FLOAT32,
+                original_onnx_path,
+                "phi2_fp32_cpu_opt.onnx",
+            ),
+        )
+        p.start()
+        processes.append(p)
+
     if args.int4_cpu:
-        converter.init_attn_type_and_precision(AttentionOpType.MultiHeadAttention, Precision.INT4)
-        converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_cpu_opt.onnx")
+        # converter.init_attn_type_and_precision(AttentionOpType.MultiHeadAttention, Precision.INT4)
+        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_cpu_opt.onnx")
+        p = Process(
+            target=run_optimize_phi2_onnx,
+            args=(
+                converter,
+                AttentionOpType.MultiHeadAttention,
+                Precision.INT4,
+                original_onnx_path,
+                "phi2_int4_cpu_opt.onnx",
+            ),
+        )
+        p.start()
+        processes.append(p)
+
     if args.fp32_gpu:
-        converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.FLOAT32)
-        converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp32_gpu_opt.onnx")
+        # converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.FLOAT32)
+        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp32_gpu_opt.onnx")
+        p = Process(
+            target=run_optimize_phi2_onnx,
+            args=(
+                converter,
+                AttentionOpType.Attention,
+                Precision.FLOAT32,
+                original_onnx_path,
+                "phi2_fp32_gpu_opt.onnx",
+            ),
+        )
+        p.start()
+        processes.append(p)
+
     if args.fp16_gpu:
-        converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.FLOAT16)
-        converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp16_gpu_opt.onnx")
+        # converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.FLOAT16)
+        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp16_gpu_opt.onnx")
+        p = Process(
+            target=run_optimize_phi2_onnx,
+            args=(
+                converter,
+                AttentionOpType.Attention,
+                Precision.FLOAT16,
+                original_onnx_path,
+                "phi2_fp16_gpu_opt.onnx",
+            ),
+        )
+        p.start()
+        processes.append(p)
+
     if args.int4_gpu:
-        converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.INT4)
-        converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_gpu_opt.onnx")
+        # converter.init_attn_type_and_precision(AttentionOpType.Attention, Precision.INT4)
+        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_gpu_opt.onnx")
+        p = Process(
+            target=run_optimize_phi2_onnx,
+            args=(
+                converter,
+                AttentionOpType.Attention,
+                Precision.INT4,
+                original_onnx_path,
+                "phi2_int4_gpu_opt.onnx",
+            ),
+        )
+        p.start()
+        processes.append(p)
+
     if args.fp16_a100:
-        converter.init_attn_type_and_precision(AttentionOpType.GroupQueryAttention, Precision.FLOAT16)
-        converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp16_a100_opt.onnx")
+        # converter.init_attn_type_and_precision(AttentionOpType.GroupQueryAttention, Precision.FLOAT16)
+        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_fp16_a100_opt.onnx")
+        p = Process(
+            target=run_optimize_phi2_onnx,
+            args=(
+                converter,
+                AttentionOpType.GroupQueryAttention,
+                Precision.FLOAT16,
+                original_onnx_path,
+                "phi2_fp16_a100_opt.onnx",
+            ),
+        )
+        p.start()
+        processes.append(p)
+
     if args.int4_a100:
-        converter.init_attn_type_and_precision(AttentionOpType.GroupQueryAttention, Precision.INT4)
-        converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_a100_opt.onnx")
+        # converter.init_attn_type_and_precision(AttentionOpType.GroupQueryAttention, Precision.INT4)
+        # converter.optimize_phi2_onnx(original_onnx_path, "phi2_int4_a100_opt.onnx")
+        p = Process(
+            target=run_optimize_phi2_onnx,
+            args=(
+                converter,
+                AttentionOpType.GroupQueryAttention,
+                Precision.INT4,
+                original_onnx_path,
+                "phi2_int4_a100_opt.onnx",
+            ),
+        )
+        p.start()
+        processes.append(p)
+
+    for p in processes:
+        p.join()
 
     if not converter.optimized_model_exists():
         logging.warning(
