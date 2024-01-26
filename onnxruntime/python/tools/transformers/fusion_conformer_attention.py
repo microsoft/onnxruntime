@@ -69,7 +69,7 @@ class FusionConformerAttention(FusionAttention):
 
         q_nodes = self.model.match_parent_path(
             matmul_qk,
-            ["Div", "Transpose", "Reshape", "Add", "MatMul"],
+            ["Mul", "Transpose", "Reshape", "Add", "MatMul"],
             [0, 0, 0, 0, 1],
         )
         if q_nodes is not None:
