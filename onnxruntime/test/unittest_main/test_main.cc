@@ -58,7 +58,7 @@ auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInf
 
 std::unique_ptr<Ort::Env> ort_env;
 static onnxruntime::Status ortenv_setup() {
-  emscripten_log(EM_LOG_CONSOLE,"XXXXXXXXXXXXXXXXXXXX:ortenv_setup start\n");
+  emscripten_log(EM_LOG_INFO,"XXXXXXXXXXXXXXXXXXXX:ortenv_setup start\n");
   OrtThreadingOptions tpo;
 
   onnxruntime::Status status;
@@ -74,7 +74,7 @@ static onnxruntime::Status ortenv_setup() {
   ORT_RETURN_IF_ERROR(onnxruntime::Environment::Create(std::move(lmgr), env, &tpo, true));
   std::unique_ptr<OrtEnv> env2=std::make_unique<OrtEnv>(std::move(env));
   ort_env = std::make_unique<Ort::Env>(env2.release());
-  emscripten_log(EM_LOG_CONSOLE,"XXXXXXXXXXXXXXXXXXXX:ortenv_setup end\n");
+  emscripten_log(EM_LOG_INFO,"XXXXXXXXXXXXXXXXXXXX:ortenv_setup end\n");
   return status;
 }
 
@@ -94,10 +94,10 @@ struct EmState {
 };
 
 void MainLoop(void* arg) {
-  emscripten_log(EM_LOG_CONSOLE, "Entering MainLoop ...\n");
+  emscripten_log(EM_LOG_INFO, "Entering MainLoop ...\n");
   if (arg == nullptr) return;
   EmState& state = *(EmState*)arg;
-  emscripten_log(EM_LOG_CONSOLE, "stage %d ...\n", (int)state.stage);
+  emscripten_log(EM_LOG_INFO, "stage %d ...\n", (int)state.stage);
   onnxruntime::Status status;
   switch (state.stage) {
     case EmStage::INIT: {
@@ -118,11 +118,12 @@ void MainLoop(void* arg) {
       state.stage = EmStage::FINI;
       break;
     default:
+      emscripten_log(EM_LOG_INFO, "Release ORT Env\n");      
       ort_env.reset();
       emscripten_cancel_main_loop();
       break;
   }
-  emscripten_log(EM_LOG_CONSOLE, "Exiting MainLoop ...\n");
+  emscripten_log(EM_LOG_INFO, "Exiting MainLoop ...\n");
   return;
 }
 
