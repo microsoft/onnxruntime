@@ -61,7 +61,15 @@ Default value: 0
 Defines the compute stream for the inference to run on.
 It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateCUDAProviderOptions`, but rather `UpdateCUDAProviderOptionsWithValue`.
 This cannot be used in combination with an external allocator.
-This can not be set using the python API.
+
+Example python usage:
+```python
+providers = [("CUDAExecutionProvider", {"device_id":torch.cuda.current_device(), "user_compute_stream": str(torch.cuda.current_stream().cuda_stream)})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_model.onnx", sess_options=sess_options, providers=providers)
+```
+
+To take advantage of user compute stream, it is recommended to use [I/O Binding](../api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.
 
 ### do_copy_in_default_stream
 Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are race conditions and possibly better performance.
