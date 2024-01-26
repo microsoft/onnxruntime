@@ -711,6 +711,8 @@ export class WebGpuBackend {
       sessionPendingKernels = [];
       this.capturedPendingKernels.set(this.currentSessionId!, sessionPendingKernels);
     }
+    // flush the left commands before we change the status.
+    this.flush();
     this.sessionStatus = 'capturing';
   }
   captureEnd(): void {

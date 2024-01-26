@@ -258,7 +258,7 @@ export const createSession = async(
       outputNames.push(nameString);
 
       if (!BUILD_DEFS.DISABLE_WEBGPU) {
-        if (enableGraphCapture) {
+        if (enableGraphCapture && options?.preferredOutputLocation === undefined) {
           outputPreferredLocations.push('gpu-buffer');
           continue;
         }
@@ -267,6 +267,10 @@ export const createSession = async(
             options?.preferredOutputLocation?.[nameString] ?? 'cpu';
         if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer') {
           throw new Error(`Not supported preferred output location: ${location}.`);
+        }
+        if (enableGraphCapture && location !== 'gpu-buffer') {
+          throw new Error(`Not supported preferred output location: ${
+              location}. Only 'gpu-buffer' location is supported when enableGraphCapture is true.`);
         }
         outputPreferredLocations.push(location);
       }
