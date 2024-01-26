@@ -38,6 +38,7 @@ limitations under the License.
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/tensorrt_llm_fmha/fmhaRunner.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 
 using namespace onnxruntime::cuda;
@@ -282,6 +283,75 @@ Status FusedTrtSelfAttention<float>(
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
                          "Trt fused attention does not support float tensor");
 }
+
+#if USE_TENSORRT_LLM_FMHA
+template <typename T>
+Status FusedTrtLlmAttention(
+    cudaStream_t stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<T>& data) {
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const bool causal = parameters.is_unidirectional;
+
+  int* sequence_offset = reinterpret_cast<int*>(data.scratch);
+
+  DUMP_TENSOR_INIT();
+  if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
+    DUMP_TENSOR_D("mask", reinterpret_cast<const int*>(data.mask_index), batch_size, sequence_length);
+    LaunchTrtSequenceOffset2d(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
+  } else {
+    sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_q_cache,
+                                                 data.mask_index, batch_size, sequence_length, stream,
+                                                 sequence_offset);
+  }
+  DUMP_TENSOR_D("sequence_offset", sequence_offset, 1, (data.mask_index != nullptr ? 2 : 1) * batch_size + 1);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  tensorrt_llm::kernels::FusedMHARunnerV2* fused_fp16_runner = reinterpret_cast<tensorrt_llm::kernels::FusedMHARunnerV2*>(data.llm_fmha_runner);
+
+  //const int S = causal ? sequence_length : fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
+
+  // B = 2 * batch_size when there is padding in input, and B = batch_size when padding is removed.
+  //const int B = (nullptr == data.mask_index ? batch_size : 2 * batch_size);
+
+  fused_fp16_runner->setup(parameters.batch_size, parameters.sequence_length, parameters.sequence_length, parameters.batch_size * parameters.sequence_length);
+  //fused_fp16_runner->setup(S, B);
+
+  if (!causal) {
+    assert(data.qkv_format == AttentionQkvFormat::QKV_BSN3H);
+
+    // When there is no bias, we can directly use packed qkv from inputs.
+    void const* packed_qkv = data.q;
+    if (data.query != nullptr && data.key == nullptr && data.bias == nullptr) {
+      packed_qkv = data.query;
+    }
+
+    fused_fp16_runner->run(packed_qkv, sequence_offset, data.output, stream);
+    DUMP_TENSOR("fused output", data.output,
+                batch_size, sequence_length, parameters.num_heads, parameters.v_head_size);
+
+  } else {
+    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
+    fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);
+    DUMP_TENSOR("fused causal output", data.output,
+                batch_size, sequence_length, parameters.num_heads, parameters.v_head_size);
+  }
+  return Status::OK();
+}
+
+// Template Specialization for float type
+template <>
+Status FusedTrtLlmAttention<float>(
+    cudaStream_t stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<float>& data) {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
+                         "Tensorrt-LLM fused attention does not support float tensor");
+}
+#endif
+
+
 
 #if USE_FLASH_ATTENTION
 template <typename T>
@@ -538,11 +608,13 @@ Status QkvToContext(
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
   void* fused_runner = data.fused_runner;
+  void* llm_fmha_runner = data.llm_fmha_runner;
 
   // At most one fused kernel is enabled.
   assert((int(data.use_flash_attention) +
           int(data.use_memory_efficient_attention) +
           int(fused_runner != nullptr) +
+          int(llm_fmha_runner != nullptr) +
           int(data.fused_cross_attention_kernel != nullptr)) <= 1);
 
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
@@ -589,6 +661,13 @@ Status QkvToContext(
   if (data.fused_cross_attention_kernel != nullptr) {
     return FusedTrtCrossAttention(stream, parameters, data);
   }
+
+#if USE_TENSORRT_LLM_FMHA
+  // Run TRT-LLM fused attention.
+  if (nullptr != llm_fmha_runner) {
+    return FusedTrtLlmAttention(stream, parameters, data);
+  }
+#endif
 
   // Run TRT fused attention.
   if (nullptr != fused_runner) {

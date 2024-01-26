@@ -51,6 +51,9 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 
+  enable_trt_llm_fmha_ = sizeof(T) == 2 &&
+                         !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtLlmAttention, false);
+
 #if USE_FLASH_ATTENTION
   disable_flash_attention_ = sizeof(T) != 2 ||
                              ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
@@ -173,7 +176,36 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
+  void* llm_fmha_runner = nullptr;
+#if USE_TENSORRT_LLM_FMHA
+  bool use_llm_attention = !use_flash_attention &&
+                           enable_trt_flash_attention_ &&
+                           nullptr == relative_position_bias &&
+                           (value != nullptr || key == nullptr) &&
+                           (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
+                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
+                           parameters.hidden_size == parameters.v_hidden_size &&
+                           parameters.sequence_length == parameters.kv_sequence_length;
+  if (use_llm_attention) {
+    // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
+    if (nullptr == llm_fmha_runner_.get()) {
+      llm_fmha_runner_.reset(new tensorrt_llm::kernels::FusedMHARunnerV2(tensorrt_llm::kernels::DATA_TYPE_FP16, num_heads_, parameters.head_size, parameters.scale));
+      // set flags: force_fp32_acc, is_s_padded, causal_mask, num_kv_heads = num_heads
+      constexpr bool force_fp32_accuracy = true;
+      constexpr bool is_s_padded = true;
+      llm_fmha_runner_->setup_flags(force_fp32_accuracy, is_s_padded, parameters.is_unidirectional, num_heads_);
+    }
+
+    // llm_fmha_runner_->setup(parameters.batch_size, parameters.sequence_length, parameters.sequence_length, parameters.batch_size * parameters.sequence_length);
+
+    if (llm_fmha_runner_->fmha_supported() && llm_fmha_runner_->isValid(parameters.sequence_length)) {
+      llm_fmha_runner = reinterpret_cast<void*>(llm_fmha_runner_.get());
+    }
+  }
+#endif
+
   bool use_fused_cross_attention = !use_flash_attention &&
+                                   // llm_fmha_runner_  == nullptr &&
                                    !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    nullptr == relative_position_bias &&
@@ -265,7 +297,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                 parameters.sequence_length,
                                                 parameters.kv_sequence_length,
                                                 parameters.total_sequence_length,
-                                                fused_runner,
+                                                llm_fmha_runner == nullptr ? fused_runner : llm_fmha_runner,
                                                 use_flash_attention,
                                                 use_fused_cross_attention,
                                                 use_memory_efficient_attention);
@@ -302,6 +334,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
+  data.llm_fmha_runner = llm_fmha_runner;
   data.fused_cross_attention_kernel = fused_cross_attention_kernel;
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;

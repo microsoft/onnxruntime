@@ -74,6 +74,7 @@ struct AttentionData {
   T* present_value = nullptr;
 
   void* fused_runner = nullptr;
+  void* llm_fmha_runner = nullptr;
   const void* fused_cross_attention_kernel = nullptr;
 
   bool use_flash_attention = false;

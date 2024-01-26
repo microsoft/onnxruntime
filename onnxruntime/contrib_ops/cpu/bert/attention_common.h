@@ -118,6 +118,9 @@ constexpr const char* kEnableFusedCausalAttention = "ORT_ENABLE_FUSED_CAUSAL_ATT
 // Environment variable to enable or disable TRT flash attention. This applies to both self and causal attention. Default is 0 (enabled).
 constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTION";
 
+// Environment variable to enable or disable TRT LLM attention.
+constexpr const char* kDisableTrtLlmAttention = "ORT_DISABLE_TRT_LLM_ATTENTION";
+
 // Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
 constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION";
 

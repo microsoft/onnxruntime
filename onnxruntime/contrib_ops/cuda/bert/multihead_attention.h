@@ -8,6 +8,7 @@
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/tensorrt_llm_fmha/fmhaRunner.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,6 +28,7 @@ class MultiHeadAttention final : public CudaKernel {
   float scale_;
   bool disable_fused_self_attention_;
   bool enable_trt_flash_attention_;
+  bool enable_trt_llm_fmha_;
   bool disable_fused_cross_attention_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
@@ -36,6 +38,7 @@ class MultiHeadAttention final : public CudaKernel {
   mutable const FusedMultiHeadCrossAttentionKernel* fused_fp16_cross_attention_kernel_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_q_cache_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_kv_cache_;
+  mutable tensorrt_llm::kernels::UniqPtrWNullCopy<tensorrt_llm::kernels::FusedMHARunnerV2> llm_fmha_runner_;
 };
 
 }  // namespace cuda
