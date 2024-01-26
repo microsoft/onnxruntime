@@ -665,6 +665,7 @@ Status QkvToContext(
 #if USE_TENSORRT_LLM_FMHA
   // Run TRT-LLM fused attention.
   if (nullptr != llm_fmha_runner) {
+    printf("*Trt_LLM_Attention\n");
     return FusedTrtLlmAttention(stream, parameters, data);
   }
 #endif

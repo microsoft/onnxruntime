@@ -29,6 +29,11 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
 
   T* qkv = data.workspace;
 
+  // For LLM FMHA
+  if (data.llm_fmha_runner != nullptr) {
+
+  }
+
   bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
@@ -240,7 +245,7 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
 
   T* qkv = data.workspace;
 
-  bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
+  bool use_fused_kernel = data.llm_fmha_runner != nullptr || (nullptr != fused_runner && !parameters.is_unidirectional);
 
   assert(data.bias == nullptr);
   assert(qk_head_size == v_head_size);

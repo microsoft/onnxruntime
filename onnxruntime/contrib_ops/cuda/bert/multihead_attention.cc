@@ -50,9 +50,12 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
-
+#if USE_TENSORRT_LLM_FMHA
   enable_trt_llm_fmha_ = sizeof(T) == 2 &&
                          !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtLlmAttention, false);
+#else
+  enable_trt_llm_fmha_ = false;
+#endif
 
 #if USE_FLASH_ATTENTION
   disable_flash_attention_ = sizeof(T) != 2 ||
@@ -141,8 +144,42 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool past_no_bias = (pass_key_value_as_past || past_key != nullptr || present_key != nullptr) && bias == nullptr;
 #endif
 
+
+  void* llm_fmha_runner = nullptr;
+#if USE_TENSORRT_LLM_FMHA
+  bool use_llm_attention = enable_trt_llm_fmha_ &&
+                           nullptr == relative_position_bias &&
+                           (value != nullptr || key == nullptr) &&
+                           (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
+                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
+                           parameters.hidden_size == parameters.v_hidden_size &&
+                           parameters.sequence_length == parameters.kv_sequence_length;
+                           // && tensorrt_llm::kernels::MHARunner::fmha_supported(parameters.head_size, sm);
+  if (use_llm_attention) {
+    if (!tensorrt_llm::kernels::MHARunner::fmha_supported(parameters.head_size, sm)){
+      printf("llm not supported for head_size=%d, sm=%d\n", parameters.head_size, sm);
+    } else {
+      // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
+      if (nullptr == llm_fmha_runner_.get()) {
+        llm_fmha_runner_ = tensorrt_llm::kernels::FusedMHARunnerV2::Create(tensorrt_llm::kernels::DATA_TYPE_FP16, num_heads_, parameters.head_size, parameters.scale);
+        // set flags: force_fp32_acc, is_s_padded, causal_mask, num_kv_heads = num_heads
+        constexpr bool force_fp32_accuracy = true;
+        constexpr bool is_s_padded = true;
+        llm_fmha_runner_->setup_flags(force_fp32_accuracy, is_s_padded, parameters.is_unidirectional, num_heads_);
+      }
+
+      llm_fmha_runner_->setup(parameters.batch_size, parameters.sequence_length, parameters.sequence_length, parameters.batch_size * parameters.sequence_length);
+
+      // int S = llm_fmha_runner_->getSFromMaxSeqLen(parameters.sequence_length);
+      // if (/*llm_fmha_runner_->fmha_supported() &&*/ llm_fmha_runner_->isValid(S)) {
+      llm_fmha_runner = reinterpret_cast<void*>(llm_fmha_runner_.get());
+    }
+  }
+#endif
+
 #if USE_FLASH_ATTENTION
-  bool use_flash_attention = !disable_flash_attention_ &&
+  bool use_flash_attention = llm_fmha_runner == nullptr &&
+                             !disable_flash_attention_ &&
                              !past_no_bias &&
                              nullptr == relative_position_bias &&
                              nullptr == key_padding_mask &&
@@ -176,36 +213,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
-  void* llm_fmha_runner = nullptr;
-#if USE_TENSORRT_LLM_FMHA
-  bool use_llm_attention = !use_flash_attention &&
-                           enable_trt_flash_attention_ &&
-                           nullptr == relative_position_bias &&
-                           (value != nullptr || key == nullptr) &&
-                           (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
-                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
-                           parameters.hidden_size == parameters.v_hidden_size &&
-                           parameters.sequence_length == parameters.kv_sequence_length;
-  if (use_llm_attention) {
-    // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
-    if (nullptr == llm_fmha_runner_.get()) {
-      llm_fmha_runner_.reset(new tensorrt_llm::kernels::FusedMHARunnerV2(tensorrt_llm::kernels::DATA_TYPE_FP16, num_heads_, parameters.head_size, parameters.scale));
-      // set flags: force_fp32_acc, is_s_padded, causal_mask, num_kv_heads = num_heads
-      constexpr bool force_fp32_accuracy = true;
-      constexpr bool is_s_padded = true;
-      llm_fmha_runner_->setup_flags(force_fp32_accuracy, is_s_padded, parameters.is_unidirectional, num_heads_);
-    }
-
-    // llm_fmha_runner_->setup(parameters.batch_size, parameters.sequence_length, parameters.sequence_length, parameters.batch_size * parameters.sequence_length);
-
-    if (llm_fmha_runner_->fmha_supported() && llm_fmha_runner_->isValid(parameters.sequence_length)) {
-      llm_fmha_runner = reinterpret_cast<void*>(llm_fmha_runner_.get());
-    }
-  }
-#endif
-
-  bool use_fused_cross_attention = !use_flash_attention &&
-                                   // llm_fmha_runner_  == nullptr &&
+ bool use_fused_cross_attention =  llm_fmha_runner == nullptr &&
+                                   !use_flash_attention &&
                                    !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    nullptr == relative_position_bias &&
@@ -227,7 +236,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  bool use_fused_runner = !use_flash_attention &&
+  bool use_fused_runner = llm_fmha_runner == nullptr &&
+                          !use_flash_attention &&
                           !disable_fused_self_attention_ &&
                           fused_cross_attention_kernel == nullptr &&
                           nullptr == relative_position_bias &&
@@ -262,7 +272,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 
-  bool use_memory_efficient_attention = !use_flash_attention &&
+  bool use_memory_efficient_attention = llm_fmha_runner == nullptr &&
+                                        !use_flash_attention &&
                                         fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&

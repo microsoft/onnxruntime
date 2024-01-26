@@ -38,7 +38,8 @@ class MultiHeadAttention final : public CudaKernel {
   mutable const FusedMultiHeadCrossAttentionKernel* fused_fp16_cross_attention_kernel_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_q_cache_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_kv_cache_;
-  mutable tensorrt_llm::kernels::UniqPtrWNullCopy<tensorrt_llm::kernels::FusedMHARunnerV2> llm_fmha_runner_;
+  //mutable tensorrt_llm::kernels::UniqPtrWNullCopy<tensorrt_llm::kernels::FusedMHARunnerV2> llm_fmha_runner_;
+  mutable std::unique_ptr<tensorrt_llm::kernels::MHARunner> llm_fmha_runner_;
 };
 
 }  // namespace cuda
