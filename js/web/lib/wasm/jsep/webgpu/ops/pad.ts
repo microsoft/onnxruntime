@@ -19,8 +19,8 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length < 1) {
     throw new Error('Too few inputs');
   }
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('Input type must be float.');
+  if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.float16) {
+    throw new Error('Input type must be float or float16.');
   }
 
   if (inputs.length >= 2) {
