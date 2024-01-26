@@ -45,7 +45,20 @@ jobs:
     name: ${{ parameters.PoolName }}
   variables:
     buildArch: x64
-    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm ${{ parameters.ExtraBuildArgs }}'
+
+    # command line arguments for all builds
+    ExtensionBuildArgs: '--use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON'
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm $(ExtensionBuildArgs) ${{ parameters.ExtraBuildArgs }}'
+
+    # command line arguments for JSEP builds
+    JsepCommonBuildArgs: '--use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
+    ${{ if eq(parameters.BuildConfig, 'Debug') }}:
+      # Debug build
+      JsepBuildArgs: '$(JsepCommonBuildArgs) --cmake_extra_defines onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL=1'
+    ${{ else }}:
+      # Release build
+      JsepBuildArgs: '$(JsepCommonBuildArgs) --enable_wasm_api_exception_catching'
+
     runCodesignValidationInjection: false
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
@@ -80,6 +93,9 @@ jobs:
       versionSpec: '3.8'
       addToPath: true
       architecture: $(buildArch)
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '18.x'
   - template: download-deps.yml
 
   - task: PythonScript@0
@@ -136,7 +152,7 @@ jobs:
       ${{ else }}:
         AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads
-      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --wasm_run_tests_in_browser'
+      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --enable_wasm_native_eh --wasm_run_tests_in_browser'
       DisplayName: 'Build and test (browser) (simd + threads)'
       WithCache: ${{ parameters.WithCache }}
 
@@ -148,7 +164,7 @@ jobs:
       ${{ else }}:
         AdditionalKey: wasm_simd | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_simd
-      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd --enable_wasm_simd'
+      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd --enable_wasm_simd --enable_wasm_native_eh'
       DisplayName: 'Build and test (node) (simd)'
       WithCache: ${{ parameters.WithCache }}
 
@@ -161,7 +177,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: training_wasm_simd | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/training_wasm_simd
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/training_wasm_simd --enable_training_apis --enable_wasm_simd --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/training_wasm_simd --enable_training_apis --enable_wasm_simd  --enable_wasm_native_eh --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (training + simd)'
         WithCache: ${{ parameters.WithCache }}
 
@@ -174,7 +190,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_simd_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_simd_jsep
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_jsep --enable_wasm_simd --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_jsep --enable_wasm_simd $(JsepBuildArgs)'
         DisplayName: 'Build (simd + JSEP)'
         WithCache: ${{ parameters.WithCache }}
     - template: build-linux-wasm-step.yml
@@ -185,7 +201,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_simd_threads_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads_jsep
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep  --use_webnn --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads $(JsepBuildArgs)'
         DisplayName: 'Build (simd + threads + JSEP)'
         WithCache: ${{ parameters.WithCache }}
 
