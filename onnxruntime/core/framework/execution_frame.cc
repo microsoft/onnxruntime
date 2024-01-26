@@ -204,6 +204,15 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtDevice& info) const {
 
 Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValueImpl(ort_value_idx); }
 
+#ifdef ENABLE_TRAINING
+Status IExecutionFrame::ReleaseAllMLValues(){
+  for (uint ort_value_idx = 0; ort_value_idx < all_values_.size(); ort_value_idx++) {
+    all_values_[ort_value_idx] = OrtValue();
+  }
+  return Status::OK();
+}
+#endif
+
 Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
@@ -831,7 +840,20 @@ AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtDevice& info) const {
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to a value that is an unused optional input/output
 Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) {
+#ifndef ENABLE_TRAINING
   return AllocateAsPerAllocationPlan(ort_value, ort_value_idx, shape);
+#else
+  try {
+    auto status = AllocateAsPerAllocationPlan(ort_value, ort_value_idx, shape);
+    return status;
+  } catch (const std::exception& e) {
+    LOGS(session_state_.Logger(), WARNING)
+      << "Exception caught when allocating memory for ort_value with index: " << ort_value_idx
+      << "so clean up all_values_";
+    static_cast<void>(ReleaseAllMLValues());
+    return Status(ONNXRUNTIME, FAIL, e.what());
+  }
+#endif
 }
 
 void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const TensorShape& output_shape) {
