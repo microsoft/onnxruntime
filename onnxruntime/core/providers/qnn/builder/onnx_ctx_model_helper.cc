@@ -171,7 +171,7 @@ bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
   // always try the path set by user first, it's the only way to set it if load model from memory
   if (!customer_context_cache_path.empty()) {
     context_cache_path = ToPathString(customer_context_cache_path);
-  } else if (!model_pathstring.empty()) { // model loaded from file
+  } else if (!model_pathstring.empty()) {  // model loaded from file
     if (is_qnn_ctx_model) {
       // it's a context cache model, just use the model path
       context_cache_path = model_pathstring;

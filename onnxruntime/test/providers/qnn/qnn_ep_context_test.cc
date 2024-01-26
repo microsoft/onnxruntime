@@ -154,7 +154,6 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
 }
 
-
 // Test that models with 2 non-quantized Add nodes and 2 quantized Add nodes can still generate the context binary
 // The generated Onnx model has 2 Add nodes and 1 EPContext nodes
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
@@ -395,7 +394,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
       ORT_THROW("Error reading model");
   }
 
-  Ort::SessionOptions so; // No need to set the context file path in so since it's load from file
+  Ort::SessionOptions so;  // No need to set the context file path in so since it's load from file
   so.AppendExecutionProvider("QNN", provider_options);
 #ifdef _WIN32
   std::wstring ctx_model_file(context_binary_file.begin(), context_binary_file.end());
