@@ -340,7 +340,6 @@ class WhisperHelper:
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
         ort_outputs = ort_session.run(None, inputs)[0][0]
-        logger.warning(ort_outputs)
 
         expected_transcription_no_comma = (
             " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
@@ -352,20 +351,19 @@ class WhisperHelper:
         pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)[0]
         ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)[0]
 
-        max_diff = 0
         parity = (
             pt_transcription in expected_transcription_no_comma and ort_transcription in expected_transcription_with_comma
         )
+        max_diff = 0
 
-        if pt_outputs.shape != ort_outputs.shape:
-            logger.warning("PyTorch and ONNX Runtime outputs do not have the same shape")
-        else:
-            diff = pt_outputs - ort_outputs[]
+        if not parity:
+            if pt_outputs.shape != ort_outputs.shape:
+                diff = pt_outputs - ort_outputs[:, : len(pt_outputs[0])]
+            else:
+                diff = pt_outputs - ort_outputs
             max_diff = max(diff.min(), diff.max(), key=abs)
 
-        if parity:
-            max_diff = 0
-        else:
+        if max_diff != 0:
             logger.warning(f"PyTorch outputs: {pt_transcription}")
             logger.warning(f"ONNX Runtime outputs: {ort_transcription}")
 
