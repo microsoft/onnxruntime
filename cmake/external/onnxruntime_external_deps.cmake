@@ -44,10 +44,16 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
   endif()
   # gtest and gmock
+  if(onnxruntime_ENABLE_WEBASSEMBLY_NATIVE_EXCEPTION_HANDLING AND Patch_FOUND)
+    set(ONNXRUNTIME_GTEST_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/googletest/googletest.patch)
+  else()
+    set(ONNXRUNTIME_GTEST_PATCH_COMMAND "")
+  endif()
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
     URL_HASH SHA1=${DEP_SHA1_googletest}
+    PATCH_COMMAND ${ONNXRUNTIME_GTEST_PATCH_COMMAND}
     FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
   )
 endif()

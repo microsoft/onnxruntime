@@ -42,9 +42,15 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     string(APPEND CMAKE_CXX_FLAGS " -msimd128")
   endif()
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
-    string(APPEND CMAKE_C_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
-    string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+  if (NOT onnxruntime_DISABLE_EXCEPTIONS)
+    if (onnxruntime_ENABLE_WEBASSEMBLY_NATIVE_EXCEPTION_HANDLING)
+      # use webassembly exception handling
+      string(APPEND CMAKE_C_FLAGS " -fwasm-exceptions")
+      string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions")
+    elseif (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
+      string(APPEND CMAKE_C_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+      string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+    endif()
   endif()
 
   # Build WebAssembly with multi-threads support.
