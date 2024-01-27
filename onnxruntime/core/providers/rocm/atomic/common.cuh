@@ -59,22 +59,71 @@ __device__ __forceinline__ void AtomicAdd(T *start_addr, size_t index, const siz
   atomic_add(start_addr + index, value);
 }
 
+// Disable default template instantiation.
+// For every type T, we need to define a specialization
+// to select the right type for calling atomicCAS.
+template <typename T>
+class AtomicCasType;
+
+template<>
+class AtomicCasType<int8_t> {
+ public:
+  using type = unsigned short int;
+  static const unsigned int mask = 0xffu;
+};
+
+template<>
+class AtomicCasType<half> {
+ public:
+  using type = unsigned short int;
+  static const unsigned int mask = 0xffffu;
+};
+
+template<>
+class AtomicCasType<float> {
+ public:
+  using type = unsigned int;
+  static const unsigned int mask = 0xffffffffu;
+};
+
+template<>
+class AtomicCasType<double> {
+ public:
+  using type = unsigned long long int;
+  static const unsigned int mask = 0xffffffffu;
+};
+
+template<>
+class AtomicCasType<int> {
+ public:
+  using type = int;
+  static const unsigned int mask = 0xffffffffu;
+};
+
+template<>
+class AtomicCasType<int64_t> {
+ public:
+  using type = unsigned long long int;
+  static const unsigned int mask = 0xffffffffu;
+};
+
 // Obtained from pytorch/aten/src/ATen/cuda/Atomic.cuh.
 //
 // This function compute 8-bit atomic binary operation using 32-bit atomicCAS.
 // It accumulate `val` into the `address` using the `func`.
 // The accumulation is atomic (i.e., thread-safe).
 //
-// E.g., Making OneByteType int8_t and BinaryFunc
-// struct AddFunc {
-//   __device__ __forceinline__ OneByteType operator()(OneByteType a, OneByteType b) const {
-//     return a + b;
-// }
-// makes this function atomic_add for int8_t.
-template<typename OneByteType, typename BinaryFunc>
-__device__ __forceinline__ void atomic_byte_func_with_4byte_cas(OneByteType* address, OneByteType val, BinaryFunc func) {
-    static_assert(sizeof(OneByteType) == 1, "OneByteType must be 1 byte for the following bit-level manipulations.");
-
+// E.g., Assume ValueType is
+//  int8_t
+// and BinaryFunc is
+//  struct AddFunc {
+//    __device__ __forceinline__ int8_t operator()(int8_t a, int8_t b) const {
+//      return a + b;
+//  }
+// This function becomes atomic_add for int8_t.
+template<typename ValueType, typename BinaryFunc>
+__device__ __forceinline__ void atomic_byte_func_with_unit32_cas(ValueType* address, ValueType val, BinaryFunc func) {
+    static_assert(sizeof(ValueType) == 1 | sizeof(ValueType) == 2 | sizeof(ValueType) == 4, "ValueType must be 1 byte for the following bit-level manipulations.");
     // Number of bytes to the lower 4-byte aligned address.
     // If the current address is b1010"10", then offset = b10 = 2,
     // which means the current address is 2 bytes away from
@@ -144,9 +193,9 @@ __device__ __forceinline__ void atomic_byte_func_with_4byte_cas(OneByteType* add
       //                                                              V
       //
       //      00000000      |      00000000      |      00000000      | ..... byte 2 .....
-      old_byte = (old >> shift) & 0xff;
+      old_byte = (old >> shift) & AtomicCasType<ValueType>::mask;
       // Use + for atomic addition, * for atomic multiplication, / for atomic division.
-      newval = static_cast<uint32_t>(func(val, static_cast<OneByteType>(old_byte)));
+      newval = static_cast<uint32_t>(func(val, static_cast<ValueType>(old_byte)));
       // Journey of a 32-bit value (cont'd):
       //
       // old
@@ -169,56 +218,23 @@ __device__ __forceinline__ void atomic_byte_func_with_4byte_cas(OneByteType* add
       //
       // (old & ~(0x000000ff << shift)) | (newval << shift)
       // ..... byte 3 ..... | ... new byte 2 ... | ..... byte 1 ..... | ..... byte 0 .....
-      newval = (old & ~(0x000000ff << shift)) | (newval << shift);
+      newval = (old & ~(AtomicCasType<ValueType>::mask << shift)) | (newval << shift);
       old = atomicCAS(address_as_ui, assumed, newval);
     } while (assumed != old);
 }
-
-// Disable default template instantiation.
-// For every type T, we need to define a specialization
-// to select the right type for calling atomicCAS.
-template <typename T>
-class AtomicCasType;
-
-template<>
-class AtomicCasType<half> {
- public:
-  using type = unsigned short int;
-};
-
-template<>
-class AtomicCasType<float> {
- public:
-  using type = unsigned int;
-};
-
-template<>
-class AtomicCasType<double> {
- public:
-  using type = unsigned long long int;
-};
-
-template<>
-class AtomicCasType<int> {
- public:
-  using type = int;
-};
-
-template<>
-class AtomicCasType<int64_t> {
- public:
-  using type = unsigned long long int;
-};
 
 // It accumulates `val` into the `address` using the `func`.
 // This function is thread-safe (i.e., atomic).
 template<typename ValueType, typename BinaryFunc>
 __device__ __forceinline__ void atomic_binary_func(ValueType* address, ValueType val, BinaryFunc func) {
-  ValueType observed = *address, new_value;
+  ValueType observed = *address, assumed, new_value;
   using CasType = typename AtomicCasType<ValueType>::type;
   static_assert(sizeof(ValueType) == sizeof(CasType), "ValueType and CasType must have the same size for calling atomicCAS.");
   auto address_as_cas_type = reinterpret_cast<CasType*>(address);
   do {
+      // Record the value used to compute new value.
+      assumed = observed;
+
       // Compute expected new value.
       new_value = func(observed, val);
 
@@ -249,7 +265,7 @@ __device__ __forceinline__ void atomic_binary_func(ValueType* address, ValueType
       //        Thus, the following (observed != new_value) is true,
       //        and the loop continues. In the next iteration, the
       //        `new_value` is computed again using the fresh `observed`.
-  } while (observed != new_value);
+  } while (observed != assumed);
 }
 
 struct AddFunc {
@@ -281,26 +297,38 @@ struct MinFunc {
 };
 
 __device__ __forceinline__ void atomic_add(int8_t* address, int8_t value) {
-  atomic_byte_func_with_4byte_cas(address, value, AddFunc());
+  atomic_byte_func_with_unit32_cas(address, value, AddFunc());
 }
 __device__ __forceinline__ void atomic_mul(int8_t* address, int8_t value) {
-  atomic_byte_func_with_4byte_cas(address, value, MulFunc());
+  atomic_byte_func_with_unit32_cas(address, value, MulFunc());
 }
 __device__ __forceinline__ void atomic_max(int8_t* address, int8_t value) {
-  atomic_byte_func_with_4byte_cas(address, value, MaxFunc());
+  atomic_byte_func_with_unit32_cas(address, value, MaxFunc());
 }
 __device__ __forceinline__ void atomic_min(int8_t* address, int8_t value) {
-  atomic_byte_func_with_4byte_cas(address, value, MinFunc());
+  atomic_byte_func_with_unit32_cas(address, value, MinFunc());
 }
 
 __device__ __forceinline__ void atomic_mul(half* address, half value) {
+#if __CUDA_ARCH__ >= 600
   atomic_binary_func(address, value, MulFunc());
+#else
+  atomic_byte_func_with_unit32_cas(address, value, MulFunc());
+#endif
 }
 __device__ __forceinline__ void atomic_max(half* address, half value) {
+#if __CUDA_ARCH__ >= 600
   atomic_binary_func(address, value, MaxFunc());
+#else
+  atomic_byte_func_with_unit32_cas(address, value, MaxFunc());
+#endif
 }
 __device__ __forceinline__ void atomic_min(half* address, half value) {
+#if __CUDA_ARCH__ >= 600
   atomic_binary_func(address, value, MinFunc());
+#else
+  atomic_byte_func_with_unit32_cas(address, value, MinFunc());
+#endif
 }
 
 __device__ __forceinline__ void atomic_mul(float* address, float value) {
@@ -322,6 +350,7 @@ __device__ __forceinline__ void atomic_max(double* address, double value) {
 __device__ __forceinline__ void atomic_min(double* address, double value) {
   atomic_binary_func(address, value, MinFunc());
 }
+
 
 }  // namespace rocm
 }  // namespace onnxruntime
