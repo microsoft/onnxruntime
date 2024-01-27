@@ -186,7 +186,9 @@ class AtomicCasType<int64_t> {
 // This function becomes atomic_add for int8_t.
 template<typename ValueType, typename BinaryFunc>
 __device__ __forceinline__ void atomic_byte_func_with_unit32_cas(ValueType* address, ValueType val, BinaryFunc func) {
-    static_assert(sizeof(ValueType) == 1 | sizeof(ValueType) == 2 | sizeof(ValueType) == 4, "ValueType must be 1 byte for the following bit-level manipulations.");
+    // Assert to ensure the following bit-wise manipulation is correct.
+    static_assert(sizeof(ValueType) == 1 | sizeof(ValueType) == 2 | sizeof(ValueType) == 4,
+      "ValueType must be 1-byte, 2-byte or 4-byte large.");
     // Number of bytes to the lower 4-byte aligned address.
     // If the current address is b1010"10", then offset = b10 = 2,
     // which means the current address is 2 bytes away from
@@ -292,7 +294,8 @@ template<typename ValueType, typename BinaryFunc>
 __device__ __forceinline__ void atomic_binary_func(ValueType* address, ValueType val, BinaryFunc func) {
   ValueType observed = *address, assumed, new_value;
   using CasType = typename AtomicCasType<ValueType>::type;
-  static_assert(sizeof(ValueType) == sizeof(CasType), "ValueType and CasType must have the same size for calling atomicCAS.");
+  static_assert(sizeof(ValueType) == sizeof(CasType),
+    "ValueType and CasType must have the same size for calling atomicCAS.");
   auto address_as_cas_type = reinterpret_cast<CasType*>(address);
   do {
       // Record the value used to compute new value.
@@ -373,21 +376,21 @@ __device__ __forceinline__ void atomic_min(int8_t* address, int8_t value) {
 }
 
 __device__ __forceinline__ void atomic_mul(half* address, half value) {
-#if __CUDA_ARCH__ >= 600
+#if __CUDA_ARCH__ >= 700
   atomic_binary_func(address, value, MulFunc());
 #else
   atomic_byte_func_with_unit32_cas(address, value, MulFunc());
 #endif
 }
 __device__ __forceinline__ void atomic_max(half* address, half value) {
-#if __CUDA_ARCH__ >= 600
+#if __CUDA_ARCH__ >= 700
   atomic_binary_func(address, value, MaxFunc());
 #else
   atomic_byte_func_with_unit32_cas(address, value, MaxFunc());
 #endif
 }
 __device__ __forceinline__ void atomic_min(half* address, half value) {
-#if __CUDA_ARCH__ >= 600
+#if __CUDA_ARCH__ >= 700
   atomic_binary_func(address, value, MinFunc());
 #else
   atomic_byte_func_with_unit32_cas(address, value, MinFunc());
