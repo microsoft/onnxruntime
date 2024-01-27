@@ -57,15 +57,6 @@ endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
-function(add_jblas)
-    add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas)
-    target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
-    target_sources(onnxruntime_mlas PRIVATE
-        ${MLAS_SRC_DIR}/jblas_gemm.cpp
-     )
-    set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
-endfunction()
-
 #TODO: set MASM flags properly
 function(setup_mlas_source_for_windows)
 
@@ -364,19 +355,23 @@ else()
             ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
             ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S
             ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S
+            ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
             ${MLAS_SRC_DIR}/activate_fp16.cpp
             ${MLAS_SRC_DIR}/dwconv.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
             ${MLAS_SRC_DIR}/pooling_fp16.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
+            ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
@@ -620,10 +615,6 @@ else()
           "${MLAS_SRC_DIR}/scalar/*.cpp")
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
-endif()
-
-if(USE_JBLAS)
-  add_jblas()
 endif()
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})

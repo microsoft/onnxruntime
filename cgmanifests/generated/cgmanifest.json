@@ -36,7 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "dcd5bd5fd593e31465af3d9ef291d26c646b0a4f",
+          "commitHash": "4a2c63365eff8823a5221db86ef490e828306f9d",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
@@ -190,6 +190,16 @@
           "repositoryUrl": "https://github.com/boostorg/mp11.git"
         },
         "comments": "mp11"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "c11386eb632eec7c1c2aa323142f73519f946e2a",
+          "repositoryUrl": "https://github.com/intel/neural-speed.git"
+        },
+        "comments": "neural_speed"
       }
     },
     {
