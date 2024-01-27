@@ -25,9 +25,11 @@ export const getActivationSnippet = (attributes: InternalActivationAttributes, v
     case 'HardSigmoid':
       return `value = max(${valueType}(0.0), min(${valueType}(1.0), ${valueType}(uniforms.alpha) * value + ${
           valueType}(uniforms.beta)));`;
+    case '':
+      return '';
     // TODO: adding other activations that can be fused.
     default:
-      return '';
+      throw new Error(`Unsupported activation ${attributes.activation}`);
   }
 };
 
@@ -54,8 +56,7 @@ export const parseInternalActivationAttributes =
       if (activation === 'HardSigmoid') {
         const [alpha, beta] = attributes?.activation_params as [number, number] || [0.2, 0.5];
         return {activation, alpha, beta};
-      }
-      if (activation === 'Clip') {
+      } else if (activation === 'Clip') {
         const [clipMin, clipMax] = attributes?.activation_params as [number, number] || [MIN_CLIP, MAX_CLIP];
         return {activation, clipMax, clipMin};
       }
