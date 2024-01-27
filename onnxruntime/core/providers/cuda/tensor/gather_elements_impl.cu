@@ -95,34 +95,36 @@ struct OffsetCalculatorFor2D {
 
 template <class T>
 struct FuncAssignment {
-  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const { start_addr[index] = value; }
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    start_addr[index] = value;
+  }
 };
 
 template <class T>
 struct FuncAdd {
-  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const { atomic_add(start_addr + index, value); }
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_add(start_addr + index, value);
+  }
 };
 
 template <class T>
 struct FuncMul {
-  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const { atomic_mul(start_addr + index, value); }
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_mul(start_addr + index, value);
+  }
 };
 
 template <class T>
 struct FuncMax {
   __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
-    if (start_addr[index] < value) {
-      start_addr[index] = value;
-    }
+    atomic_max(start_addr + index, value);
   }
 };
 
 template <class T>
 struct FuncMin {
   __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
-    if (start_addr[index] > value) {
-      start_addr[index] = value;
-    }
+    atomic_min(start_addr + index, value);
   }
 };
 

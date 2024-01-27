@@ -274,7 +274,7 @@ class AtomicCasType<int64_t> {
 };
 
 // It accumulates `val` into the `address` using the `func`.
-// This function function is thread-safe (i.e., atomic).
+// This function is thread-safe (i.e., atomic).
 template<typename ValueType, typename BinaryFunc>
 __device__ __forceinline__ void atomic_binary_func(ValueType* address, ValueType val, BinaryFunc func) {
   ValueType observed = *address, new_value;
