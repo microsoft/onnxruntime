@@ -310,25 +310,13 @@ __device__ __forceinline__ void atomic_min(int8_t* address, int8_t value) {
 }
 
 __device__ __forceinline__ void atomic_mul(half* address, half value) {
-#if __CUDA_ARCH__ >= 600
-  atomic_binary_func(address, value, MulFunc());
-#else
   atomic_byte_func_with_unit32_cas(address, value, MulFunc());
-#endif
 }
 __device__ __forceinline__ void atomic_max(half* address, half value) {
-#if __CUDA_ARCH__ >= 600
-  atomic_binary_func(address, value, MaxFunc());
-#else
   atomic_byte_func_with_unit32_cas(address, value, MaxFunc());
-#endif
 }
 __device__ __forceinline__ void atomic_min(half* address, half value) {
-#if __CUDA_ARCH__ >= 600
-  atomic_binary_func(address, value, MinFunc());
-#else
   atomic_byte_func_with_unit32_cas(address, value, MinFunc());
-#endif
 }
 
 __device__ __forceinline__ void atomic_mul(float* address, float value) {
