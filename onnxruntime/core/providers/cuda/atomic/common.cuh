@@ -331,42 +331,6 @@ __device__ __forceinline__ void atomic_binary_func(ValueType* address, ValueType
   } while (observed != assumed);
 }
 
-// This function is similar to atomic_binary_func.
-// This function uses unsigned int to contain `val` and
-// call atomicCAS.
-// `ValueType` can be, for example, int8_t, int16_t, and half.
-// Comparing with atomic_binary_func, this function
-// adds several bit-level manipulations to
-// treat `val` as an unsigned int.
-template<typename ValueType, typename BinaryFunc>
-__device__ __forceinline__ void atomic_binary_func_with_unsigned_int_cas(ValueType* address, ValueType val, BinaryFunc func) {
-  using CasType = unsigned int;
-
-  static_assert(sizeof(ValueType) == 8 | sizeof(ValueType) == 16 | sizeof(ValueType) == 32, "ValueType and CasType must have the same size for calling atomicCAS.");
-  // How many bytes the `address` is higher than
-  // the closest 4-byte aligned address.
-  const size_t distance_to_aligned_address_in_byte = (size_t)address & 3;
-  // Compute the closest 4-byte aligned address lower than `address`.
-  auto aligned_address_as_cas_type = reinterpret_cast<CasType*>((char*)address - distance_to_aligned_address_in_byte);
-  // How many bits the `address` is higher than
-  // the closest 4-byte aligned address.
-  const size_t distance_to_aligned_address_in_bit = distance_to_aligned_address_in_byte * 8;
-
-  CasType observed_as_cas_type , new_value_as_cas_type, cas_observed_as_cas_type;
-  do {
-      observed_as_cas_type = *aligned_address_as_cas_type;
-      // Extract ValueType from the CasType's binary representation.
-      ValueType observed = static_cast<ValueType>((observed_as_cas_type >> distance_to_aligned_address_in_bit) & AtomicCasType<ValueType>::mask);
-      // Compute new value in ValueType world.
-      ValueType new_value = func(observed, val);
-      // Prepare new value in CasType world.
-      CasType clean_observed_as_cas_type = observed_as_cas_type & ~(AtomicCasType<ValueType>::mask << distance_to_aligned_address_in_bit);
-      // Complete new value in CasType world.
-      new_value_as_cas_type =  clean_observed_as_cas_type | (static_cast<CasType>(new_value) << distance_to_aligned_address_in_bit);
-      cas_observed_as_cas_type = atomicCAS(aligned_address_as_cas_type, observed_as_cas_type, new_value_as_cas_type);
-  } while (observed_as_cas_type != cas_observed_as_cas_type);
-}
-
 struct AddFunc {
   template <typename T>
   __device__ __forceinline__ T operator()(T a, T b) const {
