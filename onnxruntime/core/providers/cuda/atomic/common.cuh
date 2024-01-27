@@ -259,8 +259,23 @@ __device__ __forceinline__ void atomic_byte_func_with_unit32_cas(ValueType* addr
       //
       //      00000000      |      00000000      |      00000000      | ..... byte 2 .....
       old_byte = (old >> shift) & AtomicCasType<ValueType>::mask;
-      // Use + for atomic addition, * for atomic multiplication, / for atomic division.
-      newval = static_cast<uint32_t>(func(val, static_cast<ValueType>(old_byte)));
+      // Compute new int8_t value and store it to newrawvalue.
+      // Journey of a 32-bit value (cont'd):
+      //
+      // newrawvalue
+      // ... new byte 2 ...
+      auto newrawvalue = func(val, reinterpret_cast<ValueType&>(old_byte));
+      // Put the new int8_t value back to 32-bit word.
+      // Also ensure that bits not occupied by the int8_t value are 0s.
+      //
+      // Journey of a 32-bit value (cont'd):
+      //
+      // reinterpret_cast<uint32_t&>(newrawvalue)
+      //    random values   |   random values    |   random values    | ... new byte 2 ...
+      //
+      // reinterpret_cast<uint32_t&>(newrawvalue) & AtomicCasType<ValueType>::mask
+      //      00000000      |      00000000      |      00000000      | ... new byte 2 ...
+      newval = reinterpret_cast<uint32_t&>(newrawvalue) & AtomicCasType<ValueType>::mask;
       // Journey of a 32-bit value (cont'd):
       //
       // old
