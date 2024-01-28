@@ -5,6 +5,7 @@ import open_clip
 import torch
 from PIL import Image
 from sentence_transformers import util
+from time import sleep
 
 
 def arg_parser():
@@ -39,7 +40,8 @@ def main():
     image2 = args.image2
 
     score = round(generateScore(image1, image2), 2)
-    print(f"score is{score}, Images are different", flush=True)
+    print(f"score is{score}, Images are different", end=" " flush=True)
+    sleep(1)
     if score < 99:
         print(f"Images are different")
         raise SystemExit(1)
