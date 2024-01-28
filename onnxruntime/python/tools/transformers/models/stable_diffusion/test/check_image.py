@@ -39,8 +39,9 @@ def main():
     image2 = args.image2
 
     score = round(generateScore(image1, image2), 2)
+    print(f"score is{score}, Images are different")
     if score < 99:
-        print(f"score is{score}, Images are different")
+        print(f"Images are different")
         raise SystemExit(1)
 
 if __name__ == "_main__":
