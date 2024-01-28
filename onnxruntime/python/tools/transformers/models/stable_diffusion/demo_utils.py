@@ -532,7 +532,7 @@ def load_pipelines(args, batch_size=None):
         min_image_size = 512 if args.engine != "ORT_CUDA" else 256
         max_image_size = 768 if args.engine != "ORT_CUDA" else 1024
 
-    if args.det_infer:
+    if args.deter_infer:
         torch.use_deterministic_algorithms(True)
 
     params = {
