@@ -213,12 +213,12 @@ stages:
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
-	          image2=$(find $(pwd) -name "astronaut_riding_a_h*.png") ; \
+            image2=$(find $(pwd) -name "astronaut_riding_a_h*.png") ; \
             pushd test; \
             python3 -m pip install -r requirements.txt; \
-            echo check demo_txt2image.py's generate image; \
+            echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2; \
-	          popd ; \
+            popd ; \
             popd ; \
             '
       displayName: 'Check the generated image'
