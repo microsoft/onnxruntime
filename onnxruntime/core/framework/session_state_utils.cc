@@ -379,8 +379,8 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
               int arg_index;
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
               const auto& device = exec_plan->GetLocation(arg_index);
-
-              SessionState::NodeInfo node_info(index, &node, &kci, device);
+              size_t stream_index = exec_plan->node_stream_map_[node.Index()];
+              SessionState::NodeInfo node_info(index, &node, &kci, device, stream_index);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
                 ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));

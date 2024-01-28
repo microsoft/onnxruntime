@@ -203,6 +203,8 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     }
     return count;
   }
+
+  InlinedVector<size_t> node_stream_map_; // initialized from PlannerImpl
 };
 
 // Output details of an execution plan:

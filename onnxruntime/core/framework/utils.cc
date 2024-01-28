@@ -270,6 +270,9 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
     }
 
     copy_info.target_device = *node_info.device;
+    for (size_t i = 1; i < node_info_vec.size(); i++) {
+      if (node_info_vec[i].stream_index != node_info_vec[0].stream_index) copy_info.consumed_by_ops_from_different_stream = true;
+    }
 
 #ifdef ENABLE_TRAINING
   } else {
@@ -483,6 +486,9 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   for (auto* stream : feed_streams) {
     if (stream && visited.insert(stream).second) stream->Flush();
   }
+  // new logic:
+  // 1. should be only 1 stream to do all the copy inputs
+  // 2. if any feed's copy_info.consumed_by_ops_from_different_stream is true, Flush on current stream only once
   return Status::OK();
 }
 
