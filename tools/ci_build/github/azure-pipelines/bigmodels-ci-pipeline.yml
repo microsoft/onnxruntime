@@ -171,10 +171,26 @@ stages:
             python3 -m pip install -r requirements-cuda11.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo Generate an image guided by a text prompt; \
-            python3 demo_txt2img.py 'astronaut riding a horse on mars'; \
+            python3 demo_txt2img.py --seed 1 --det_infer 'astronaut riding a horse on mars'; \
             popd; \
           "
       displayName: 'Run stable diffusion demo'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:22.11-py3 \
+          bash -c "
+            set -ex; \
+            python3 --version; \
+            python3 -m pip install --upgrade pip; \
+            pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/test; \
+            python3 -m pip install -r requirements.txt; \
+            python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
+            echo Generate an image guided by a text prompt; \
+            python3 demo_txt2img.py --seed 1 --det_infer 'astronaut riding a horse on mars'; \
+            popd; \
+          "
+      displayName: 'Check the generated image'
       workingDirectory: $(Build.SourcesDirectory)
 
 - stage: Llama2_ONNX_FP16
