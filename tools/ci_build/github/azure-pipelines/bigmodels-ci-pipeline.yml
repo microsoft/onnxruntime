@@ -201,7 +201,8 @@ stages:
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --seed 1 --deter-infer "stronaut riding a horse on mars" ; \
-            popd; '
+            popd ; \
+            '
       displayName: 'Run stable diffusion demo'
       workingDirectory: $(Build.SourcesDirectory)
 
@@ -217,8 +218,9 @@ stages:
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py's generate image; \
             python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2; \
-	          popd; \
-            popd; '
+	          popd ; \
+            popd ; \
+            '
       displayName: 'Check the generated image'
       workingDirectory: $(Build.SourcesDirectory)
 
