@@ -1,4 +1,3 @@
-# reference: https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/README.md
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
@@ -28,6 +27,8 @@ pr:
     - 'onnxruntime/core/providers/js'
 #### end trigger ####parameters:
 
+# reference: https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/README.md
+parameters:
 - name: specificArtifact
   displayName: Use Specific Artifact
   type: boolean
