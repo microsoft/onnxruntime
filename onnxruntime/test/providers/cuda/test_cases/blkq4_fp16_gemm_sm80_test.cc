@@ -14,7 +14,6 @@
 #include <random>
 
 #include "core/framework/float16.h"
-#include "core/mickey/blk_q4/f16_prepack_sm80.h"
 #include "core/mlas/inc/mlas_q4.h"
 
 #include "blkq4_fp16_gemm_sm80.h"
@@ -24,15 +23,15 @@
 namespace onnxruntime {
 namespace test {
 
-template <bool ColumnMajorQuantBlocking>
-void testPrepack(int rows, int columns, bool has_offset = true) {
+template <bool col_blocking, bool has_offset = true>
+void testPrepack(int rows, int columns) {
   using ElementT = MLFloat16;
   constexpr int block_size = 32;
   using Base = onnxruntime::cuda::BlockwiseQuantization<
       ElementT,
       block_size,
       4,
-      ColumnMajorQuantBlocking>;
+      col_blocking>;
 
   using QuantBlocking = typename Base::QuantBlocking;
   using ElementW = typename Base::ElementW;
@@ -40,147 +39,40 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
   using ElementQOffset = typename Base::ElementQOffset;
   using LayoutQmeta = typename Base::LayoutQmeta;
 
-  unsigned int seed = 28571;  // Replace with desired seed value
-  std::seed_seq seq{seed};
-  std::mt19937 gen(seq);
-  std::uniform_int_distribution<> dis(0, 8192);
-
   const auto q_weight_shape = Base::get_quant_weights_shape(rows, columns);
   const auto meta_shape = Base::get_quant_meta_shape(rows, columns);
+  const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
 
-  //
-  // For testing quantization and dequantization, it is not straight
-  // forward to avoid flaky tests due to rounding errors. The way we
-  // try to achieve this is to:
-  // 1. Generate a set of quantized weights, scales and offsets
-  // 2. Dequantize the weights
-  // 3. Quantize the dequantized weights
-  // 4. Compare the dequantied-and-then-quantized weights with
-  //    the original quantized weights
-  //
-  // Random filling of the initial values are key to get this right.
-  // For weights, we must ensure each block gets a full range of
-  // values, i.e. must contain 0 and 15. And for scales, they must
-  // all be positive.
-  //
+  std::vector<ElementW> q_weights;
+  std::vector<ElementT> q_scales;
+  std::vector<ElementQOffset> q_zp;
+  std::vector<ElementT> dequants;
+  onnxruntime::cuda::test::blkq4_weights_gen<ElementT, block_size, col_blocking, has_offset>(
+      rows, columns, dequants, q_weights, q_scales, q_zp);
 
-  std::vector<ElementW> q_weights(q_weight_shape.product());
-  MatrixRef<ElementW, LayoutWPack, true> tensor_q_weight(
+  // for quantization tool, the input is row major, all outputs are column major
+  MatrixRef<ElementW, ColumnMajorLayout, true> tensor_q_weight(
       q_weights, make_Position(rows / 2, columns));
-  int v = 7;
-  for (int c = 0; c < tensor_q_weight.shape()[1]; c++) {
-    for (int r = 0; r < tensor_q_weight.shape()[0]; ++r) {
-      uint8_t v0 = static_cast<uint8_t>(v);
-      v = (v + 5) % 16;
-      if (v == 11 || v == 7 || v == 3) {
-        // making the cycle 13 instead of 16, avoiding same values in a row
-        v = (v + 5) % 16;
-      }
-      uint8_t v1 = 0;
-      if (r + 1 < rows) {
-        v1 = static_cast<uint8_t>(v);
-        v = (v + 5) % 16;
-        if (v == 11 || v == 7 || v == 3) {
-          // making the cycle 13 instead of 16, avoiding same values in a row
-          v = (v + 5) % 16;
-        }
-      }
-
-      tensor_q_weight.at(r, c) = ElementW((v1 << 4) | v0);
-    }
-  }
-
-  std::vector<ElementT> q_scales(meta_shape.product());
-  for (size_t i = 0; i < q_scales.size(); i++) {
-    q_scales[i] = ElementT(((dis(gen) % 127) + 1) / 32.0f);
-  }
-  MatrixRef<ElementT, LayoutQmeta, true> tensor_scale(
+  MatrixRef<ElementT, ColumnMajorLayout, true> tensor_scale(
       q_scales, meta_shape);
-
-  std::vector<ElementQOffset> q_zp(meta_shape.product());
-  for (size_t i = 0; i < q_zp.size(); i++) {
-    q_zp[i] = dis(gen) % 16;
-  }
-  MatrixRef<ElementQOffset, LayoutQmeta, true> tensor_offset(
-      q_zp, meta_shape);
-
-#if 0  // debug
-  // Fill tensor_q_weight with the patterned data, easier to debug with print
-  int loop_val = 0;
-  int offset = 3;
-  for (int col_tile = 0; col_tile < tensor_q_weight.extent().column()/8; ++col_tile) {
-    for (int row_tile = 0; row_tile < tensor_q_weight.extent().row()/4; ++row_tile) {
-      for (int col = 0; col < 8; ++col) {
-        for (int row = 0; row < 4; ++row) {
-          auto weight_cord = cutlass::make_Coord(row_tile * 4 + row, col_tile * 8 + col);
-          auto val = (loop_val + offset) % 256;
-          tensor_q_weight.at(weight_cord) = ElementW(val);
-          loop_val++;
-          if (loop_val == 256) {
-            loop_val = 0;
-            offset += 11;
-          }
-        }
-      }
-    }
-  }
-  for (int col = 0; col < tensor_scale.extent().column(); ++col){
-    int c =  col * QuantBlocking::kColumn;
-    for (int row = 0; row < tensor_scale.extent().row(); ++row){
-      int r = row * QuantBlocking::kRow;
-      auto weight_cord = cutlass::make_Coord(r/2, c);
-      int w = 0;
-      if (r % 2 == 0) {
-        w = int(tensor_q_weight.at(weight_cord) & 0x0f);
-      } else {
-        w = int(tensor_q_weight.at(weight_cord) >> 4);
-      }
-      tensor_scale.at({row, col}) = w;
-      tensor_offset.at({row, col}) = ElementQOffset(w);
-    }
+  MatrixRef<ElementQOffset, ColumnMajorLayout, true> tensor_offset;
+  if constexpr(has_offset) {
+    tensor_offset = MatrixRef<ElementQOffset, ColumnMajorLayout, true>(q_zp, zp_shape);
   }
 
-  int fill_val = -512;
-  int factor = 1;
-  for (int col = 0; col < tensor_scale.extent().column(); ++col){
-    for (int row = 0; row < tensor_scale.extent().row(); ++row){
-      tensor_scale.at({row, col}) = ElementQScale((float)fill_val * float(factor));
-      fill_val++;
-      if (fill_val == 512) {
-        fill_val = -512;
-        factor += 1;
-      }
-    }
-  }
-
-#endif  // debug
-
-  std::vector<ElementT> dequants(rows * columns);
-  MatrixRef<ElementT, RowMajorLayout> tensor_dequant(dequants, make_Position(rows, columns));
-
-  // Dequantize weights and save into matrix B for reference
+  // for quantization tool, the input is row major, test weight gen output is column major
+  std::vector<ElementT> dequants_transposed(dequants.size());
+  MatrixRef<ElementT, ColumnMajorLayout> tensor_dequant(dequants, make_Position(rows, columns));
+  MatrixRef<ElementT, RowMajorLayout> tensor_dequant_transposed(dequants_transposed, make_Position(rows, columns));
   for (int col = 0; col < tensor_dequant.shape()[1]; ++col) {
     for (int row = 0; row < tensor_dequant.shape()[0]; ++row) {
-      auto weight_cord = make_Position(row / 2, col);
-      auto scale_cord = make_Position(row / QuantBlocking::kRow, col / QuantBlocking::kColumn);
-      const uint8_t offset = has_offset ? tensor_offset.at(scale_cord) : 8;
-      int w = 0;
-      if (row % 2 == 0) {
-        w = int(tensor_q_weight.at(weight_cord) & 0x0f);
-      } else {
-        w = int(tensor_q_weight.at(weight_cord) >> 4);
-      }
-      float scale = float(tensor_scale.at(scale_cord));
-      float dequant = scale * float(w - offset);
-      tensor_dequant.at(row, col) = ElementT(dequant);
-      // Prints for help debugging in case of test failure
-      // fprintf(stderr, "(%2d,%2d)= %2d, %2d, %f, %f\n", row, col, w, offset, scale, dequant);
+      tensor_dequant_transposed.at(row, col) = tensor_dequant.at(row, col);
     }
   }
 
   int q_rows, q_cols;
   MlasBlockwiseQuantizedShape<ElementT, 4>(
-      block_size, ColumnMajorQuantBlocking, rows, columns, q_rows, q_cols);
+      block_size, col_blocking, rows, columns, q_rows, q_cols);
   // to be exact, q_rows are padded to multiple of block_size, deal with it when we care about strange shapes
   EXPECT_EQ(q_rows, q_weight_shape[0]);
   EXPECT_EQ(q_cols, q_weight_shape[1]);
@@ -194,19 +86,18 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
   std::vector<ElementT> o_scales(meta_shape.product());
   MatrixRef<ElementT, ColumnMajorLayout, true> tensor_o_scales(o_scales, meta_shape);
 
-  std::vector<uint8_t> o_zp(((meta_shape[0] + 1) / 2) * meta_shape[1], true);
-  MatrixRef<uint8_t, ColumnMajorLayout, true> tensor_o_zp(
-      o_zp, make_Position((meta_shape[0] + 1) / 2, meta_shape[1]));
+  std::vector<uint8_t> o_zp(zp_shape.product());
+  MatrixRef<uint8_t, ColumnMajorLayout, true> tensor_o_zp(o_zp, zp_shape);
 
   MlasQuantizeBlockwise<MLFloat16, 4>(o_elements.data(), o_scales.data(), has_offset ? o_zp.data() : nullptr,
-                                      tensor_dequant.data().data(), block_size,
-                                      ColumnMajorQuantBlocking, rows, columns, columns, nullptr);
+                                      dequants_transposed.data(), block_size,
+                                      col_blocking, rows, columns, columns, nullptr);
   for (int col = 0; col < tensor_q_weight.shape()[1]; ++col) {
     for (int row = 0; row < tensor_q_weight.shape()[0]; ++row) {
       EXPECT_EQ(tensor_o_elements.at(row, col), tensor_q_weight.at(row, col))
           << "quantized value mismatch at [" << row << "," << col << "]"
           << " shape[" << rows << "," << columns << "]"
-          << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+          << (col_blocking ? "Column-wise-block" : "Row-wise-block")
           << std::endl;
     }
   }
@@ -215,16 +106,17 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
     for (int row = 0; row < meta_shape[0]; row += 2) {
       if (has_offset) {
         uint8_t pair01 = tensor_o_zp.at(row / 2, col);
-        EXPECT_EQ(tensor_offset.at(row + 0, col), pair01 & 0xf)
+        uint8_t expected_pair01 = tensor_offset.at(row / 2, col);
+        EXPECT_EQ(expected_pair01 & 0xf, pair01 & 0xf)
             << "quantized offset mismatch at [" << row << "," << col << "]"
             << " shape[" << rows << "," << columns << "]"
-            << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+            << (col_blocking ? "Column-wise-block" : "Row-wise-block")
             << std::endl;
         if (row + 1 < meta_shape[0]) {
-          EXPECT_EQ(tensor_offset.at(row + 1, col), pair01 >> 4)
+          EXPECT_EQ(expected_pair01 >> 4, pair01 >> 4)
               << "quantized offset mismatch at [" << row + 1 << "," << col << "]"
               << " shape[" << rows << "," << columns << "]"
-              << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+              << (col_blocking ? "Column-wise-block" : "Row-wise-block")
               << std::endl;
         }
       }
@@ -232,22 +124,22 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
       EXPECT_EQ(tensor_scale.at(row + 0, col), tensor_o_scales.at(row + 0, col))
           << "quantized scale mismatch at [" << row << "," << col << "]"
           << " shape[" << rows << "," << columns << "]"
-          << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+          << (col_blocking ? "Column-wise-block" : "Row-wise-block")
           << std::endl;
       if (row + 1 < meta_shape[0]) {
         EXPECT_EQ(tensor_scale.at(row + 1, col), tensor_o_scales.at(row + 1, col))
             << "quantized scale mismatch at [" << row + 1 << "," << col << "]"
             << " shape[" << rows << "," << columns << "]"
-            << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+            << (col_blocking ? "Column-wise-block" : "Row-wise-block")
             << std::endl;
       }
     }
   }
 
   //
-  // Now we just setup fp16 weights tensor_dequant, quantized weights tensor_q_weight,
-  // quantization scale tensor_scale and quantization offset tensor_offset. The above
-  // testing just make sure our test setup is consistent with quantization tool output.
+  // Now we just setup quantized weights tensor_q_weight, quantization scale tensor_scale
+  // and quantization offset tensor_offset. The above tests just make sure our setup is
+  // consistent with quantization tool output.
   //
   // Next we test the prepack code
   //
@@ -267,18 +159,23 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
       EXPECT_EQ(tensor_packed_w_ref.at(row, col), tensor_packed_w.at(row, col))
           << "prepacked weights mismatch at [" << row << "," << col << "]"
           << " shape[" << rows << "," << columns << "]"
-          << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+          << (col_blocking ? "Column-wise-block" : "Row-wise-block")
           << std::endl;
     }
   }
 
   std::vector<ElementT> packed_scales_ref(meta_shape.product());
   MatrixRef<ElementT, LayoutQmeta, true> tensor_packed_s_ref =
-      Base::ShouldRearrangeMeta ? make_MatrixRef<ElementT, LayoutQmeta, true>(packed_scales_ref, meta_shape)
-                                : tensor_scale;
-  if (Base::ShouldRearrangeMeta) {
+      make_MatrixRef<ElementT, LayoutQmeta, true>(packed_scales_ref, meta_shape);
+  if constexpr(Base::ShouldRearrangeMeta) {
     onnxruntime::test::sm80_prepack_quant_scales_ref<ElementT, LayoutQmeta, QuantBlocking>(
         rows, columns, tensor_scale.const_ref(), tensor_packed_s_ref);
+  } else {
+    for (int col = 0; col < tensor_packed_s_ref.shape()[1]; ++col) {
+      for (int row = 0; row < tensor_packed_s_ref.shape()[0]; ++row) {
+        tensor_packed_s_ref.at(row, col) = tensor_scale.at(row, col);
+      }
+    }
   }
 
   std::vector<ElementT> packed_scales(meta_shape.product());
@@ -291,7 +188,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
       EXPECT_EQ(tensor_packed_s_ref.at(row, col), tensor_packed_s.at(row, col))
           << "prepacked scales mismatch at [" << row << "," << col << "]"
           << " shape[" << rows << "," << columns << "]"
-          << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+          << (col_blocking ? "Column-wise-block" : "Row-wise-block")
           << std::endl;
     }
   }
@@ -299,11 +196,20 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
   if (has_offset) {
     std::vector<ElementQOffset> packed_zp_ref(meta_shape.product());
     MatrixRef<ElementQOffset, LayoutQmeta, true> tensor_packed_zp_ref =
-        Base::ShouldRearrangeMeta ? make_MatrixRef<ElementQOffset, LayoutQmeta, true>(packed_zp_ref, meta_shape)
-                                  : tensor_offset;
-    if (Base::ShouldRearrangeMeta) {
-      onnxruntime::test::sm80_prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
+        make_MatrixRef<ElementQOffset, LayoutQmeta, true>(packed_zp_ref, meta_shape);
+    if constexpr(Base::ShouldRearrangeMeta) {
+      onnxruntime::test::sm80_expand_prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
           rows, columns, tensor_offset.const_ref(), tensor_packed_zp_ref);
+    } else {
+      for (int col = 0; col < meta_shape[1]; ++col) {
+        for (int row = 0; row < meta_shape[0]; row += 2) {
+          uint8_t pair01 = tensor_offset.at(row / 2, col);
+          tensor_packed_zp_ref.at(row, col) = pair01 & 0xf;
+          if (row + 1 < meta_shape[0]) {
+            tensor_packed_zp_ref.at(row + 1, col) = pair01 >> 4;
+          }
+        }
+      }
     }
 
     std::vector<ElementQOffset> packed_zp(meta_shape.product());
@@ -316,7 +222,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
         EXPECT_EQ(tensor_packed_zp_ref.at(row, col), tensor_packed_zp.at(row, col))
             << "prepacked offsets mismatch at [" << row << "," << col << "]"
             << " shape[" << rows << "," << columns << "]"
-            << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+            << (col_blocking ? "Column-wise-block" : "Row-wise-block")
             << std::endl;
       }
     }
@@ -332,9 +238,9 @@ TEST(BlkQ4_GEMM, PrepackSm80Test) {
   }
 
   testPrepack<false>(32, 32);
-  testPrepack<false>(32, 32, false);
+  testPrepack<false, false>(32, 32);
   testPrepack<true>(32, 32);
-  testPrepack<true>(32, 32, false);
+  testPrepack<true, false>(32, 32);
   testPrepack<false>(32, 64);
   testPrepack<false>(32, 128);
   testPrepack<false>(32, 256);
@@ -342,9 +248,9 @@ TEST(BlkQ4_GEMM, PrepackSm80Test) {
   testPrepack<false>(128, 32);
   testPrepack<false>(256, 32);
   testPrepack<false>(256, 256);
-  testPrepack<false>(32, 128, false);
-  testPrepack<false>(128, 32, false);
-  testPrepack<false>(256, 256, false);
+  testPrepack<false, false>(32, 128);
+  testPrepack<false, false>(128, 32);
+  testPrepack<false, false>(256, 256);
   testPrepack<true>(32, 64);
   testPrepack<true>(32, 128);
   testPrepack<true>(32, 256);
@@ -352,9 +258,9 @@ TEST(BlkQ4_GEMM, PrepackSm80Test) {
   testPrepack<true>(128, 32);
   testPrepack<true>(256, 32);
   testPrepack<true>(256, 256);
-  testPrepack<true>(32, 128, false);
-  testPrepack<true>(128, 32, false);
-  testPrepack<true>(256, 256, false);
+  testPrepack<true, false>(32, 128);
+  testPrepack<true, false>(128, 32);
+  testPrepack<true, false>(256, 256);
 }
 
 TEST(BlkQ4_GEMM, Sm80Test) {

@@ -11,6 +11,10 @@
  *   well with gtest headers.
  */
 
+#include <random>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+
 #include "core/mickey/blk_q4/f16_gemm_sm80.h"
 
 #include "cutlass/util/host_tensor.h"
@@ -149,6 +153,10 @@ template<
     bool small_m,
     bool has_offsets>
 void run_blkq4_gemm(int m, int n, int k) {
+  unsigned int seed = 28571;  // Replace with desired seed value
+  std::seed_seq seq{seed};
+  std::mt19937 gen(seq);
+  std::uniform_int_distribution<> dis(0, 8192);
 
   using ElementDequant = cutlass::half_t;
   using QuantBlocking =
@@ -173,23 +181,38 @@ void run_blkq4_gemm(int m, int n, int k) {
   using LayoutInputQScale = typename GemmRunner::LayoutInputQScale;
 
   const cutlass::gemm::GemmCoord problem_size = {m, n, k};
+  const auto q_weight_shape = cutlass::make_Coord(problem_size.k()/2, problem_size.n());
+  const auto meta_shape = cutlass::make_Coord(problem_size.k()/QuantBlocking::kRow, problem_size.n()/QuantBlocking::kColumn);
 
-  // Initialize tensors using CUTLASS helper functions
+  //
+  // Generate quantized and dequantizeed input matrix B [K, N]
+  //
+  static_assert(std::is_same<LayoutInputWPack, cutlass::layout::ColumnMajor>::value);
+  std::vector<ElementW> q_weights;
+  std::vector<ElementQScale> q_scales;
+  std::vector<ElementQOffset> q_zp;
+  std::vector<ElementDequant> dequants;
+  onnxruntime::cuda::test::blkq4_weights_gen<ElementDequant, block_size, column_wise_blocking, has_offsets>(
+      problem_size.k(), problem_size.n(), dequants, q_weights, q_scales, q_zp);
+
+  using PrepackT = onnxruntime::cuda::BlockwiseQuantization<
+      ElementDequant,
+      block_size,
+      4,
+      column_wise_blocking>;
+
+  std::vector<ElementW> packed_w(q_weight_shape.product());
+  PrepackT::prepack_weights(problem_size.k(), problem_size.n(), q_weights, packed_w);
+  std::vector<ElementQScale> packed_scales(meta_shape.product());
+  PrepackT::prepack_quant_scales(problem_size.k(), problem_size.n(), q_scales, packed_scales);
+  std::vector<ElementQOffset> packed_zp;
+  if constexpr (has_offsets) {
+    packed_zp.resize(meta_shape.product());
+    PrepackT::prepack_quant_offsets(problem_size.k(), problem_size.n(), q_zp, packed_zp);
+  }
+
   cutlass::HostTensor<ElementInputA, LayoutInputA> tensor_a(
       problem_size.mk());  // <- Create matrix A with dimensions M x K
-
-  // Create weight matrix with dimensions K x N.
-  // Actual weight type is int4, we use ElementW = uint8 to avoid possible compilation
-  // troubles. Since the layout is column major, we are packing 2 weights in a column
-  // into one int8
-  cutlass::HostTensor<ElementW, LayoutInputWPack> tensor_weight(
-      {problem_size.k()/2, problem_size.n()});
-  // Create weight quantization scale and offset with dimensions K x N
-  cutlass::HostTensor<ElementQScale, LayoutInputQScale> tensor_scale(
-      {problem_size.k()/QuantBlocking::kRow, problem_size.n()/QuantBlocking::kColumn});
-  cutlass::HostTensor<ElementQOffset, LayoutInputQScale> tensor_offset(
-      {problem_size.k()/QuantBlocking::kRow, problem_size.n()/QuantBlocking::kColumn});
-
   cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_c(
       problem_size.mn());  // <- Create matrix C with dimensions M x N
   cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_d(
@@ -203,14 +226,6 @@ void run_blkq4_gemm(int m, int n, int k) {
       ElementInputA(4),
       ElementInputA(-4),
       2);  // <- Fill matrix A on host with uniform-distribution random data
-  if constexpr (has_offsets) {
-    cutlass::reference::host::TensorFillRandomUniform(
-        tensor_offset.host_view(),
-        1,
-        ElementQOffset(0),
-        ElementQOffset(15),
-        0);  // <- Fill weight offsets on host with uniform-distribution random data
-  }
   cutlass::reference::host::TensorFillRandomUniform(
       tensor_c.host_view(),
       1,
@@ -221,188 +236,52 @@ void run_blkq4_gemm(int m, int n, int k) {
       tensor_d.host_view());  // <- fill matrix D on host with zeros
 
   //
-  // For testing quantization and dequantization, it is not straight
-  // forward to avoid flaky tests due to rounding errors. The way we
-  // try to achieve this is to:
-  // 1. Generate a set of quantized weights, scales and offsets
-  // 2. Dequantize the weights
-  // 3. Quantize the dequantized weights
-  // 4. Compare the dequantied-and-then-quantized weights with
-  //    the original quantized weights
-  //
-  // Random filling of the initial values are key to get this right.
-  // For weights, we must ensure each block gets a full range of
-  // values, i.e. must contain 0 and 15. And for scales, they must
-  // all be positive.
-  //
-
-  int v = 7;
-  for (int c = 0; c < tensor_weight.extent()[1]; c++) {
-    for (int r = 0; r < tensor_weight.extent()[0]; ++r) {
-      uint8_t v0 = static_cast<uint8_t>(v);
-      v = (v + 5) % 16;
-      if (v == 11 || v == 7 || v == 3) {
-        // making the cycle 13 instead of 16, avoiding same values in a row
-        v = (v + 5) % 16;
-      }
-      uint8_t v1 = 0;
-      v1 = static_cast<uint8_t>(v);
-      v = (v + 5) % 16;
-      if (v == 11 || v == 7 || v == 3) {
-        // making the cycle 13 instead of 16, avoiding same values in a row
-        v = (v + 5) % 16;
-      }
-
-      tensor_weight.at({r, c}) = ElementW((v1 << 4) | v0);
-    }
-  }
-
-  for (int c = 0; c < tensor_scale.extent()[1]; c++) {
-    for (int r = 0; r < tensor_scale.extent()[0]; ++r) {
-      int f = (((c * v + r + v / 3 ) % 63) + 1);
-      v += 41;
-      int m = (c * v + r + v / 8 ) % 4;
-      tensor_scale.at({r, c}) = ElementQScale(static_cast<float>(f) / static_cast<float>(1 << (2 + m)));
-    }
-  }
-
-//   // Fill tensor_weight with the patterned data, so that we can use
-//   // print to make sure the layout matches after loaded to registers
-//   int loop_val = 0;
-//   int offset = 3;
-//   for (int col_tile = 0; col_tile < tensor_weight.extent().column()/8; ++col_tile) {
-//     for (int row_tile = 0; row_tile < tensor_weight.extent().row()/4; ++row_tile) {
-//       for (int col = 0; col < 8; ++col) {
-//         for (int row = 0; row < 4; ++row) {
-//           auto weight_cord = cutlass::make_Coord(row_tile * 4 + row, col_tile * 8 + col);
-//           auto val = (loop_val + offset) % 256;
-//           tensor_weight.at(weight_cord) = ElementW(val);
-//           loop_val++;
-//           if (loop_val == 256) {
-//             loop_val = 0;
-//             offset += 11;
-//           }
-//         }
-//       }
-//     }
-//   }
-//   for (int col = 0; col < tensor_scale.extent().column(); ++col){
-//     int c =  col * QuantBlocking::kColumn;
-//     for (int row = 0; row < tensor_scale.extent().row(); ++row){
-//       int r = row * QuantBlocking::kRow;
-//       auto weight_cord = cutlass::make_Coord(r/2, c);
-//       int w = 0;
-//       if (r % 2 == 0) {
-//         w = int(tensor_weight.at(weight_cord) & 0x0f);
-//       } else {
-//         w = int(tensor_weight.at(weight_cord) >> 4);
-//       }
-//       tensor_scale.at({row, col}) = w;
-// #ifdef USE_QUANT_OFFSET
-//       tensor_offset.at({row, col}) = ElementQOffset(w);
-// #endif
-//     }
-//   }
-
-  // int fill_val = -512;
-  // int factor = 1;
-  // for (int col = 0; col < tensor_scale.extent().column(); ++col){
-  //   for (int row = 0; row < tensor_scale.extent().row(); ++row){
-  //     tensor_scale.at({row, col}) = ElementQScale((float)fill_val * float(factor));
-  //     fill_val++;
-  //     if (fill_val == 512) {
-  //       fill_val = -512;
-  //       factor += 1;
-  //     }
-  //   }
-  // }
-
-  // std::cout << "Matrix Weight:\n" << tensor_weight.host_view() << "\n";
-
-  // Prepacking weight matrix and quantization meta data ...
-
-  cutlass::HostTensor<ElementW, LayoutInputWPack> tensor_weight_prepacked(
-    cutlass::make_Coord(problem_size.k(), problem_size.n()/2));
-  onnxruntime::test::sm80_prepack_weights_ref(
-    problem_size.k(), problem_size.n(),
-    make_ConstMatrixRef(tensor_weight),
-    make_MatrixRef(tensor_weight_prepacked));
-
-  cutlass::HostTensor<ElementQScale, LayoutInputQScale> tensor_scale_prepacked(
-      {problem_size.k()/QuantBlocking::kRow, problem_size.n()/QuantBlocking::kColumn});
-  cutlass::HostTensor<ElementQOffset, LayoutInputQScale> tensor_offset_prepacked(
-      {problem_size.k()/QuantBlocking::kRow, problem_size.n()/QuantBlocking::kColumn});
-
-  auto scale_ref = make_ConstMatrixRef(tensor_scale);
-  onnxruntime::test::sm80_prepack_quant_scales_ref<ElementQScale, typename decltype(scale_ref)::Layout, QuantBlocking>(
-      problem_size.k(), problem_size.n(), scale_ref,
-      make_MatrixRef(tensor_scale_prepacked));
-  if constexpr (has_offsets) {
-    auto offset_ref = make_ConstMatrixRef(tensor_offset);
-    onnxruntime::test::sm80_prepack_quant_offsets_ref<typename decltype(offset_ref)::Layout, QuantBlocking>(
-        problem_size.k(), problem_size.n(), offset_ref,
-        make_MatrixRef(tensor_offset_prepacked));
-  }
-
   // Copy data from host to GPU...
+  //
+  thrust::device_vector<ElementW> d_packed_w(packed_w);
+  cutlass::TensorRef<ElementWPack const, LayoutInputWPack> ref_W(
+    reinterpret_cast<ElementWPack const *>(d_packed_w.data().get()),
+    LayoutInputWPack::packed({problem_size.k()/2, problem_size.n()/2}));
+
+  thrust::device_vector<ElementQScale> d_packed_scales(packed_scales);
+  cutlass::TensorRef<ElementQScale const, LayoutInputQScale> ref_scales(
+    d_packed_scales.data().get(), LayoutInputQScale::packed(meta_shape));
+
+  thrust::device_vector<ElementQOffset> d_packed_zp(packed_zp);
+  cutlass::TensorRef<ElementQOffset const, LayoutInputQScale> ref_zp(
+    d_packed_zp.data().get(), LayoutInputQScale::packed(meta_shape));
+
   tensor_a.sync_device();
-  tensor_weight_prepacked.sync_device();
-  tensor_scale_prepacked.sync_device();
-  if constexpr (has_offsets) {
-    tensor_offset_prepacked.sync_device();
-  }
   tensor_c.sync_device();
   tensor_d.sync_device();
-  cutlass::TensorRef<ElementWPack const, LayoutInputWPack> ref_W(
-    reinterpret_cast<ElementWPack const *>(tensor_weight_prepacked.device_data()),
-    LayoutInputWPack::packed({problem_size.k()/2, problem_size.n()/2}));
 
   // run GEMM
   cutlass::Status status;
   if constexpr (has_offsets){
     status = GemmRunner::run(
       nullptr, problem_size, tensor_a.device_ref(), ref_W,
-      tensor_scale_prepacked.device_ref(), tensor_offset_prepacked.device_ref(),
+      ref_scales, ref_zp,
       tensor_c.device_ref(), tensor_d.device_ref());
   } else {
     status = GemmRunner::run(
       nullptr, problem_size, tensor_a.device_ref(), ref_W,
-      tensor_scale_prepacked.device_ref(),
+      ref_scales,
       tensor_c.device_ref(), tensor_d.device_ref());
   }
   ORT_ENFORCE(status == cutlass::Status::kSuccess, "Kernel execution failed: ", cutlassGetStatusString(status));
 
-  // Preparing reference kernel arguments
-  // Dequantizing weights and running reference kernel
-
+  // Running reference kernel
   using ElementInputB = ElementInputA;
   using LayoutInputB = cutlass::layout::ColumnMajor;
-  cutlass::HostTensor<ElementInputB, LayoutInputB> tensor_b(
-      problem_size.kn());  // <- Create dequantized matrix B with dimensions K x N
+  thrust::device_vector<ElementInputB> d_dequants(dequants);
+  cutlass::TensorRef<ElementInputB, LayoutInputB> ref_B(
+    d_dequants.data().get(), LayoutInputB::packed(problem_size.kn()));
   cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_ref_d(
       problem_size.mn());  // <- Create matrix D with dimensions M x N used to store output from
                            // reference kernel
 
-  // Dequantize weights and save into matrix B for reference
-  for (int col = 0; col < tensor_b.extent().column(); ++col){
-    for (int row = 0; row < tensor_b.extent().row(); ++row) {
-      auto weight_cord = cutlass::make_Coord(row/2, col);
-      auto scale_cord = cutlass::make_Coord(row / QuantBlocking::kRow, col / QuantBlocking::kColumn);
-      const uint8_t offset = has_offsets ? tensor_offset.at(scale_cord) : 8;
-      int w = 0;
-      if (row % 2 == 0) {
-        w = int(tensor_weight.at(weight_cord) & 0x0f) - offset;
-      } else {
-        w = int(tensor_weight.at(weight_cord) >> 4) - offset;
-      }
-      auto scale = tensor_scale.at(scale_cord);
-      tensor_b.at({row, col}) = scale * float(w);
-    }
-  }
   cutlass::reference::host::TensorFill(
       tensor_ref_d.host_view());  // <- fill matrix D for reference on host with zeros
-
-  tensor_b.sync_device();
   tensor_ref_d.sync_device();
 
   // Initialize alpha and beta for dot product computation
@@ -416,7 +295,7 @@ void run_blkq4_gemm(int m, int n, int k) {
       problem_size,
       alpha,
       tensor_a.device_ref(),
-      tensor_b.device_ref(),
+      ref_B,
       beta,
       tensor_c.device_ref(),
       tensor_ref_d.device_ref());
