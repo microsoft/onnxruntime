@@ -1205,7 +1205,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceL2Gradient) {
   return result;
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) { // add logic to fetch axes from inputs
   std::vector<NodeDef> result;
   auto attributes = SrcNodeAttributes();
   bool keepdims = true;

@@ -94,6 +94,7 @@ static void RunReductionTests(const OpDef& op_def, bool axes_as_input = false,
 
   float max_error;
   for (size_t i = 0; i < x_shapes.size(); i++) {
+    std::cout << "Running test #" << i << std::endl;
     max_error = 0;
     TensorShape x_shape(gsl::make_span(x_shapes[i]));
     TensorShape y_shape(gsl::make_span(y_shapes[i]));
@@ -119,6 +120,7 @@ static void RunReductionTests(const OpDef& op_def, bool axes_as_input = false,
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes,
                                                            true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
+    std::cout << "test passed!" << std::endl;
   }
 }
 
@@ -607,23 +609,31 @@ TEST(GradientCheckerTest, GemmGrad) {
 // tensor would be equivalent to input tensor.
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {
+  std::cout << "Running opset11 test" << std::endl;
   // Attribute axes supports negative values from opset 11.
   OpDef op_def_opset11{"ReduceMean", kOnnxDomain, 11};
   RunReductionTests(op_def_opset11);
+  std::cout << "passed!" << std::endl;
 
+  std::cout << "Running opset13 test" << std::endl;
   OpDef op_def_opset13{"ReduceMean", kOnnxDomain, 13};
   RunReductionTests(op_def_opset13);
+  std::cout << "passed!" << std::endl;
+
+  std::cout << "Running opset18 test" << std::endl;
+  // axes is input from opset 18.
+  OpDef op_def_opset18{"ReduceMean", kOnnxDomain, 18};
+  RunReductionTests(op_def_opset18, true, true);
+  std::cout << "passed!" << std::endl;
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def_11{"ReduceSum", kOnnxDomain, 11};
-
   RunReductionTests(op_def_11, false, true);
 
   // axes is input from opset 13.
   OpDef op_def_13{"ReduceSum", kOnnxDomain, 13};
-
   RunReductionTests(op_def_13, true, true);
 }
 
@@ -631,7 +641,6 @@ TEST(GradientCheckerTest, ReduceSumGrad) {
 TEST(GradientCheckerTest, ReduceL2Grad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceL2", kOnnxDomain, 11};
-
   RunReductionTests(op_def);
 
   // Y with 0 elements case.
@@ -648,14 +657,21 @@ TEST(GradientCheckerTest, ReduceL2Grad) {
                                                            {MakeAttribute("axes", axes)}));
     EXPECT_IS_TINY(max_error);
   }
+
+  // axes is input from opset 18.
+  OpDef op_def_opset18{"ReduceL2", kOnnxDomain, 18};
+  RunReductionTests(op_def_opset18, true, true);
 }
 
 // TODO: Reduce Log Sum Exp has had similar changes like Reduce mean
 TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceLogSumExp", kOnnxDomain, 11};
-
   RunReductionTests(op_def);
+
+  // axes is input from opset 18.
+  OpDef op_def_opset18{"ReduceLogSumExp", kOnnxDomain, 18};
+  RunReductionTests(op_def_opset18, true, true);
 }
 
 TEST(GradientCheckerTest, ReluGrad) {
@@ -691,7 +707,6 @@ TEST(GradientCheckerTest, CastGrad) {
   }
 }
 
-// TODO: Split needs to be updated, see previous notes on updates to split op
 TEST(GradientCheckerTest, SplitGrad) {
   TensorShape shape({9, 5});
   float max_error;
@@ -1364,7 +1379,7 @@ TEST(GradientCheckerTest, SqueezeGrad) {
   OpDef op_def{"Squeeze", kOnnxDomain, 11};
   RunSqueezeUnsqueezeTests(op_def, x_shapes, y_shapes, axes_ip);
 
-  OpDef op_def_2{"Squeeze"};
+  OpDef op_def_2{"Squeeze", kOnnxDomain, 13};
   RunSqueezeUnsqueezeTests(op_def_2, x_shapes, y_shapes, axes_ip, true);
 }
 
@@ -1389,7 +1404,7 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
   OpDef op_def{"Unsqueeze", kOnnxDomain, 11};
   RunSqueezeUnsqueezeTests(op_def, x_shapes, y_shapes, axes_ip);
 
-  OpDef op_def_2{"Unsqueeze"};
+  OpDef op_def_2{"Unsqueeze", kOnnxDomain, 13};
   RunSqueezeUnsqueezeTests(op_def_2, x_shapes, y_shapes, axes_ip, true);
 }
 
