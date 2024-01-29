@@ -146,7 +146,7 @@
 			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C++,X64,DefaultCPU':
-		"Add 'onnxruntime-c' using CocoaPods and refer to the&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a> or download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+		"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 		
 		'mac,C#,X64,DefaultCPU':
 			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
