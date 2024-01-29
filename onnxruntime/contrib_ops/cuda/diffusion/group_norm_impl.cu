@@ -49,23 +49,26 @@ void GroupNormNHWCSum(GroupNormNHWCParams<T> const& params, cudaStream_t stream)
   // The number of instances.
   grid.z = params.n;
 
+#define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                                               \
+  GroupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                                                \
+      <<<grid, ThreadsPerBlock, 0, stream>>>(                                                        \
+          params.skip_workspace, params.group_sum_buffer, params.src, params.skip, params.bias,       \
+          params.channels_per_block, params.hw_per_block, params.hw, params.hwc, params.c,           \
+          params.channels_per_group, params.groups, params.groups_per_block, params.broadcast_skip); \
+  break;
+
   // Threads_per_block is half of values in kSizes since CHANNELS_PER_THREAD = 2.
   switch (params.threads_per_block) {
     case 256:
-      GroupNormNHWCSumKernel<T, 256><<<grid, 256, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SUM(256, CHANNELS_PER_THREAD)
     case 192:
-      GroupNormNHWCSumKernel<T, 192><<<grid, 192, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SUM(192, CHANNELS_PER_THREAD)
     case 160:
-      GroupNormNHWCSumKernel<T, 160><<<grid, 160, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SUM(160, CHANNELS_PER_THREAD)
     case 128:
-      GroupNormNHWCSumKernel<T, 128><<<grid, 128, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SUM(128, CHANNELS_PER_THREAD)
     case 64:
-      GroupNormNHWCSumKernel<T, 64><<<grid, 64, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SUM(64, CHANNELS_PER_THREAD)
   }
 }
 
@@ -80,29 +83,34 @@ void GroupNormNHWCScale(GroupNormNHWCParams<T> const& params, cudaStream_t strea
   // The number of instances.
   grid.z = params.n;
 
+#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                                                           \
+  GroupNormNHWCScaleKernel<T, VecSize>                                                                             \
+      <<<grid, ThreadsPerBlock, 0, stream>>>(                                                                      \
+          params.dst, params.src, params.skip, params.gamma, params.beta, params.skip_workspace,                   \
+          params.group_sum_buffer, params.epsilon, params.c, params.channels_per_block, params.channels_per_group, \
+          params.groups, params.hwc, params.inv_hw_channels_per_group, params.hw, params.hw_per_block,             \
+          params.use_silu);                                                                                        \
+  break;
+
   // Threads_per_block is half of values in kSizes since CHANNELS_PER_THREAD = 2.
   switch (params.threads_per_block) {
     case 256:
-      GroupNormNHWCScaleKernel<T><<<grid, 256, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SCALE(256, CHANNELS_PER_THREAD)
     case 192:
-      GroupNormNHWCScaleKernel<T><<<grid, 192, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SCALE(192, CHANNELS_PER_THREAD)
     case 160:
-      GroupNormNHWCScaleKernel<T><<<grid, 160, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SCALE(160, CHANNELS_PER_THREAD)
     case 128:
-      GroupNormNHWCScaleKernel<T><<<grid, 128, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SCALE(128, CHANNELS_PER_THREAD)
     case 64:
-      GroupNormNHWCScaleKernel<T><<<grid, 64, 0, stream>>>(params);
-      break;
+      LAUNCH_GROUPNORM_SCALE(64, CHANNELS_PER_THREAD)
   }
 }
 
 template <typename T>
 Status LaunchGroupNormKernel(
-    cudaStream_t stream,
+    CudaTuningContext* tuning_ctx,
+    Stream* ort_stream,
     T* output,
     T* add_out,
     const T* input,
@@ -120,7 +128,11 @@ Status LaunchGroupNormKernel(
     bool use_silu,
     bool broadcast_skip,
     int channels_per_block) {
-  GroupNormNHWCParams<T> params(output, add_out, input, skip, bias, gamma, beta, workspace, epsilon,
+
+  // tuning_ctx only used for ROCm EP.
+  ORT_UNUSED_PARAMETER(tuning_ctx);
+
+  GroupNormNHWCParams<T> params(output, add_out, input, skip, bias, gamma, beta, reinterpret_cast<float*>(workspace), epsilon,
                                 batch_size, num_channels, height, width, num_groups, use_silu,
                                 broadcast_skip, channels_per_block);
 
@@ -135,6 +147,7 @@ Status LaunchGroupNormKernel(
                            " groups=", num_groups);
   }
 
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
       params.group_sum_buffer, 0, GetGroupNormWorkspaceSizeInBytes(batch_size, num_groups), stream));
 
@@ -150,14 +163,14 @@ Status LaunchGroupNormKernel(
   return Status::OK();
 }
 
-template Status LaunchGroupNormKernel<half>(cudaStream_t stream, half* output, half* add_out,
+template Status LaunchGroupNormKernel<half>(CudaTuningContext* tuning_ctx, Stream* stream, half* output, half* add_out,
                                             const half* input, const half* skip, const half* bias,
                                             const float* gamma, const float* beta, void* workspace,
                                             float epsilon, int batch_size, int num_channels,
                                             int height, int width, int num_groups, bool silu,
                                             bool broadcast_skip, int channels_per_block);
 
-template Status LaunchGroupNormKernel<float>(cudaStream_t stream, float* output, float* add_out,
+template Status LaunchGroupNormKernel<float>(CudaTuningContext* tuning_ctx, Stream* stream, float* output, float* add_out,
                                              const float* input, const float* skip, const float* bias,
                                              const float* gamma, const float* beta, void* workspace,
                                              float epsilon, int batch_size, int num_channels,
