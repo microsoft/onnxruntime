@@ -1,6 +1,7 @@
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+# --------------------------------------------------------------------------
 import argparse
 import logging
 import onnx
@@ -13,7 +14,7 @@ from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 from transformers import AutoConfig, AutoModelForCausalLM
 
 # --------------------------------------------------------------------------
-# The following code is used when this file is not in the ORT package
+# The following code is needed when this file is not in the ORT package
 import sys
 
 sys.path.append(os.path.dirname(__file__))
@@ -478,6 +479,21 @@ def parse_arguments():
         help="The cache directory for the pytorch model",
     )
 
+    parser.add_argument(
+        "--device_id",
+        required=False,
+        type=int,
+        default=0,
+        help="The device id for the pytorch model",
+    )
+
+    parser.add_argument(
+        "--run_example",
+        required=False,
+        action="store_true",
+        help="Run ORT inference example",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -485,7 +501,7 @@ def parse_arguments():
 def main():
     args = parse_arguments()
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda", args.device_id) if torch.cuda.is_available() else torch.device("cpu")
 
     converter = ConvertPhi2ToONNX(device, cache_dir=args.cache_dir)
 
@@ -501,13 +517,23 @@ def main():
         )
         converter.erase_onnx_model(temp_onnx_path)
 
+    model_type_to_args = {
+        "fp32_cpu" : (AttentionOpType.MultiHeadAttention, Precision.FLOAT32, "phi2_decoder_fp32_cpu_opt.onnx"),
+        "int4_cpu" : (AttentionOpType.MultiHeadAttention, Precision.INT4, "phi2_decoder_int4_cpu_opt.onnx"),
+        "fp32_gpu" : (AttentionOpType.Attention, Precision.FLOAT32, "phi2_decoder_fp32_gpu_opt.onnx"),
+        "fp16_gpu" : (AttentionOpType.Attention, Precision.FLOAT16, "phi2_decoder_fp16_gpu_opt.onnx"),
+        "int4_gpu" : (AttentionOpType.Attention, Precision.INT4, "phi2_decoder_int4_gpu_opt.onnx"),
+        "fp16_a100" : (AttentionOpType.GroupQueryAttention, Precision.FLOAT16, "phi2_decoder_fp16_a100_opt.onnx"),
+        "int4_a100" : (AttentionOpType.GroupQueryAttention, Precision.INT4, "phi2_decoder_int4_a100_opt.onnx"),
+    }
+
     from multiprocessing import Process
 
     def run_optimize_phi2_onnx(
         converter: ConvertPhi2ToONNX,
+        original_onnx_path: str,
         attention_type: AttentionOpType,
         precision: Precision,
-        original_onnx_path: str,
         optimized_onnx_path: str,
     ):
         converter.init_attn_type_and_precision(attention_type, precision)
@@ -515,105 +541,45 @@ def main():
 
     processes = []
     if args.fp32_cpu:
-        p = Process(
-            target=run_optimize_phi2_onnx,
-            args=(
-                converter,
-                AttentionOpType.MultiHeadAttention,
-                Precision.FLOAT32,
-                original_onnx_path,
-                "phi2_decoder_fp32_cpu_opt.onnx",
-            ),
-        )
-        p.start()
-        processes.append(p)
+        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp32_cpu"])))
 
     if args.int4_cpu:
-        p = Process(
-            target=run_optimize_phi2_onnx,
-            args=(
-                converter,
-                AttentionOpType.MultiHeadAttention,
-                Precision.INT4,
-                original_onnx_path,
-                "phi2_decoder_int4_cpu_opt.onnx",
-            ),
-        )
-        p.start()
-        processes.append(p)
+        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_cpu"])))
 
     if args.fp32_gpu:
-        p = Process(
-            target=run_optimize_phi2_onnx,
-            args=(
-                converter,
-                AttentionOpType.Attention,
-                Precision.FLOAT32,
-                original_onnx_path,
-                "phi2_decoder_fp32_gpu_opt.onnx",
-            ),
-        )
-        p.start()
-        processes.append(p)
+        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp32_gpu"])))
 
     if args.fp16_gpu:
-        p = Process(
-            target=run_optimize_phi2_onnx,
-            args=(
-                converter,
-                AttentionOpType.Attention,
-                Precision.FLOAT16,
-                original_onnx_path,
-                "phi2_decoder_fp16_gpu_opt.onnx",
-            ),
-        )
-        p.start()
-        processes.append(p)
+        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp16_gpu"])))
 
     if args.int4_gpu:
-        p = Process(
-            target=run_optimize_phi2_onnx,
-            args=(
-                converter,
-                AttentionOpType.Attention,
-                Precision.INT4,
-                original_onnx_path,
-                "phi2_decoder_int4_gpu_opt.onnx",
-            ),
-        )
-        p.start()
-        processes.append(p)
+        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_gpu"])))
 
     if args.fp16_a100:
-        p = Process(
-            target=run_optimize_phi2_onnx,
-            args=(
-                converter,
-                AttentionOpType.GroupQueryAttention,
-                Precision.FLOAT16,
-                original_onnx_path,
-                "phi2_decoder_fp16_a100_opt.onnx",
-            ),
-        )
-        p.start()
-        processes.append(p)
-
+        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp16_a100"])))
+    
     if args.int4_a100:
-        p = Process(
-            target=run_optimize_phi2_onnx,
-            args=(
-                converter,
-                AttentionOpType.GroupQueryAttention,
-                Precision.INT4,
-                original_onnx_path,
-                "phi2_decoder_int4_a100_opt.onnx",
-            ),
-        )
-        p.start()
-        processes.append(p)
+        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_a100"])))
 
-    for p in processes:
-        p.join()
+    [p.start() for p in processes]
+    [p.join() for p in processes]
+
+    if args.run_example:
+        from inference_example import run_phi2
+        if args.fp16_a100:
+            run_phi2(
+                onnx_model_path=model_type_to_args["fp16_a100"][2],
+                use_fp16=True,
+                use_buffer_share=True,
+                device_id=args.device_id,
+            )
+        if args.int4_a100:
+            run_phi2(
+                onnx_model_path=model_type_to_args["int4_a100"][2],
+                use_fp16=True,
+                use_buffer_share=True,
+                device_id=args.device_id,
+            )
 
 
 if __name__ == "__main__":
