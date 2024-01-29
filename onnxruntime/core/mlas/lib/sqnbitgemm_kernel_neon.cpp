@@ -373,7 +373,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 }
 
 template <bool HasZeroPoint>
-MLAS_FORCEINLINE void
+void
 SQ4BitGemmM1Kernel_CompFp32_Impl(
     size_t BlkLen,
     const float* A,
@@ -850,7 +850,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
 }
 
 template <size_t NCols, size_t SubBlkLen, bool HasZeroPoint>
-MLAS_FORCEINLINE void
+void
 SQ4BitGemmM1Kernel_CompInt8_Impl(
     size_t BlkLen,
     const std::byte* QuantA,
