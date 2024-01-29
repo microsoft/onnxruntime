@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {isFloat16Array} from '@petamoriken/float16';
-
 import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
 import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
 import {tensorFromGpuBuffer, tensorFromImage, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
@@ -168,8 +166,10 @@ export class Tensor implements TensorInterface {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               data = (typedArrayConstructor as any).from(arg1);
             }
-          } else if (arg1 instanceof typedArrayConstructor || (isFloat16Array!==undefined && isFloat16Array(arg1))) {
+          } else if (arg1 instanceof typedArrayConstructor) {
             data = arg1;
+          } else if (isFloat16Array !== undefined && isFloat16Array(arg1)) {
+            data = arg1 as InstanceType<typeof Float16Array>;
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
           }

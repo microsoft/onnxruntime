@@ -37,6 +37,7 @@ export const NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP = new Map<SupportedTypedArray
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
   const Float16Array: any;
+  const isFloat16Array: any;
 }
 
 // the following code allows delaying execution of BigInt/Float16Array checking. This allows lazy initialization for
