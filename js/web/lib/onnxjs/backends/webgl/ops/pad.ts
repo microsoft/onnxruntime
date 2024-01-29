@@ -88,7 +88,7 @@ const validateInputsV2 = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 1) {
     throw new Error('Pad requires 1 input');
   }
-  if (inputs[0].type !== 'float32' && inputs[0].type !== 'float64') {
+  if (inputs[0].type !== 'float16' && inputs[0].type !== 'float32' && inputs[0].type !== 'float64') {
     throw new Error('Invalid input type.');
   }
 };

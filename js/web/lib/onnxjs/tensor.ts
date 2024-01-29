@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Float16Array, isFloat16Array} from '@petamoriken/float16';
 import {Guid} from 'guid-typescript';
 import Long from 'long';
 
@@ -11,10 +10,11 @@ import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
 
+type Float16ArrayType = InstanceType<typeof Float16Array>;
 export declare namespace Tensor {
   export interface DataTypeMap {
     bool: Uint8Array;
-    float16: Float16Array;
+    float16: Float16ArrayType;
     float32: Float32Array;
     float64: Float64Array;
     string: string[];

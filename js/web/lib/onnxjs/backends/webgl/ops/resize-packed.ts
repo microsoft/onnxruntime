@@ -241,8 +241,8 @@ const prepareInputs = (inputs: Tensor[], attributes: UpsampleAttributes): [reado
 
 const parseScalesData = (scale: Tensor, mode: string, isResize: boolean): number[] => {
   const scales = Array.from(scale.floatData);
-  scalesValidation(scales, mode, isResize);
-  return scales;
+  scalesValidation(scales as number[], mode, isResize);
+  return scales as number[];
 };
 
 const parseScalesDataFromOutputSize =
