@@ -239,7 +239,7 @@ def parse_arguments(is_xl: bool, parser):
     )
     parser.add_argument("--nvtx-profile", action="store_true", help="Enable NVTX markers for performance profiling.")
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
-    parser.add_argument("--deter-infer", action="store_true", help="deterministic inference.")
+    parser.add_argument("--deterministic", action="store_true", help="use deterministic algorithms.")
     parser.add_argument("-dc", "--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
 
     group = parser.add_argument_group("Options for ORT_CUDA engine only")

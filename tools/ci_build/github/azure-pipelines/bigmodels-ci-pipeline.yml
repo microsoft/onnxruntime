@@ -172,7 +172,6 @@ stages:
   - job: Stable_Diffusion
     variables:
       skipComponentGovernanceDetection: true
-      CLIP_MODEL_CACHE: $(Pipeline.Workspace)/clipmodelcache
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
