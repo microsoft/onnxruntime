@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Float16Array} from '@petamoriken/float16';
 import {Tensor} from 'onnxruntime-common';
 
 import {tensorTypeToTypedArrayConstructor} from '../wasm-common';
 
 export const createView = (dataBuffer: ArrayBuffer, type: Tensor.Type): Int32Array|Uint32Array|BigInt64Array|
-    BigUint64Array|Uint8Array|Float16Array|Float32Array|Float64Array|Int8Array|Int16Array|Uint16Array =>
+    BigUint64Array|Uint8Array|Float32Array|Float64Array|Int8Array|Int16Array|Uint16Array =>
         new (tensorTypeToTypedArrayConstructor(type))(dataBuffer);
 
 /**
