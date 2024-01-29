@@ -754,7 +754,7 @@ class StableDiffusionPipeline:
         controlnet_scales: Optional[torch.Tensor] = None,
         show_latency: bool = False,
         output_type: str = "pil",
-        deter_infer: bool = False,
+        deterministic: bool = False,
     ):
         """
         Run the diffusion pipeline.
@@ -784,7 +784,7 @@ class StableDiffusionPipeline:
             output_type (str):
                 It can be "latent", "pt" or "pil".
         """
-        if deter_infer:
+        if deterministic:
             torch.use_deterministic_algorithms(True)
 
         if self.is_backend_tensorrt():

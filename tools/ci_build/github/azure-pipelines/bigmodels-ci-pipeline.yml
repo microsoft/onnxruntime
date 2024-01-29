@@ -172,7 +172,7 @@ stages:
   - job: Stable_Diffusion
     variables:
       skipComponentGovernanceDetection: true
-      CCACHE_DIR: $(Pipeline.Workspace)/ccache
+      CLIP_MODEL_CACHE: $(Pipeline.Workspace)/clipmodelcache
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
@@ -200,12 +200,21 @@ stages:
             python3 -m pip install -r requirements-cuda11.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo Generate an image guided by a text prompt; \
-            python3 demo_txt2img.py --seed 1 --deter-infer "astronaut riding a horse on mars" ; \
+            python3 demo_txt2img.py --seed 1 --deterministic "astronaut riding a horse on mars" ; \
             find $(pwd) -name "*.png" ; \
             popd ; \
             '
       displayName: 'Run stable diffusion demo'
       workingDirectory: $(Build.SourcesDirectory)
+
+    - task: Cache@2
+      inputs:
+        key: '"clipmodel" | "$(Agent.OS)" | '
+        restoreKeys: |
+          "yarn" | "$(Agent.OS)"
+          "yarn"
+        path: $(CLIP_MODEL_CACHE)
+      displayName: Cache clip model
 
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:22.11-py3 \
