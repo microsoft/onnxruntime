@@ -7651,10 +7651,6 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
       auto* reshape_out = builder.MakeIntermediate<float>({{2, 512, 73, 64}});
       builder.AddNode("Reshape", {data_arg, reshape_arg}, {reshape_out});
 
-      // Create Shape-0 Ops
-      auto* shape_output_0 = builder.MakeOutput();
-      builder.AddNode("Shape", {reshape_out}, {shape_output_0});
-
       // Create Gather-1 Ops
       auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(-2)});
       auto* gather_out_1 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
