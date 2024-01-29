@@ -21,6 +21,9 @@
 `python convert_to_onnx.py --fp32_cpu --int4_cpu --fp32_gpu --fp16_gpu --int4_gpu --fp16_a100 --int4_a100`
 
 ### Example run with ORT and benchmark
+add --run_example in the arguments:
+e.g
+`python convert_to_onnx.py --fp16_a100 --run_example`
 
 
 
