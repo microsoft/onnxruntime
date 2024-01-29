@@ -473,48 +473,46 @@ export const run = async(
       wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
     }
 
-    if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState) {
-      if (!enableGraphCapture || !inputOutputBound) {
-        const {handle, outputPreferredLocations, outputPreferredLocationsEncoded} = ioBindingState;
+    if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState && !inputOutputBound) {
+      const {handle, outputPreferredLocations, outputPreferredLocationsEncoded} = ioBindingState;
 
-        if (inputNamesUTF8Encoded.length !== inputCount) {
-          throw new Error(`input count from feeds (${
-              inputCount}) is expected to be always equal to model's input count (${inputNamesUTF8Encoded.length}).`);
-        }
-
-        // process inputs
-        for (let i = 0; i < inputCount; i++) {
-          const index = inputIndices[i];
-          const errorCode = await wasm._OrtBindInput(handle, inputNamesUTF8Encoded[index], inputTensorHandles[i]);
-          if (errorCode !== 0) {
-            checkLastError(`Can't bind input[${i}] for session=${sessionId}.`);
-          }
-        }
-
-        // process pre-allocated outputs
-        for (let i = 0; i < outputCount; i++) {
-          const index = outputIndices[i];
-          const location = outputTensors[i]?.[3];  // undefined means output is not pre-allocated.
-
-          if (location) {
-            // output is pre-allocated. bind the tensor.
-            const errorCode = wasm._OrtBindOutput(handle, outputNamesUTF8Encoded[index], outputTensorHandles[i], 0);
-            if (errorCode !== 0) {
-              checkLastError(`Can't bind pre-allocated output[${i}] for session=${sessionId}.`);
-            }
-          } else {
-            // output is not pre-allocated. reset preferred location.
-            const errorCode =
-                wasm._OrtBindOutput(handle, outputNamesUTF8Encoded[index], 0, outputPreferredLocationsEncoded[index]);
-            if (errorCode !== 0) {
-              checkLastError(`Can't bind output[${i}] to ${outputPreferredLocations[i]} for session=${sessionId}.`);
-            }
-          }
-        }
-        activeSessions.set(
-            sessionId,
-            [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture, true]);
+      if (inputNamesUTF8Encoded.length !== inputCount) {
+        throw new Error(`input count from feeds (${
+            inputCount}) is expected to be always equal to model's input count (${inputNamesUTF8Encoded.length}).`);
       }
+
+      // process inputs
+      for (let i = 0; i < inputCount; i++) {
+        const index = inputIndices[i];
+        const errorCode = await wasm._OrtBindInput(handle, inputNamesUTF8Encoded[index], inputTensorHandles[i]);
+        if (errorCode !== 0) {
+          checkLastError(`Can't bind input[${i}] for session=${sessionId}.`);
+        }
+      }
+
+      // process pre-allocated outputs
+      for (let i = 0; i < outputCount; i++) {
+        const index = outputIndices[i];
+        const location = outputTensors[i]?.[3];  // undefined means output is not pre-allocated.
+
+        if (location) {
+          // output is pre-allocated. bind the tensor.
+          const errorCode = wasm._OrtBindOutput(handle, outputNamesUTF8Encoded[index], outputTensorHandles[i], 0);
+          if (errorCode !== 0) {
+            checkLastError(`Can't bind pre-allocated output[${i}] for session=${sessionId}.`);
+          }
+        } else {
+          // output is not pre-allocated. reset preferred location.
+          const errorCode =
+              wasm._OrtBindOutput(handle, outputNamesUTF8Encoded[index], 0, outputPreferredLocationsEncoded[index]);
+          if (errorCode !== 0) {
+            checkLastError(`Can't bind output[${i}] to ${outputPreferredLocations[i]} for session=${sessionId}.`);
+          }
+        }
+      }
+      activeSessions.set(
+          sessionId,
+          [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture, true]);
     }
 
     wasm.jsepOnRunStart?.(sessionHandle);
