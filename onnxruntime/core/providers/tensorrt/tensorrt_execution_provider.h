@@ -333,6 +333,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   cudnnHandle_t external_cudnn_handle_ = nullptr;
   cublasHandle_t external_cublas_handle_ = nullptr;
 
+  // Call cudaStreamSynchronize() after TRT enqueueV3()
+  mutable bool sync_stream_after_enqueue_ = true;
+
   CUDAGraph cuda_graph_;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;

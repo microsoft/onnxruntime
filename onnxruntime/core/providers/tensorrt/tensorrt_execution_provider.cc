@@ -1736,14 +1736,14 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     }
   }
 
-  // Note: cublas and cudnn should be destroyed here.
-  // For external cuda stream, it's user's responsibility to destroy it
-  // For ORT managed cuda stream, ORT will destroy it.
   if (external_stream_) {
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
   }
 
+  if (!external_stream_ && stream_) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
+  }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 
   if (alloc_ != nullptr) {
@@ -1813,25 +1813,7 @@ Status TensorrtExecutionProvider::OnRunStart() {
 }
 
 Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
-  /*
-   * Given that InferenceSession::Run() is guaranteed to be thread-safe meaning multiple threads can call this function concurrently,
-   * TRT EP needs to carefully take care of concurrency here, if not, at least two concurrent issues might happen:
-   *
-   * (1) It's suggested that to perform inference concurrently in multiple streams, use one trt execution context per stream.
-   * In the design of TRT EP (Not apply per-thread context implementation) and if multiple threads are calling InferenceSession::Run() concurrently,
-   * the trt execution context instance is shared by all the threads and each thread aquires different stream from ORT.
-   * So TRT EP will end up having one trt execution context using multiple streams which is not suggested.
-   * But, since the whole compute_func() is protected by the lock and if cudaStreamSynchronize() is enforced here, one trt execution context per stream
-   * is guaranteed.
-   *
-   * (2) TRT enqueueV3() is async and the stream it uses is managed by ORT SessionState::AcquireDeviceStreamCollection() and DeviceStreamCollection.
-   * So if TRT EP won't wait here for the stream to finish all the operations and instead return right away, the managed stream might still be waiting for
-   * enqueueV3() to be executed and at the same time, the stream might be re-used by other thread which performances InferenceSession::Run() concurrently.
-   *
-   * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
-   * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
-   */
-  if (sync_stream) {
+  if (sync_stream && external_stream_) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
@@ -3200,7 +3182,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
-    stream_ = stream;
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
@@ -3569,6 +3550,28 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
     }
 
+    /*
+     * Given that InferenceSession::Run() is guaranteed to be thread-safe meaning multiple threads can call this function concurrently,
+     * TRT EP needs to carefully take care of concurrency here, if not, at least two concurrent issues might happen:
+     *
+     * (1) It's suggested that to perform inference concurrently in multiple streams, use one trt execution context per stream.
+     * In the design of TRT EP (Not apply per-thread context implementation) and if multiple threads are calling InferenceSession::Run() concurrently,
+     * the trt execution context instance is shared by all the threads and each thread aquires different stream from ORT.
+     * So TRT EP will end up having one trt execution context using multiple streams which is not suggested.
+     * But, since the whole compute_func() is protected by the lock and if cudaStreamSynchronize() is enforced here, one trt execution context per stream
+     * is guaranteed.
+     *
+     * (2) TRT enqueueV3() is async and the stream it uses is managed by ORT SessionState::AcquireDeviceStreamCollection() and DeviceStreamCollection.
+     * So if TRT EP won't wait here for the stream to finish all the operations and instead return right away, the managed stream might still be waiting for
+     * enqueueV3() to be executed and at the same time, the stream might be re-used by other thread which performances InferenceSession::Run() concurrently.
+     *
+     * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
+     * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
+     */
+    if (sync_stream_after_enqueue_) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    }
+
     // Assign TRT output back to ORT output
     // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
     // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
@@ -3751,7 +3754,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
-    stream_ = stream;
 
     // Get input and output binding names
     int total_bindings = trt_engine->getNbIOTensors();
@@ -3843,6 +3845,28 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     // Run TRT inference
     if (!trt_context->enqueueV3(stream)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
+    }
+
+    /*
+     * Given that InferenceSession::Run() is guaranteed to be thread-safe meaning multiple threads can call this function concurrently,
+     * TRT EP needs to carefully take care of concurrency here, if not, at least two concurrent issues might happen:
+     *
+     * (1) It's suggested that to perform inference concurrently in multiple streams, use one trt execution context per stream.
+     * In the design of TRT EP (Not apply per-thread context implementation) and if multiple threads are calling InferenceSession::Run() concurrently,
+     * the trt execution context instance is shared by all the threads and each thread aquires different stream from ORT.
+     * So TRT EP will end up having one trt execution context using multiple streams which is not suggested.
+     * But, since the whole compute_func() is protected by the lock and if cudaStreamSynchronize() is enforced here, one trt execution context per stream
+     * is guaranteed.
+     *
+     * (2) TRT enqueueV3() is async and the stream it uses is managed by ORT SessionState::AcquireDeviceStreamCollection() and DeviceStreamCollection.
+     * So if TRT EP won't wait here for the stream to finish all the operations and instead return right away, the managed stream might still be waiting for
+     * enqueueV3() to be executed and at the same time, the stream might be re-used by other thread which performances InferenceSession::Run() concurrently.
+     *
+     * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
+     * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
+     */
+    if (sync_stream_after_enqueue_) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
     // Assign TRT output back to ORT output
