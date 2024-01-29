@@ -138,7 +138,7 @@ stages:
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
           --variant Full \
-          --test_full_package_with_ios_only
+          --skip_macos_test
       displayName: "Test Apple framework"
 
     - task: PublishBuildArtifacts@1

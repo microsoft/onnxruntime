@@ -144,7 +144,7 @@ def _test_apple_packages(args):
                 cwd=target_proj_path,
             )
 
-            if PackageVariant[args.variant] != PackageVariant.Mobile and not args.test_full_package_with_ios_only:
+            if PackageVariant[args.variant] != PackageVariant.Mobile and not args.skip_macos_test:
                 subprocess.run(
                     [
                         "xcrun",
@@ -207,9 +207,10 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--test_full_package_with_ios_only",
+        "--skip_macos_test",
         action="store_true",
-        help="Run iOS tests only. (Specify this argument only when package variant is Full.)",
+        help="Skip macos platform tests. Specify this argument when build targets only contain ios archs. "
+        "(Currently only applies to the build using default_full_ios_framework_build_settings.json config.)",
     )
 
     return parser.parse_args()
