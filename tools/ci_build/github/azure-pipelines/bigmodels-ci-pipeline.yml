@@ -172,6 +172,8 @@ stages:
   - job: Stable_Diffusion
     variables:
       skipComponentGovernanceDetection: true
+      CLIP_MODEL_CACHE: $(Agent.TempDirectory)/clip_cache
+      STABLE_DIFFUSION_MODEL_CACHE: $(Agent.TempDirectory)/stablediffusion_cache
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
@@ -188,9 +190,21 @@ stages:
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    - task: Cache@2
+      inputs:
+        key: stable_diffusion | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/pipeline_stable_diffusion.py
+        restoreKeys: |
+          stable_diffusion | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/pipeline_stable_diffusion.py
+          stable_diffusion
+        path: $(STABLE_DIFFUSION_MODEL_CACHE)
+      displayName: Cache stable diffusion model
+
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/Release:/Release nvcr.io/nvidia/pytorch:22.11-py3 \
-          bash -c '
+        docker run --rm --gpus all -v $PWD:/workspace \
+          -v $(Build.BinariesDirectory)/Release:/Release \
+          -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
+          nvcr.io/nvidia/pytorch:22.11-py3 \
+          bash -c ' \
             set -ex; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
@@ -199,15 +213,26 @@ stages:
             python3 -m pip install -r requirements-cuda11.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo Generate an image guided by a text prompt; \
-            python3 demo_txt2img.py --seed 1 --deterministic "astronaut riding a horse on mars" ; \
+            python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
             find $(pwd) -name "*.png" ; \
             popd ; \
             '
       displayName: 'Run stable diffusion demo'
       workingDirectory: $(Build.SourcesDirectory)
 
+    - task: Cache@2
+      inputs:
+        key: '"clip_model" | "2.24.0"'
+        restoreKeys: |
+          "clip_model" | "2.24.0"
+          "clip_model"
+        path: $(CLIP_MODEL_CACHE)
+      displayName: Cache clip model
+
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:22.11-py3 \
+        docker run --rm --gpus all -v $PWD:/workspace \
+          -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
+          nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c '
             set -ex; \
             python3 --version; \
@@ -217,7 +242,7 @@ stages:
             pushd test; \
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
-            python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2; \
+            python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2 --cache_dir /model_cache ; \
             popd ; \
             popd ; \
             '
