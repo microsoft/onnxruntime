@@ -56,8 +56,8 @@ public:
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
         const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
-        const bool hasPastKey = keyValueIsPast || kernelCreationContext.IsInputValid(pastKeyIndex);
-        const bool hasPastValue = keyValueIsPast || kernelCreationContext.IsInputValid(pastValueIndex);
+        const bool hasPastKey = keyValueIsPast || (kernelCreationContext.IsInputValid(pastKeyIndex) && kernelCreationContext.GetInputTensorShape(pastKeyIndex)[2] != 0);
+        const bool hasPastValue = keyValueIsPast || (kernelCreationContext.IsInputValid(pastValueIndex) && kernelCreationContext.GetInputTensorShape(pastValueIndex)[2] != 0);
         const bool hasPresentKeyOutput = kernelCreationContext.IsOutputValid(outputPresentKeyIndex);
         const bool hasPresentValueOutput = kernelCreationContext.IsOutputValid(outputPresentValueIndex);
         const bool stackedQkv = kernelCreationContext.GetInputTensorDimensionCount(queryIndex) == 5;
@@ -74,8 +74,8 @@ public:
             biasIndex,
             hasMask ? std::optional<uint32_t>(maskIndex) : std::nullopt,
             relativePositionBiasIndex,
-            keyValueIsPast ? keyIndex : pastKeyIndex,
-            keyValueIsPast ? valueIndex : pastValueIndex,
+            hasPastKey ? std::optional<uint32_t>(keyValueIsPast ? keyIndex : pastKeyIndex) : std::nullopt,
+            hasPastValue ? std::optional<uint32_t>(keyValueIsPast ? valueIndex : pastValueIndex) : std::nullopt,
         };
 
         std::vector<std::optional<uint32_t>> outputIndices = {

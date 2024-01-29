@@ -55,7 +55,11 @@ public:
         inputIndices[dmlQueryIndex] = queryIndex;
         inputIndices[dmlKeyIndex] = keyIndex;
         inputIndices[dmlValueIndex] = valueIndex;
-        inputIndices[dmlPastSequenceLengthsIndex] = seqLensIndex;
+
+        if (kernelCreationContext.GetInputTensorShape(queryIndex)[1] == 1)
+        {
+            inputIndices[dmlPastSequenceLengthsIndex] = seqLensIndex;
+        }
 
         std::vector<std::optional<uint32_t>> outputIndices = {
             outputIndex,
@@ -101,20 +105,23 @@ public:
         ML_CHECK_VALID_ARGUMENT(valueSizes[1] == kvSequenceLength);
         ML_CHECK_VALID_ARGUMENT(valueSizes[2] == kvHiddenSize);
 
-        // Validate PastSequenceLengths dimensions
-        if (m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetDimensionCount() == 1)
+        if (sequenceLength == 1)
         {
-            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[0] == batchSize);
-        }
-        else
-        {
-            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetDimensionCount() == 2);
-            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[0] == batchSize);
-            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[1] == 1);
+            // Validate PastSequenceLengths dimensions
+            if (m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetDimensionCount() == 1)
+            {
+                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[0] == batchSize);
+            }
+            else
+            {
+                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetDimensionCount() == 2);
+                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[0] == batchSize);
+                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[1] == 1);
+            }
         }
 
         const std::array<uint32_t, 1> pastSequenceLengthsShape = {batchSize};
-        auto pastSequenceLengthsDataType = kernelCreationContext.GetInputEdgeDescription(seqLensIndex).tensorDataType;
+        auto pastSequenceLengthsDataType = MLOperatorTensorDataType::Int32;
         TensorDesc pastSequenceLengthsTensorDesc = TensorDesc::ConstructDefaultTensorDesc(pastSequenceLengthsDataType, pastSequenceLengthsShape);
         const DML_TENSOR_DESC pastSequenceLengthsDmlTensorDesc = pastSequenceLengthsTensorDesc.GetDmlDesc();
 
@@ -132,9 +139,76 @@ public:
         mhaDesc.QueryHeadCount = queryNumHeads;
         mhaDesc.KeyValueHeadCount = kvNumHeads;
         mhaDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(queryHeadSize)));
+        DML_OPERATOR_DESC mhaDmlDesc = { DML_OPERATOR_MULTIHEAD_ATTENTION1, &mhaDesc };
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MULTIHEAD_ATTENTION1, &mhaDesc };
-        SetDmlOperatorDesc(opDesc, kernelCreationContext);
+        if (sequenceLength == 1)
+        {
+            SetDmlOperatorDesc(mhaDmlDesc, kernelCreationContext);
+        }
+        else
+        {
+            // The GQA offline fusion does this thing where it sums the number of 1's in the mask to figure out the value of the past sequence.
+            // This doesn't work well for the first iteration since, obviously, there are no past sequences and the mask in this case represents
+            // only the elements in the initial sequence. To work around this, the CUDA implementation of the operator ignores the value of
+            // pastSequenceLengths for the first iteration and acts as if it was 0. This feels like a pretty dirty hack and something that should
+            // be polished in the future, but for compatibility with the GQA fusion and the CUDA implementation we do the same thing here. We DO NOT
+            // want to do this within DirectML since DirectML should be agnostic w.r.t which iteration it's currently executing MHA for, and such a
+            // hack that is likely to be modified in the future shouldn't be enshrined within DirectML. Doing it here is OK because the nature of contrib
+            // ops is that they can change at any time.
+            DML_FILL_VALUE_CONSTANT_OPERATOR_DESC zeroScalarDesc = {};
+            zeroScalarDesc.OutputTensor = &pastSequenceLengthsDmlTensorDesc;
+            zeroScalarDesc.ValueDataType = pastSequenceLengthsTensorDesc.GetDmlDataType();
+            DML_OPERATOR_DESC zeroScalarDmlDesc = { DML_OPERATOR_FILL_VALUE_CONSTANT, &zeroScalarDesc };
+
+            std::vector<const DML_OPERATOR_DESC*> opDescs = {
+                &zeroScalarDmlDesc,
+                &mhaDmlDesc,
+            };
+
+            // Construct the graph
+            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+            std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
+            std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+
+            // Link the query/key/value inputs to MHA
+            for (uint32_t i = 0; i < 3; ++i)
+            {
+                DML_INPUT_GRAPH_EDGE_DESC inputToMhaEdge = {};
+                inputToMhaEdge.GraphInputIndex = i;
+                inputToMhaEdge.ToNodeIndex = 1;
+                inputToMhaEdge.ToNodeInputIndex = i;
+                inputEdges.push_back(inputToMhaEdge);
+            }
+
+            // Link the zero scalar to MHA
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC zeroScalarToMhaEdge = {};
+            zeroScalarToMhaEdge.FromNodeIndex = 0;
+            zeroScalarToMhaEdge.FromNodeOutputIndex = 0;
+            zeroScalarToMhaEdge.ToNodeIndex = 1;
+            zeroScalarToMhaEdge.ToNodeInputIndex = dmlPastSequenceLengthsIndex;
+            intermediateEdges.push_back(zeroScalarToMhaEdge);
+
+            // Link MHA's outputs to the graph's outputs
+            for (uint32_t i = 0; i < 3; ++i)
+            {
+                DML_OUTPUT_GRAPH_EDGE_DESC mhaToOutputEdge = {};
+                mhaToOutputEdge.FromNodeIndex = 1;
+                mhaToOutputEdge.FromNodeOutputIndex = i;
+                mhaToOutputEdge.GraphOutputIndex = i;
+                outputEdges.push_back(mhaToOutputEdge);
+            }
+
+            MLOperatorGraphDesc operatorGraphDesc = {};
+            operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
+            operatorGraphDesc.inputEdges = inputEdges.data();
+            operatorGraphDesc.intermediateEdgeCount = gsl::narrow_cast<uint32_t>(intermediateEdges.size());
+            operatorGraphDesc.intermediateEdges = intermediateEdges.data();
+            operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
+            operatorGraphDesc.outputEdges = outputEdges.data();
+            operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
+            operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+            SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
+        }
     }
 };
 
