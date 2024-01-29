@@ -144,7 +144,7 @@ def _test_apple_packages(args):
                 cwd=target_proj_path,
             )
 
-            if PackageVariant[args.variant] != PackageVariant.Mobile:
+            if PackageVariant[args.variant] != PackageVariant.Mobile and not args.test_full_package_with_ios_only:
                 subprocess.run(
                     [
                         "xcrun",
@@ -204,6 +204,12 @@ def parse_args():
         "--prepare_test_project_only",
         action="store_true",
         help="Prepare the test project only, without running the tests",
+    )
+    
+    parser.add_argument(
+        "--test_full_package_with_ios_only",
+        action="store_true",
+        help="Run iOS tests only. (Specify this argument only when package variant is Full.)",
     )
 
     return parser.parse_args()
