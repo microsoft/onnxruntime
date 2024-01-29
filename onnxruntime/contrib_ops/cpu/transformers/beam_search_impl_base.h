@@ -7,6 +7,8 @@
 #include <utility>
 #include "contrib_ops/cpu/transformers/generate_impl_base.h"
 
+//#undef DEBUG_GENERATION
+
 namespace onnxruntime {
 namespace contrib {
 

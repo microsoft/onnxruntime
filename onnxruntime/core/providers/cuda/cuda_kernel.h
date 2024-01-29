@@ -42,7 +42,16 @@ class CudaKernel : public OpKernel {
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
     if (count_or_bytes == 0) return nullptr;
-    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), count_or_bytes, false, stream, WaitCudaNotificationOnDevice);
+    auto x = IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), count_or_bytes, false, stream, WaitCudaNotificationOnDevice);
+    cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream->GetHandle());
+    if constexpr(std::is_same_v<T, void>)
+    {
+      cudaMemsetAsync(x.get(), 0, count_or_bytes, cuda_stream);
+    }
+    else{
+      cudaMemsetAsync(x.get(), 0, count_or_bytes * sizeof(T), cuda_stream);
+    }
+    return x;
   }
 
   // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
@@ -71,6 +80,10 @@ class CudaKernel : public OpKernel {
 
   inline cudaStream_t Stream(OpKernelContext* ctx) const {
     auto* stream = ctx->GetComputeStream();
+    if (!stream){
+      std::cout << "THIS SHOULDNT HAPPEN!" << std::endl;
+      std::terminate();
+    }
     return stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   }
 

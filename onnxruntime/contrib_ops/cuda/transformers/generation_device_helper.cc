@@ -29,6 +29,8 @@
 
 #include "sampling_cuda_helper.h"
 
+//#undef DEBUG_GENERATION
+
 #ifdef DEBUG_GENERATION
 #include <iostream>
 #endif
@@ -284,6 +286,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   CUDA_CALL_THROW(cudaMemsetAsync(beam_state->next_indices.data(), 0, beam_state->next_indices.size_bytes(), cuda_stream));
   CUDA_CALL_THROW(cudaMemsetAsync(beam_state->next_scores.data(), 0, beam_state->next_scores.size_bytes(), cuda_stream));
   CUDA_CALL_THROW(cudaMemsetAsync(beam_state->topk_buffer.data(), 0, beam_state->topk_buffer.size_bytes(), cuda_stream));
+  //CUDA_CALL_THROW(cudaMemsetAsync(beam_state->sequences_device.data(), 0, beam_state->sequences_device.size_bytes(), cuda_stream));
 
   // Initialize score of first beam of each group with 0 and the rest with -1e9.
   cuda::LaunchInitKernel(beam_state->beam_scores.data(), batch_size, num_beams, cuda_stream);
@@ -476,7 +479,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     // Copy next token scores to cpu memory, copy Sequences to cpu
     std::vector<float> cpu_next_token_scores(next_token_scores.size());
     gsl::span<float> cpu_next_token_scores_span(cpu_next_token_scores.data(), cpu_next_token_scores.size());
-    std::cout << "Here1?" << std::endl;
+
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_next_token_scores.data(),
                                          next_token_scores.data(),
                                          next_token_scores.size_bytes(),
@@ -491,11 +494,14 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     std::cout << "Sequences CPU size:" << sequences->GetSequence(0).size() << std::endl;
     std::cout << "Sequences GPU size:" << sequences->GetCurrentDeviceSequences().size() << std::endl;
     std::cout << "Sequence byte sizes:" << sequences->GetSequence(0).size_bytes() << std::endl;
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(const_cast<int32_t*>(sequences->GetSequence(0).data()),
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream)); // cudaDeviceSynchronize
+    CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize()); // cudaDeviceSynchronize
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(const_cast<int32_t*>(sequences->GetSequence(0).data()),
                                          sequences->GetCurrentDeviceSequences().data(),
                                          sequences->GetSequence(0).size_bytes() * batch_beam_size,
-                                         cudaMemcpyDeviceToHost));
-    // sequences->GetCurrentDeviceSequences().data() -> GPU pointer
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+
     std::cout << "Sequences length post:" << sequences->GetSequenceLength() << std::endl;
     std::cout << "Sequences CPU size:" << sequences->GetSequence(0).size() << std::endl;
     std::cout << "Sequences GPU size:" << sequences->GetCurrentDeviceSequences().size() << std::endl;
@@ -512,7 +518,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream)); // cudaDeviceSynchronize
     CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize()); // cudaDeviceSynchronize
     std::cout << "Here6?" << std::endl;
-    time_logit_processor.Process(sequences, next_token_scores_timestamp);
+    //time_logit_processor.Process(sequences, next_token_scores_timestamp);
     std::cout << "Here7?" << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(next_token_scores.data(),
                                          cpu_next_token_scores.data(),

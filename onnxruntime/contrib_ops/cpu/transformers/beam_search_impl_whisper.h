@@ -8,6 +8,11 @@
 #include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
 #include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_whisper_decoder.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
+
+namespace onnxruntime {
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
+}
 
 namespace onnxruntime {
 namespace contrib {
@@ -178,6 +183,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   const_cast<SessionState&>(this->encoder_session_state_).IncrementGraphExecutionCounter();
 #endif
+  // Can we add a CUDA device sync right here?
   ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
                                              encoder_feeds_fetches_manager,
                                              encoder_feeds,
@@ -187,7 +193,9 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                              this->context_.GetTerminateFlag(),
                                              this->context_.Logger(),
                                              this->ort_stream_));
+  // GetProviderInfo_CUDA()->cudaMemcpy_DeviceToHost(dst, src, count);
 
+/*
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
   for (int i = 0; i < this->encoder_subgraph_.num_subgraph_inputs; i++) {
@@ -200,6 +208,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     dumper->Print("", encoder_fetches[i]);
   }
 #endif
+*/
 
   // ------------------------------------
   // Initialize resources
@@ -355,7 +364,9 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
   while (current_length < parameters->max_length) {
     iteration_counter++;
-#ifdef DEBUG_GENERATION
+//#ifdef DEBUG_GENERATION
+#if 0
+    const IConsoleDumper* dumper = this->GetConsoleDumper();
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
 
@@ -398,7 +409,9 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
           this->temp_space_allocator_));
     }
 
-#ifdef DEBUG_GENERATION
+//#ifdef DEBUG_GENERATION
+#if 0
+const IConsoleDumper* dumper = this->GetConsoleDumper();
     for (int i = 0; i <= decoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
       dumper->Print("decoder_fetches", i, true);
       dumper->Print("", decoder_fetches[i]);

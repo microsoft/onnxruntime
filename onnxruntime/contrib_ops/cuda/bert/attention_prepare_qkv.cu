@@ -6,6 +6,14 @@
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
+
+//With attention_impl.cu and this debug statements inactive, bug happens
+#undef DEBUG_GENERATION
+#define DUMP_TENSOR_INIT()
+#define DUMP_TENSOR(...)
+#define DUMP_TENSOR_D(...)
+
+
 using namespace onnxruntime::cuda;
 
 namespace onnxruntime {

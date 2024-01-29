@@ -40,6 +40,12 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 
+/*
+#undef DEBUG_GENERATION
+#define DUMP_TENSOR_INIT()
+#define DUMP_TENSOR(...)
+#define DUMP_TENSOR_D(...)
+*/
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
 
@@ -357,7 +363,7 @@ Status EfficientAttention(
     assert(data.bias == nullptr);
     query = data.query;
   }
-
+  /*
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("q(BSNH)", reinterpret_cast<const T*>(query),
                 parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.head_size);
@@ -366,7 +372,7 @@ Status EfficientAttention(
   DUMP_TENSOR_D("v(BSNH)", data.v,
                 parameters.batch_size, parameters.total_sequence_length,
                 parameters.num_heads, parameters.v_head_size);
-
+  */
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
   p.is_half = sizeof(T) == 2;
@@ -403,8 +409,8 @@ Status EfficientAttention(
   p.stream = stream;
   p.has_custom_right_padding = false;
   run_memory_efficient_attention(p);
-  DUMP_TENSOR("efficient attention output", data.output,
-              parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
+  //DUMP_TENSOR("efficient attention output", data.output,
+  //            parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
 
   return Status::OK();
 }
@@ -446,8 +452,8 @@ Status UnfusedAttention(
   cublasSetStream(cublas, stream);
 
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR_D("q[BNSH]", data.q, batch_size, num_heads, sequence_length, qk_head_size);
-  DUMP_TENSOR_D("k[BNSH]", data.k, batch_size, num_heads, total_sequence_length, qk_head_size);
+  //DUMP_TENSOR_D("q[BNSH]", data.q, batch_size, num_heads, sequence_length, qk_head_size);
+  //DUMP_TENSOR_D("k[BNSH]", data.k, batch_size, num_heads, total_sequence_length, qk_head_size);
 
   const int present_sequence_length = parameters.past_present_share_buffer
                                           ? parameters.max_sequence_length
@@ -462,9 +468,9 @@ Status UnfusedAttention(
       data.q, qk_head_size, sequence_length * qk_head_size,
       &zero, data.scratch, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
 
-  DUMP_TENSOR_D("Q", data.q, batch_size, num_heads, sequence_length, qk_head_size);
-  DUMP_TENSOR_D("K", data.k, batch_size, num_heads, qk_head_size, sequence_length);
-  DUMP_TENSOR_D("QK", data.scratch, batch_size, num_heads, sequence_length, total_sequence_length);
+  //DUMP_TENSOR_D("Q", data.q, batch_size, num_heads, sequence_length, qk_head_size);
+  //DUMP_TENSOR_D("K", data.k, batch_size, num_heads, qk_head_size, sequence_length);
+  //DUMP_TENSOR_D("QK", data.scratch, batch_size, num_heads, sequence_length, total_sequence_length);
 
   constexpr size_t element_size = sizeof(T);
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
@@ -503,8 +509,8 @@ Status UnfusedAttention(
             parameters.broadcast_res_pos_bias, data.scratch, scratch2, parameters.is_unidirectional));
   }
 
-  DUMP_TENSOR_D("Softmax", scratch2, batch_size, num_heads, sequence_length, total_sequence_length);
-  DUMP_TENSOR_D("V", data.v, batch_size, num_heads, sequence_length, v_head_size);
+  //DUMP_TENSOR_D("Softmax", scratch2, batch_size, num_heads, sequence_length, total_sequence_length);
+  //DUMP_TENSOR_D("V", data.v, batch_size, num_heads, sequence_length, v_head_size);
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   T* temp_output = data.q;
@@ -518,7 +524,7 @@ Status UnfusedAttention(
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                  device_prop.maxThreadsPerBlock, false, temp_output, data.output);
-  DUMP_TENSOR("unfused output", data.output, batch_size, sequence_length, num_heads, v_head_size);
+  //DUMP_TENSOR("unfused output", data.output, batch_size, sequence_length, num_heads, v_head_size);
   return result;
 }
 

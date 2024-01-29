@@ -4,6 +4,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
 #include <type_traits>
+#include <iostream>
 
 namespace onnxruntime {
 BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
@@ -268,7 +269,8 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
   return rounded_bytes;
 }
 
-void* BFCArena::Alloc(size_t size) {
+void* BFCArena::Alloc(size_t size) { // Function entry point to allocation process
+std::cout << "Allocating" << std::endl;
   return AllocateRawInternal(size, false, nullptr, false, nullptr);
 }
 
@@ -492,7 +494,7 @@ void BFCArena::SplitChunk(BFCArena::ChunkHandle h, size_t num_bytes) {
   InsertFreeChunkIntoBin(h_new_chunk);
 }
 
-void BFCArena::Free(void* p) {
+void BFCArena::Free(void* p) { // Free memory
   if (p == nullptr) {
     return;
   }

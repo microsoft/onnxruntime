@@ -30,7 +30,7 @@ class TestTimestampProcessor(unittest.TestCase):
         return [input_features, processor]
 
     def run_timestamp(self, provider: str):
-        self.generate_model("-m openai/whisper-tiny --optimize_onnx --precision fp32 -l -e")
+        self.generate_model("-m openai/whisper-tiny --optimize_onnx --precision fp32 -l --use_forced_decoder_ids -e")
         [input_features, processor] = self.generate_dataset()
         model_path = "./onnx_models/whisper-tiny_beamsearch.onnx"
         sess_options = SessionOptions()
@@ -45,6 +45,7 @@ class TestTimestampProcessor(unittest.TestCase):
             "num_return_sequences": np.array([1], dtype=np.int32),
             "length_penalty": np.array([1.0], dtype=np.float32),
             "repetition_penalty": np.array([1.0], dtype=np.float32),
+            "decoder_input_ids": np.array([[50258, 50259, 50358]], dtype=np.int32),
             "logits_processor": np.array([1], dtype=np.int32),
         }
         ort_out = sess.run(None, ort_inputs)
