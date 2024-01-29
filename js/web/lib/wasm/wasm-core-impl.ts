@@ -139,7 +139,7 @@ type IOBindingState = {
  */
 type SessionMetadata = [
   inferenceSessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[],
-  bindingState: IOBindingState|null, enableGraphCapture: boolean, inputOutputBounded: boolean
+  bindingState: IOBindingState|null, enableGraphCapture: boolean, inputOutputBound: boolean
 ];
 
 const activeSessions = new Map<number, SessionMetadata>();
@@ -235,7 +235,7 @@ export const createSession = async(
 
     const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
 
-    const enableGraphCapture = options?.enableGraphCapture === undefined ? false : options.enableGraphCapture;
+    const enableGraphCapture = !!options?.enableGraphCapture;
 
     const inputNames = [];
     const outputNames = [];
@@ -426,7 +426,7 @@ export const run = async(
   const outputNamesUTF8Encoded = session[2];
   const ioBindingState = session[3];
   const enableGraphCapture = session[4];
-  const inputOutputBounded = session[5];
+  const inputOutputBound = session[5];
 
   const inputCount = inputIndices.length;
   const outputCount = outputIndices.length;
@@ -474,7 +474,7 @@ export const run = async(
     }
 
     if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState) {
-      if (!enableGraphCapture || (enableGraphCapture && !inputOutputBounded)) {
+      if (!enableGraphCapture || !inputOutputBound) {
         const {handle, outputPreferredLocations, outputPreferredLocationsEncoded} = ioBindingState;
 
         if (inputNamesUTF8Encoded.length !== inputCount) {
@@ -626,6 +626,9 @@ export const run = async(
 
     if (ioBindingState && !enableGraphCapture) {
       wasm._OrtClearBoundOutputs(ioBindingState.handle);
+      activeSessions.set(
+          sessionId,
+          [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture, false]);
     }
     return output;
   } finally {

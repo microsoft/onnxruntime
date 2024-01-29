@@ -702,7 +702,7 @@ export class WebGpuBackend {
   }
 
   captureBegin(): void {
-    LOG_DEBUG('info', () => 'captureBegin');
+    LOG_DEBUG('info', 'captureBegin');
     let sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
     let sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
     if (!sessionCommandList) {
@@ -716,13 +716,13 @@ export class WebGpuBackend {
     this.sessionStatus = 'capturing';
   }
   captureEnd(): void {
-    LOG_DEBUG('info', () => 'captureEnd');
+    LOG_DEBUG('info', 'captureEnd');
     // flush the left commands before we change the status.
     this.flush();
     this.sessionStatus = 'default';
   }
   replay(): void {
-    LOG_DEBUG('info', () => 'replay');
+    LOG_DEBUG('info', 'replay');
     this.sessionStatus = 'replaying';
     const sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
     const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
