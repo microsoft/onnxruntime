@@ -22,12 +22,17 @@ namespace Dml
             if (IsSignaled())
                 return; // early-out
 
-            wil::unique_handle h(CreateEvent(nullptr, TRUE, FALSE, nullptr));
-            ORT_THROW_LAST_ERROR_IF(!h);
+            // wil::unique_handle h(CreateEvent(nullptr, TRUE, FALSE, nullptr));
+            // ORT_THROW_LAST_ERROR_IF(!h);
 
-            ORT_THROW_IF_FAILED(fence->SetEventOnCompletion(fenceValue, h.get()));
+            // ORT_THROW_IF_FAILED(fence->SetEventOnCompletion(fenceValue, h.get()));
 
-            WaitForSingleObject(h.get(), INFINITE);
+            while (!IsSignaled())
+            {
+                // DO nothing
+            }
+
+            // WaitForSingleObject(h.get(), INFINITE);
         }
     };
 
