@@ -3405,9 +3405,9 @@ with "hqq", we have:
             "type T1.",
             AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized", "T2")
-      .Input(2, "scales", "quantization scale", "T1")
-      .Input(3, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
-      .Input(4, "g_idx", "group_idx for gptq", "T2", OpSchema::Optional)
+      .Input(1, "scales", "quantization scale", "T1")
+      .Input(2, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
+      .Input(3, "g_idx", "group_idx for gptq", "T2", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)", "tensor(uint32)", "tensor(int32)"}, "Constrain quantized weight types to uint8/uint32/int32/float16.")

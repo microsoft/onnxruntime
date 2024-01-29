@@ -108,8 +108,8 @@ void DequantWeightNbitGidx(concurrency::ThreadPool* pool,
                            const int32_t* qweight_i32, const SCALE_TYPE* scale,
                            const uint32_t* qzeros_i32, const int32_t* g_dix,
                            SCALE_TYPE* output,
-                           uint32_t mat_k, uint32_t mat_n, int bits) {
-  assert(bits == 4);
+                           uint32_t mat_k, uint32_t mat_n, int) {
+  //assert(bits == 4);
   constexpr uint32_t kWBITS = 4;
   constexpr uint32_t kOUTCOLBLOCK = 64;
   const uint32_t kCompressedSize = 32 / 4;
@@ -164,9 +164,9 @@ void DequantWeightNbit(
     SCALE_TYPE* output,
     uint32_t mat_k,
     uint32_t mat_n,
-    uint32_t bits,
+    uint32_t,
     uint32_t groupsize) {
-  assert(bits == 4);
+  //assert(bits == 4);
   constexpr uint32_t kWBITS = 4;
   constexpr uint32_t kOUTCOLBLOCK = 64;
   const uint32_t kCompressedSize = 32 / 4;
