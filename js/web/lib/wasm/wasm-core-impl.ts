@@ -325,9 +325,12 @@ export const releaseSession = (sessionId: number): void => {
   if (!session) {
     throw new Error(`cannot release session. invalid session id: ${sessionId}`);
   }
-  const [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState] = session;
+  const [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture] = session;
 
   if (ioBindingState) {
+    if (enableGraphCapture) {
+      wasm._OrtClearBoundOutputs(ioBindingState.handle);
+    }
     wasm._OrtReleaseBinding(ioBindingState.handle);
   }
 
