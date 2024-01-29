@@ -207,15 +207,6 @@ stages:
       displayName: 'Run stable diffusion demo'
       workingDirectory: $(Build.SourcesDirectory)
 
-    - task: Cache@2
-      inputs:
-        key: '"clipmodel" | "$(Agent.OS)" | '
-        restoreKeys: |
-          "yarn" | "$(Agent.OS)"
-          "yarn"
-        path: $(CLIP_MODEL_CACHE)
-      displayName: Cache clip model
-
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c '
