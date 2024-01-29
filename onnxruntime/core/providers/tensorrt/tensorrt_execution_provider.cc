@@ -3559,9 +3559,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
      * the trt execution context instance is shared by all the threads and each thread aquires different stream from ORT.
      * So TRT EP will end up having one trt execution context using multiple streams which is not suggested.
      *
-     * (2) TRT enqueueV3() is async and the stream it uses is managed by ORT SessionState::AcquireDeviceStreamCollection() and DeviceStreamCollection,
-     * so if TRT EP won't wait here for the stream to finish all the operations and return right away, the managed stream might be re-used by
-     * other thread which performances InferenceSession::Run() concurrently.
+     * (2) TRT enqueueV3() is async and the stream it uses is managed by ORT SessionState::AcquireDeviceStreamCollection() and DeviceStreamCollection.
+     * So if TRT EP won't wait here for the stream to finish all the operations and instead return right away, the managed stream might still be waiting for
+     * enqueueV3() to be executed and at the same time, the stream might be re-used by other thread which performances InferenceSession::Run() concurrently.
      *
      * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
      */
@@ -3851,9 +3851,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
      * the trt execution context instance is shared by all the threads and each thread aquires different stream from ORT.
      * So TRT EP will end up having one trt execution context using multiple streams which is not suggested.
      * 
-     * (2) TRT enqueueV3() is async and the stream it uses is managed by ORT SessionState::AcquireDeviceStreamCollection() and DeviceStreamCollection,
-     * so if TRT EP won't wait here for the stream to finish all the operations and return right away, the managed stream might be re-used by
-     * other thread which performances InferenceSession::Run() concurrently.
+     * (2) TRT enqueueV3() is async and the stream it uses is managed by ORT SessionState::AcquireDeviceStreamCollection() and DeviceStreamCollection.
+     * So if TRT EP won't wait here for the stream to finish all the operations and instead return right away, the managed stream might still be waiting for
+     * enqueueV3() to be executed and at the same time, the stream might be re-used by other thread which performances InferenceSession::Run() concurrently.
      *
      * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
      */
