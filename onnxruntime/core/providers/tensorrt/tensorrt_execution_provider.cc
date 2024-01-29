@@ -1736,14 +1736,14 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     }
   }
 
+  // Note: cublas and cudnn should be destroyed here.
+  // For external cuda stream, it's user's responsibility to destroy it
+  // For ORT managed cuda stream, ORT will destroy it.
   if (external_stream_) {
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
   }
 
-  if (!external_stream_ && stream_) {
-    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
-  }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 
   if (alloc_ != nullptr) {
@@ -3200,6 +3200,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+    stream_ = stream;
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
@@ -3750,6 +3751,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+    stream_ = stream;
 
     // Get input and output binding names
     int total_bindings = trt_engine->getNbIOTensors();
