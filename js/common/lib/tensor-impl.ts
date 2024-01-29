@@ -7,7 +7,7 @@ import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
 import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
 import {tensorFromGpuBuffer, tensorFromImage, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
 import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions, TextureConstructorParameters} from './tensor-factory.js';
-import {checkBigInt, NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP, NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, SupportedTypedArray, SupportedTypedArrayConstructors} from './tensor-impl-type-mapping.js';
+import {checkTypedArray, NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP, NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, SupportedTypedArray, SupportedTypedArrayConstructors} from './tensor-impl-type-mapping.js';
 import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
 
@@ -69,8 +69,8 @@ export class Tensor implements TensorInterface {
       arg0: TensorType|TensorDataType|readonly string[]|readonly boolean[]|CpuPinnedConstructorParameters|
       TextureConstructorParameters|GpuBufferConstructorParameters,
       arg1?: TensorDataType|readonly number[]|readonly string[]|readonly boolean[], arg2?: readonly number[]) {
-    // perform one-time check for BigInt support
-    checkBigInt();
+    // perform one-time check for BigInt/Float16Array support
+    checkTypedArray();
 
     let type: TensorType;
     let dims: readonly number[];
