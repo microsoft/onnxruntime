@@ -1333,6 +1333,8 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def, std::vector<std::vecto
       TensorInfo axes_info({static_cast<int64_t>(axes.size())}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
       input.push_back(axes_info);
       x_datas.push_back(axes_float);
+    } else {
+      attributes.push_back(MakeAttribute("axes", axes));
     }
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes));
@@ -1358,11 +1360,11 @@ TEST(GradientCheckerTest, SqueezeGrad) {
       // {}
   };
 
-  OpDef op_def{"Squeeze"};
+  // axes as attribute from opset 11
+  OpDef op_def{"Squeeze", kOnnxDomain, 11};
   RunSqueezeUnsqueezeTests(op_def, x_shapes, y_shapes, axes_ip);
 
-  // axes as input from opset 13
-  OpDef op_def_2{"Squeeze", kOnnxDomain, 13};
+  OpDef op_def_2{"Squeeze"};
   RunSqueezeUnsqueezeTests(op_def_2, x_shapes, y_shapes, axes_ip, true);
 }
 
@@ -1383,11 +1385,11 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
       {0, 2, 4},
   };
 
-  OpDef op_def{"Unsqueeze"};
+  // axes as attribute from opset 11
+  OpDef op_def{"Unsqueeze", kOnnxDomain, 11};
   RunSqueezeUnsqueezeTests(op_def, x_shapes, y_shapes, axes_ip);
 
-  // axes as input from opset 13
-  OpDef op_def_2{"Unsqueeze", kOnnxDomain, 13};
+  OpDef op_def_2{"Unsqueeze"};
   RunSqueezeUnsqueezeTests(op_def_2, x_shapes, y_shapes, axes_ip, true);
 }
 
