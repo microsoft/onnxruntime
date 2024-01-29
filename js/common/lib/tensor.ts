@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Float16Array} from '@petamoriken/float16';
-
 import {TensorFactory} from './tensor-factory.js';
 import {Tensor as TensorImpl} from './tensor-impl.js';
 import {TypedTensorUtils} from './tensor-utils.js';
+import {Float16Array} from '@petamoriken/float16';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 

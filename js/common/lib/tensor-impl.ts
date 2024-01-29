@@ -168,7 +168,7 @@ export class Tensor implements TensorInterface {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               data = (typedArrayConstructor as any).from(arg1);
             }
-          } else if (arg1 instanceof typedArrayConstructor || isFloat16Array(arg1)) {
+          } else if (arg1 instanceof typedArrayConstructor || (isFloat16Array!==undefined && isFloat16Array(arg1))) {
             data = arg1;
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
