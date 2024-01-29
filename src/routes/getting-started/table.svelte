@@ -162,8 +162,6 @@
 
 		'mac,Python,ARM64,CoreML': 'pip install onnxruntime',
 
-		'mac,JS,ARM64,CoreML': 'npm install onnxruntime-react-native',
-
 		'mac,objectivec,X64,DefaultCPU': "Add 'onnxruntime-objc' using CocoaPods.",
 		
 		'mac,objectivec,ARM64,DefaultCPU': "Add 'onnxruntime-objc' using CocoaPods.",
