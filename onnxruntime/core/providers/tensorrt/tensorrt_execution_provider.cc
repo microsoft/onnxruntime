@@ -3568,7 +3568,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
      * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
      * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
      */
-    if (sync_stream_after_enqueue_) {
+    if (sync_stream_after_enqueue_ && !cuda_graph_enable_) {
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
@@ -3865,7 +3865,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
      * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
      * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
      */
-    if (sync_stream_after_enqueue_) {
+    if (sync_stream_after_enqueue_ && !cuda_graph_enable_) {
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
