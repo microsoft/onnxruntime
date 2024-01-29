@@ -205,7 +205,7 @@ def parse_args():
         action="store_true",
         help="Prepare the test project only, without running the tests",
     )
-    
+
     parser.add_argument(
         "--test_full_package_with_ios_only",
         action="store_true",
