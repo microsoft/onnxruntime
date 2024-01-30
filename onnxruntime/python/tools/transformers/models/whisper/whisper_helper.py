@@ -88,7 +88,7 @@ class WhisperHelper:
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
-        model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir, attn_implementation="eager")
         if state_dict_path:
             model.load_state_dict(torch.load(state_dict_path), strict=False)
 
@@ -262,11 +262,12 @@ class WhisperHelper:
     @staticmethod
     def verify_onnx(
         model_name_or_path: str,
+        cache_dir: str,
         ort_session: InferenceSession,
         device: torch.device,
     ):
         """Compare the result from PyTorch and ONNX Runtime to verify the ONNX model is good."""
-        pt_model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path).to(device)
+        pt_model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir, attn_implementation="eager").to(device)
         processor = WhisperProcessor.from_pretrained(model_name_or_path)
         config = WhisperConfig.from_pretrained(model_name_or_path)
 
