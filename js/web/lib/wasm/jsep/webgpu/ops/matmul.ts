@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
@@ -29,13 +30,13 @@ export const createNaiveMatmulProgramInfo =
       const outputShapeInShader = [batchSize, M, N];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N},
-        {type: 'uint32', data: K}
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: M}, {type: DataType.uint32, data: N},
+        {type: DataType.uint32, data: K}
       ];
       if (activationAttributes.activation === 'Clip') {
         programUniforms.push(
-            {type: 'float32', data: activationAttributes.clipMax!},
-            {type: 'float32', data: activationAttributes.clipMin!});
+            {type: DataType.float, data: activationAttributes.clipMax!},
+            {type: DataType.float, data: activationAttributes.clipMin!});
       }
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
