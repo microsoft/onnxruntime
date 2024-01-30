@@ -7,6 +7,7 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include <versionhelpers.h>
 #endif
 #include <thread>
 #include "core/session/ort_apis.h"
@@ -98,7 +99,16 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     }
     options.thread_pool_size = static_cast<int>(default_affinities.size());
     if (options.auto_set_affinity) {
+#ifdef _WIN32
+      // Only set thread affinity on Server with auto affinity.
+      // On client best to let OS scheduler handle.
+      // On big (P-Core) / little (E-Core) CPU designs affinity overrides QoS and has high power usage
+      if (IsWindowsServer()) {
+        to.affinities = std::move(default_affinities);
+      }
+#else
       to.affinities = std::move(default_affinities);
+#endif
     }
   }
   if (options.thread_pool_size <= 1) {

@@ -40,6 +40,12 @@ class OnnxModel:
         self.enable_shape_infer: bool = True
         self.all_graphs: Optional[List[GraphProto]] = None
 
+        # Cache of shape and data type from onnx graph to speed up optimization.
+        # Be careful that fusion shall not reuse node output name for different shape/type (in adding/removing nodes)
+        # Note that these do not cache the symbolic shape inference result.
+        self._dtype_dict: Optional[Dict[str, int]] = None
+        self._shape_dict: Optional[Dict[str, List]] = None
+
     def disable_shape_inference(self):
         self.enable_shape_infer = False
 
@@ -525,20 +531,60 @@ class OnnxModel:
                 shape_list.append("?")  # shall not happen
         return shape_list
 
-    def get_dtype(self, input_or_output: str):
-        """Try get data type given a name (could be initializer, graph input or output)."""
-        tensor_type_map = {obj.name: obj.type for obj in self.model.graph.value_info}
+    def get_dtype(self, name: str, symbolic_shape_helper: Optional[SymbolicShapeInferenceHelper] = None):
+        """Try get data type given a name (could be initializer, input or output of graph or node)."""
 
-        if input_or_output in tensor_type_map:
-            return tensor_type_map[input_or_output].tensor_type.elem_type
+        if self._dtype_dict is None:
+            self._dtype_dict = {}
+            for value_info in itertools.chain(
+                self.model.graph.value_info,
+                self.model.graph.input,
+                self.model.graph.output,
+            ):
+                self._dtype_dict[value_info.name] = value_info.type.tensor_type.elem_type
 
-        graph_input = self.find_graph_input(input_or_output)
-        if graph_input:
-            return graph_input.type.tensor_type.elem_type
+            for initializer in self.model.graph.initializer:
+                if initializer.name not in self._dtype_dict:
+                    self._dtype_dict[initializer.name] = initializer.data_type
 
-        graph_output = self.find_graph_output(input_or_output)
-        if graph_output:
-            return graph_output.type.tensor_type.elem_type
+        if name in self._dtype_dict:
+            return self._dtype_dict[name]
+
+        if symbolic_shape_helper is not None and name in symbolic_shape_helper.known_vi_:
+            value_info = symbolic_shape_helper.known_vi_[name]
+            return value_info.type.tensor_type.elem_type
+
+        return None
+
+    def get_shape(self, name: str, symbolic_shape_helper: Optional[SymbolicShapeInferenceHelper] = None):
+        """Try get shape given a name (could be initializer, input or output of graph or node)."""
+
+        if self._shape_dict is None:
+            self._shape_dict = {}
+            for value_info in itertools.chain(
+                self.model.graph.value_info,
+                self.model.graph.input,
+                self.model.graph.output,
+            ):
+                if value_info.type.tensor_type.HasField("shape"):
+                    shape = []
+                    for dim in value_info.type.tensor_type.shape.dim:
+                        if dim.dim_param:
+                            shape.append(dim.dim_param)
+                        else:
+                            shape.append(dim.dim_value)
+                    self._shape_dict[value_info.name] = shape
+
+            for initializer in self.model.graph.initializer:
+                if initializer.name not in self._shape_dict:
+                    self._shape_dict[initializer.name] = initializer.dims
+
+        if name in self._shape_dict:
+            return self._shape_dict[name]
+
+        if symbolic_shape_helper is not None and name in symbolic_shape_helper.known_vi_:
+            value_info = symbolic_shape_helper.known_vi_[name]
+            return value_info.type.tensor_type.elem_type
 
         return None
 
@@ -572,23 +618,14 @@ class OnnxModel:
     def remove_useless_cast_nodes(self):
         """Remove cast nodes that are not needed: input and output has same data type."""
         shape_infer = self.infer_runtime_shape(update=True)
-        if shape_infer is None:
-            logger.info("Skip removing useless cast nodes since shape inference failed.")
-            return
-
-        def get_data_type(input_or_output_name):
-            dtype = self.get_dtype(input_or_output_name)
-            if dtype:
-                return dtype
-            if shape_infer.known_vi_[input_or_output_name].type.tensor_type.HasField("elem_type"):
-                return shape_infer.known_vi_[input_or_output_name].type.tensor_type.elem_type
-            return None
+        if self.enable_shape_infer and shape_infer is None:
+            logger.warning("shape inference failed which might impact useless cast node detection.")
 
         nodes_to_remove = []
         for node in self.nodes():
             if node.op_type == "Cast":
-                input_dtype = get_data_type(node.input[0])
-                output_dtype = get_data_type(node.output[0])
+                input_dtype = self.get_dtype(node.input[0], shape_infer)
+                output_dtype = self.get_dtype(node.output[0], shape_infer)
                 if input_dtype and input_dtype == output_dtype:
                     nodes_to_remove.append(node)
 
@@ -607,7 +644,10 @@ class OnnxModel:
                     self.replace_input_of_all_nodes(node.output[0], node.input[0])
                 self.remove_node(node)
 
-            logger.info("Removed %d Cast nodes with output type same as input", len(nodes_to_remove))
+            logger.info(
+                "Removed %d Cast nodes with output type same as input",
+                len(nodes_to_remove),
+            )
 
     def convert_model_float32_to_float16(self, cast_input_output=True):
         logger.warning(
@@ -1221,7 +1261,10 @@ class OnnxModel:
                 continue
             for j in range(i + 1, initializer_count):
                 if OnnxModel.has_same_value(
-                    self.model.graph.initializer[i], self.model.graph.initializer[j], cache, cache
+                    self.model.graph.initializer[i],
+                    self.model.graph.initializer[j],
+                    cache,
+                    cache,
                 ):
                     same[j] = i
 
@@ -1230,7 +1273,8 @@ class OnnxModel:
             if same[i] >= 0:
                 count += 1
                 self.replace_input_of_all_nodes(
-                    self.model.graph.initializer[i].name, self.model.graph.initializer[same[i]].name
+                    self.model.graph.initializer[i].name,
+                    self.model.graph.initializer[same[i]].name,
                 )
 
         if count > 0:

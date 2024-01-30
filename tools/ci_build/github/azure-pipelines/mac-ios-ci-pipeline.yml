@@ -62,7 +62,7 @@ jobs:
                 --use_xcode \
                 --config RelWithDebInfo \
                 --build_apple_framework \
-                --parallel
+                --parallel --use_binskim_compliant_compile_flags
             displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
             env:
               CC: clang
