@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Float16Array} from '@petamoriken/float16';
-
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 
+type Float16ArrayType = InstanceType<typeof Float16Array>;
 /* eslint-disable no-bitwise */
-
-type FloatTypedArray = Float16Array|Float32Array|Float64Array;
+type FloatTypedArray = Float16ArrayType|Float32Array|Float64Array;
 
 // eslint-disable-next-line no-underscore-dangle
 function matMul2d_(

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Float16Array} from '@petamoriken/float16';
 import {expect} from 'chai';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
@@ -20,7 +19,7 @@ import {getTensorElementSize, isGpuBufferSupportedType, tensorDataTypeStringToEn
 
 import {base64toBuffer, createMockGraph, readFile} from './test-shared';
 import {Test} from './test-types';
-
+type Float16ArrayType = InstanceType<typeof Float16Array>;
 // the threshold that used to compare 2 float numbers. See above for TensorResultValidator.floatEqual().
 const CPU_THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
 const CPU_THRESHOLD_RELATIVE_ERROR = 1.000001;
@@ -398,8 +397,8 @@ export class TensorResultValidator {
       case 'float32':
       case 'float64':
         return this.floatEqual(
-            actual.numberData as number[] | Float16Array | Float32Array | Float64Array,
-            expected.numberData as number[] | Float16Array | Float32Array | Float64Array);
+            actual.numberData as number[] | Float16ArrayType | Float32Array | Float64Array,
+            expected.numberData as number[] | Float16ArrayType | Float32Array | Float64Array);
 
       case 'uint8':
       case 'int8':
@@ -427,10 +426,9 @@ export class TensorResultValidator {
       return false;
     }
   }
-
   floatEqual(
-      actual: number[]|Float16Array|Float32Array|Float64Array,
-      expected: number[]|Float16Array|Float32Array|Float64Array): boolean {
+      actual: number[]|Float16ArrayType|Float32Array|Float64Array,
+      expected: number[]|Float16ArrayType|Float32Array|Float64Array): boolean {
     if (actual.length !== expected.length) {
       return false;
     }
