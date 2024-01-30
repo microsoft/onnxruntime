@@ -2093,7 +2093,8 @@ TEST_P(EinsumTransposeMatMulThreeInputsTest, EinsumTransposeMatMulThreeInputsTes
   std::vector<float> m3{0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   for (const auto& tst : test_cases_set) {
     OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
-    test.AddAttribute<std::string>("equation", std::string(tst.equation));
+    std::string s(tst.equation);
+    test.AddAttribute<std::string>("equation", s);
     test.AddInput<float>("x", {2, 2, 2}, m1);
     test.AddInput<float>("y", {2, 2}, m2);
     test.AddInput<float>("z", {2, 2, 2}, m3);
