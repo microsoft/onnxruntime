@@ -566,7 +566,7 @@ Please note that there is a constraint of using this explicit shape range featur
 
 This example shows how to run the Faster R-CNN model on TensorRT execution provider.
 
-1. Download the Faster R-CNN onnx model from the ONNX model zoo [here](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/faster-rcnn).
+1. Download the Faster R-CNN onnx model from the ONNX model zoo [here](https://github.com/onnx/models/tree/main/validated/vision/object_detection_segmentation/faster-rcnn).
 
 2. Infer shapes in the model by running the [shape inference script](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py)
     ```bash
@@ -583,7 +583,7 @@ This example shows how to run the Faster R-CNN model on TensorRT execution provi
 
 4. To test on model performance, run `onnxruntime_perf_test` on your shape-inferred Faster-RCNN model
 
-   > Download sample test data with model from [model zoo](https://github.com/onnx/models/tree/main/vision/object_detection_segmentation/faster-rcnn), and put test_data_set folder next to your inferred model
+   > Download sample test data with model from [model zoo](https://github.com/onnx/models/tree/main/validated/vision/object_detection_segmentation/faster-rcnn), and put test_data_set folder next to your inferred model
 
     ```bash
     # e.g.

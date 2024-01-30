@@ -95,7 +95,7 @@ In this tutorial we are using the Raspberry Pi [Camera Module](https://www.raspb
     ```
 ## Run inference on the Raspberry Pi with the `inference_mobilenet.py` script
 
-Now that we have validated that the camera is connected and working on the Raspberry Pi, its time to inference the ONNX model provided in the source. The model is a [MobileNet](https://github.com/onnx/models/tree/main/vision/classification/mobilenet) model that performs image classification on 1000 classes.
+Now that we have validated that the camera is connected and working on the Raspberry Pi, its time to inference the ONNX model provided in the source. The model is a [MobileNet](https://github.com/onnx/models/tree/main/validated/vision/classification/mobilenet) model that performs image classification on 1000 classes.
 
 - Run the inference script with the below command.
     ```python

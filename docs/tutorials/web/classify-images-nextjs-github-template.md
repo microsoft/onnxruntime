@@ -33,7 +33,7 @@ This application performs inference on device, in the browser using the onnxrunt
 
 ## SqueezeNet machine learning model
 
-We will be using [SqueezeNet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inference.
+We will be using [SqueezeNet](https://github.com/onnx/models/tree/main/validated/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inference.
 
   > If you need even more model memory and disk efficiency, you can convert the ONNX model to [ORT format](../../reference/ort-format-models) and use an ORT model in your application instead of the ONNX one. You can also also [reduce the size of the ONNX Runtime](../../build/custom.md) binary itself to only include support for the specific models in your application.
 
