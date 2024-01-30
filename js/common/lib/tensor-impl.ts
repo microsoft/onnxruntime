@@ -168,7 +168,7 @@ export class Tensor implements TensorInterface {
             }
           } else if (arg1 instanceof typedArrayConstructor) {
             data = arg1;
-          } else if (isFloat16Array !== undefined && isFloat16Array(arg1)) {
+          } else if (arg1 instanceof Float16Array) {
             data = arg1 as InstanceType<typeof Float16Array>;
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);

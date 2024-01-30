@@ -13,10 +13,9 @@ import {Logger} from '../lib/onnxjs/instrument';
 
 import {Test} from './test-types';
 
-import {Float16Array, isFloat16Array} from '@petamoriken/float16';
+import {Float16Array} from '@petamoriken/float16';
 
 globalThis.Float16Array = Float16Array;
-globalThis.isFloat16Array = isFloat16Array;
 
 if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
   // require onnxruntime-node

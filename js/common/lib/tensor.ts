@@ -63,7 +63,6 @@ interface TypedTensorBase<T extends Tensor.Type> {
   dispose(): void;
 }
 
-// type Float16ArrayType = InstanceType<typeof Float16Array>;
 export declare namespace Tensor {
   interface DataTypeMap {
     float32: Float32Array;

@@ -191,7 +191,7 @@ export class Tensor {
     } else {
       if (cache !== undefined) {
         const constructor = dataviewConstructor(type);
-        if (!(cache instanceof constructor) && !isFloat16Array(cache)) {
+        if (!(cache instanceof constructor) && !(cache instanceof Float16Array)) {
           throw new TypeError(`cache should be type ${constructor.name}`);
         }
       }
@@ -417,7 +417,8 @@ function dataviewConstructor(type: Tensor.DataType) {
     case 'int64':
       return BigInt64Array;
     case 'float16':
-      return Float16Array; //typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;;
+      return typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;
+      ;
     case 'float32':
       return Float32Array;
     case 'float64':
