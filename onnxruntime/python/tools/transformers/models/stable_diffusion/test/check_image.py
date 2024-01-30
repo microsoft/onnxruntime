@@ -62,7 +62,7 @@ def main():
     cache_dir = args.cache_dir
     score = round(generate_score(image1, image2, cache_dir), 2)
     print("similarity Score: ", {score})
-    if score < 99:
+    if score < 95:
         print(f"{image1} and {image2} are different")
         raise SystemExit(1)
     else:

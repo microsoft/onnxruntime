@@ -220,6 +220,13 @@ stages:
       displayName: 'Run stable diffusion demo'
       workingDirectory: $(Build.SourcesDirectory)
 
+    # For verification we will check the generated image looks .
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish code coverage report'
+      inputs:
+          artifactName: "Generated-Image"
+          targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/ORT_CUDA/'
+
     - task: Cache@2
       inputs:
         key: clip_model | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/test/check_image.py
