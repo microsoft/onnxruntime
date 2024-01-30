@@ -5,7 +5,10 @@
 #pragma warning(disable : 4267)
 #endif
 
+#include <string>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "core/common/gsl.h"
 #include "core/framework/data_types.h"
@@ -21,6 +24,11 @@
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "core/platform/threadpool.h"
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#define ENABLE_CUSTOM_OP_API
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
@@ -370,11 +378,42 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
   }
   *resource = stream->GetResource(resource_version, resource_id);
-  if (!(*resource)) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Requested resource does not exist");
+  return nullptr;
+  API_IMPL_END
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
+#ifdef ENABLE_CUSTOM_OP_API
+  API_IMPL_BEGIN
+  if (!context) {
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Invalid context");
+  }
+  if (fn && total) {
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+    auto* tp = ctx->GetOperatorThreadPool();
+    if (num_batch) {
+      onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(
+          tp,
+          static_cast<std::ptrdiff_t>(total),
+          [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); },
+          static_cast<std::ptrdiff_t>(num_batch));
+    } else {
+      onnxruntime::concurrency::ThreadPool::TrySimpleParallelFor(
+          tp,
+          static_cast<std::ptrdiff_t>(total),
+          [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); });
+    }
   }
   return nullptr;
   API_IMPL_END
+#else
+  ORT_UNUSED_PARAMETER(context);
+  ORT_UNUSED_PARAMETER(fn);
+  ORT_UNUSED_PARAMETER(total);
+  ORT_UNUSED_PARAMETER(num_batch);
+  ORT_UNUSED_PARAMETER(usr_data);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "ParallelFor API not implemented for this build");
+#endif
 };
 
 #ifdef _WIN32
@@ -755,14 +794,16 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
   return KernelCreateInfo(def_builder.Build(), kernel_create_fn);
 }
 
-ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustomOp* op) {
-  const size_t input_count = op->GetInputTypeCount(op);
-  const size_t output_count = op->GetOutputTypeCount(op);
+ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops) {
+  // The function registers the first schema assuming all the other one are the same except the types constraints.
+  ORT_ENFORCE(ops.size() > 0, "No kernels to registers.");
   int undefined = 0;
 
+  // Creation of the schema for the first kernel in ops.
+  const OrtCustomOp* op = *ops.begin();
   ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
-  for (size_t i = 0; i < input_count; i++) {
+  auto create_type_constraint = [&ops, &schema, &undefined](const OrtCustomOp* op, int count, int i, bool is_input) {
     onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
     bool is_homogeneous = true;
     int min_arity = 1;
@@ -770,51 +811,79 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     // The OrtCustomOp interface did not support the methods to query input/output characteristics before
     // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
     if (op->version >= min_ort_version_with_optional_io_support) {
-      const auto characteristic = op->GetInputCharacteristic(op, i);
+      const auto characteristic = is_input ? op->GetInputCharacteristic(op, i) : op->GetOutputCharacteristic(op, i);
 
       // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
       if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
         option = onnx::OpSchema::FormalParameterOption::Optional;
       } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
                  (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-        ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
+        ORT_ENFORCE(i == count - 1, "Only the last ", (is_input ? "input" : "output"),
+                    " to a custom op may be marked variadic.");
         option = onnx::OpSchema::FormalParameterOption::Variadic;
-        min_arity = op->GetVariadicInputMinArity(op);
-        is_homogeneous = static_cast<bool>(op->GetVariadicInputHomogeneity(op));
+        min_arity = is_input ? op->GetVariadicInputMinArity(op) : op->GetVariadicOutputMinArity(op);
+        is_homogeneous = static_cast<bool>(is_input
+                                               ? op->GetVariadicInputHomogeneity(op)
+                                               : op->GetVariadicOutputHomogeneity(op));
       }
     }
 
-    const auto type = op->GetInputType(op, i);
-    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+    // The loop goes through all operators sharing the same schema to build
+    // the minimal type constraints for all of them. All kernels must have
+    // the same number of inputs / outputs among themselves to be able to build
+    // the type constraints. Any kind of incompatibility between a schema and
+    // a kernel is checked by method IsCompatible once the schema is created
+    // by this method.
+    std::unordered_set<ONNXTensorElementDataType> all_types;
+    for (auto o : ops) {
+      ORT_ENFORCE(static_cast<size_t>(i) != (is_input ? o->GetInputTypeCount(o) : o->GetOutputTypeCount(o)),
+                  "Another version of operator '", schema.Name(),
+                  "'has a different number of ", (is_input ? "inputs" : "outputs"),
+                  ". onnxruntime allows the overloading of an operator "
+                  "if all versions have the same number of declared ",
+                  (is_input ? "inputs" : "outputs"), ".");
+      const auto type = is_input ? o->GetInputType(o, i) : o->GetOutputType(o, i);
+      if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+        // If 'type' is undefined, all types are allowed regardless of what other versions of the same operator
+        // define. In that case, all_types is cleared, that's the convention used by the code following this loop
+        // to declare all types as possible types.
+        all_types.clear();
+        break;
+      }
+      all_types.insert(type);
+    }
+
+    std::string prefix = is_input ? "Input" : "Output";
+    std::string name = prefix + std::to_string(i);
+    if (is_input) {
+      schema.Input(gsl::narrow_cast<int>(i), name, "", name, option, is_homogeneous, min_arity);
+    } else {
+      schema.Output(gsl::narrow_cast<int>(i), name, "", name, option, is_homogeneous, min_arity);
+    }
+
+    if (!all_types.empty()) {
+      // all_types is not empty then only the types in this container are allowed of this input.
+      std::vector<std::string> types;
+      for (auto type : all_types) {
+        const ONNX_NAMESPACE::TypeProto* type_proto =
+            DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->GetTypeProto();
+        types.push_back(*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto));
+      }
+      schema.TypeConstraint(name, types, "defined list of types");
+    } else {
+      // all_types is empty. As mentioned in the previous loop, all types are allowed.
+      schema.TypeConstraint(name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
       undefined++;
     }
-    std::string input_name = "Input" + std::to_string(i);
-    schema.Input(gsl::narrow_cast<int>(i), input_name, "", input_name, option, is_homogeneous, min_arity);
-    // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(input_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+  };
+
+  const size_t input_count = op->GetInputTypeCount(op);
+  for (size_t i = 0; i < input_count; i++) {
+    create_type_constraint(op, static_cast<int>(input_count), static_cast<int>(i), true);
   }
 
+  const size_t output_count = op->GetOutputTypeCount(op);
   for (size_t i = 0; i < output_count; i++) {
-    onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
-    bool is_homogeneous = true;
-    int min_arity = 1;
-
-    // The OrtCustomOp interface did not support the methods to query input/output characteristics before
-    // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
-    if (op->version >= min_ort_version_with_optional_io_support) {
-      const auto characteristic = op->GetOutputCharacteristic(op, i);
-
-      // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
-      if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-        option = onnx::OpSchema::FormalParameterOption::Optional;
-      } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
-                 (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-        ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
-        option = onnx::OpSchema::FormalParameterOption::Variadic;
-        min_arity = op->GetVariadicOutputMinArity(op);
-        is_homogeneous = static_cast<bool>(op->GetVariadicOutputHomogeneity(op));
-      }
-    }
     const auto type = op->GetOutputType(op, i);
     if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
       if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
@@ -826,11 +895,9 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
                     "cannot be inferred without which model loading cannot proceed.");
       }
     }
-    std::string output_name = "Output" + std::to_string(i);
-    schema.Output(gsl::narrow_cast<int>(i), output_name, "", output_name, option, is_homogeneous, min_arity);
-    // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+    create_type_constraint(op, static_cast<int>(output_count), static_cast<int>(i), false);
   }
+
   schema.SetDomain(domain);
   if (op->version >= min_ort_version_with_custom_version && op->GetStartVersion) {
     schema.SinceVersion(op->GetStartVersion(op));
@@ -905,7 +972,7 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " output to keep same homogeneity");
-      ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+      ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicOutputMinArity(op),
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " output to keep same arity");
@@ -994,18 +1061,36 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
+    // domain_kernels aggregate all custom operator per names.
+    std::unordered_map<std::string, std::vector<const OrtCustomOp*>> domain_kernels;
     for (const auto* op : domain->custom_ops_) {
       // define kernel
-      auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
-      kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
-      ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
-      // define schema
-      auto schema_map_iter = schema_map.find(op->GetName(op));
-      if (schema_map_iter == schema_map.end()) {
-        auto schema = CreateSchema(domain->domain_, op);
-        schema_map.emplace(schema.Name(), schema);
+      auto it = domain_kernels.find(op->GetName(op));
+      if (it == domain_kernels.end()) {
+        domain_kernels[op->GetName(op)] = {op};
       } else {
-        ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op));
+        domain_kernels[op->GetName(op)].push_back(op);
+      }
+    }
+
+    // Creation of the schemas, one per unique name.
+    for (auto& [name, ops] : domain_kernels) {
+      auto schema = CreateSchema(domain->domain_, ops);
+      // schema.Name() is equal to ops[0]->GetName(ops[0]) and op->GetName(op) is the value
+      // used as a key for dictionary domain_kernels, therefore name == schema.Name().
+      schema_map.emplace(schema.Name(), schema);
+
+      // This loops checks that all custom operators sharing the same name are compatible with the defined schema.
+      for (const auto* op : ops) {
+        // define kernel
+        auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
+        kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
+        ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
+        // If IsCompatible returns false, then all custom operators named
+        // 'op->GetName(op)' are not compatible among themselves.
+        // They should have the same number of inputs and outputs, the same characteristics,
+        // (optional, ...). Only the type can change.
+        ORT_RETURN_IF_ERROR(IsCompatible(schema, op));
       }
     }
 

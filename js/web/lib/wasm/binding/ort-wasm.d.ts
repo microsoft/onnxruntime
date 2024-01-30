@@ -31,7 +31,7 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
 
-  _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
+  _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): Promise<number>;
   _OrtReleaseSession(sessionHandle: number): void;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
   _OrtGetInputName(sessionHandle: number, index: number): number;
@@ -111,7 +111,13 @@ export interface OrtWasmModule extends EmscriptenModule {
   // #endregion
 
   // #region config
+  numThreads?: number;
   mainScriptUrlOrBlob?: string|Blob;
+  // #endregion
+
+  // #region external data API
+  mountExternalData?(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
+  unmountExternalData?(): void;
   // #endregion
 
   // #region JSEP
@@ -176,6 +182,10 @@ export interface OrtWasmModule extends EmscriptenModule {
   jsepCreateDownloader:
       (gpuBuffer: GPUBuffer, size: number,
        type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
+  /**
+   *  [exported from js_internal_api.js] Called when InferenceSession.run started.
+   */
+  jsepOnRunStart: () => void;
   // #endregion
 }
 

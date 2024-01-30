@@ -8,7 +8,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, getMaxComponents, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface BatchNormAttributes extends AttributeWithCacheKey {
   readonly epsilon: number;
@@ -61,7 +61,7 @@ const createBatchNormInferenceProgramInfo =
       const cComponents = format === 'NHWC' && yShape.length > 1 ? components : 1;
       const outputSize = ShapeUtil.size(yShape) / components;
       // Only support uniforms for opset version >= 9 (spatial = true).
-      const useShapesUniforms = enableShapesUniforms(yShape.length) && spatial;
+      const useShapesUniforms = spatial;
       const shapeOrRank = useShapesUniforms ? yShape.length : yShape;
       const x = inputVariable('x', inputs[0].dataType, inputs[0].dims, components);
       const scale = inputVariable('scale', inputs[1].dataType, inputs[1].dims, cComponents);
@@ -108,7 +108,7 @@ const createBatchNormInferenceProgramInfo =
     let inputMean = ${inputMean.getByOffset('cOffset')};
     let inputVar = ${inputVar.getByOffset('cOffset')};
     let x = ${x.getByOffset('global_idx')};
-    let value = (x - inputMean) / sqrt(inputVar + epsilon) * scale + bias;
+    let value = (x - inputMean) * inverseSqrt(inputVar + epsilon) * scale + bias;
     ${y.setByOffset('global_idx', 'value')}
   }`;
       return {

@@ -4,12 +4,13 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
-#include "core/providers/common.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
+#include "core/platform/env.h"
+#include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/partitioning_utils.h"
@@ -28,7 +29,7 @@ static void ParseProfilingLevel(std::string profiling_level_string,
                  profiling_level_string.end(),
                  profiling_level_string.begin(),
                  [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-  LOGS_DEFAULT(VERBOSE) << "profiling_level: " << profiling_level_string;
+  LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_string;
   if (profiling_level_string == "off") {
     profiling_level = qnn::ProfilingLevel::OFF;
   } else if (profiling_level_string == "basic") {
@@ -63,6 +64,8 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpLowPowerSaver;
   } else if (htp_performance_mode_string == "power_saver") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpPowerSaver;
+  } else if (htp_performance_mode_string == "extreme_power_saver") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpExtremePowerSaver;
   } else if (htp_performance_mode_string == "sustained_high_performance") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
   } else {
@@ -108,9 +111,25 @@ void QNNExecutionProvider::ParseHtpGraphFinalizationOptimizationMode(const std::
   }
 }
 
+static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevice_Arch_t& qnn_htp_arch) {
+  if (htp_arch_string.empty() || htp_arch_string == "0") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_NONE;
+  } else if (htp_arch_string == "68") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V68;
+  } else if (htp_arch_string == "69") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V69;
+  } else if (htp_arch_string == "73") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V73;
+  } else if (htp_arch_string == "75") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V75;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Invalid HTP architecture: " << htp_arch_string;
+  }
+}
+
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const SessionOptions* session_options)
-    : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true} {
+    : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
   if (session_options) {
     disable_cpu_ep_fallback_ = session_options->config_options.GetConfigOrDefault(
                                    kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
@@ -146,9 +165,30 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
-  auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
-  if (profiling_level_pos != provider_options_map.end()) {
-    ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+  const Env& env = Env::Default();
+  auto& provider = env.GetTelemetryProvider();
+  if (provider.IsEnabled()) {
+    auto level = provider.Level();
+    auto keyword = provider.Keyword();
+    if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+      if (level != 0) {
+        if (level == 5) {
+          LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
+          ParseProfilingLevel("basic", profiling_level);
+        } else if (level < 5) {
+          LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
+                             << static_cast<int>(level);
+        } else {
+          LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
+          ParseProfilingLevel("detailed", profiling_level);
+        }
+      }
+    }
+  } else {
+    auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
+    if (profiling_level_pos != provider_options_map.end()) {
+      ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+    }
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
@@ -199,13 +239,49 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  static const std::string QNN_DEVICE_ID = "device_id";
+  uint32_t device_id = 0;
+  auto dev_id_pos = provider_options_map.find(QNN_DEVICE_ID);
+  if (dev_id_pos != provider_options_map.end()) {
+    int value = std::stoi(dev_id_pos->second);
+    if (value < 0) {
+      LOGS_DEFAULT(WARNING) << "Invalid device ID '" << value
+                            << "', only >= 0 allowed. Set to " << device_id << ".";
+    } else {
+      device_id = static_cast<uint32_t>(value);
+    }
+  }
+
+  static const std::string QNN_HTP_ARCH = "htp_arch";
+  QnnHtpDevice_Arch_t htp_arch = QNN_HTP_DEVICE_ARCH_NONE;
+  auto htp_arch_pos = provider_options_map.find(QNN_HTP_ARCH);
+  if (htp_arch_pos != provider_options_map.end()) {
+    ParseHtpArchitecture(htp_arch_pos->second, htp_arch);
+  }
+
+  static const std::string QNN_SOC_MODEL = "soc_model";
+  uint32_t soc_model = QNN_SOC_MODEL_UNKNOWN;
+  auto soc_model_pos = provider_options_map.find(QNN_SOC_MODEL);
+  if (soc_model_pos != provider_options_map.end()) {
+    int value = std::stoi(soc_model_pos->second);
+    if (value < 0) {
+      LOGS_DEFAULT(WARNING) << "Invalid SoC Model '" << value
+                            << "', only >= 0 allowed. Set to " << soc_model << ".";
+    } else {
+      soc_model = static_cast<uint32_t>(value);
+    }
+  }
+
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level,
       rpc_control_latency,
       htp_performance_mode,
       context_priority,
-      std::move(qnn_saver_path));
+      std::move(qnn_saver_path),
+      device_id,
+      htp_arch,
+      soc_model);
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -396,7 +472,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     return MakeString(QNN, "_", model_hash, "_", metadef_id);
   };
 
@@ -488,25 +564,25 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
   return Status::OK();
 }
 
-void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnGraphConfigsBuilder& configs_builder) const {
+void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const {
   if (qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::HTP) {
     if (htp_graph_finalization_opt_mode_ != qnn::HtpGraphFinalizationOptimizationMode::kDefault) {
-      QnnHtpGraph_CustomConfig_t& htp_graph_opt_config = configs_builder.PushHtpGraphCustomConfig();
+      QnnHtpGraph_CustomConfig_t& htp_graph_opt_config = configs_builder.PushCustomConfig();
       htp_graph_opt_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
       htp_graph_opt_config.optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
       htp_graph_opt_config.optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
 
-      QnnGraph_Config_t& graph_opt_config = configs_builder.PushGraphConfig();
+      QnnGraph_Config_t& graph_opt_config = configs_builder.PushConfig();
       graph_opt_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
       graph_opt_config.customConfig = &htp_graph_opt_config;
     }
 
     if (vtcm_size_in_mb_ > 0) {
-      QnnHtpGraph_CustomConfig_t& htp_graph_opt_config_vtcm = configs_builder.PushHtpGraphCustomConfig();
+      QnnHtpGraph_CustomConfig_t& htp_graph_opt_config_vtcm = configs_builder.PushCustomConfig();
       htp_graph_opt_config_vtcm.option = QNN_HTP_GRAPH_CONFIG_OPTION_VTCM_SIZE;
       htp_graph_opt_config_vtcm.vtcmSizeInMB = static_cast<uint32_t>(vtcm_size_in_mb_);
 
-      QnnGraph_Config_t& graph_opt_config_vtcm = configs_builder.PushGraphConfig();
+      QnnGraph_Config_t& graph_opt_config_vtcm = configs_builder.PushConfig();
       graph_opt_config_vtcm.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
       graph_opt_config_vtcm.customConfig = &htp_graph_opt_config_vtcm;
     }
@@ -523,10 +599,11 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                qnn_backend_manager_.get());
 
-    qnn::QnnGraphConfigsBuilder graph_configs_builder;
+    qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t> graph_configs_builder(QNN_GRAPH_CONFIG_INIT,
+                                                                                                QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, graph_configs_builder.GetQnnGraphConfigs()));
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, graph_configs_builder.GetQnnConfigs()));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
@@ -589,8 +666,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
     uint64_t buffer_size(0);
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
-    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(model_name,
-                                                       model_description,
+    qnn_ep_context_model_ = std::make_unique<Model>("qnn_ep_context_model", false, logger);
+    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(qnn_ep_context_model_.get(),
                                                        context_buffer.get(),
                                                        buffer_size,
                                                        qnn_backend_manager_->GetSdkVersion(),
@@ -601,5 +678,17 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                        logger));
   }
   return Status::OK();
+}
+
+const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const {
+  InlinedVector<const Node*> ep_context_nodes;
+  if (qnn_ep_context_model_) {
+    const auto& graph = qnn_ep_context_model_->MainGraph();
+    for (const auto& node : graph.Nodes()) {
+      ep_context_nodes.push_back(graph.GetNode(node.Index()));
+    }
+  }
+
+  return ep_context_nodes;
 }
 }  // namespace onnxruntime

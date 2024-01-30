@@ -189,6 +189,8 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       set(ARM TRUE)
     elseif(dumpmachine_output MATCHES "^aarch64.*")
       set(ARM64 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+      set(RISCV64 TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
       set(X86 TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
@@ -198,7 +200,7 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 
 
-if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
+if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
   if((WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
     # msvc compiler report syntax error with cpuinfo arm source files
     # and cpuinfo does not have code for getting arm uarch info under windows

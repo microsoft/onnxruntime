@@ -51,6 +51,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                int seqlen_k,
                float softmax_scale,
                bool is_causal,
+               bool is_bf16,
                int num_splits = 0,
                void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
                void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
@@ -73,7 +74,8 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int max_seqlen_q,
                       int max_seqlen_k,
                       float softmax_scale,
-                      bool is_causal);
+                      bool is_causal,
+                      bool is_bf16);
 
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        cudaStream_t stream,
@@ -85,6 +87,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* out,          // batch_size x seqlen_q x num_heads x head_size
                        void* softmax_lse,  // batch_size x num_heads x seqlen_q
                        void* seqlens_k_,   // batch_size
+                       void* rotary_sin,   // seqlen_ro x (rotary_dim / 2)
+                       void* rotary_cos,   // seqlen_ro x (rotary_dim / 2)
                        int batch_size,
                        int num_heads,
                        int num_heads_k,
@@ -94,11 +98,14 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int seqlen_k_new,
                        const float softmax_scale,
                        bool is_causal,
+                       bool is_bf16,
                        bool past_bsnh,  // otherwise bnsh
                        int num_splits = 0,
                        void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
                        void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-                       int local_window_size = -1);
+                       int local_window_size = -1,
+                       bool is_rotary_interleaved = false,
+                       bool is_packed_qkv = false);
 
 size_t get_softmax_lse_size(int max_seqlen_q, int batch_size, int num_heads);
 

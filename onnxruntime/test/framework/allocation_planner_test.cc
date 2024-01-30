@@ -254,7 +254,7 @@ class PlannerTest : public ::testing::Test {
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
-        state_->GetDataTransferMgr());
+        state_->GetDataTransferMgr(), state_->GetAllocators(), state_->GetSessionOptions().config_options);
 
     op_kernel_infos_.push_back(std::move(info));
     const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};

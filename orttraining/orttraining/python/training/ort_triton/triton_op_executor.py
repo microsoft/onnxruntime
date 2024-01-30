@@ -67,7 +67,7 @@ class _ShapeCache:
 
 def _gen_key(onnx_key: int, onnx_str: bytes, shapes: List[List[Union[int, str]]]) -> int:
     # pylint: disable=unused-argument
-    return hash(f"{onnx_key}|{str(shapes).replace(' ', '')}") % (10**8)
+    return hash(f"{onnx_key}|{str(shapes).replace(' ', '')}")
 
 
 def _gen_module(onnx_key: int, onnx_str: bytes, shapes: List[List[Union[int, str]]]) -> Tuple[str, ModuleType]:

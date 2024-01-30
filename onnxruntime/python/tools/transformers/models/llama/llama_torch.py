@@ -21,6 +21,7 @@ def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32,
         if i == rank % (world_size):
             l_config = AutoConfig.from_pretrained(location, use_auth_token=use_auth_token, cache_dir=args.cache_dir)
             l_config.use_cache = True
+            l_config._attn_implementation = "eager"  # "eager" uses LlamaAttention for attention layer
             llama = AutoModelForCausalLM.from_pretrained(
                 location,
                 use_auth_token=use_auth_token,

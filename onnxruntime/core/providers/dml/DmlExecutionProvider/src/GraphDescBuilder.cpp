@@ -360,7 +360,7 @@ namespace Dml::GraphDescBuilder
                                 // The tensor description's size should be no larger than the constant input unless it was rounded to 
                                 // the required alignment.
                                 assert(((constantInput->GetTensorByteSize() + 3) & ~3) >= tensorDesc->totalTensorSizeInBytes);
-                                size_t minimumConstantSize = std::min(constantInput->GetTensorByteSize(), tensorDesc->totalTensorSizeInBytes);
+                                size_t minimumConstantSize = std::min(constantInput->GetTensorByteSize(), gsl::narrow_cast<size_t>(tensorDesc->totalTensorSizeInBytes));
                                 auto data = static_cast<const uint8_t*>(constantInput->GetData());
                                 std::vector<uint8_t> tensorData(data, data + minimumConstantSize);
 

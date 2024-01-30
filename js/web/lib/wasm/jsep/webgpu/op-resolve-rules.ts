@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
-import {attention, parseAttentionAttributes} from './ops/attention';
+import {attention} from './ops/attention';
 import {batchNorm} from './ops/batch-norm';
 import {biasAdd} from './ops/bias-add';
 import {biasSplitGelu} from './ops/bias-split-gelu';
@@ -16,16 +16,16 @@ import {expand} from './ops/expand';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
 import {gemm, parseGemmAttributes} from './ops/gemm';
-import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
-import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
+import {instanceNorm} from './ops/instance-norm';
+import {layerNorm} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
 import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multi-head-attentiion';
-import {pad, parsePadAttributes} from './ops/pad';
+import {pad} from './ops/pad';
 import * as pool from './ops/pool';
 import {range} from './ops/range';
 import {reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
-import {parseSkipLayerNormAttributes, skipLayerNorm} from './ops/skip-layer-norm';
+import {skipLayerNorm} from './ops/skip-layer-norm';
 import {parseSliceAttributes, slice} from './ops/slice';
 import {parseSoftmaxAttributes, softmax} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
@@ -50,7 +50,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Asinh', [unaryOps.asinh]],
   ['Atan', [unaryOps.atan]],
   ['Atanh', [unaryOps.atanh]],
-  ['Attention', [attention, parseAttentionAttributes]],
+  ['Attention', [attention]],
   // TODO: support new attributes for AveragePool-10
   ['AveragePool', [pool.averagePool, pool.parseAveragePoolAttributes]],
   ['BatchNormalization', [batchNorm]],
@@ -82,8 +82,9 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],
   ['Greater', [binaryOps.greater]],
   ['GreaterOrEqual', [binaryOps.greaterOrEqual]],
-  ['InstanceNormalization', [instanceNorm, parseInstanceNormAttributes]],
-  ['LayerNormalization', [layerNorm, parseLayerNormAttributes]],
+  ['HardSigmoid', [unaryOps.hardSigmoid, unaryOps.parseHardSigmoidAttributes]],
+  ['InstanceNormalization', [instanceNorm]],
+  ['LayerNormalization', [layerNorm]],
   ['LeakyRelu', [unaryOps.leakyRelu, unaryOps.parseAlphaAttributes]],
   ['Less', [binaryOps.less]],
   ['LessOrEqual', [binaryOps.lessOrEqual]],
@@ -95,7 +96,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['MultiHeadAttention', [multiHeadAttention, parseMultiHeadAttentionAttributes]],
   ['Neg', [unaryOps.neg]],
   ['Not', [unaryOps.not]],
-  ['Pad', [pad, parsePadAttributes]],
+  ['Pad', [pad]],
   ['Pow', [binaryOps.pow]],
   ['Range', [range]],
   ['Reciprocal', [unaryOps.reciprocal]],
@@ -115,7 +116,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
   ['Slice', [slice, parseSliceAttributes]],
-  ['SkipLayerNormalization', [skipLayerNorm, parseSkipLayerNormAttributes]],
+  ['SkipLayerNormalization', [skipLayerNorm]],
   ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],
   ['Softmax', [softmax, parseSoftmaxAttributes]],

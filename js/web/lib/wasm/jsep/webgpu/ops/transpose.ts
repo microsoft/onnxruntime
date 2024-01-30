@@ -6,7 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
@@ -39,12 +39,9 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
   const inputDataType = inputTensor.dataType;
   const inputRank = inputTensor.dims.length;
   const perm = getAdjustedPerm(inputRank, permAttr);
-  const useShapesUniforms = enableShapesUniforms(inputRank);
   const outputShape = getOutputShape(inputTensor.dims, perm);
-  const outShapeOrRank = useShapesUniforms ? outputShape.length : outputShape;
-  const inShapeOrRank = useShapesUniforms ? inputRank : inputTensor.dims;
-  const output = outputVariable('output', inputDataType, outShapeOrRank);
-  const input = inputVariable('a', inputDataType, inShapeOrRank);
+  const output = outputVariable('output', inputDataType, outputShape.length);
+  const input = inputVariable('a', inputDataType, inputRank);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
@@ -61,21 +58,17 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
   }`;
   return {
     name: 'Transpose',
-    shaderCache: {hint: `${permAttr}`, inputDependencies: useShapesUniforms ? ['rank'] : ['dims']},
+    shaderCache: {hint: `${permAttr}`, inputDependencies: ['rank']},
     getRunData: (inputs) => {
       const outputSize = ShapeUtil.size(outputShape);
       return {
         outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
         dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-        programUniforms: useShapesUniforms ?
-            [
-              {type: 'uint32', data: outputSize},
-              ...createTensorShapeVariables(inputs[0].dims),
-              ...createTensorShapeVariables(outputShape),
-            ] :
-            [
-              {type: 'uint32', data: outputSize},
-            ],
+        programUniforms: [
+          {type: 'uint32', data: outputSize},
+          ...createTensorShapeVariables(inputs[0].dims),
+          ...createTensorShapeVariables(outputShape),
+        ],
       };
     },
     getShaderSource,

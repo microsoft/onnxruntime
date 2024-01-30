@@ -132,6 +132,7 @@ struct Logger;
 struct Capture;
 }  // namespace logging
 struct ComputeCapability;
+struct ConfigOptions;
 struct DataTransferManager;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
@@ -141,7 +142,7 @@ struct KernelDefBuilder;
 struct KernelRegistry;
 struct Function;
 struct Graph;
-struct GraphViewer;
+class GraphViewer;
 enum class DataLayout;
 struct Model;
 struct Path;
@@ -156,6 +157,7 @@ struct Tensor;
 struct SparseTensor;
 class TensorSeq;
 class SessionState;
+class ModelMetadefIdGenerator;
 
 class If;
 class Loop;
