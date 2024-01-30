@@ -333,7 +333,6 @@ SPECIALIZE_IMPL_19(Float8E5M2)
 // The section below implements CastLike.
 ///////////////////////////////////////////////////////////////////
 
-ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME
 #define REGISTER_CASTLIKE_KERNEL_TYPED(T)                         \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       CastLike,                                                   \
