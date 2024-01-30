@@ -11,7 +11,6 @@
   "version": "1.18.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
-    "@petamoriken/float16": "^3.8.4",
     "flatbuffers": "^1.12.0",
     "guid-typescript": "^1.0.9",
     "long": "^5.2.3",
@@ -64,7 +63,8 @@
     "minimatch": "^7.4.2",
     "minimist": "^1.2.8",
     "numpy-parser": "^1.2.3",
-    "strip-json-comments": "^5.0.0"
+    "strip-json-comments": "^5.0.0",
+    "@petamoriken/float16": "^3.8.4"
   },
   "main": "dist/ort-web.node.js",
   "exports": {

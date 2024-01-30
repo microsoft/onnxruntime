@@ -18,7 +18,8 @@
     "test": "mocha ./test/**/*.js --timeout 30000"
   },
   "devDependencies": {
-    "typedoc": "^0.23.22"
+    "typedoc": "^0.23.22",
+    "@petamoriken/float16": "^3.8.4"
   },
   "main": "dist/cjs/index.js",
   "exports": {
@@ -30,8 +31,5 @@
     "ONNXRuntime",
     "ONNX Runtime"
   ],
-  "description": "ONNXRuntime JavaScript API library",
-  "dependencies": {
-    "@petamoriken/float16": "^3.8.4"
-  }
+  "description": "ONNXRuntime JavaScript API library"
 }
