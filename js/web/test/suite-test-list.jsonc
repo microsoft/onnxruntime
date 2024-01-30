@@ -1389,6 +1389,7 @@
       "sub.jsonc",
       "sub_int32.jsonc",
       "tan.jsonc",
+      "tanh.jsonc",
       "tile.jsonc",
       "transpose.jsonc",
       "transpose_int32_uint32.jsonc",

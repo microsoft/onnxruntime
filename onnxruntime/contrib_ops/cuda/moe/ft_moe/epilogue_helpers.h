@@ -22,8 +22,6 @@
  *
  */
 
-#ifdef USE_CUTLASS
-
 #pragma once
 
 #include "cutlass/array.h"
@@ -133,5 +131,3 @@ struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, Epilog
 };
 
 }  // namespace ort_fastertransformer
-
-#endif

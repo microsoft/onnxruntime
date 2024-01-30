@@ -85,7 +85,7 @@ constexpr const char* INTERNAL_TESTING_EP = "InternalTestingEP";
 InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,
                                                                    const std::unordered_set<std::string>& stop_ops,
                                                                    DataLayout preferred_layout)
-    : IExecutionProvider{utils::kInternalTestingExecutionProvider, true},
+    : IExecutionProvider{utils::kInternalTestingExecutionProvider},
       ep_name_{INTERNAL_TESTING_EP},
       ops_{ops},
       stop_ops_{stop_ops},
@@ -212,7 +212,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
   // create functor to generate a guaranteed unique metadef id
   auto generate_metadef_name = [this, &graph_viewer]() {
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     return ep_name_ + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
   };
