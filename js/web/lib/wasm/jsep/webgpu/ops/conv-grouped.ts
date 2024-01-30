@@ -118,7 +118,8 @@ export const createGroupedConvProgramInfo =
     };
 
 export const createGroupedConvVectorizeProgramInfo =
-    (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[]): ProgramInfo => {
+    (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[],
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const hasBias = inputs.length > 2;
       const components = getMaxComponents(outputShape[3]);
       const outputNumber = getMaxComponents(outputShape[2]);
@@ -207,7 +208,10 @@ export const createGroupedConvVectorizeProgramInfo =
           inputDependencies: hasBias ? ['rank', 'rank', 'type'] : ['rank', 'rank']
         },
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          outputs: [{
+            dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+            dataType: inputs[0].dataType
+          }],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
           programUniforms
         }),

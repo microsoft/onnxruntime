@@ -12,8 +12,8 @@ import {appendActivationUniforms, appendActivationUniformsData, getActivationSni
 
 export const createNaiveMatmulProgramInfo =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
-     reshapedOutputShape?: readonly number[],
-     isChannelsLast = false /* only used for conv2dByMatMul*/): ProgramInfo => {
+     reshapedOutputShape?: readonly number[], isChannelsLast = false /* only used for conv2dByMatMul*/,
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
 
@@ -143,7 +143,10 @@ export const createNaiveMatmulProgramInfo =
           inputDependencies: hasBias ? ['rank', 'rank', 'rank'] : ['rank', 'rank']
         },
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          outputs: [{
+            dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+            dataType: inputs[0].dataType
+          }],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
           programUniforms
         }),

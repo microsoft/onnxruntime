@@ -413,8 +413,8 @@ const matMulReadWriteFnSource =
 
 export const createMatmulProgramInfo =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
-     reshapedOutputShape?: readonly number[],
-     isChannelsLast = false /* only used for conv2dByMatMul*/): ProgramInfo => {
+     reshapedOutputShape?: readonly number[], isChannelsLast = false /* only used for conv2dByMatMul*/,
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
       const outerDimsA = aShape.slice(0, -2);
@@ -494,7 +494,10 @@ export const createMatmulProgramInfo =
           inputDependencies
         },
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          outputs: [{
+            dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+            dataType: inputs[0].dataType
+          }],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
           programUniforms
         }),
