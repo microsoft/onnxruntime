@@ -17,7 +17,8 @@ from torch.utils.dlpack import from_dlpack
 
 import onnxruntime as onnxrt
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue, OrtDevice
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtDevice
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
 from onnxruntime.training.ortmodule import ORTModule, _utils
 

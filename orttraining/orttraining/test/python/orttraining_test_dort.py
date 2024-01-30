@@ -519,6 +519,14 @@ class TestTorchDynamoOrt(unittest.TestCase):
             with self.subTest(requires_grad=req, test_backend_backward=back, use_aot_autograd=grad):
                 self.common_test_expand(req, back, grad)
 
+    def test_slice(self):
+        x = torch.arange(20, requires_grad=True, dtype=torch.float32).reshape((-1, 4))
+        self.assertONNX(lambda x: x[:, 1:2], x)
+
+    def test_slice_dynamic(self):
+        x = torch.rand(3, 4, requires_grad=True)
+        self.assertONNX(lambda x: x[x.size(0) :, x.size(1) - 3], x, opset_version=10)
+
 
 if __name__ == "__main__":
     unittest.main()
