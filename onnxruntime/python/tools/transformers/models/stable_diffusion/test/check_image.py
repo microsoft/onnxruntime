@@ -20,7 +20,9 @@ def arg_parser():
 
 def image_encoder(img: Image.Image, cache_dir: Optional[str] = None):  # -> torch.Tensor:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, _, preprocess = open_clip.create_model_and_transforms("ViT-B-16-plus-240", pretrained="laion400m_e32", cache_dir=cache_dir)
+    model, _, preprocess = open_clip.create_model_and_transforms(
+        "ViT-B-16-plus-240", pretrained="laion400m_e32", cache_dir=cache_dir
+    )
     model.to(device)
 
     img1 = Image.fromarray(img).convert("RGB")

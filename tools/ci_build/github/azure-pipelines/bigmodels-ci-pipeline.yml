@@ -222,10 +222,10 @@ stages:
 
     - task: Cache@2
       inputs:
-        key: '"clip_model" | "2.24.0"'
+        key: clip_model | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/test/check_image.py
         restoreKeys: |
-          "clip_model" | "2.24.0"
-          "clip_model"
+          clip_model | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/test/check_image.py
+          clip_model
         path: $(CLIP_MODEL_CACHE)
       displayName: Cache clip model
 

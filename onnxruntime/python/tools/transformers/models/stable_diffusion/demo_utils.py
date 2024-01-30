@@ -561,7 +561,7 @@ def load_pipelines(args, batch_size=None):
         "lora_scale": args.lora_scale,
         "use_fp16_vae": "xl" in args.version,
         "use_vae": True,
-        "framework_model_dir": args.framework_model_dir
+        "framework_model_dir": args.framework_model_dir,
     }
 
     if "xl" in args.version:

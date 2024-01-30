@@ -274,7 +274,9 @@ class EngineBuilder:
         return self._vae_decode(latents)
 
 
-def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: Optional[str] = None):
+def get_engine_paths(
+    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: Optional[str] = None
+):
     root_dir = work_dir or "."
     short_name = pipeline_info.short_name()
 
