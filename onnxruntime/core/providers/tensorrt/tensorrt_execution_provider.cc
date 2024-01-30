@@ -912,7 +912,6 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          size_t i,
                          std::unordered_map<size_t, Ort::UnownedValue>& output_tensors,
                          std::unordered_map<size_t, int>& output_dim_sizes,
-                         std::unordered_set<char const*>& dds_output_set,
                          DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                          OrtAllocator* alloc,
@@ -920,17 +919,18 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   // Get output shape
   nvinfer1::Dims dims = trt_context->getTensorShape(output_name);
   int nb_dims = dims.nbDims;
-  bool is_dds_output = false;
+  bool is_DDS = false;
   std::vector<int64_t> output_shapes(nb_dims);
   for (int j = 0, end = nb_dims; j < end; ++j) {
     // data-dependent shape
     if (dims.d[j] == -1) {
-      is_dds_output = true;
-      dds_output_set.emplace(output_name);
+      is_DDS = true;
       break;
     }
     output_shapes[j] = dims.d[j];
   }
+
+  auto known_DDS = dds_output_allocator_map.find(output_name) != dds_output_allocator_map.end();
 
   // If the output tensor has data-dependent shape, TRT EP will provide an IOutputAllocator for enqueueV3 to dynamically allocate memory buffer.
   // Once enqueueV3 returns, TRT EP will then bind the output allocation to ORT kernel context output.
@@ -938,13 +938,11 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   //  which we defer allocation until the size is known and don't call IExecution::setTensorAddress)
   //
   // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
-  if (is_dds_output) {
-    if (dds_output_allocator_map.find(output_name) == dds_output_allocator_map.end()) {
+  if (is_DDS || known_DDS) {
+    if (!known_DDS) {
       auto allocatorPtr = std::make_unique<OutputAllocator>();
       trt_context->setOutputAllocator(output_name, allocatorPtr.get());
       dds_output_allocator_map[output_name] = std::move(allocatorPtr);
-    } else {
-      trt_context->setOutputAllocator(output_name, dds_output_allocator_map[output_name].get());
     }
   } else {
     output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
@@ -3513,7 +3511,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     output_tensors.reserve(num_outputs);
     std::unordered_map<size_t, int> output_dim_sizes;
     output_dim_sizes.reserve(num_outputs);
-    std::unordered_set<char const*> dds_output_set;
 
     for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
       char const* output_name = output_binding_names[i];
@@ -3531,7 +3528,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       }
 
       Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-                                        dds_output_set, dds_output_allocator_map, scratch_buffers, alloc, buffers);
+                                        dds_output_allocator_map, scratch_buffers, alloc, buffers);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
@@ -3590,7 +3587,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         output_type = iter->second;
       }
 
-      if (dds_output_set.find(output_name) != dds_output_set.end()) {
+      if (dds_output_allocator_map.find(output_name) != dds_output_allocator_map.end()) {
         size_t output_index = 0;
         const auto& index_iter = output_indexes.find(output_name);
         if (index_iter != output_indexes.end()) {
@@ -3806,7 +3803,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     output_tensors.reserve(num_outputs);
     std::unordered_map<size_t, int> output_dim_sizes;
     output_dim_sizes.reserve(num_outputs);
-    std::unordered_set<char const*> dds_output_set;
 
     for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
       char const* output_name = output_binding_names[i];
@@ -3824,7 +3820,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
       }
 
       Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-                                        dds_output_set, dds_output_allocator_map, scratch_buffers, alloc, buffers);
+                                        dds_output_allocator_map, scratch_buffers, alloc, buffers);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
@@ -3883,7 +3879,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
         output_type = iter->second;
       }
 
-      if (dds_output_set.find(output_name) != dds_output_set.end()) {
+      if (dds_output_allocator_map.find(output_name) != dds_output_allocator_map.end()) {
         size_t output_index = 0;
         const auto& index_iter = output_indexes.find(output_name);
         if (index_iter != output_indexes.end()) {
