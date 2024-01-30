@@ -71,9 +71,12 @@ def generate_artifacts(
         ort_format: Whether to save the generated artifacts in ORT format or not. Default is False.
         custom_op_library: The path to the custom op library.
             If not specified, no custom op library is used.
-        additional_output_names: List of additional output names to be added to the training/eval model.
+        additional_output_names: List of additional output names to be added to the training/eval model in addition
+            to the loss output. Default is None.
         nominal_checkpoint: Whether to generate the nominal checkpoint in addition to the complete checkpoint.
-            Default is False.
+            Default is False. Nominal checkpoint is a checkpoint that contains nominal information about the model
+            parameters. It can be used on the device to reduce overhead while constructing the training model
+            as well as to reduce the size of the checkpoint packaged with the on-device application.
 
     Raises:
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
@@ -113,7 +116,7 @@ def generate_artifacts(
             self._loss = _loss
 
         def build(self, *inputs_to_loss):
-            if additional_output_names is not None:
+            if additional_output_names:
                 # If additional output names is not a list, raise an error
                 if not isinstance(additional_output_names, list):
                     raise RuntimeError(
@@ -174,7 +177,7 @@ def generate_artifacts(
         artifact_directory = pathlib.Path.cwd()
     artifact_directory = pathlib.Path(artifact_directory)
 
-    if prefix is not None:
+    if prefix:
         logging.info("Using prefix %s for generated artifacts.", prefix)
 
     training_model_path = artifact_directory / f"{prefix}training_model.onnx"
