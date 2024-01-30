@@ -66,30 +66,30 @@ ONNX Runtime supports all opsets from the latest released version of the [ONNX](
   * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md)*
   * [How to add a custom operator/kernel](operators/add-custom-op.md)
 
-| ONNX Runtime version | [ONNX version](https://github.com/onnx/onnx/blob/master/docs/Versioning.md) | ONNX opset version | ONNX ML opset version | ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
-|------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
-| 1.17 | **1.15** | 20 | 4 | 9 | Windows AI 1.17+ |
-| 1.16 | **1.14.1** | 19 | 3 | 9 | Windows AI 1.16+ |
-| 1.15 | **1.14** | 19 | 3 | 8 | Windows AI 1.15+ |
-| 1.14 | **1.13** | 18 | 3 | 8 | Windows AI 1.14+ |
-| 1.13 | **1.12** | 17 | 3 | 8 | Windows AI 1.13+ |
-| 1.12 | **1.12** | 17 | 3 | 8 | Windows AI 1.12+ |
-| 1.11 | **1.11** | 16 | 2 | 8 | Windows AI 1.11+ |
-| 1.10 | **1.10** | 15 | 2 | 8 | Windows AI 1.10+ |
-| 1.9 | **1.10** | 15 | 2 | 8 | Windows AI 1.9+ |
-| 1.8 | **1.9** | 14 | 2 | 7 | Windows AI 1.8+ |
-| 1.7 | **1.8** | 13 | 2 | 7 | Windows AI 1.7+ |
-| 1.6 | **1.8** | 13 | 2 | 7 | Windows AI 1.6+ |
-| 1.5 | **1.7** | 12 | 2 | 7 | Windows AI 1.5+ |
-| 1.4 | **1.7** | 12 | 2 | 7 | Windows AI 1.4+ |
-| 1.3 | **1.7** | 12 | 2 | 7 | Windows AI 1.3+ |
-| 1.2<br/>1.1 | **1.6** | 11 | 2 | 6 | Windows AI 1.3+ |
-| 1.0 | **1.6** | 11 | 2 | 6 | Windows AI 1.3+ |
-| 0.5 | **1.5** | 10 | 1 | 5 | Windows AI 1.3+ |
-| 0.4 | **1.5** | 10 | 1 | 5 | Windows AI 1.3+ |
-| 0.3 | **1.4** | 9 | 1 | 3 | Windows 10 2004+ |
-| 0.2 | **1.3** | 8 | 1 | 3 | Windows 10 1903+ |
-| 0.1 | **1.3** | 8 | 1 | 3 | Windows 10 1809+ |
+| ONNX Runtime version | [ONNX version](https://github.com/onnx/onnx/blob/master/docs/Versioning.md) | ONNX opset version | ONNX ML opset version | ONNX IR version |
+|------------------------------|--------------------|--------------------|----------------------|------------------|
+| 1.17 | **1.15** | 20 | 4 | 9 |
+| 1.16 | **1.14.1** | 19 | 3 | 9 |
+| 1.15 | **1.14** | 19 | 3 | 8 |
+| 1.14 | **1.13** | 18 | 3 | 8 |
+| 1.13 | **1.12** | 17 | 3 | 8 |
+| 1.12 | **1.12** | 17 | 3 | 8 |
+| 1.11 | **1.11** | 16 | 2 | 8 |
+| 1.10 | **1.10** | 15 | 2 | 8 |
+| 1.9 | **1.10** | 15 | 2 | 8 |
+| 1.8 | **1.9** | 14 | 2 | 7 |
+| 1.7 | **1.8** | 13 | 2 | 7 |
+| 1.6 | **1.8** | 13 | 2 | 7 |
+| 1.5 | **1.7** | 12 | 2 | 7 |
+| 1.4 | **1.7** | 12 | 2 | 7 |
+| 1.3 | **1.7** | 12 | 2 | 7 |
+| 1.2<br/>1.1 | **1.6** | 11 | 2 | 6 |
+| 1.0 | **1.6** | 11 | 2 | 6 |
+| 0.5 | **1.5** | 10 | 1 | 5 |
+| 0.4 | **1.5** | 10 | 1 | 5 |
+| 0.3 | **1.4** | 9 | 1 | 3 |
+| 0.2 | **1.3** | 8 | 1 | 3 |
+| 0.1 | **1.3** | 8 | 1 | 3 |
 
 Unless otherwise noted, please use the latest released version of the tools to convert/export the ONNX model. Most tools are backwards compatible and support multiple ONNX versions. Join this with the table above to evaluate ONNX Runtime compatibility.
 
