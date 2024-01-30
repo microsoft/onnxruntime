@@ -14,17 +14,6 @@ from onnx import ModelProto, TensorProto, helper
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 from transformers import AutoConfig, AutoModelForCausalLM
 
-## uncomment the following lines to use the local files instead of the pip installed version
-## --------------------------------------------------------------------------
-# import sys
-
-# sys.path.append(os.path.dirname(__file__))
-
-# transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-# if transformers_dir not in sys.path:
-#     sys.path.append(transformers_dir)
-## --------------------------------------------------------------------------
-
 from benchmark_helper import Precision
 
 
@@ -509,18 +498,21 @@ def main():
         from inference_example import run_phi2
 
         if args.fp16_a100:
+            logging.info("Running fp16_a100 example...")
             run_phi2(
                 onnx_model_path=model_type_to_args["fp16_a100"][2],
                 use_buffer_share=True,
                 device_id=args.device_id,
             )
         if args.int4_a100:
+            logging.info("Running int4_a100 example...")
             run_phi2(
                 onnx_model_path=model_type_to_args["int4_a100"][2],
                 use_buffer_share=True,
                 device_id=args.device_id,
             )
         if args.fp32_gpu:
+            logging.info("Running fp32_gpu example...")
             run_phi2(
                 onnx_model_path=model_type_to_args["fp32_gpu"][2],
                 use_buffer_share=False,
@@ -529,6 +521,7 @@ def main():
                 use_fp16=False,
             )
         if args.fp16_gpu:
+            logging.info("Running fp16_gpu example...")
             run_phi2(
                 onnx_model_path=model_type_to_args["fp16_gpu"][2],
                 use_buffer_share=False,
@@ -536,6 +529,7 @@ def main():
                 packed_kv=True,
             )
         if args.int4_gpu:
+            logging.info("Running int4_gpu example...")
             run_phi2(
                 onnx_model_path=model_type_to_args["int4_gpu"][2],
                 use_buffer_share=False,
