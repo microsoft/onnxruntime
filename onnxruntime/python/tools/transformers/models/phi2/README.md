@@ -1,101 +1,108 @@
 # Phi2 Optimizations
 ## Prerequisites
-```
+```bash
 pip install -r requirements.txt
 ```
-- From source: \
-pip install onnxruntime-gpu==1.17.0
-```
+_From source:_
+```bash
+pip install onnxruntime-gpu==1.17.0 # or onnxruntime==1.17.0 if using cpu
 git clone git@github.com:microsoft/onnxruntime.git
 cd onnxruntime/onnxruntime/python/tools/transformers
 python -m models.phi2.convert_to_onnx -h
 ```
-- From wheel: \
-pip install [ort-nightly-gpu](https://onnxruntime.ai/docs/install/)
-```
+_From wheel:_ \
+Install [ORT nightly package](https://onnxruntime.ai/docs/install/)
+```bash
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx -h
 ```
 
 ## Export optimized phi2 onnx model for different senarios
-- Export FP32 ONNX model for Nvidia GPUs \
-From source:
+**Export FP32 ONNX model for Nvidia GPUs** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --fp32_gpu
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_gpu
 ```
-- Export FP16 ONNX model for Nvidia GPUs 
-From source:
+\
+**Export FP16 ONNX model for Nvidia GPUs** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --fp32_gpu
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_gpu
 ```
-- Export INT4 ONNX model for Nvidia GPUs 
-From source:
+\
+**Export INT4 ONNX model for Nvidia GPUs** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --fp32_gpu
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_gpu
 ```
-- Export FP16 ONNX model for Nvidia A100 
-From source:
+\
+**Export FP16 ONNX model for Nvidia A100** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --fp16_a100
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp16_a100
 ```
-- Export INT4 ONNX model for Nvidia A100 
-From source:
+\
+**Export INT4 ONNX model for Nvidia A100** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --int4_a100
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --int4_a100
 ```
-- Export FP32 ONNX model for CPU 
-From source:
+\
+**Export FP32 ONNX model for CPU** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --fp32_cpu
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_cpu
 ```
-- Export INT4 ONNX model for CPU 
-From source:
+\
+**Export INT4 ONNX model for CPU** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --int4_cpu
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --int4_cpu
 ```
-- Export all of them at once
-From source:
+\
+**Export all at once** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --fp32_cpu --int4_cpu --fp32_gpu --fp16_gpu --int4_gpu --fp16_a100 --int4_a100
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_cpu --int4_cpu --fp32_gpu --fp16_gpu --int4_gpu --fp16_a100 --int4_a100
 ```
 ## Run example with ORT and benchmark
-- (e.g) Export FP16 and INT4 ONNX models for Nvidia A100 and run examples.
-From source:
+**(e.g) Export FP16 and INT4 ONNX models for Nvidia A100 and run examples.** \
+_From source:_
 ```
 python -m models.phi2.convert_to_onnx --fp16_a100 --int4_a100 --run_example
 ```
-From wheel:
+_From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp16_a100 --int4_a100 --run_example
 ```
