@@ -2074,7 +2074,10 @@ TEST(Einsum, EinsumTransposeMatMulTwoInputsTestSuite) {
     test.AddAttribute<std::string>("equation", s);
     test.AddInput<float>("x", {2, 2, 2}, m1);
     test.AddInput<float>("y", {2, 2}, m2);
-    test.AddOutput<float>("o", std::vector<int64_t>(tst.shape.begin(), tst.shape.end()), std::vector<float>(tst.expected.begin(), tst.expected.end()));
+
+    std::vector<int64_t> v1(tst.shape.begin(), tst.shape.end());
+    std::vector<float> v2(tst.expected.begin(), tst.expected.end());
+    test.AddOutput<float>("o", v1, v2);
     test.Run();
   }
 }
@@ -2098,7 +2101,9 @@ TEST_P(EinsumTransposeMatMulThreeInputsTest, EinsumTransposeMatMulThreeInputsTes
     test.AddInput<float>("x", {2, 2, 2}, m1);
     test.AddInput<float>("y", {2, 2}, m2);
     test.AddInput<float>("z", {2, 2, 2}, m3);
-    test.AddOutput<float>("o", std::vector<int64_t>(tst.shape.begin(), tst.shape.end()), std::vector<float>(tst.expected.begin(), tst.expected.end()));
+    std::vector<int64_t> v1(tst.shape.begin(), tst.shape.end());
+    std::vector<float> v2(tst.expected.begin(), tst.expected.end());
+    test.AddOutput<float>("o", v1, v2);
     test.Run();
   }
 }
