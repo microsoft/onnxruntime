@@ -5,6 +5,7 @@ import {Tensor} from 'onnxruntime-common';
 
 // a dummy type declaration for Float16Array in case any polyfill is available.
 declare global {
+  // eslint-disable-next-line no-var,@typescript-eslint/naming-convention,@typescript-eslint/no-explicit-any
   var Float16Array: any;
 }
 
