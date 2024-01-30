@@ -28,7 +28,7 @@ The source code for this sample is available [here](https://github.com/microsoft
 3. Use any sample Image as input to the sample.
 
 4. Download the latest YOLOv3 model from the ONNX Model Zoo.
-   This example was adapted from [ONNX Model Zoo](https://github.com/onnx/models).Download the latest version of the [YOLOv3](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/yolov3) model from here.
+   This example was adapted from [ONNX Model Zoo](https://github.com/onnx/models).Download the latest version of the [YOLOv3](https://github.com/onnx/models/tree/main/validated/vision/object_detection_segmentation/yolov3) model from here.
 
 ## Install ONNX Runtime for OpenVINO Execution Provider
 
