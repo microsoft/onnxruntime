@@ -143,11 +143,11 @@
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
 		'mac,C-API,X64,DefaultCPU':
-			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C++,X64,DefaultCPU':
-			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
+		"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+		
 		'mac,C#,X64,DefaultCPU':
 			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
@@ -157,6 +157,22 @@
 		'windows,Python,X64,DefaultCPU': 'pip install onnxruntime',
 
 		'mac,Python,X64,DefaultCPU': 'pip install onnxruntime',
+
+		'mac,Python,X64,CoreML': 'pip install onnxruntime',
+
+		'mac,Python,ARM64,CoreML': 'pip install onnxruntime',
+
+		'mac,objectivec,X64,DefaultCPU': "Add 'onnxruntime-objc' using CocoaPods.",
+		
+		'mac,objectivec,ARM64,DefaultCPU': "Add 'onnxruntime-objc' using CocoaPods.",
+		
+		'mac,objectivec,X64,CoreML': "Add 'onnxruntime-objc' using CocoaPods.",
+		
+		'mac,objectivec,ARM64,CoreML': "Add 'onnxruntime-objc' using CocoaPods.",
+
+		'mac,C-API,X64,CoreML': "Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+
+		'mac,C++,X64,CoreML': "Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'linux,Python,X64,DefaultCPU': 'pip install onnxruntime',
 
@@ -566,13 +582,13 @@
 
 		//mac m1
 		'mac,C-API,ARM64,CoreML':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+		"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C#,ARM64,CoreML':
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'mac,C++,ARM64,CoreML':
-			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,Java,ARM64,CoreML':
 			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
@@ -586,10 +602,10 @@
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
 		'mac,C-API,ARM64,DefaultCPU':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C++,ARM64,DefaultCPU':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		//power
 		'linux,C-API,Power,DefaultCPU':
