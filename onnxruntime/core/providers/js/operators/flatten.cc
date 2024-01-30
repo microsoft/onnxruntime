@@ -13,7 +13,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedFloatTypes()),
     Flatten);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -23,7 +23,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedFloatTypes()),
     Flatten);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -33,7 +33,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedFloatTypes()),
     Flatten);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -43,7 +43,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedFloatTypes()),
     Flatten);
 
 }  // namespace js

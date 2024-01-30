@@ -7,8 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
-
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface EinsumAttributes extends AttributeWithCacheKey {
   readonly equation: string;
@@ -182,14 +181,12 @@ class EinsumEquation {
 const appendMax = (name: string): string => name + '_max';
 
 const createEinsumProgramInfo =
-    (enableInputShapesUniforms: readonly boolean[], inputShapes: Array<readonly number[]>, dataType: number,
-     einsumEquation: EinsumEquation, outputShape: readonly number[]): ProgramInfo => {
-      const shapeOrRanks = inputShapes.map((dims, index) => enableInputShapesUniforms[index] ? dims.length : dims);
-      const inputVars = shapeOrRanks.map((shapeOrRank, index) => inputVariable(`input${index}`, dataType, shapeOrRank));
+    (inputShapes: Array<readonly number[]>, dataType: number, einsumEquation: EinsumEquation,
+     outputShape: readonly number[]): ProgramInfo => {
+      const ranks = inputShapes.map((dims) => dims.length);
+      const inputVars = ranks.map((rank, index) => inputVariable(`input${index}`, dataType, rank));
       const outputSize = ShapeUtil.size(outputShape);
-      const enableOutputShapesUniforms = enableShapesUniforms(outputShape.length);
-      const outputShapeOrRank = enableOutputShapesUniforms ? outputShape.length : outputShape;
-      const output = outputVariable('output', dataType, outputShapeOrRank);
+      const output = outputVariable('output', dataType, outputShape.length);
       const uniformsSymbols =
           [...einsumEquation.symbolToInfo.keys()].filter((symbol) => !einsumEquation.rhs.symbolToIndices.has(symbol));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -270,10 +267,7 @@ const createEinsumProgramInfo =
       };
       return {
         name: 'Einsum',
-        shaderCache: {
-          hint: einsumEquation.equation,
-          inputDependencies: enableInputShapesUniforms.map((enableShapeUniform) => enableShapeUniform ? 'rank' : 'dims')
-        },
+        shaderCache: {hint: einsumEquation.equation, inputDependencies: inputShapes.map(() => 'rank')},
         getRunData: () => {
           // The symbols from uniformSymbols array are guaranteed to exist in einsumEquations.symbolToInfo map. The
           // filter is added to make sure that dimValue is never 0.
@@ -284,12 +278,9 @@ const createEinsumProgramInfo =
                           ({type: DataType.uint32, data: einsumEquation.symbolToInfo.get(symbol)?.dimValue || 0}));
           programUniformsInit.push({type: DataType.uint32, data: outputSize});
           const programUniforms: ProgramUniform[] =
-              inputShapes.filter((_, index) => enableInputShapesUniforms[index])
-                  .map((dims, _) => [...createTensorShapeVariables(dims)])
+              inputShapes.map((dims, _) => [...createTensorShapeVariables(dims)])
                   .reduce((acc, inputProgramUniforms) => acc.concat(inputProgramUniforms), programUniformsInit);
-          if (enableOutputShapesUniforms) {
-            programUniforms.push(...createTensorShapeVariables(outputShape));
-          }
+          programUniforms.push(...createTensorShapeVariables(outputShape));
           return ({
             outputs: [{dims: outputShape, dataType}],
             dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
@@ -302,11 +293,9 @@ const createEinsumProgramInfo =
 
 export const einsum = (context: ComputeContext, attributes: EinsumAttributes): void => {
   const einsumEquation = new EinsumEquation(context.inputs, attributes.equation);
-  const enableInputShapesUniforms = context.inputs.map((input, _) => enableShapesUniforms(input.dims.length));
   const outputShape = einsumEquation.outputDims;
   const inputShapes = context.inputs.map((input, _) => input.dims);
-  context.compute(createEinsumProgramInfo(
-      enableInputShapesUniforms, inputShapes, context.inputs[0].dataType, einsumEquation, outputShape));
+  context.compute(createEinsumProgramInfo(inputShapes, context.inputs[0].dataType, einsumEquation, outputShape));
 };
 
 export const parseEinsumAttributes = (attributes: Record<string, unknown>): EinsumAttributes => {

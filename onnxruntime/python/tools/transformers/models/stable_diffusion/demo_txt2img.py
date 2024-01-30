@@ -61,6 +61,7 @@ if __name__ == "__main__":
             controlnet_scales=controlnet_scale,
             show_latency=not warmup,
             output_type="pil",
+            deterministic=args.deterministic,
         )
 
     if not args.disable_cuda_graph:

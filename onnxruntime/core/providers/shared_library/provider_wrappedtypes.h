@@ -750,7 +750,8 @@ struct Graph final {
   PROVIDER_DISALLOW_ALL(Graph)
 };
 
-struct GraphViewer final {
+class GraphViewer final {
+ public:
   static void operator delete(void* p) { g_host->GraphViewer__operator_delete(reinterpret_cast<GraphViewer*>(p)); }
 
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
@@ -1150,6 +1151,13 @@ class TensorSeq final {
   void Add(OrtValue&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
   void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
   void Reserve(size_t capacity) { g_host->TensorSeq__Reserve(this, capacity); }
+};
+
+class ModelMetadefIdGenerator {
+ public:
+  static std::unique_ptr<ModelMetadefIdGenerator> Create() { return g_host->ModelMetadefIdGenerator__construct(); }
+  static void operator delete(void* p) { g_host->ModelMetadefIdGenerator__operator_delete(reinterpret_cast<ModelMetadefIdGenerator*>(p)); }
+  int GenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) const { return g_host->ModelMetadefIdGenerator__GenerateId(this, graph_viewer, model_hash); }
 };
 
 template <>
