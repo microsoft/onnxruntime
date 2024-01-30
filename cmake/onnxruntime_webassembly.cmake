@@ -97,23 +97,19 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
-      nsync::nsync_cpp
-      ${PROTOBUF_LIB}
-      onnx
-      onnx_proto
-      onnxruntime_common
-      onnxruntime_flatbuffers
-      onnxruntime_framework
-      onnxruntime_graph
-      onnxruntime_mlas
-      onnxruntime_optimizer
-      onnxruntime_providers
+      onnxruntime_session
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
-      onnxruntime_session
+      onnxruntime_optimizer
+      onnxruntime_providers
+      onnxruntime_framework
+      onnxruntime_graph
       onnxruntime_util
-      re2::re2
+      onnxruntime_mlas
+      onnxruntime_common
+      onnxruntime_flatbuffers
+      ${onnxruntime_EXTERNAL_LIBRARIES}
     )
 
     if (onnxruntime_ENABLE_TRAINING)
@@ -178,14 +174,14 @@ else()
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
-  onnxruntime_optimizer
-  onnxruntime_providers
-  onnxruntime_framework
-  onnxruntime_graph
-  onnxruntime_util
-  onnxruntime_mlas
-  onnxruntime_common
-  onnxruntime_flatbuffers
+    onnxruntime_optimizer
+    onnxruntime_providers
+    onnxruntime_framework
+    onnxruntime_graph
+    onnxruntime_util
+    onnxruntime_mlas
+    onnxruntime_common
+    onnxruntime_flatbuffers
     ${onnxruntime_EXTERNAL_LIBRARIES}
   )
 
@@ -261,8 +257,10 @@ else()
     )
   endif()
   if (CMAKE_CXX_FLAGS MATCHES "sanitize=address")
+    # The integer value below might often need be adjusted.
     target_link_options(onnxruntime_webassembly PRIVATE "-s INITIAL_MEMORY=786432000")
   else()
+    # Enable SAFE_HEAP in debug build
     target_link_options(onnxruntime_webassembly PRIVATE "$<$<CONFIG:Debug>:SHELL:-s ASSERTIONS=2>")
     target_link_options(onnxruntime_webassembly PRIVATE "$<$<CONFIG:Debug>:SHELL:-s SAFE_HEAP=1>")    
   endif()
