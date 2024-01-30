@@ -184,7 +184,7 @@ These instructions are for the latest [JetPack SDK 6.0](https://developer.nvidia
      libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
    ```
 
-4. Cmake is needed to build ONNX Runtime. For ONNX Runtime 1.18, the minimum required CMake version is 3.26 (version 3.27.4 has been tested). This can be either installed by:
+4. Cmake is needed to build ONNX Runtime. The minimum required CMake version is 3.26 (version 3.27.4 has been tested). This can be either installed by:
 
    1. (Unix/Linux) Build from source. Download sources from [https://cmake.org/download/](https://cmake.org/download/)
       and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
