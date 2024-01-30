@@ -46,8 +46,7 @@ Status sm80_supported();
  * @param[out] q_zp The zero points, column major layout.
  */
 template <typename ElementT, int block_size, bool col_blocking, bool has_offsets>
-inline
-void blkq4_weights_gen(
+inline void blkq4_weights_gen(
     int rows, int columns,
     std::vector<ElementT>& dequants,
     std::vector<uint8_t>& q_weights,
@@ -130,7 +129,7 @@ void blkq4_weights_gen(
       q_scales, meta_shape);
 
   MatrixRef<ElementQOffset, ColumnMajorLayout, true> tensor_offset;
-  if constexpr(has_offsets) {
+  if constexpr (has_offsets) {
     q_zp.resize(zp_shape.product());
     tensor_offset = MatrixRef<ElementQOffset, ColumnMajorLayout, true>(
         q_zp, zp_shape);
@@ -155,7 +154,7 @@ void blkq4_weights_gen(
       auto weight_cord = make_Position(row / 2, col);
       auto scale_cord = make_Position(row / QuantBlocking::kRow, col / QuantBlocking::kColumn);
       uint8_t offset = 8;
-      if constexpr(has_offsets) {
+      if constexpr (has_offsets) {
         if (scale_cord[0] % 2 == 0) {
           offset = tensor_offset.at(scale_cord[0] / 2, scale_cord[1]) & 0x0f;
         } else {
@@ -175,7 +174,6 @@ void blkq4_weights_gen(
       // fprintf(stderr, "(%2d,%2d)= %2d, %2d, %f, %f\n", row, col, w, offset, scale, dequant);
     }
   }
-
 }
 
 template <

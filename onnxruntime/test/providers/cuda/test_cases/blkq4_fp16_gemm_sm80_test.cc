@@ -56,7 +56,7 @@ void testPrepack(int rows, int columns) {
   MatrixRef<ElementT, ColumnMajorLayout, true> tensor_scale(
       q_scales, meta_shape);
   MatrixRef<ElementQOffset, ColumnMajorLayout, true> tensor_offset;
-  if constexpr(has_offset) {
+  if constexpr (has_offset) {
     tensor_offset = MatrixRef<ElementQOffset, ColumnMajorLayout, true>(q_zp, zp_shape);
   }
 
@@ -167,7 +167,7 @@ void testPrepack(int rows, int columns) {
   std::vector<ElementT> packed_scales_ref(meta_shape.product());
   MatrixRef<ElementT, LayoutQmeta, true> tensor_packed_s_ref =
       make_MatrixRef<ElementT, LayoutQmeta, true>(packed_scales_ref, meta_shape);
-  if constexpr(Base::ShouldRearrangeMeta) {
+  if constexpr (Base::ShouldRearrangeMeta) {
     onnxruntime::test::sm80_prepack_quant_scales_ref<ElementT, LayoutQmeta, QuantBlocking>(
         rows, columns, tensor_scale.const_ref(), tensor_packed_s_ref);
   } else {
@@ -197,7 +197,7 @@ void testPrepack(int rows, int columns) {
     std::vector<ElementQOffset> packed_zp_ref(meta_shape.product());
     MatrixRef<ElementQOffset, LayoutQmeta, true> tensor_packed_zp_ref =
         make_MatrixRef<ElementQOffset, LayoutQmeta, true>(packed_zp_ref, meta_shape);
-    if constexpr(Base::ShouldRearrangeMeta) {
+    if constexpr (Base::ShouldRearrangeMeta) {
       onnxruntime::test::sm80_expand_prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
           rows, columns, tensor_offset.const_ref(), tensor_packed_zp_ref);
     } else {

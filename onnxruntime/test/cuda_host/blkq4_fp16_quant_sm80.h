@@ -140,7 +140,7 @@ inline void sm80_expand_prepack_quant_offsets_ref(
   ORT_ENFORCE(tensor_offset_prepacked.shape() == meta_shape,
               "Unexpected tensor_offset_prepacked shape (",
               tensor_offset_prepacked.shape()[0], ",", tensor_offset_prepacked.shape()[1],
-              ")! Expected: (",  meta_shape[0], ", ", meta_shape[1], ")");
+              ")! Expected: (", meta_shape[0], ", ", meta_shape[1], ")");
   ORT_ENFORCE(tensor_offset.shape() == zp_shape,
               "Unexpected tensor_offset shape (",
               tensor_offset.shape()[0], ",", tensor_offset.shape()[1],
@@ -201,8 +201,7 @@ inline void sm80_expand_prepack_quant_offsets_ref(
 }
 
 template <typename Layout, typename QuantBlocking>
-inline
-void sm80_prepack_quant_offsets_ref(
+inline void sm80_prepack_quant_offsets_ref(
     int rows,
     int columns,
     MatrixRef<uint8_t const, Layout, true> tensor_offset,
