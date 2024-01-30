@@ -418,7 +418,6 @@ function dataviewConstructor(type: Tensor.DataType) {
       return BigInt64Array;
     case 'float16':
       return typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;
-      ;
     case 'float32':
       return Float32Array;
     case 'float64':

@@ -117,14 +117,13 @@ export const getTensorElementSize = (dateType: number): number|
 /**
  * get typed array constructor by the given tensor type
  */
-export const tensorTypeToTypedArrayConstructor =
-    (type: Tensor.Type): Float32ArrayConstructor|Uint8ArrayConstructor|Int8ArrayConstructor|
-    Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|Uint8ArrayConstructor|
-    Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
+export const tensorTypeToTypedArrayConstructor = (type: Tensor.Type): Float32ArrayConstructor|Uint8ArrayConstructor|
+    Int8ArrayConstructor|Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|
+    Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
       switch (type) {
         case 'float16':
           // allow Float16Array polyfill.
-          return typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;;
+          return typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;
         case 'float32':
           return Float32Array;
         case 'uint8':

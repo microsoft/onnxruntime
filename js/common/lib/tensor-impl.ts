@@ -142,12 +142,13 @@ export class Tensor implements TensorInterface {
             throw new TypeError(`Unsupported tensor type: ${arg0}.`);
           }
           if (Array.isArray(arg1)) {
-            if (arg0 === 'float16') {
+            if (arg0 === 'float16' && typedArrayConstructor === Uint16Array) {
+              // When no Float16Array polyfill is used, we cannot create 'float16' tensor from number array.
               // Throw error here because when user try to use number array as data,
               // e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
               // Uint16Array.from(arg1) which generates wrong data.
-              // eslint-disable-next-line  @typescript-eslint/no-explicit-any
-              data = (typedArrayConstructor as any).from(arg1);
+              throw new TypeError(
+                  'Creating a float16 tensor from number array is not supported. Please use Uint16Array as data.');
             } else if (arg0 === 'uint64' || arg0 === 'int64') {
               // use 'as any' here because:
               // 1. TypeScript's check on type of 'Array.isArray()' does not work with readonly arrays.
@@ -168,8 +169,6 @@ export class Tensor implements TensorInterface {
             }
           } else if (arg1 instanceof typedArrayConstructor) {
             data = arg1;
-          } else if (arg1 instanceof Float16Array) {
-            data = arg1 as InstanceType<typeof Float16Array>;
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
           }
