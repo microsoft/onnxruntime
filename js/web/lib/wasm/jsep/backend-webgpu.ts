@@ -465,8 +465,10 @@ export class WebGpuBackend {
         } else if (v.type === DataType.float16) {
           // TODO: use Float16Array.
           new Uint16Array(arrayBuffer, offset, data.length).set(data);
-        } else {
+        } else if (v.type === DataType.float) {
           new Float32Array(arrayBuffer, offset, data.length).set(data);
+        } else {
+          throw new Error(`Unsupported uniform type: ${tensorDataTypeEnumToString(v.type)}`);
         }
       });
 
