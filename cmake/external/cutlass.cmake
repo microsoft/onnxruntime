@@ -1,8 +1,8 @@
 include(FetchContent)
 FetchContent_Declare(
-    cutlass
-    URL ${DEP_URL_cutlass}
-    URL_HASH SHA1=${DEP_SHA1_cutlass}
+  cutlass
+  URL ${DEP_URL_cutlass}
+  URL_HASH SHA1=${DEP_SHA1_cutlass}
 )
 
 FetchContent_GetProperties(cutlass)
