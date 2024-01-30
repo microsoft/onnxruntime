@@ -100,13 +100,13 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested up to CUDA 11.8 and cuDNN 8.9. Check [here](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements) for more version information.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 11.8, 12.2 and cuDNN 8.9. Check [here](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements) for more version information.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to cudnn bin/include/lib) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
      * On Windows, cuDNN requires [zlibwapi.dll](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-zlib-windows). Feel free to place this dll under `path_to_cudnn/bin`  
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html)
-   * The TensorRT execution provider for ONNX Runtime is built and tested up to TensorRT 8.6.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.6.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
    * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
@@ -147,7 +147,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### Build Instructions
 {: .no_toc }
 
-These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvidia.com/embedded/jetpack-sdk-512).
+These instructions are for the latest [JetPack SDK 6.0](https://developer.nvidia.com/embedded/jetpack-sdk-60dp) for Jetson Orin.
 
 1. Clone the ONNX Runtime repo on the Jetson host
 
@@ -159,9 +159,10 @@ These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvid
 
    1. Starting with **CUDA 11.8**, Jetson users on **JetPack 5.0+** can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). CUDA version 11.8 with JetPack 5.1.2 has been tested on Jetson when building ONNX Runtime 1.16. 
 
-      1. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA 11.8 upgrade instruction.
+      1. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA upgrade instruction.
 
       2. CUDA 12.x is only available to Jetson Orin and newer series (CUDA compute capability >= 8.7). Check [here](https://developer.nvidia.com/cuda-gpus#collapse5) for compute capability datasheet.
+         JetPack 6.0 comes preinstalled with CUDA 12.2
 
    2. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
 
@@ -175,7 +176,7 @@ These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvid
       export CUDACXX="/usr/local/cuda/bin/nvcc"
       ```
 
-3. Install the ONNX Runtime build dependencies on the Jetpack 5.1.2 host:
+3. Install the ONNX Runtime build dependencies on the Jetpack host:
 
    ```bash
    sudo apt install -y --no-install-recommends \
@@ -183,7 +184,7 @@ These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvid
      libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
    ```
 
-4. Cmake is needed to build ONNX Runtime. For ONNX Runtime 1.16, the minimum required CMake version is 3.26 (version 3.27.4 has been tested). This can be either installed by:
+4. Cmake is needed to build ONNX Runtime. For ONNX Runtime 1.18, the minimum required CMake version is 3.26 (version 3.27.4 has been tested). This can be either installed by:
 
    1. (Unix/Linux) Build from source. Download sources from [https://cmake.org/download/](https://cmake.org/download/)
       and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
