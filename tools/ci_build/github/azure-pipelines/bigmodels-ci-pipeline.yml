@@ -174,6 +174,7 @@ stages:
       skipComponentGovernanceDetection: true
       CLIP_MODEL_CACHE: $(Agent.TempDirectory)/clip_cache
       STABLE_DIFFUSION_MODEL_CACHE: $(Agent.TempDirectory)/stablediffusion_cache
+      GenerateImage_DIR: $(Agent.TempDirectory)/images
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
@@ -200,9 +201,11 @@ stages:
       displayName: Cache stable diffusion model
 
     - script: |
+        mkdir -p $(GenerateImage_DIR)
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
+          -v $(GenerateImage_DIR):/images:rw \
           nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c ' \
             set -ex; \
@@ -214,7 +217,7 @@ stages:
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
-            find $(pwd) -name "*.png" ; \
+            find $(pwd)/ORT_CUDA -name "*.png" -exec cp {} /images ; \
             popd ; \
             '
       displayName: 'Run stable diffusion demo'
@@ -225,7 +228,7 @@ stages:
       displayName: 'Publish code coverage report'
       inputs:
           artifactName: "Generated-Image"
-          targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/ORT_CUDA/'
+          targetPath: '$(GenerateImage_DIR)'
 
     - task: Cache@2
       inputs:
