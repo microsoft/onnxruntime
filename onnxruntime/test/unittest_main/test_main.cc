@@ -59,8 +59,8 @@ int TEST_MAIN(int argc, char** argv) {
   int status = 0;
 
   ORT_TRY {
-    ::testing::InitGoogleTest(&argc, argv);
     ortenv_setup();
+    ::testing::InitGoogleTest(&argc, argv);
 
     // allow verbose logging to be enabled by setting this environment variable to a numeric log level
     constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
