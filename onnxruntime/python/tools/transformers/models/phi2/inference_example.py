@@ -36,7 +36,7 @@ class ORTGenerator:
 
         inputs = {
             "input_ids": input_ids.contiguous(),
-            "step" : step.contiguous(),
+            "step": step.contiguous(),
             "attention_mask": attention_mask.contiguous(),
         }
 

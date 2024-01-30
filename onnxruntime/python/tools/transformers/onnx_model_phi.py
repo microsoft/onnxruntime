@@ -16,8 +16,6 @@ import os
 
 logger = getLogger(__name__)
 
-
-# TODO: handle the hard-coded values
 class ProcessGemmWFunc:
     def __call__(self, x):
         return np.transpose(x, (1, 0))

@@ -8,21 +8,22 @@ import onnx
 import os
 import torch
 
+from dynamo_onnx_helper import DynamoOnnxHelper
 from enum import Enum
 from onnx import ModelProto, TensorProto, helper
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 from transformers import AutoConfig, AutoModelForCausalLM
 
-# --------------------------------------------------------------------------
-# The following code is needed when this file is not in the ORT package
-import sys
+## uncomment the following lines to use the local files instead of the pip installed version
+## --------------------------------------------------------------------------
+# import sys
 
-sys.path.append(os.path.dirname(__file__))
+# sys.path.append(os.path.dirname(__file__))
 
-transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if transformers_dir not in sys.path:
-    sys.path.append(transformers_dir)
-# --------------------------------------------------------------------------
+# transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# if transformers_dir not in sys.path:
+#     sys.path.append(transformers_dir)
+## --------------------------------------------------------------------------
 
 from benchmark_helper import Precision
 
@@ -42,7 +43,7 @@ def env_reset():
             del os.environ[flag]
 
 
-class ConvertPhi2ToONNX:
+class ConvertPhi2ToONNX(DynamoOnnxHelper):
     def __init__(
         self,
         device: torch.device,
@@ -56,7 +57,7 @@ class ConvertPhi2ToONNX:
         self.phi_model = None
         self.batch_size = 2
         self.sequence_length = 8
-        self.phi2_edge_dict = self.__get_phi2_edge_dict(self.phi_config)
+        self.phi2_edge_dict = self.get_phi2_edge_dict(self.phi_config)
         self.attn_op_type = None
         self.precision = None
 
@@ -67,7 +68,7 @@ class ConvertPhi2ToONNX:
         env_reset()
         os.environ["AttentionOpType"] = str(attn_op_type)
 
-    def __get_phi2_edge_dict(self, config: AutoConfig) -> dict:
+    def get_phi2_edge_dict(self, config: AutoConfig) -> dict:
         edge_dict = {}
         edge_dict["lm_head_1"] = "logits"
         edge_dict["l_input_ids_"] = "input_ids"
@@ -80,7 +81,7 @@ class ConvertPhi2ToONNX:
             edge_dict[f"model_layers_{i}_1_1"] = f"present_value_{i}"
         return edge_dict
 
-    def __simplify_phi2_op_type(self, onnx_model: ModelProto):
+    def simplify_phi2_op_type(self, onnx_model: ModelProto):
         phi2_transformer_layer_name = "modeling_phi_PhiDecoderLayer_model_layers"
         for node in onnx_model.graph.node:
             index = node.op_type.find(phi2_transformer_layer_name)
@@ -89,7 +90,7 @@ class ConvertPhi2ToONNX:
 
         return onnx_model
 
-    def __process_graph_io(self, config: AutoConfig, onnx_model: ModelProto):
+    def process_graph_io(self, config: AutoConfig, onnx_model: ModelProto):
         use_attn = self.attn_op_type == AttentionOpType.Attention
         graph = onnx_model.graph
         new_inputs = []
@@ -183,88 +184,7 @@ class ConvertPhi2ToONNX:
 
         return onnx_model
 
-    def __update_edges(self, model: onnx.ModelProto, edge_mapping: dict):
-        """
-        Updates the edges in the model according to the given mapping.
-        """
-        for node in model.graph.node:
-            for i in range(len(node.input)):
-                if node.input[i] in edge_mapping:
-                    node.input[i] = edge_mapping[node.input[i]]
-            for i in range(len(node.output)):
-                if node.output[i] in edge_mapping:
-                    node.output[i] = edge_mapping[node.output[i]]
-
-        for graph_input in model.graph.input:
-            if graph_input.name in edge_mapping:
-                graph_input.name = edge_mapping[graph_input.name]
-        for graph_output in model.graph.output:
-            if graph_output.name in edge_mapping:
-                graph_output.name = edge_mapping[graph_output.name]
-
-        return model
-
-    def __unroll_function(self, model: onnx.ModelProto, func_name: str) -> onnx.ModelProto:
-        """
-        Unrolls the function with the given name in the model.
-        """
-        logging.info(f"Unrolling function {func_name}...")
-        nodes_to_remove = []
-        nodes_to_add = []
-        edges_to_remove = []
-        edges_to_add = []
-        for node in model.graph.node:
-            if node.op_type == func_name:
-                nodes_to_remove.append(node)
-                for edge in node.input:
-                    edges_to_remove.append(edge)
-                for edge in node.output:
-                    edges_to_remove.append(edge)
-
-        for f in model.functions:
-            if f.name == func_name:
-                for node in f.node:
-                    nodes_to_add.append(node)
-                for edge in f.input:
-                    edges_to_add.append(edge)
-                for edge in f.output:
-                    edges_to_add.append(edge)
-
-        assert len(edges_to_remove) == len(edges_to_add)
-
-        for node in nodes_to_remove:
-            model.graph.node.remove(node)
-        for node in nodes_to_add:
-            model.graph.node.append(node)
-
-        edge_mapping = {}
-        for i in range(len(edges_to_remove)):
-            k = edges_to_remove[i]
-            v = edges_to_add[i]
-            if k != v:
-                edge_mapping[k] = v
-
-        return self.__update_edges(model, edge_mapping)
-
-    def __remove_dropout_layer(self, model: onnx.ModelProto):
-        """
-        Removes the dropout layer in the model.
-        """
-        logging.info("Removing dropout layer...")
-        edge_mapping = {}
-        nodes_to_remove = []
-        for node in model.graph.node:
-            if node.op_type.find("Dropout") != -1:
-                assert len(node.input) == 1
-                assert len(node.output) == 1
-                edge_mapping[node.output[0]] = node.input[0]
-                nodes_to_remove.append(node)
-        for node in nodes_to_remove:
-            model.graph.node.remove(node)
-
-        return self.__update_edges(model, edge_mapping)
-
-    def __get_phi2_torch_model(self):
+    def get_phi2_torch_model(self):
         logging.info("Loading phi2 torch model...")
         if self.phi_model is not None:
             return
@@ -282,28 +202,11 @@ class ConvertPhi2ToONNX:
             dtype=torch.int64,
             device=self.device,
         )
-        self.__get_phi2_torch_model()
+        self.get_phi2_torch_model()
         torch_inputs = self.phi_model.prepare_inputs_for_generation(
             input_ids, past_key_values=self.phi_model(input_ids, use_cache=True)["past_key_values"]
         )
         return torch_inputs["input_ids"], torch_inputs["attention_mask"], torch_inputs["past_key_values"]
-
-    def erase_onnx_model(self, onnx_path: str):
-        assert onnx_path.endswith(".onnx")
-        if not os.path.exists(onnx_path):
-            return
-
-        model = onnx.load_model(onnx_path, load_external_data=False)
-        onnx_data_path = None
-        for initializer in model.graph.initializer:
-            if initializer.data_location == 1 and initializer.external_data[0].key == "location":
-                onnx_data_path = "./" + initializer.external_data[0].value
-                break
-        logging.info(f"Erasing {onnx_path}...")
-        os.remove(onnx_path)
-        if onnx_data_path is not None:
-            logging.info(f"Erasing {onnx_data_path}...")
-            os.remove(onnx_data_path)
 
     def dynamo_export(self, onnx_path: str):
         input_ids, attention_mask, past_key_values = self.get_phi2_torch_inputs(self.batch_size, self.sequence_length)
@@ -332,10 +235,10 @@ class ConvertPhi2ToONNX:
                 function_name = func.name
                 break
         assert function_name is not None
-        model = self.__unroll_function(model, function_name)
-        model = self.__update_edges(model, self.phi2_edge_dict)
-        model = self.__simplify_phi2_op_type(model)
-        model = self.__remove_dropout_layer(model)
+        model = self.unroll_function(model, function_name)
+        model = self.update_edges(model, self.phi2_edge_dict)
+        model = self.simplify_phi2_op_type(model)
+        model = self.remove_dropout_layer(model)
         onnx.save_model(
             model,
             onnx_path_out,
@@ -351,7 +254,7 @@ class ConvertPhi2ToONNX:
 
         processed_onnx_path = f"{uuid.uuid1()}.onnx"
         model = onnx.load_model(onnx_path, load_external_data=True)
-        model = self.__process_graph_io(self.phi_config, model)
+        model = self.process_graph_io(self.phi_config, model)
         onnx.save_model(
             model,
             processed_onnx_path,
@@ -586,14 +489,16 @@ def main():
         if args.fp16_a100:
             processes.append(
                 Process(
-                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp16_a100"])
+                    target=run_optimize_phi2_onnx,
+                    args=(converter, original_onnx_path, *model_type_to_args["fp16_a100"]),
                 )
             )
 
         if args.int4_a100:
             processes.append(
                 Process(
-                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_a100"])
+                    target=run_optimize_phi2_onnx,
+                    args=(converter, original_onnx_path, *model_type_to_args["int4_a100"]),
                 )
             )
 
