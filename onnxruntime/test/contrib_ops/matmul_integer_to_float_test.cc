@@ -24,9 +24,7 @@ namespace onnxruntime {
 namespace test {
 
 template <typename IType, typename WType, typename OType>
-static void CalculateMatMulIntegerToFloat(const int64_t M, const int64_t N, const int64_t K, const std::vector<IType>& A_data, const std::vector<OType>& A_scale, const std::vector<IType>& A_zero_point, const std::vector<WType>& B_data, std::vector<OType>& B_scale, std::vector<WType>& B_zero_point, const 
-  std::vector<OType>& Bias, std::vector<float>& Y_data, bool per_column, bool has_zp, bool has_bias) {
- 
+static void CalculateMatMulIntegerToFloat(const int64_t M, const int64_t N, const int64_t K, const std::vector<IType>& A_data, const std::vector<OType>& A_scale, const std::vector<IType>& A_zero_point, const std::vector<WType>& B_data, std::vector<OType>& B_scale, std::vector<WType>& B_zero_point, const std::vector<OType>& Bias, std::vector<float>& Y_data, bool per_column, bool has_zp, bool has_bias) {
   if (!per_column) {
     B_zero_point.resize(N, B_zero_point[0]);
     B_scale.resize(N, B_scale[0]);
@@ -77,7 +75,7 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
                                                         std::numeric_limits<WType>::max());
 
   std::transform(tmp_B_data.begin(), tmp_B_data.end(), std::back_inserter(B_data), [](int32_t v) -> WType {
-      return static_cast<WType>(v);
+    return static_cast<WType>(v);
   });
 
   std::vector<OType> A_scale = random.Uniform<OType>(AsSpan<int64_t>({1}), -0.1f, 0.1f);
@@ -120,22 +118,21 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
   std::vector<float> Y_data(M * N);
   CalculateMatMulIntegerToFloat<IType, WType, OType>(M, N, K, A_data, A_scale, A_zero_point, B_data, B_scale, B_zero_point, Bias, Y_data, per_column, has_zp, has_bias);
 
-    if ( constexpr(std::is_same_v<OType, float>)) {
-      test.AddOutput<float>("Y", {M, N}, Y_data);
-    } else {
-      test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
-      test.SetOutputAbsErr("Y", 0.5f);
-    }
+  if (constexpr(std::is_same_v<OType, float>)) {
+    test.AddOutput<float>("Y", {M, N}, Y_data);
+  } else {
+    test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
+    test.SetOutputAbsErr("Y", 0.5f);
+  }
 
   // Only DML EP supports these data type combinations for now
   if ((constexpr(std::is_same_v<OType, MLFloat16>)) ||
       (constexpr(std::is_same_v<OType, float>) &&
-         /*(constexpr(std::is_same_v<IType, uint8_t>) &&*/  !constexpr(std::is_same_v<WType, IType>))
-          ) {
+       !constexpr(std::is_same_v<WType, IType>))) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultDmlExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-    } else {
+  } else {
     test.Run();
   }
 }
@@ -191,7 +188,6 @@ TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_U8U8) {
   RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, true, false>();
 }
 
-
 TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8U8) {
   RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, false, true>();
 }
@@ -199,7 +195,6 @@ TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8U8) {
 TEST(MatMulIntegerToFloat, NoZeroPoint_NoBias_test_U8U8) {
   RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, false, false>();
 }
-
 
 TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_U8X8) {
   RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, true, true>();
@@ -247,7 +242,7 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_U8U8) {
   int64_t K = 2;
 
   std::vector<uint8_t> A_data = {1, 5, 2, 1, 9,
-                              1, 1, 3, 7, 2};
+                                 1, 1, 3, 7, 2};
   std::vector<uint8_t> B_data = {3, 7, 2, 1, 1,
                                  2, 1, 9, 1, 1};
   std::vector<MLFloat16> A_scale = ToFloat16({3.0f});
@@ -256,7 +251,6 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_U8U8) {
   test.AddInput<uint8_t>("B", {K, N}, B_data);
   std::vector<uint8_t> A_zero_point = {3};
   std::vector<uint8_t> B_zero_point = {5};
-
 
   test.AddInput<MLFloat16>("a_scale", {1}, A_scale);
   test.AddInput<MLFloat16>("b_scale", {1}, B_scale);
@@ -281,7 +275,7 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_U8S8) {
   std::vector<uint8_t> A_data = {3, 7, 2, 1, 1,
                                  2, 1, 9, 1, 1};
   std::vector<int8_t> B_data = {2, -1, -9, 1, 1,
-                                 -1, 0, -3, 1, -4};
+                                -1, 0, -3, 1, -4};
   std::vector<MLFloat16> A_scale = ToFloat16({-4.0f});
   std::vector<MLFloat16> B_scale = ToFloat16({2.0f});
   test.AddInput<uint8_t>("A", {M, K}, A_data);
@@ -312,7 +306,7 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_S8S8) {
   int64_t K = 2;
 
   std::vector<int8_t> A_data = {3, 7, -2, 1, 1,
-                                 2, -1, -9, 1, 1};
+                                2, -1, -9, 1, 1};
   std::vector<int8_t> B_data = {2, -1, -9, 1, 1,
                                 -1, 0, -3, 1, -4};
   std::vector<MLFloat16> A_scale = ToFloat16({-4.0f});
@@ -328,7 +322,6 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_S8S8) {
   test.AddInput<int8_t>("a_zero_point", {1}, A_zero_point);
   test.AddInput<int8_t>("b_zero_point", {1}, B_zero_point);
   test.AddInput<MLFloat16>("bias", {N}, Bias);
-
 
   std::vector<float> Y_data(M * N);
   CalculateMatMulIntegerToFloat<int8_t, int8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point, B_data, B_scale, B_zero_point, Bias, Y_data, false, true, true);
@@ -381,10 +374,10 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16) {
   int64_t K = 3;
 
   std::vector<int8_t> A_data = {11, -2, 5,
-                                 -1, 3, 10};
+                                -1, 3, 10};
   std::vector<int8_t> B_data = {-13, -2,
-                                 9, 55,
-                                 -1, 23};
+                                9, 55,
+                                -1, 23};
   std::vector<MLFloat16> A_scale = ToFloat16({0.910f});
   std::vector<MLFloat16> B_scale = ToFloat16({1.10f, 1.123f});
 
