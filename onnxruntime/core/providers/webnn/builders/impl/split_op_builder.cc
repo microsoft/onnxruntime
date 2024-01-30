@@ -83,10 +83,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         std::vector<int64_t> mapping_split;
         mapping_split.insert(mapping_split.begin(), num_outputs - 1, input_shape[axis] / num_outputs);
         mapping_split.insert(mapping_split.end(), input_shape[axis] % num_outputs);
-        std::vector<int32_t> converted_splits;
-        std::transform(mapping_split.cbegin(), mapping_split.cend(),
-                       std::back_inserter(converted_splits),
-                       [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
+        std::vector<uint32_t> converted_splits = GetVecUint32FromVecInt64(mapping_split);
         output_array = model_builder.GetBuilder().call<emscripten::val>("split",
                                                                         input,
                                                                         emscripten::val::array(converted_splits),

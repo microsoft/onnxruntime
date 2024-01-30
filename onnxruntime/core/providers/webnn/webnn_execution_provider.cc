@@ -282,9 +282,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         // Since all the input output of WebNN EP is MultiArray, we will make the scalar input as a {1} MultiArray.
         if (shape.empty())
           shape.push_back(1);
-        std::vector<int> temp(shape.size());
-        transform(shape.begin(), shape.end(), temp.begin(),
-                  [](int64_t dim) -> uint32_t { return SafeInt<int32_t>(dim); });
         const void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
