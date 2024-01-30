@@ -26,7 +26,7 @@ Download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.
 
 ### QNN Version Requirements
 
-ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.10.x and Qualcomm SC8280, SM8350 SOC's
+ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.18.x and Qualcomm SC8280, SM8350 SOC's
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#qnn).
