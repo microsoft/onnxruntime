@@ -434,6 +434,25 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_alloc"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_free"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_empty_cache"], "0")
+
+                option["user_compute_stream"] = "0"
+                sess.set_providers(["CUDAExecutionProvider"], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], "0")
+
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        s = torch.cuda.Stream()
+                        option["user_compute_stream"] = str(s.cuda_stream)
+                        sess.set_providers(["CUDAExecutionProvider"], [option])
+                        options = sess.get_provider_options()
+                        self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], str(s.cuda_stream))
+                        self.assertEqual(options["CUDAExecutionProvider"]["has_user_compute_stream"], "1")
+                except ImportError:
+                    print("torch is not installed, skip testing setting user_compute_stream from torch cuda stream")
+
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
