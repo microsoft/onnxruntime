@@ -376,14 +376,21 @@ class FissionTransformerBlockPhi(Fission):
     def get_gqa_aux_nodes(self):
         gqa_aux_nodes = [
             helper.make_node(
+                "Cast",
+                inputs=["attention_mask"],
+                outputs=["mask_int64"],
+                name="Cast_gqa_aux_0",
+                to=TensorProto.INT64,
+            ),
+            helper.make_node(
                 "ReduceSum",
-                inputs=["attention_mask", "one"],
-                outputs=["attention_mask_row_sums"],
+                inputs=["mask_int64", "one"],
+                outputs=["mask_row_sums"],
                 name="ReduceSum_gqa_aux",
             ),
             helper.make_node(
                 "Sub",
-                inputs=["attention_mask_row_sums", "one"],
+                inputs=["mask_row_sums", "one"],
                 outputs=["seqlens_k_int64"],
                 name="Sub_gqa_aux",
             ),
@@ -391,15 +398,13 @@ class FissionTransformerBlockPhi(Fission):
                 "Cast",
                 inputs=["seqlens_k_int64"],
                 outputs=["seqlens_k"],
-                name="Cast_gqa_aux_0",
+                name="Cast_gqa_aux_1",
                 to=TensorProto.INT32,
             ),
-            helper.make_node(
-                "Shape", inputs=["attention_mask"], outputs=["attention_mask_shape"], name="Shape_gqa_aux_0"
-            ),
+            helper.make_node("Shape", inputs=["mask_int64"], outputs=["mask_shape"], name="Shape_gqa_aux_0"),
             helper.make_node(
                 "Gather",
-                inputs=["attention_mask_shape", "one"],
+                inputs=["mask_shape", "one"],
                 outputs=["total_seq_len_int64"],
                 name="Gather_gqa_aux_0",
                 axis=0,
@@ -408,7 +413,7 @@ class FissionTransformerBlockPhi(Fission):
                 "Cast",
                 inputs=["total_seq_len_int64"],
                 outputs=["total_sequence_length"],
-                name="Cast_gqa_aux_1",
+                name="Cast_gqa_aux_2",
                 to=TensorProto.INT32,
             ),
         ]
@@ -510,7 +515,7 @@ class FissionTransformerBlockPhi(Fission):
                 self.get_io_by_name(node, "self_attn.k_proj.bias"),
                 self.get_io_by_name(node, "self_attn.v_proj.bias"),
                 self.get_uname(layer_id, "attn_qkv_weight"),
-                self.get_uname(layer_id, "attn_qkv_bias")
+                self.get_uname(layer_id, "attn_qkv_bias"),
             )
 
         attn_out_weight = self.process_initializer(

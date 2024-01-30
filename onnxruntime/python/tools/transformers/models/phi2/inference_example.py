@@ -18,67 +18,59 @@ pt_to_np = {
     "torch.float16": np.float16,
 }
 
+
 class ORTGenerator:
     def __init__(self, decoder_path):
         self.onnx_decoder_path = decoder_path
-    
+        self.num_heads = 32
+        self.head_size = 80
+        self.num_layers = 32
+        self.max_sequence_length = 2048
+
     def get_initial_inputs_and_outputs(self, encodings_dict):
-        torch_dtype = torch.float16 if self.use_fp16 else torch.float32
+        self.torch_dtype = torch.float16 if self.use_fp16 else torch.float32
 
         input_ids = torch.tensor(encodings_dict["input_ids"], device=self.device, dtype=torch.int32)
-        attention_mask = torch.tensor(encodings_dict["attention_mask"], device=self.device, dtype=torch.int64)
+        attention_mask = torch.tensor(encodings_dict["attention_mask"], device=self.device, dtype=torch.int32)
         step = torch.tensor([0], device=self.device, dtype=torch.int64)
 
         inputs = {
             "input_ids": input_ids.contiguous(),
-            "step": step.contiguous(),
             "attention_mask": attention_mask.contiguous(),
         }
 
+        # TODO: this code is not generic and only apply to phi2 for gqa
+        if not self.packed_kv:
+            inputs["step"] = step.contiguous()
+
         batch_size, sequence_length = input_ids.shape
 
-        max_sequence_length = 2048
-        num_heads, head_size = 32, 80
-        for i in range(32):
-            past_key = torch.zeros(
-                batch_size,
-                num_heads,
-                max_sequence_length if self.use_buffer_share else 0,
-                head_size,
-                device=self.device,
-                dtype=torch_dtype,
-            )
-            past_value = torch.zeros(
-                batch_size,
-                num_heads,
-                max_sequence_length if self.use_buffer_share else 0,
-                head_size,
-                device=self.device,
-                dtype=torch_dtype,
-            )
+        past_seq_length = self.max_sequence_length if self.use_buffer_share else 0
+        past_shape = (
+            (2, batch_size, self.num_heads, past_seq_length, self.head_size)
+            if self.packed_kv
+            else (batch_size, self.num_heads, past_seq_length, self.head_size)
+        )
+        for i in range(self.num_layers):
+            past = torch.zeros(past_shape, device=self.device, dtype=self.torch_dtype)
             inputs.update(
-                {
-                    f"past_key_{i}": past_key.contiguous(),
-                    f"past_value_{i}": past_value.contiguous(),
-                }
-            )
+                {f"past_key_{i}": past.contiguous(), f"past_value_{i}": past.clone().contiguous()}
+            ) if not self.packed_kv else inputs.update({f"past_{i}": past.contiguous()})
 
-        logits = torch.zeros(batch_size, sequence_length, 51200, device=self.device, dtype=torch_dtype)
+        logits = torch.zeros(batch_size, sequence_length, 51200, device=self.device, dtype=self.torch_dtype)
         outputs = {"logits": logits.contiguous()}
+
         if not self.use_buffer_share:
-            for i in range(32):
-                present_key = torch.zeros(
-                    batch_size, num_heads, sequence_length, head_size, device=self.device, dtype=torch_dtype
-                )
-                present_value = torch.zeros(
-                    batch_size, num_heads, sequence_length, head_size, device=self.device, dtype=torch_dtype
-                )
+            present_shape = (
+                (2, batch_size, self.num_heads, sequence_length, self.head_size)
+                if self.packed_kv
+                else (batch_size, self.num_heads, sequence_length, self.head_size)
+            )
+            for i in range(self.num_layers):
+                present = torch.zeros(present_shape, device=self.device, dtype=self.torch_dtype)
                 outputs.update(
-                    {
-                        f"present_key_{i}": present_key.contiguous(),
-                        f"present_value_{i}": present_value.contiguous(),
-                    }
-                )
+                    {f"present_key_{i}": present.contiguous(), f"present_value_{i}": present.contiguous()}
+                ) if not self.packed_kv else outputs.update({f"present_{i}": present.contiguous()})
 
         return inputs, outputs
 
@@ -122,7 +114,7 @@ class ORTGenerator:
 
         return io_binding
 
-    def create_session(self, device_id, use_fp16=True, use_buffer_share=True):
+    def create_session(self, device_id, use_fp16=True, use_buffer_share=True, packed_kv=False):
         sess_options = ort.SessionOptions()
         ep = ("CUDAExecutionProvider", {"device_id": device_id}) if device_id >= 0 else "CPUExecutionProvider"
         self.sess = ort.InferenceSession(self.onnx_decoder_path, sess_options=sess_options, providers=[ep])
@@ -130,6 +122,7 @@ class ORTGenerator:
         self.device = torch.device("cuda", device_id) if torch.cuda.is_available() else torch.device("cpu")
         self.use_fp16 = use_fp16
         self.use_buffer_share = use_buffer_share
+        self.packed_kv = packed_kv
 
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
         self.tokenizer.pad_token = "[PAD]"
@@ -171,10 +164,12 @@ class ORTGenerator:
             # Update inputs for next inference run
             current_length += 1
             inputs["input_ids"] = tokens_to_add.to(torch.int32)
-            inputs["step"] = torch.tensor([current_length - 1], device=self.device, dtype=torch.int64)
-            inputs["attention_mask"] = torch.cat(
-                [inputs["attention_mask"], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1
+            inputs["attention_mask"] = torch.cat([inputs["attention_mask"], (~has_eos).reshape(batch_size, 1)], 1).to(
+                torch.int32
             )
+            # TODO: this code is not generic and only apply to phi2 for gqa
+            if not self.packed_kv:
+                inputs["step"] = torch.tensor([current_length - 1], device=self.device, dtype=torch.int64)
 
             # Set logits to zeros for next inference run and re-use memory buffer
             if outputs["logits"].shape[1] != 1:
@@ -182,39 +177,42 @@ class ORTGenerator:
             outputs["logits"].zero_()
 
             if not self.use_buffer_share:
-                for i in range(32):
-                    inputs[f"past_key_{i}"] = outputs[f"present_key_{i}"]
-                    inputs[f"past_value_{i}"] = outputs[f"present_value_{i}"]
+                for i in range(self.num_layers):
+                    if not self.packed_kv:
+                        inputs[f"past_key_{i}"] = outputs[f"present_key_{i}"]
+                        inputs[f"past_value_{i}"] = outputs[f"present_value_{i}"]
+                    else:
+                        inputs[f"past_{i}"] = outputs[f"present_{i}"]
 
                 new_sequence_length = inputs["attention_mask"].shape[1]
-                for i in range(32):
-                    present_key = torch.zeros(batch_size, 32, new_sequence_length, 80, device=device, dtype=torch_dtype)
-                    present_value = torch.zeros(
-                        batch_size, 32, new_sequence_length, 80, device=device, dtype=torch_dtype
-                    )
+                present_shape = (
+                    (2, batch_size, self.num_heads, new_sequence_length, self.head_size)
+                    if self.packed_kv
+                    else (batch_size, self.num_heads, new_sequence_length, self.head_size)
+                )
+                for i in range(self.num_layers):
+                    present = torch.zeros(present_shape, device=self.device, dtype=self.torch_dtype)
                     outputs.update(
-                        {
-                            f"present_key_{i}": present_key.contiguous(),
-                            f"present_value_{i}": present_value.contiguous(),
-                        }
-                    )
+                        {f"present_key_{i}": present.contiguous(), f"present_value_{i}": present.clone().contiguous()}
+                    ) if not self.packed_kv else outputs.update({f"present_{i}": present.contiguous()})
 
         texts = self.tokenizer.batch_decode(all_token_ids, skip_special_tokens=True)
         return texts
 
 
-def run_phi2(onnx_model_path, use_fp16, use_buffer_share, device_id):
-    prompt = ['''```python
+def run_phi2(onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_fp16=True):
+    prompt = [
+        '''```python
     def print_prime(n):
     """
     Print all primes between 1 and n
-    """''']
+    """'''
+    ]
 
     generator = ORTGenerator(onnx_model_path)
-    generator.create_session(device_id, use_fp16, use_buffer_share)
+    generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv)
     texts = generator.generate(prompt, max_length=200)
 
     for i in range(len(texts)):
         print("Prompt: ", prompt[i])
         print("Texts: ", texts[i])
-

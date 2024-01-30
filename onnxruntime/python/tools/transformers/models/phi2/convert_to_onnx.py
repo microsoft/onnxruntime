@@ -108,7 +108,7 @@ class ConvertPhi2ToONNX:
                 )
                 vi_mask = helper.make_tensor_value_info(
                     "attention_mask",
-                    elem_type=TensorProto.INT64 if use_gqa else TensorProto.INT32,
+                    elem_type=TensorProto.INT32,
                     shape=["batch_size", "seq_len"],
                 )
                 new_inputs.extend([vi, vi_pid, vi_mask]) if not use_attn else new_inputs.extend([vi, vi_mask])
@@ -347,8 +347,8 @@ class ConvertPhi2ToONNX:
     def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
         from fusion_options import FusionOptions
         from optimizer import optimize_model
-        import uuid 
-  
+        import uuid
+
         processed_onnx_path = f"{uuid.uuid1()}.onnx"
         model = onnx.load_model(onnx_path, load_external_data=True)
         model = self.__process_graph_io(self.phi_config, model)
@@ -494,6 +494,13 @@ def parse_arguments():
         help="Run ORT inference example",
     )
 
+    parser.add_argument(
+        "--skip_export",
+        required=False,
+        action="store_true",
+        help="Skip exporting ONNX model",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -518,68 +525,120 @@ def main():
         converter.erase_onnx_model(temp_onnx_path)
 
     model_type_to_args = {
-        "fp32_cpu" : (AttentionOpType.MultiHeadAttention, Precision.FLOAT32, "phi2_decoder_fp32_cpu_opt.onnx"),
-        "int4_cpu" : (AttentionOpType.MultiHeadAttention, Precision.INT4, "phi2_decoder_int4_cpu_opt.onnx"),
-        "fp32_gpu" : (AttentionOpType.Attention, Precision.FLOAT32, "phi2_decoder_fp32_gpu_opt.onnx"),
-        "fp16_gpu" : (AttentionOpType.Attention, Precision.FLOAT16, "phi2_decoder_fp16_gpu_opt.onnx"),
-        "int4_gpu" : (AttentionOpType.Attention, Precision.INT4, "phi2_decoder_int4_gpu_opt.onnx"),
-        "fp16_a100" : (AttentionOpType.GroupQueryAttention, Precision.FLOAT16, "phi2_decoder_fp16_a100_opt.onnx"),
-        "int4_a100" : (AttentionOpType.GroupQueryAttention, Precision.INT4, "phi2_decoder_int4_a100_opt.onnx"),
+        "fp32_cpu": (AttentionOpType.MultiHeadAttention, Precision.FLOAT32, "phi2_decoder_fp32_cpu_opt.onnx"),
+        "int4_cpu": (AttentionOpType.MultiHeadAttention, Precision.INT4, "phi2_decoder_int4_cpu_opt.onnx"),
+        "fp32_gpu": (AttentionOpType.Attention, Precision.FLOAT32, "phi2_decoder_fp32_gpu_opt_.onnx"),
+        "fp16_gpu": (AttentionOpType.Attention, Precision.FLOAT16, "phi2_decoder_fp16_gpu_opt_.onnx"),
+        "int4_gpu": (AttentionOpType.Attention, Precision.INT4, "phi2_decoder_int4_gpu_opt_.onnx"),
+        "fp16_a100": (AttentionOpType.GroupQueryAttention, Precision.FLOAT16, "phi2_decoder_fp16_a100_opt.onnx"),
+        "int4_a100": (AttentionOpType.GroupQueryAttention, Precision.INT4, "phi2_decoder_int4_a100_opt.onnx"),
     }
 
-    from multiprocessing import Process
+    if not args.skip_export:
+        from multiprocessing import Process
 
-    def run_optimize_phi2_onnx(
-        converter: ConvertPhi2ToONNX,
-        original_onnx_path: str,
-        attention_type: AttentionOpType,
-        precision: Precision,
-        optimized_onnx_path: str,
-    ):
-        converter.init_attn_type_and_precision(attention_type, precision)
-        converter.optimize_phi2_onnx(original_onnx_path, optimized_onnx_path)
+        def run_optimize_phi2_onnx(
+            converter: ConvertPhi2ToONNX,
+            original_onnx_path: str,
+            attention_type: AttentionOpType,
+            precision: Precision,
+            optimized_onnx_path: str,
+        ):
+            converter.init_attn_type_and_precision(attention_type, precision)
+            converter.optimize_phi2_onnx(original_onnx_path, optimized_onnx_path)
 
-    processes = []
-    if args.fp32_cpu:
-        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp32_cpu"])))
+        processes = []
+        if args.fp32_cpu:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp32_cpu"])
+                )
+            )
 
-    if args.int4_cpu:
-        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_cpu"])))
+        if args.int4_cpu:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_cpu"])
+                )
+            )
 
-    if args.fp32_gpu:
-        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp32_gpu"])))
+        if args.fp32_gpu:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp32_gpu"])
+                )
+            )
 
-    if args.fp16_gpu:
-        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp16_gpu"])))
+        if args.fp16_gpu:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp16_gpu"])
+                )
+            )
 
-    if args.int4_gpu:
-        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_gpu"])))
+        if args.int4_gpu:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_gpu"])
+                )
+            )
 
-    if args.fp16_a100:
-        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp16_a100"])))
-    
-    if args.int4_a100:
-        processes.append(Process(target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_a100"])))
+        if args.fp16_a100:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp16_a100"])
+                )
+            )
 
-    [p.start() for p in processes]
-    [p.join() for p in processes]
+        if args.int4_a100:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_a100"])
+                )
+            )
+
+        [p.start() for p in processes]
+        [p.join() for p in processes]
 
     if args.run_example:
         from inference_example import run_phi2
+
         if args.fp16_a100:
             run_phi2(
                 onnx_model_path=model_type_to_args["fp16_a100"][2],
-                use_fp16=True,
                 use_buffer_share=True,
                 device_id=args.device_id,
             )
         if args.int4_a100:
             run_phi2(
                 onnx_model_path=model_type_to_args["int4_a100"][2],
-                use_fp16=True,
                 use_buffer_share=True,
                 device_id=args.device_id,
             )
+        if args.fp32_gpu:
+            run_phi2(
+                onnx_model_path=model_type_to_args["fp32_gpu"][2],
+                use_buffer_share=False,
+                device_id=args.device_id,
+                packed_kv=True,
+                use_fp16=False,
+            )
+        if args.fp16_gpu:
+            run_phi2(
+                onnx_model_path=model_type_to_args["fp16_gpu"][2],
+                use_buffer_share=False,
+                device_id=args.device_id,
+                packed_kv=True,
+            )
+        if args.int4_gpu:
+            run_phi2(
+                onnx_model_path=model_type_to_args["int4_gpu"][2],
+                use_buffer_share=False,
+                device_id=args.device_id,
+                packed_kv=True,
+            )
+        if args.fp32_cpu or args.int4_cpu:
+            raise NotImplementedError("CPU inference example is not implemented yet.")
 
 
 if __name__ == "__main__":
