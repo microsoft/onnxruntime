@@ -90,7 +90,6 @@ class ConvertPhi2ToONNX:
         return onnx_model
 
     def __process_graph_io(self, config: AutoConfig, onnx_model: ModelProto):
-        use_gqa = self.attn_op_type == AttentionOpType.GroupQueryAttention
         use_attn = self.attn_op_type == AttentionOpType.Attention
         graph = onnx_model.graph
         new_inputs = []
@@ -101,6 +100,7 @@ class ConvertPhi2ToONNX:
                     elem_type=TensorProto.INT32,
                     shape=["batch_size", "seq_len"],
                 )
+                # "Step" is not needed in Attention, we add it here to make the inputs consistent
                 vi_pid = helper.make_tensor_value_info(
                     "step",
                     elem_type=TensorProto.INT64,
@@ -111,7 +111,7 @@ class ConvertPhi2ToONNX:
                     elem_type=TensorProto.INT32,
                     shape=["batch_size", "seq_len"],
                 )
-                new_inputs.extend([vi, vi_pid, vi_mask]) if not use_attn else new_inputs.extend([vi, vi_mask])
+                new_inputs.extend([vi, vi_pid, vi_mask])
             if not use_attn:
                 if "past_key" in vi.name or "past_value" in vi.name:
                     vi_cache = helper.make_tensor_value_info(
@@ -525,13 +525,13 @@ def main():
         converter.erase_onnx_model(temp_onnx_path)
 
     model_type_to_args = {
-        "fp32_cpu": (AttentionOpType.MultiHeadAttention, Precision.FLOAT32, "phi2_decoder_fp32_cpu_opt.onnx"),
-        "int4_cpu": (AttentionOpType.MultiHeadAttention, Precision.INT4, "phi2_decoder_int4_cpu_opt.onnx"),
-        "fp32_gpu": (AttentionOpType.Attention, Precision.FLOAT32, "phi2_decoder_fp32_gpu_opt_.onnx"),
-        "fp16_gpu": (AttentionOpType.Attention, Precision.FLOAT16, "phi2_decoder_fp16_gpu_opt_.onnx"),
-        "int4_gpu": (AttentionOpType.Attention, Precision.INT4, "phi2_decoder_int4_gpu_opt_.onnx"),
-        "fp16_a100": (AttentionOpType.GroupQueryAttention, Precision.FLOAT16, "phi2_decoder_fp16_a100_opt.onnx"),
-        "int4_a100": (AttentionOpType.GroupQueryAttention, Precision.INT4, "phi2_decoder_int4_a100_opt.onnx"),
+        "fp32_cpu": (AttentionOpType.MultiHeadAttention, Precision.FLOAT32, "phi2_decoder_fp32_cpu.onnx"),
+        "int4_cpu": (AttentionOpType.MultiHeadAttention, Precision.INT4, "phi2_decoder_int4_cpu.onnx"),
+        "fp32_gpu": (AttentionOpType.Attention, Precision.FLOAT32, "phi2_decoder_fp32_gpu.onnx"),
+        "fp16_gpu": (AttentionOpType.Attention, Precision.FLOAT16, "phi2_decoder_fp16_gpu.onnx"),
+        "int4_gpu": (AttentionOpType.Attention, Precision.INT4, "phi2_decoder_int4_gpu.onnx"),
+        "fp16_a100": (AttentionOpType.GroupQueryAttention, Precision.FLOAT16, "phi2_decoder_fp16_a100.onnx"),
+        "int4_a100": (AttentionOpType.GroupQueryAttention, Precision.INT4, "phi2_decoder_int4_a100.onnx"),
     }
 
     if not args.skip_export:

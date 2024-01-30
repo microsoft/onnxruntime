@@ -438,7 +438,6 @@ class FissionTransformerBlockPhi(Fission):
 
         hidden_size = qkv_weight.shape[0]
 
-        # bugbug: shape is wrong
         weight = helper.make_tensor(
             weight_name,
             data_type=TensorProto.FLOAT,

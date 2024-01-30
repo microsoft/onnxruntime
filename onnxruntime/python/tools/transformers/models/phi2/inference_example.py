@@ -36,12 +36,9 @@ class ORTGenerator:
 
         inputs = {
             "input_ids": input_ids.contiguous(),
+            "step" : step.contiguous(),
             "attention_mask": attention_mask.contiguous(),
         }
-
-        # TODO: this code is not generic and only apply to phi2 for gqa
-        if not self.packed_kv:
-            inputs["step"] = step.contiguous()
 
         batch_size, sequence_length = input_ids.shape
 
@@ -164,12 +161,10 @@ class ORTGenerator:
             # Update inputs for next inference run
             current_length += 1
             inputs["input_ids"] = tokens_to_add.to(torch.int32)
+            inputs["step"] = torch.tensor([current_length - 1], device=self.device, dtype=torch.int64)
             inputs["attention_mask"] = torch.cat([inputs["attention_mask"], (~has_eos).reshape(batch_size, 1)], 1).to(
                 torch.int32
             )
-            # TODO: this code is not generic and only apply to phi2 for gqa
-            if not self.packed_kv:
-                inputs["step"] = torch.tensor([current_length - 1], device=self.device, dtype=torch.int64)
 
             # Set logits to zeros for next inference run and re-use memory buffer
             if outputs["logits"].shape[1] != 1:
