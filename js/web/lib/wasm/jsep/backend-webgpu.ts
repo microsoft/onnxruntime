@@ -463,8 +463,7 @@ export class WebGpuBackend {
         } else if (v.type === 'uint32') {
           new Uint32Array(arrayBuffer, offset, data.length).set(data);
         } else if (v.type === 'float16') {
-          // TODO: use Float16Array.
-          new Uint16Array(arrayBuffer, offset, data.length).set(data);
+          new Float16Array(arrayBuffer, offset, data.length).set(data);
         } else {
           new Float32Array(arrayBuffer, offset, data.length).set(data);
         }
