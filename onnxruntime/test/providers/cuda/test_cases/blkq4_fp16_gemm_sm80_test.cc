@@ -198,7 +198,7 @@ void testPrepack(int rows, int columns) {
     MatrixRef<ElementQOffset, LayoutQmeta, true> tensor_packed_zp_ref =
         make_MatrixRef<ElementQOffset, LayoutQmeta, true>(packed_zp_ref, meta_shape);
     if constexpr (Base::ShouldRearrangeMeta) {
-      onnxruntime::test::sm80_expand_prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
+      onnxruntime::test::sm80_prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
           rows, columns, tensor_offset.const_ref(), tensor_packed_zp_ref);
     } else {
       for (int col = 0; col < meta_shape[1]; ++col) {
