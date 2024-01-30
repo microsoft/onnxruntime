@@ -19,6 +19,7 @@ import {getTensorElementSize, isGpuBufferSupportedType, tensorDataTypeStringToEn
 
 import {base64toBuffer, createMockGraph, readFile} from './test-shared';
 import {Test} from './test-types';
+
 type Float16ArrayType = InstanceType<typeof Float16Array>;
 // the threshold that used to compare 2 float numbers. See above for TensorResultValidator.floatEqual().
 const CPU_THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;

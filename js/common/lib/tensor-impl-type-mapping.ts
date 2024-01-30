@@ -3,9 +3,9 @@
 
 import {Tensor} from './tensor.js';
 
-export type SupportedTypedArrayConstructors = Float32ArrayConstructor|Uint8ArrayConstructor|
-    Int8ArrayConstructor|Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|
-    Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor;
+export type SupportedTypedArrayConstructors = Float32ArrayConstructor|Uint8ArrayConstructor|Int8ArrayConstructor|
+    Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|Uint8ArrayConstructor|
+    Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor;
 export type SupportedTypedArray = InstanceType<SupportedTypedArrayConstructors>;
 
 // a runtime map that maps type string to TypedArray constructor. Should match Tensor.DataTypeMap.
