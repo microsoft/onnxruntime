@@ -138,6 +138,7 @@ class SymbolicShapeInference:
             "ConstantOfShape": self._infer_ConstantOfShape,
             "Conv": self._infer_Conv,
             "CumSum": self._pass_on_shape_and_type,
+            "DequantizeLinear": self._infer_DequantizeLinear,
             "Div": self._infer_symbolic_compute_ops,
             "Einsum": self._infer_Einsum,
             "Expand": self._infer_Expand,
@@ -163,6 +164,7 @@ class SymbolicShapeInference:
             "NonZero": self._infer_NonZero,
             "OneHot": self._infer_OneHot,
             "Pad": self._infer_Pad,
+            "QuantizeLinear": self._infer_QuantizeLinear,
             "Range": self._infer_Range,
             "Reciprocal": self._pass_on_shape_and_type,
             "ReduceSum": self._infer_ReduceSum,
@@ -978,6 +980,12 @@ class SymbolicShapeInference:
                 get_shape_from_sympy_shape(sympy_shape),
             )
         )
+
+    def _infer_DequantizeLinear(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_QuantizeLinear(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
 
     def _infer_Einsum(self, node):  # noqa: N802
         # ref:https://github.com/onnx/onnx/blob/623dfaa0151b2e4ce49779c3ec31cbd78c592b80/onnx/defs/math/defs.cc#L3275
