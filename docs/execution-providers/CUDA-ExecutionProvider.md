@@ -7,131 +7,160 @@ redirect_from: /docs/reference/execution-providers/CUDA-ExecutionProvider
 ---
 
 # CUDA Execution Provider
+
 {: .no_toc }
 
 The CUDA Execution Provider enables hardware accelerated computation on Nvidia CUDA-enabled GPUs.
 
-
 ## Contents
+
 {: .no_toc }
 
 * TOC placeholder
-{:toc}
+  {:toc}
 
 ## Install
 
-Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [Install ORT](../install).
+Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please
+reference [Install ORT](../install).
 
 ## Requirements
 
-Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Training tab on [onnxruntime.ai](https://onnxruntime.ai/) for supported versions.
+Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that
+ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Training tab
+on [onnxruntime.ai](https://onnxruntime.ai/) for supported versions.
 
-Note: Because of CUDA Minor Version Compatibility, Onnx Runtime built with CUDA 11.4 should be compatible with any CUDA 11.x version.
-Please reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility).
+Note: Because of CUDA Minor Version Compatibility, Onnx Runtime built with CUDA 11.4 should be compatible with any CUDA
+11.x version.
+Please
+reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility).
 
-|ONNX Runtime|CUDA|cuDNN|Notes|
-|---|---|---|---|
-|1.15<br>1.16|11.8|8.2.4 (Linux)<br/>8.5.0.96 (Windows)|Tested with CUDA versions from 11.6 up to 11.8, and cuDNN from 8.2.4 up to 8.7.0|
-|1.14<br/>1.13.1<br/>1.13|11.6|8.2.4 (Linux)<br/>8.5.0.96 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4|
-|1.12<br/>1.11|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4|
-|1.10|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4|
-|1.9|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4|
-|1.8|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4|
-|1.7|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4|
-|1.5-1.6|10.2|8.0.3|CUDA 11 can be built from source|
-|1.2-1.4|10.1|7.6.5|Requires cublas10-10.2.1.243; cublas 10.1.x will not work|
-|1.0-1.1|10.0|7.6.4|CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017|
+| ONNX Runtime             | CUDA   | cuDNN                                | Notes                                                                                                                                      |
+|--------------------------|--------|--------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| 1.17                     | 12.2   | 8.2.6 (Linux)<br/>8.5.0.96 (Windows) | Tested with CUDA versions from 11.6 up to 11.8, and cuDNN from 8.2.4 up to 8.7.0                                                           |
+| 1.15<br>1.16<br>1.17     | 11.8   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows) | Tested with CUDA versions from 11.6 up to 11.8, and cuDNN from 8.2.4 up to 8.7.0                                                           |
+| 1.14<br/>1.13.1<br/>1.13 | 11.6   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows) | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4      |
+| 1.12<br/>1.11            | 11.4   | 8.2.4 (Linux)<br/>8.2.2.26 (Windows) | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4      |
+| 1.10                     | 11.4   | 8.2.4 (Linux)<br/>8.2.2.26 (Windows) | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4    |
+| 1.9                      | 11.4   | 8.2.4 (Linux)<br/>8.2.2.26 (Windows) | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4    |
+| 1.8                      | 11.0.3 | 8.0.4 (Linux)<br/>8.0.2.39 (Windows) | libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4 |
+| 1.7                      | 11.0.3 | 8.0.4 (Linux)<br/>8.0.2.39 (Windows) | libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4 |
+| 1.5-1.6                  | 10.2   | 8.0.3                                | CUDA 11 can be built from source                                                                                                           |
+| 1.2-1.4                  | 10.1   | 7.6.5                                | Requires cublas10-10.2.1.243; cublas 10.1.x will not work                                                                                  |
+| 1.0-1.1                  | 10.0   | 7.6.4                                | CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017                          |
 
 For older versions, please reference the readme and build pages on the release branch.
 
-For Windows, [Microsoft C and C++ (MSVC) runtime libraries](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) is also required.
+For
+Windows, [Microsoft C and C++ (MSVC) runtime libraries](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+is also required.
 
 ## Build
+
 For build instructions, please see the [BUILD page](../build/eps.md#cuda).
 
 ## Configuration Options
+
 The CUDA Execution Provider supports the following configuration options.
 
 ### device_id
+
 The device ID.
 
 Default value: 0
 
 ### user_compute_stream
+
 Defines the compute stream for the inference to run on.
-It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateCUDAProviderOptions`, but rather `UpdateCUDAProviderOptionsWithValue`.
+It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateCUDAProviderOptions`, but
+rather `UpdateCUDAProviderOptionsWithValue`.
 This cannot be used in combination with an external allocator.
 
 Example python usage:
+
 ```python
-providers = [("CUDAExecutionProvider", {"device_id":torch.cuda.current_device(), "user_compute_stream": str(torch.cuda.current_stream().cuda_stream)})]
+providers = [("CUDAExecutionProvider", {"device_id": torch.cuda.current_device(),
+                                        "user_compute_stream": str(torch.cuda.current_stream().cuda_stream)})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_model.onnx", sess_options=sess_options, providers=providers)
 ```
 
-To take advantage of user compute stream, it is recommended to use [I/O Binding](../api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.
+To take advantage of user compute stream, it is recommended to
+use [I/O Binding](../api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.
 
 ### do_copy_in_default_stream
-Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are race conditions and possibly better performance.
+
+Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are
+race conditions and possibly better performance.
 
 Default value: true
 
 ### use_ep_level_unified_stream
-Uses the same CUDA stream for all threads of the CUDA EP. This is implicitly enabled by `has_user_compute_stream`, `enable_cuda_graph` or when using an external allocator.
+
+Uses the same CUDA stream for all threads of the CUDA EP. This is implicitly enabled
+by `has_user_compute_stream`, `enable_cuda_graph` or when using an external allocator.
 
 Default value: false
 
 ### gpu_mem_limit
-The size limit of the device memory arena in bytes. This size limit is only for the execution provider's arena. The total device memory usage may be higher.
+
+The size limit of the device memory arena in bytes. This size limit is only for the execution provider's arena. The
+total device memory usage may be higher.
 s: max value of C++ size_t type (effectively unlimited)
 
 _Note:_ Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
 
 ### arena_extend_strategy
+
 The strategy for extending the device memory arena.
 
-Value                   | Description
--|-
-kNextPowerOfTwo (0)     | subsequent extensions extend by larger amounts (multiplied by powers of two)
-kSameAsRequested (1)    | extend by the requested amount
+ Value                | Description                                                                  
+----------------------|------------------------------------------------------------------------------
+ kNextPowerOfTwo (0)  | subsequent extensions extend by larger amounts (multiplied by powers of two) 
+ kSameAsRequested (1) | extend by the requested amount                                               
 
 Default value: kNextPowerOfTwo
 
 _Note:_ Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
 
 ### cudnn_conv_algo_search
+
 The type of search done for cuDNN convolution algorithms.
 
-Value           | Description
--|-
-EXHAUSTIVE (0)  | expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
-HEURISTIC (1)   | lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
-DEFAULT (2)     | default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+ Value          | Description                                                                     
+----------------|---------------------------------------------------------------------------------
+ EXHAUSTIVE (0) | expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx  
+ HEURISTIC (1)  | lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7 
+ DEFAULT (2)    | default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM        
 
 Default value: EXHAUSTIVE
 
-
 ### cudnn_conv_use_max_workspace
+
 Check [tuning performance for convolution heavy models](#convolution-heavy-models) for details on what this flag does.
 This flag is only supported from the V2 version of the provider options struct when used using the C API.(sample below)
 
 Default value: 1, for versions 1.14 and later
-               0, for previous versions
+0, for previous versions
 
 ### cudnn_conv1d_pad_to_nc1d
+
 Check [convolution input padding in the CUDA EP](#convolution-input-padding) for details on what this flag does.
 This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 Default value: 0
 
 ### enable_cuda_graph
+
 Check [using CUDA Graphs in the CUDA EP](#using-cuda-graphs-preview) for details on what this flag does.
 This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 Default value: 0
 
 ### enable_skip_layer_norm_strict_mode
-Whether to use strict mode in SkipLayerNormalization cuda implementation. The default and recommanded setting is false. If enabled, accuracy improvement and performance drop can be expected.
+
+Whether to use strict mode in SkipLayerNormalization cuda implementation. The default and recommanded setting is false.
+If enabled, accuracy improvement and performance drop can be expected.
 This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 Default value: 0
@@ -140,8 +169,10 @@ Default value: 0
 
 gpu_external_* is used to pass external allocators.
 Example python usage:
+
 ```python
 from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+
 provider_option_map["gpu_external_alloc"] = str(torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address())
 provider_option_map["gpu_external_free"] = str(torch_gpu_allocator.gpu_caching_allocator_raw_delete_address())
 provider_option_map["gpu_external_empty_cache"] = str(torch_gpu_allocator.gpu_caching_allocator_empty_cache_address())
@@ -150,29 +181,56 @@ provider_option_map["gpu_external_empty_cache"] = str(torch_gpu_allocator.gpu_ca
 Default value: 0
 
 ### prefer_nhwc
-This option is not available in default builds ! One has to compile ONNX Runtime with `onnxruntime_USE_CUDA_NHWC_OPS=ON`.
-If this is enabled the EP prefers NHWC operators over NCHW. Needed transforms will be added to the model. As NVIDIA tensor cores can only work on NHWC layout this can increase performance if the model consists of many supported operators and does not need too many new transpose nodes. Wider operator support is planned in the future.
-This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [CreateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [UpdateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
+
+This option is not available in default builds ! One has to compile ONNX Runtime
+with `onnxruntime_USE_CUDA_NHWC_OPS=ON`.
+If this is enabled the EP prefers NHWC operators over NCHW. Needed transforms will be added to the model. As NVIDIA
+tensor cores can only work on NHWC layout this can increase performance if the model consists of many supported
+operators and does not need too many new transpose nodes. Wider operator support is planned in the future.
+This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2
+provider options struct can be created
+using [CreateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172)
+and updated
+using [UpdateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
 
 Default value: 0
 
 ## Performance Tuning
-The [I/O Binding feature](../performance/tune-performance/iobinding.md) should be utilized to avoid overhead resulting from copies on inputs and outputs. Ideally up and downloads for inputs can be hidden behind the inference. This can be achieved by doing asynchronous copies while running inference. This is demonstrated in this [PR](https://github.com/microsoft/onnxruntime/pull/14088)
+
+The [I/O Binding feature](../performance/tune-performance/iobinding.md) should be utilized to avoid overhead resulting
+from copies on inputs and outputs. Ideally up and downloads for inputs can be hidden behind the inference. This can be
+achieved by doing asynchronous copies while running inference. This is demonstrated in
+this [PR](https://github.com/microsoft/onnxruntime/pull/14088)
+
 ```c++
 Ort::RunOptions run_options;
 run_options.AddConfigEntry("disable_synchronize_execution_providers", "1");
 session->Run(run_options, io_binding);
 ```
-By disabling the synchronization on the inference the user has to take care of synchronizing the compute stream after execution.
-This feature should only be used with device local memory or an ORT Value allocated in [pinned memory](https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/), otherwise the issued download will be blocking and not behave as desired.
+
+By disabling the synchronization on the inference the user has to take care of synchronizing the compute stream after
+execution.
+This feature should only be used with device local memory or an ORT Value allocated
+in [pinned memory](https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/), otherwise the issued
+download will be blocking and not behave as desired.
 
 ### Convolution-heavy models
 
-ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node. This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use.
+ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal"
+convolution algorithm to use while performing the convolution operation for the given input configuration (input shape,
+filter shape, etc.) in each `Conv` node. This sub-step involves querying CuDNN for a "workspace" memory size and have
+this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use.
 
-The default value of `cudnn_conv_use_max_workspace` is 1 for versions 1.14 or later, and 0 for previous versions. When its value is 0, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option named `cudnn_conv_use_max_workspace` needs to get set (as shown below).
+The default value of `cudnn_conv_use_max_workspace` is 1 for versions 1.14 or later, and 0 for previous versions. When
+its value is 0, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting
+picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option
+named `cudnn_conv_use_max_workspace` needs to get set (as shown below).
 
-Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
+Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does
+help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use
+while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the
+hardware supports tensor core operations). This flag may or may not result in performance gains for other data
+types (`float` and `double`).
 
 * Python
     ```python
@@ -180,7 +238,6 @@ Keep in mind that using this flag may increase the peak memory usage by a factor
     sess_options = ort.SessionOptions()
     sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx", sess_options=sess_options, providers=providers)
     ```
-
 
 
 * C/C++
@@ -200,22 +257,26 @@ Keep in mind that using this flag may increase the peak memory usage by a factor
     ReleaseCUDAProviderOptions(cuda_options);
     ```
 
- * C#
-    ```csharp
-    var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
+* C#
+   ```csharp
+   var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
 
-    var providerOptionsDict = new Dictionary<string, string>();
-    providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+   var providerOptionsDict = new Dictionary<string, string>();
+   providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
 
-    cudaProviderOptions.UpdateOptions(providerOptionsDict);
+   cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
-    SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
-    ```
-
+   SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
+   ```
 
 ### Convolution Input Padding
 
-ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor. Given an input tensor of shape [N, C, D], it can be padded to [N, C, D, 1] or [N, C, 1, D]. While both of these two padding ways produce same output, the performance may be a lot different because different convolution algorithms are selected, especially on some devices such as A100. By default the input is padded to [N, C, D, 1]. A provider option named `cudnn_conv1d_pad_to_nc1d` needs to get set (as shown below) if [N, C, 1, D] is preferred.
+ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution
+operations, dimension padding is needed if the input is 3-D tensor. Given an input tensor of shape [N, C, D], it can be
+padded to [N, C, D, 1] or [N, C, 1, D]. While both of these two padding ways produce same output, the performance may be
+a lot different because different convolution algorithms are selected, especially on some devices such as A100. By
+default the input is padded to [N, C, D, 1]. A provider option named `cudnn_conv1d_pad_to_nc1d` needs to get set (as
+shown below) if [N, C, 1, D] is preferred.
 
 * Python
     ```python
@@ -253,7 +314,10 @@ ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-
 
 ### Using CUDA Graphs (Preview)
 
-While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below.
+While using the CUDA EP, ORT supports the usage
+of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with
+launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples
+below.
 Currently, there are some constraints with regards to using the CUDA Graphs feature:
 
 * Models with control-flow ops (i.e. `If`, `Loop` and `Scan` ops) are not supported.
@@ -262,16 +326,26 @@ Currently, there are some constraints with regards to using the CUDA Graphs feat
 
 * The input/output types of models need to be tensors.
 
-* Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls.
+* Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only
+  constraint is that the input/output shapes should be the same across all inference calls.
 
-* By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to (please see samples below).
+* By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write
+  to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step.
+  Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as
+  input(s)/output(s) for the CUDA Graph machinery to read from/write to (please see samples below).
 
-* While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses.
+* While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the
+  corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can
+  be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual
+  memory addresses.
 
-* Multi-threaded usage is currently not supported, i.e. `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs.
+* Multi-threaded usage is currently not supported, i.e. `Run()` MAY NOT be invoked on the same `InferenceSession` object
+  from multiple threads while using CUDA Graphs.
 
-NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. Subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`.
-
+NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing
+the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency
+associated with the first `Run()` is bound to be high. Subsequent `Run()`s only perform graph replays of the graph
+captured and cached in the first `Run()`.
 
 * Python
 
@@ -376,7 +450,6 @@ NOTE: The very first `Run()` performs a variety of tasks under the hood like mak
 
 * C# (future)
 
-
 ## Samples
 
 ### Python
@@ -457,6 +530,7 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
+
 Also see the tutorial here on how to [configure CUDA for C# on Windows](../tutorials/csharp/csharp-gpu.md).
 
 ### Java
