@@ -217,7 +217,7 @@ stages:
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
-            find $(pwd)/ORT_CUDA -name "*.png" -exec cp {} /images ; \
+            find $(pwd)/ORT_CUDA -name "*.png" -exec cp {} /images/ \; ; \
             popd ; \
             '
       displayName: 'Run stable diffusion demo'
