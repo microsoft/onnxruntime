@@ -394,7 +394,6 @@ class TestOrtValue(unittest.TestCase):
             self.assertIn(proto_type, expected)
 
     def test_strides(self):
-
         torch_dtype_to_npdtype = {
             torch.float32: np.float32,
             torch.float64: np.float64,
