@@ -142,7 +142,7 @@ export class Tensor implements TensorInterface {
             throw new TypeError(`Unsupported tensor type: ${arg0}.`);
           }
           if (Array.isArray(arg1)) {
-            if (arg0 === 'float16' && typedArrayConstructor.prototype instanceof Uint16Array) {
+            if (arg0 === 'float16' && typedArrayConstructor === Uint16Array) {
               // When no Float16Array polyfill is used, we cannot create 'float16' tensor from number array.
               //
               // Throw error here because when user try to use number array as data,
