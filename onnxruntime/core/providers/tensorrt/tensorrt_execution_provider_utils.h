@@ -497,7 +497,15 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
   }
 }
 
-// Helper class to generate engine id via model name/model content/env metadata
+/**
+ * <summary>
+ * Helper class to generate engine id via model name/model content/env metadata
+ * </summary>
+ * <remarks>
+ * The TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
+ * compiled kernels, so the name must be unique and deterministic across models and sessions.
+ * </remarks>
+ */
 HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
   HashValue model_hash = 0;
 

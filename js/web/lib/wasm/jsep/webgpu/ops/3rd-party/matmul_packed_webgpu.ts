@@ -444,9 +444,9 @@ export const createMatmulProgramInfo =
 
       const components = isVec4 ? 4 : 1;
       const aShapeTemp = [...outerDimsA, dimAOuter, dimInner / components];
-      const aShapeOrRank = aShapeTemp.length;
+      const aRank = aShapeTemp.length;
       const bShapeTemp = [...outerDimsB, dimInner, dimBOuter / components];
-      const bShapeOrRank = bShapeTemp.length;
+      const bRank = bShapeTemp.length;
       const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
       const programUniforms: ProgramUniform[] = [
         {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
@@ -470,12 +470,12 @@ export const createMatmulProgramInfo =
       programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const batchShapeOrRank = outerDims.length;
-        const batchDims = internalVariable('batchDims', inputs[0].dataType, batchShapeOrRank, 1);
+        const batchRank = outerDims.length;
+        const batchDims = internalVariable('batchDims', inputs[0].dataType, batchRank, 1);
         const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
 
-        const A = inputVariable('a', inputs[0].dataType, aShapeOrRank, components);
-        const B = inputVariable('b', inputs[1].dataType, bShapeOrRank, components);
+        const A = inputVariable('a', inputs[0].dataType, aRank, components);
+        const B = inputVariable('b', inputs[1].dataType, bRank, components);
         const output = outputVariable('result', inputs[0].dataType, outputShapeTemp.length, components);
         const inputVariables = [A, B];
         if (hasBias) {

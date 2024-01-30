@@ -98,6 +98,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   AllocatorPtr allocator_;
   miopenHandle_t external_miopen_handle_ = nullptr;
   rocblas_handle external_rocblas_handle_ = nullptr;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 
 }  // namespace onnxruntime

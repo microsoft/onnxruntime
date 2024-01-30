@@ -923,6 +923,3 @@ export const getBroadcastDims = (inShape: readonly number[], outShape: readonly 
   }
   return dims;
 };
-
-// TODO: remove this when all related uses have been removed.
-export const enableShapesUniforms = (_rank: number): boolean => true;

@@ -298,7 +298,7 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
 
     if (sum == 0) {
       for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
-        x[offset + i] = ${fillVector('f32', components, 'uniforms.d_inv')};
+        x[offset + i] = ${fillVector(elemValueType, components, 'uniforms.d_inv')};
       }
     } else {
       for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
