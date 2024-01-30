@@ -769,13 +769,6 @@ TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {
 // for two and three inputs (most common use-case of Einsum operator)
 
 struct EinsumTestCase {
-  std::string equation;
-  std::vector<int64_t> shape;
-  std::vector<float> expected;
-  EinsumTestCase(const std::string& eq, const std::vector<int64_t>& sh, const std::vector<float>& exp) : equation(eq), shape(sh), expected(exp) {}
-};
-
-struct EinsumTestCase2 {
   std::string_view equation;
   gsl::span<const int64_t> shape;
   gsl::span<const float> expected;
@@ -876,7 +869,7 @@ static constexpr std::array<float, 8> expected30{0.f, 2.f, 0.f, 10.f, 9.f, 27.f,
 static constexpr std::string_view equation31 = "cba,dc->cad";
 static constexpr std::array<int64_t, 3> shape31{2, 2, 2};
 static constexpr std::array<float, 8> expected31{0.f, 4.f, 0.f, 8.f, 10.f, 30.f, 12.f, 36.f};
-static constexpr std::array<EinsumTestCase2, 32> case0 = {{
+static constexpr std::array<EinsumTestCase, 32> case0 = {{
     {equation0, shape0, expected0},
     {equation1, shape1, expected1},
     {equation2, shape2, expected2},
@@ -1133,7 +1126,7 @@ static constexpr std::array<float, 8> expected104{0.f, 44.f, 30.f, 330.f, 0.f, 3
 static constexpr std::string_view equation105 = "acb,dc,def->ace";
 static constexpr std::array<int64_t, 3> shape105{2, 2, 2};
 static constexpr std::array<float, 8> expected105{18.f, 26.f, 140.f, 220.f, 162.f, 234.f, 364.f, 572.f};
-static constexpr std::array<EinsumTestCase2, 74> case1 = {{
+static constexpr std::array<EinsumTestCase, 74> case1 = {{
     {equation32, shape32, expected32},
     {equation33, shape33, expected33},
     {equation34, shape34, expected34},
@@ -1645,7 +1638,7 @@ static constexpr std::array<float, 8> expected249{18.f, 26.f, 90.f, 130.f, 252.f
 static constexpr std::string_view equation250 = "cab,dc,def->cbd";
 static constexpr std::array<int64_t, 3> shape250{2, 2, 2};
 static constexpr std::array<float, 8> expected250{0.f, 88.f, 0.f, 176.f, 60.f, 660.f, 72.f, 792.f};
-static constexpr std::array<EinsumTestCase2, 145> case2 = {{
+static constexpr std::array<EinsumTestCase, 145> case2 = {{
     {equation106, shape106, expected106},
     {equation107, shape107, expected107},
     {equation108, shape108, expected108},
@@ -2000,7 +1993,7 @@ static constexpr std::array<float, 8> expected318{16.f, 48.f, 32.f, 96.f, 140.f,
 static constexpr std::string_view equation319 = "cba,dc,fed->cae";
 static constexpr std::array<int64_t, 3> shape319{2, 2, 2};
 static constexpr std::array<float, 8> expected319{24.f, 40.f, 48.f, 80.f, 220.f, 380.f, 264.f, 456.f};
-static constexpr std::array<EinsumTestCase2, 69> case3 = {{
+static constexpr std::array<EinsumTestCase, 69> case3 = {{
     {equation251, shape251, expected251},
     {equation252, shape252, expected252},
     {equation253, shape253, expected253},
@@ -2086,14 +2079,14 @@ TEST(Einsum, EinsumTransposeMatMulTwoInputsTestSuite) {
   }
 }
 
-class EinsumTransposeMatMulThreeInputsTest : public testing::TestWithParam<gsl::span<const EinsumTestCase2>> {
+class EinsumTransposeMatMulThreeInputsTest : public testing::TestWithParam<gsl::span<const EinsumTestCase>> {
   // You can implement all the usual fixture class members here.
   // To access the test parameter, call GetParam() from class
   // TestWithParam<T>.
 };
 
 TEST_P(EinsumTransposeMatMulThreeInputsTest, EinsumTransposeMatMulThreeInputsTestSuite) {
-  gsl::span<const EinsumTestCase2> test_cases_set = GetParam();
+  gsl::span<const EinsumTestCase> test_cases_set = GetParam();
 
   std::vector<float> m1{0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   std::vector<float> m2{0.f, 1.f, 2.f, 3.f};
