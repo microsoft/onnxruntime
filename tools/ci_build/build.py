@@ -1555,6 +1555,7 @@ def generate_build_tree(
                         "-O3",
                         "-pipe",
                     ]
+                    # TODO: we should save the debug symbols at somewhere
                     if is_linux() and not args.build_wasm:
                         ldflags += ["-Wl,--strip-all"]
                 elif config == "RelWithDebInfo":
@@ -1565,7 +1566,7 @@ def generate_build_tree(
                         "-fstack-protector-strong",
                         "-O3",
                         "-pipe",
-                        "-ggdb3",
+                        "-g",
                     ]
                 elif config == "Debug":
                     cflags = ["-g", "-O0"]
@@ -1580,7 +1581,7 @@ def generate_build_tree(
                         "-fstack-protector-strong",
                         "-Os",
                         "-pipe",
-                        "-ggdb3",
+                        "-g",
                     ]
                 if is_linux() and platform.machine() == "x86_64" and not args.build_wasm:
                     # The following flags needs GCC 8 and newer

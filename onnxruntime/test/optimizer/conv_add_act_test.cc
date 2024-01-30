@@ -52,7 +52,7 @@ TEST(ConvAddActivationFusionTests, ConvDepthwise) {
 #ifdef __wasm__
 TEST(ConvAddActivationFusionTests, DISABLED_ConvGemmDirect) {
 #else
-TEST(ConvAddActivationFusionTests, DISABLED_ConvGemmDirect) {
+TEST(ConvAddActivationFusionTests, ConvGemmDirect) {
 #endif
   // MlasConvAlgorithmGemmDirect
   TestConvPath({1, 16, 5, 5}, {16, 16, 1, 1}, {1, 16, 5, 5}, 1);
