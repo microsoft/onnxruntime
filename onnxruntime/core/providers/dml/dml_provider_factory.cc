@@ -450,6 +450,9 @@ Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Devic
   return d3d12_device;
 }
 
+// TODO: Ingest https://github.com/microsoft/DirectX-Headers
+#define D3D_FEATURE_LEVEL_1_0_GENERIC_PRIVATE ((D3D_FEATURE_LEVEL)0x100)
+
 Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID3D12Device* d3d12_device) {
   DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
 
@@ -478,6 +481,9 @@ static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_devi
   D3D12_FEATURE_DATA_FEATURE_LEVELS feature_levels = {};
 
   D3D_FEATURE_LEVEL feature_levels_list[] = {
+  #ifndef _GAMING_XBOX
+      D3D_FEATURE_LEVEL_1_0_GENERIC_PRIVATE,
+  #endif
       D3D_FEATURE_LEVEL_1_0_CORE,
       D3D_FEATURE_LEVEL_11_0,
       D3D_FEATURE_LEVEL_11_1,
@@ -493,8 +499,9 @@ static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_devi
       sizeof(feature_levels)
       ));
 
-  auto is_feature_level_1_0_core = (feature_levels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE);
-  if (is_feature_level_1_0_core) {
+  auto use_compute_command_list = (feature_levels.MaxSupportedFeatureLevel <= D3D_FEATURE_LEVEL_1_0_CORE);
+  if (use_compute_command_list)
+  {
     return D3D12_COMMAND_LIST_TYPE_COMPUTE;
   }
 
@@ -534,12 +541,21 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
 
   auto feature_level = D3D_FEATURE_LEVEL_11_0;
   if (IsNPU(adapter.Get())) {
-    feature_level = D3D_FEATURE_LEVEL_1_0_CORE;
+    feature_level = D3D_FEATURE_LEVEL_1_0_GENERIC_PRIVATE;
   }
 
   // Create D3D12 Device from DXCore Adapter
   ComPtr<ID3D12Device> d3d12_device;
-  ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), feature_level, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+  if (feature_level == D3D_FEATURE_LEVEL_1_0_GENERIC_PRIVATE) {
+      // Attempt to create a D3D_FEATURE_LEVEL_1_0_CORE device first, in case the device supports this
+      // feature level and the D3D runtime does not support D3D_FEATURE_LEVEL_1_0_GENERIC
+      HRESULT hrUnused = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_1_0_CORE, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf()));
+  }
+  
+  if (!d3d12_device) {
+    ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), feature_level, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+  }
+
   return CreateDMLDeviceAndProviderFactory(d3d12_device.Get(), disable_metacommands, enable_dynamic_graph_fusion);
 }
 
