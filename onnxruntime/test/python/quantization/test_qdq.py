@@ -606,7 +606,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
         if extra_options and extra_options.get("UseQDQContribOps", False):
             qdq_model = onnx.load_model(model_qdq_path)
             ms_opset = next((opset for opset in qdq_model.opset_import if opset.domain == "com.microsoft"), None)
-            self.assertTrue(ms_opset is not None)
+            self.assertIsNot(ms_opset, None)
 
     def verify_qop(self, per_channel, is_quant_type_int8):
         np.random.seed(1)
