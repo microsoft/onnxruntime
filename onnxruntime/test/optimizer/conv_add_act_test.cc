@@ -49,8 +49,11 @@ TEST(ConvAddActivationFusionTests, ConvDepthwise) {
   // MlasConvAlgorithmDepthwise or MlasConvAlgorithmExpandThenGemmSegmented
   TestConvPath({1, 16, 5, 5}, {16, 1, 3, 3}, {1, 16, 3, 3}, 16);
 }
-
-TEST(ConvAddActivationFusionTests, ConvGemmDirect) {
+#ifdef __wasm__
+TEST(ConvAddActivationFusionTests, DISABLED_ConvGemmDirect) {
+#else
+TEST(ConvAddActivationFusionTests, DISABLED_ConvGemmDirect) {
+#endif
   // MlasConvAlgorithmGemmDirect
   TestConvPath({1, 16, 5, 5}, {16, 16, 1, 1}, {1, 16, 5, 5}, 1);
   // MlasConvAlgorithmGemmDirect

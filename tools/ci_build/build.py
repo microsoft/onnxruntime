@@ -1503,9 +1503,8 @@ def generate_build_tree(
             (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
             and not args.ios
             and not args.android
-            and not args.build_wasm
         ):
-            if is_windows():
+            if is_windows() and not args.build_wasm:
                 cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
                     # Target Windows 10
@@ -1542,8 +1541,8 @@ def generate_build_tree(
                             cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
                     if len(cuda_compile_flags_str) != 0:
                         cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
-            elif is_linux() or is_macOS():
-                if is_linux():
+            elif is_linux() or is_macOS() or args.build_wasm:
+                if is_linux() and not args.build_wasm:
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                 else:
                     ldflags = []
@@ -1556,7 +1555,7 @@ def generate_build_tree(
                         "-O3",
                         "-pipe",
                     ]
-                    if is_linux():
+                    if is_linux() and not args.build_wasm:
                         ldflags += ["-Wl,--strip-all"]
                 elif config == "RelWithDebInfo":
                     cflags = [
@@ -1569,7 +1568,7 @@ def generate_build_tree(
                         "-ggdb3",
                     ]
                 elif config == "Debug":
-                    cflags = ["-ggdb3", "-O0"]
+                    cflags = ["-g", "-O0"]
                     if args.enable_address_sanitizer:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
@@ -1583,7 +1582,7 @@ def generate_build_tree(
                         "-pipe",
                         "-ggdb3",
                     ]
-                if is_linux() and platform.machine() == "x86_64":
+                if is_linux() and platform.machine() == "x86_64" and not args.build_wasm:
                     # The following flags needs GCC 8 and newer
                     cflags += ["-fstack-clash-protection"]
                     if not args.rv64:

@@ -173,24 +173,20 @@ else()
     set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
   endif()
 
-  target_link_libraries(onnxruntime_webassembly PRIVATE
-    nsync::nsync_cpp
-    ${PROTOBUF_LIB}
-    onnx
-    onnx_proto
-    onnxruntime_common
-    onnxruntime_flatbuffers
-    onnxruntime_framework
-    onnxruntime_graph
-    onnxruntime_mlas
-    onnxruntime_optimizer
-    onnxruntime_providers
+  target_link_libraries(onnxruntime_webassembly PRIVATE    
+    onnxruntime_session
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
-    onnxruntime_session
-    onnxruntime_util
-    re2::re2
+  onnxruntime_optimizer
+  onnxruntime_providers
+  onnxruntime_framework
+  onnxruntime_graph
+  onnxruntime_util
+  onnxruntime_mlas
+  onnxruntime_common
+  onnxruntime_flatbuffers
+    ${onnxruntime_EXTERNAL_LIBRARIES}
   )
 
   set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8'")
@@ -252,8 +248,6 @@ else()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:-s ASSERTIONS=2"
-      "SHELL:-s SAFE_HEAP=1"
       "SHELL:-s STACK_OVERFLOW_CHECK=2"
       "SHELL:-s DEMANGLE_SUPPORT=1"
     )
@@ -266,7 +260,12 @@ else()
       --closure 1
     )
   endif()
-
+  if (CMAKE_CXX_FLAGS MATCHES "sanitize=address")
+    target_link_options(onnxruntime_webassembly PRIVATE "-s INITIAL_MEMORY=786432000")
+  else()
+    target_link_options(onnxruntime_webassembly PRIVATE "$<$<CONFIG:Debug>:SHELL:-s ASSERTIONS=2>")
+    target_link_options(onnxruntime_webassembly PRIVATE "$<$<CONFIG:Debug>:SHELL:-s SAFE_HEAP=1>")    
+  endif()
   if (onnxruntime_USE_WEBNN)
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --bind -sWASM_BIGINT")
     if (onnxruntime_DISABLE_RTTI)
