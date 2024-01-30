@@ -6,8 +6,6 @@ import itertools
 import unittest
 import warnings
 
-import parameterized
-
 import torch
 import torch._dynamo
 import torch.onnx._internal.exporter
@@ -504,8 +502,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 **kwargs,
             )
 
-    @parameterized.parameterized.expand(list(itertools.product([False, True], [False, True], [False, True])))
-    def test_expand(self, requires_grad, test_backend_backward, use_aot_autograd):
+    def common_test_expand(self, requires_grad, test_backend_backward, use_aot_autograd):
         if not requires_grad:
             if test_backend_backward or use_aot_autograd:
                 return
@@ -516,6 +513,11 @@ class TestTorchDynamoOrt(unittest.TestCase):
             test_backend_backward=test_backend_backward,
             use_aot_autograd=use_aot_autograd,
         )
+
+    def test_expand(self):
+        for req, back, grad in itertools.product([False, True], [False, True], [False, True]):
+            with self.subTest(requires_grad=req, test_backend_backward=back, use_aot_autograd=grad):
+                self.common_test_expand(req, back, grad)
 
 
 if __name__ == "__main__":

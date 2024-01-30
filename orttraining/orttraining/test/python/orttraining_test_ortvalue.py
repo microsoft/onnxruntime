@@ -4,6 +4,7 @@
 # pylint: disable=W0212,C0114,C0116
 
 import copy
+import os
 import sys
 import unittest
 
@@ -16,7 +17,7 @@ from torch.utils.dlpack import from_dlpack
 
 import onnxruntime as onnxrt
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue, OrtDevice
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
 from onnxruntime.training.ortmodule import ORTModule, _utils
 
@@ -391,6 +392,74 @@ class TestOrtValue(unittest.TestCase):
             proto_type = ortvalue.element_type()
             self.assertIn(proto_type, expected)
 
+    def test_strides(self):
+
+        torch_dtype_to_npdtype = {
+            torch.float32: np.float32,
+            torch.float64: np.float64,
+            torch.int32: np.int32,
+            torch.int64: np.longlong,
+            torch.bool: np.bool_,
+        }
+
+        def _get_ortvalues_from_torch_tensors(tensors, devices):
+            ortvalues = OrtValueVector()
+            ortvalues.reserve(len(tensors))
+            dtypes = []
+            shapes = []
+            data_ptrs = []
+
+            for tensor in tensors:
+                dtypes.append(torch_dtype_to_npdtype[tensor.dtype])
+                shapes.append(tensor.size())
+                data_ptrs.append(tensor.data_ptr())
+            ortvalues.push_back_batch(tensors, data_ptrs, dtypes, shapes, devices)
+            return ortvalues
+
+        def _get_ort_device_type(device_type: str):
+            if device_type == "cuda":
+                return OrtDevice.cuda()
+            if device_type == "cpu":
+                return OrtDevice.cpu()
+            if device_type == "ort":
+                return OrtDevice.npu()
+            raise ValueError(f"Unsupported device type: {device_type}")
+
+        def _map_tensor_or_sym_to_device(value, device):
+            if isinstance(value, torch.Tensor):
+                return OrtDevice(
+                    _get_ort_device_type(device.type),
+                    OrtDevice.default_memory(),
+                    device.index or 0,
+                )
+            raise ValueError(f"Unsupported value type: {type(value)}")
+
+        def _get_onnx_devices(values):
+            devices = tuple(value.device for value in values if isinstance(value, torch.Tensor))
+            if len(devices) == 0:
+                devices = (torch.device("cpu"),)
+
+            ort_devices = tuple(_map_tensor_or_sym_to_device(value, devices[0]) for value in values)
+            return ort_devices
+
+        script_dir = os.path.dirname(__file__)
+        model_path = os.path.join(
+            script_dir, "..", "..", "..", "..", "onnxruntime", "test", "testdata", "test_expand_0.onnx"
+        )
+        assert os.path.exists(model_path), f"Unable to find {os.path.abspath(str(model_path))}"
+        sess = onnxrt.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+
+        inputs = [torch.randn(6, 1).to(torch.float32)]
+        input_devices = _get_onnx_devices(inputs)
+        ort_inputs = _get_ortvalues_from_torch_tensors(inputs, [])
+        ort_outputs = OrtValueVector()
+        run_options = onnxrt.RunOptions()
+        run_options.add_run_config_entry("disable_synchronize_execution_providers", "1")
+        sess.run_with_ortvaluevector(run_options, ["primals_1"], ort_inputs, ["expand"], ort_outputs, input_devices[:1])
+        pth_outputs = onnxrt.training.ortmodule._utils._ortvalues_to_torch_tensor(ort_outputs)
+        strides = pth_outputs.stride()
+        self.assertEqual(strides, (1, 1))
+
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)
