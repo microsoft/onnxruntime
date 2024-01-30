@@ -16,7 +16,7 @@ Install [ORT nightly package](https://onnxruntime.ai/docs/install/)
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx -h
 ```
 
-## Export optimized phi2 onnx model for different senarios
+## Export optimized phi2 onnx model for different scenarios
 **Export FP32 ONNX model for Nvidia GPUs** \
 _From source:_
 ```
