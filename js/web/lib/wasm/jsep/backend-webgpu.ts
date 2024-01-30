@@ -428,13 +428,26 @@ export class WebGpuBackend {
           return;
         }
         // https://www.w3.org/TR/WGSL/#alignof
-        const baseAlignment = data.length <= 2 ? data.length * 4 : 16;
+        const sizeOfElement = v.type === 'float16' ? 2 : 4;
+        let sizeOfVecOrMat;
+        let baseAlignment;
+        if (v.type === 'float16') {
+          baseAlignment = data.length > 4 ? 16 : (data.length > 2 ? 8 : data.length * sizeOfElement);
+          sizeOfVecOrMat = data.length > 4 ? 16 : sizeOfElement * data.length;
+        } else {
+          baseAlignment = data.length <= 2 ? data.length * sizeOfElement : 16;
+          sizeOfVecOrMat = 16;
+        }
         currentOffset = Math.ceil(currentOffset / baseAlignment) * baseAlignment;
         offsets.push(currentOffset);
-        // When data.length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where N =
-        // Math.ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N *
-        // SizeOf(vec4<i32|u32|f32>).
-        currentOffset += data.length > 4 ? Math.ceil(data.length / 4) * 16 : data.length * 4;
+        // For non-float16 type, when data.length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
+        // N = Math.ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N *
+        // SizeOf(vec4<i32|u32|f32>). For float16 type, when data.length > 4, the uniform variable is of type
+        // array<mat2x4<f16>,N>, where N = Math.ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte
+        // length is N * SizeOf(mat2x4<f16>).
+        const elementPerVecOrMat = v.type === 'float16' ? 8 : 4;
+        currentOffset += data.length > 4 ? Math.ceil(data.length / elementPerVecOrMat) * sizeOfVecOrMat :
+                                           data.length * sizeOfElement;
       });
 
       // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
@@ -449,6 +462,9 @@ export class WebGpuBackend {
           new Int32Array(arrayBuffer, offset, data.length).set(data);
         } else if (v.type === 'uint32') {
           new Uint32Array(arrayBuffer, offset, data.length).set(data);
+        } else if (v.type === 'float16') {
+          // TODO: use Float16Array.
+          new Uint16Array(arrayBuffer, offset, data.length).set(data);
         } else {
           new Float32Array(arrayBuffer, offset, data.length).set(data);
         }

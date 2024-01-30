@@ -69,7 +69,7 @@ stages:
                   --config Debug Release \
                   --skip_submodule_sync \
                   --build_shared_lib \
-                  --parallel \
+                  --parallel --use_binskim_compliant_compile_flags \
                   --build_wheel \
                   --enable_onnx_tests \
                   --enable_pybind --enable_training

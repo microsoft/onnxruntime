@@ -126,7 +126,7 @@ struct GroupNormNHWCParams {
                       const T* bias,
                       const float* gamma,
                       const float* beta,
-                      void* workspace,
+                      float* workspace,
                       float epsilon,
                       int batch_size,
                       int num_channels,
@@ -151,7 +151,7 @@ struct GroupNormNHWCParams {
     this->bias = bias;
     this->gamma = gamma;
     this->beta = beta;
-    this->group_sum_buffer = reinterpret_cast<float*>(workspace);
+    this->group_sum_buffer = workspace;
     this->n = batch_size;
     this->h = height;
     this->w = width;
