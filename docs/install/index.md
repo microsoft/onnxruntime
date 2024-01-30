@@ -8,32 +8,77 @@ redirect_from: /docs/how-to/install
 
 # Install ONNX Runtime (ORT)
 
+See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target
+operating system, hardware, accelerator, and language.
 
-See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target operating system, hardware, accelerator, and language.
-
-Details on OS versions, compilers, language versions, dependent libraries, etc can be found under [Compatibility](../reference/compatibility).
-
+Details on OS versions, compilers, language versions, dependent libraries, etc can be found
+under [Compatibility](../reference/compatibility).
 
 ## Contents
+
 {: .no_toc }
 
 * TOC placeholder
-{:toc}
+  {:toc}
 
 ## Requirements
 
-* All builds require the English language package with `en_US.UTF-8` locale. On Linux, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
-by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
+* All builds require the English language package with `en_US.UTF-8` locale. On Linux,
+  install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
+  by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
-* Windows builds require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads). The latest version is recommended.
+* Windows builds
+  require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads).
+  The latest version is recommended.
 
 ## Python Installs
 
 ### Install ONNX Runtime (ORT)
 
+#### Install ONNX Runtime CPU
+
 ```bash
 pip install onnxruntime
 ```
+
+#### Install ONNX Runtime GPU (CUDA 11.x)
+
+The default CUDA version for ORT is 11.8
+
+```bash
+pip install onnxruntime-gpu
+```
+
+#### Install ONNX Runtime GPU (CUDA 12.x)
+
+For Cuda 12.x please using the following instructions to download the instruction
+from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/)
+
+1. Install keyring for Azure Artifacts
+
+```bash
+python -m pip install --upgrade pip
+pip install keyring artifacts-keyring
+```
+
+If you're using Linux, ensure you've installed the [prerequisites](https://go.microsoft.com/fwlink/?linkid=2103695),
+which are required for artifacts-keyring.
+
+2. Project setup
+
+Ensure you have installed the latest version of the Azure Artifacts keyring from the "Get the tools" menu.
+If you don't already have one, create a virtualenv
+using [these instructions](https://go.microsoft.com/fwlink/?linkid=2103878) from the official Python documentation.
+Per the instructions, "it is always recommended to use a virtualenv while developing Python applications."
+
+Add a pip.ini (Windows) or pip.conf (Linux) file to your virtualenv
+
+```text
+[global]
+index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+```
+
+3. Install onnxruntime-gpu
 
 ```bash
 pip install onnxruntime-gpu
@@ -45,7 +90,8 @@ pip install onnxruntime-gpu
 ## ONNX is built into PyTorch
 pip install torch
 ```
-```python
+
+```bash
 ## tensorflow
 pip install tf2onnx
 ```
@@ -59,33 +105,80 @@ pip install skl2onnx
 
 ### Install ONNX Runtime (ORT)
 
+#### Install ONNX Runtime CPU
+
 ```bash
 # CPU
 dotnet add package Microsoft.ML.OnnxRuntime
 ```
+
+#### Install ONNX Runtime GPU (CUDA 11.x)
+
+The default CUDA version for ORT is 11.8
+
 ```bash
 # GPU
 dotnet add package Microsoft.ML.OnnxRuntime.Gpu
 ```
+
+#### Install ONNX Runtime GPU (CUDA 12.x)
+
+1. Project Setup
+
+Ensure you have installed the latest version of the Azure Artifacts keyring from the
+its [Github Repo](https://github.com/microsoft/artifacts-credprovider#azure-artifacts-credential-provider). <br> Add
+a nuget.config file to your project in the same directory as your .csproj file.
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+    <packageSources>
+        <clear/>
+        <add key="onnxruntime-cuda-12"
+             value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/nuget/v3/index.json"/>
+    </packageSources>
+</configuration>
+```
+
+2. Restore packages
+
+Restore packages (using the interactive flag, which allows dotnet to prompt you for credentials)
+
 ```bash
-# DirectML
+dotnet add package Microsoft.ML.OnnxRuntime.Gpu
+```
+
+Note: You don't need --interactive every time. dotnet will prompt you to add --interactive if it needs updated
+credentials.
+
+#### DirectML
+
+```bash
 dotnet add package Microsoft.ML.OnnxRuntime.DirectML
 ```
 
+#### WinML
+
 ```bash
-# WinML
 dotnet add package Microsoft.AI.MachineLearning
 ```
 
 ## Install on web and mobile
 
-Unless stated otherwise, the installation instructions in this section refer to pre-built packages that include support for selected operators and ONNX opset versions based on the requirements of popular models. These packages may be referred to as "mobile packages". If you use mobile packages, your model must only use the supported [opsets and operators](../reference/operators/mobile_package_op_type_support_1.14.md).
+Unless stated otherwise, the installation instructions in this section refer to pre-built packages that include support
+for selected operators and ONNX opset versions based on the requirements of popular models. These packages may be
+referred to as "mobile packages". If you use mobile packages, your model must only use the
+supported [opsets and operators](../reference/operators/mobile_package_op_type_support_1.14.md).
 
-Another type of pre-built package has full support for all ONNX opsets and operators, at the cost of larger binary size. These packages are referred to as "full packages".
+Another type of pre-built package has full support for all ONNX opsets and operators, at the cost of larger binary size.
+These packages are referred to as "full packages".
 
-If the pre-built mobile package supports your model/s but is too large, you can create a [custom build](../build/custom.md). A custom build can include just the opsets and operators in your model/s to reduce the size.
+If the pre-built mobile package supports your model/s but is too large, you can create
+a [custom build](../build/custom.md). A custom build can include just the opsets and operators in your model/s to reduce
+the size.
 
-If the pre-built mobile package does not include the opsets or operators in your model/s, you can either use the full package if available, or create a custom build.
+If the pre-built mobile package does not include the opsets or operators in your model/s, you can either use the full
+package if available, or create a custom build.
 
 ### JavaScript Installs
 
@@ -108,7 +201,6 @@ npm install onnxruntime-node
 
 #### Install ONNX Runtime for React Native
 
-
 ```bash
 # install latest release version
 npm install onnxruntime-react-native
@@ -116,7 +208,9 @@ npm install onnxruntime-react-native
 
 ### Install on iOS
 
-In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `onnxruntime-objc`, or `onnxruntime-mobile-objc` pod, depending on whether you want to use a full or mobile package and which API you want to use.
+In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `onnxruntime-objc`,
+or `onnxruntime-mobile-objc` pod, depending on whether you want to use a full or mobile package and which API you want
+to use.
 
 #### C/C++
 
@@ -170,7 +264,11 @@ In your Android Studio Project, make the following changes to:
 
 #### C/C++
 
-Download the [onnxruntime-android](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android) (full package) or [onnxruntime-mobile](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) (mobile package) AAR hosted at MavenCentral, change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
+Download the [onnxruntime-android](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android) (
+full package) or [onnxruntime-mobile](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) (
+mobile package) AAR hosted at MavenCentral, change the file extension from `.aar` to `.zip`, and unzip it. Include the
+header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in
+your NDK project.
 
 #### Custom build
 
@@ -178,9 +276,11 @@ Refer to the instructions for creating a [custom Android package](../build/custo
 
 ## Install for On-Device Training
 
-Unless stated otherwise, the installation instructions in this section refer to pre-built packages designed to perform on-device training.
+Unless stated otherwise, the installation instructions in this section refer to pre-built packages designed to perform
+on-device training.
 
-If the pre-built training package supports your model but is too large, you can create a [custom training build](../build/custom.md).
+If the pre-built training package supports your model but is too large, you can create
+a [custom training build](../build/custom.md).
 
 ### Offline Phase - Prepare for Training
 
@@ -316,43 +416,44 @@ pip install torch-ort
 python -m torch_ort.configure
 ```
 
-**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [onnxruntime.ai](https://onnxruntime.ai).
+**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to
+specific versions of the CUDA libraries. Refer to the install options in [onnxruntime.ai](https://onnxruntime.ai).
 
 ## Inference install table for all languages
 
-The table below lists the build variants available as officially supported packages. Others can be [built from source](../build/inferencing) from each [release branch](https://github.com/microsoft/onnxruntime/tags).
+The table below lists the build variants available as officially supported packages. Others can
+be [built from source](../build/inferencing) from each [release branch](https://github.com/microsoft/onnxruntime/tags).
 
-In addition to general [requirements](#requirements), please note additional requirements and dependencies in the table below:
+In addition to general [requirements](#requirements), please note additional requirements and dependencies in the table
+below:
 
-||Official build|Nightly build|Reqs|
-|---|---|---|---|
-|Python|If using pip, run `pip install --upgrade pip` prior to downloading.|||
-||CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)| [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly/overview)||
-||GPU (CUDA/TensorRT): [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) | [ort-nightly-gpu (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/overview/)|[View](../execution-providers/CUDA-ExecutionProvider.md#requirements)|
-||GPU (DirectML): [**onnxruntime-directml**](https://pypi.org/project/onnxruntime-directml/) | [ort-nightly-directml (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview/)|[View](../execution-providers/DirectML-ExecutionProvider.md#requirements)|
-||OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*||[View](../build/eps.md#openvino)|
-||TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*|||
-||Azure (Cloud): [**onnxruntime-azure**](https://pypi.org/project/onnxruntime-azure/)|||
-|C#/C/C++|CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) |[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)||
-||GPU (CUDA/TensorRT): [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|[View](../execution-providers/CUDA-ExecutionProvider)|
-||GPU (DirectML): [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview)|[View](../execution-providers/DirectML-ExecutionProvider)|
-|WinML|[**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/NuGet/Microsoft.AI.MachineLearning/overview)|[View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites)|
-|Java|CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)||[View](../api/java)|
-||GPU (CUDA/TensorRT): [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)||[View](../api/java)|
-|Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||[View](../install/index.md#install-on-ios)|
-|iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](../install/index.md#install-on-ios)|
-|Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](../install/index.md#install-on-ios)|
-|React Native|[**onnxruntime-react-native** (latest)](https://www.npmjs.com/package/onnxruntime-react-native)|[onnxruntime-react-native (dev)](https://www.npmjs.com/package/onnxruntime-react-native?activeTab=versions)|[View](../api/js)|
-|Node.js|[**onnxruntime-node** (latest)](https://www.npmjs.com/package/onnxruntime-node)|[onnxruntime-node (dev)](https://www.npmjs.com/package/onnxruntime-node?activeTab=versions)|[View](../api/js)|
-|Web|[**onnxruntime-web** (latest)](https://www.npmjs.com/package/onnxruntime-web)|[onnxruntime-web (dev)](https://www.npmjs.com/package/onnxruntime-web?activeTab=versions)|[View](../api/js)|
+|              | Official build                                                                                                                                    | Nightly build                                                                                                                                 | Reqs                                                                                           |
+|--------------|---------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| Python       | If using pip, run `pip install --upgrade pip` prior to downloading.                                                                               |                                                                                                                                               |                                                                                                |
+|              | CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)                                                                                      | [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly/overview)                    |                                                                                                |
+|              | GPU (CUDA/TensorRT): [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu)                                                              | [ort-nightly-gpu (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
+|              | GPU (DirectML): [**onnxruntime-directml**](https://pypi.org/project/onnxruntime-directml/)                                                        | [ort-nightly-directml (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview/) | [View](../execution-providers/DirectML-ExecutionProvider.md#requirements)                      |
+|              | OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*                                         |                                                                                                                                               | [View](../build/eps.md#openvino)                                                               |
+|              | TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*                                                |                                                                                                                                               |                                                                                                |
+|              | Azure (Cloud): [**onnxruntime-azure**](https://pypi.org/project/onnxruntime-azure/)                                                               |                                                                                                                                               |                                                                                                |
+| C#/C/C++     | CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)                                                      | [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      |                                                                                                |
+|              | GPU (CUDA/TensorRT): [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)                              | [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      | [View](../execution-providers/CUDA-ExecutionProvider)                                          |
+|              | GPU (DirectML): [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)                         | [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview)           | [View](../execution-providers/DirectML-ExecutionProvider)                                      |
+| WinML        | [**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)                                                   | [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/NuGet/Microsoft.AI.MachineLearning/overview)  | [View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites) |
+| Java         | CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)                         |                                                                                                                                               | [View](../api/java)                                                                            |
+|              | GPU (CUDA/TensorRT): [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) |                                                                                                                                               | [View](../api/java)                                                                            |
+| Android      | [**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile)                |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
+| iOS (C/C++)  | CocoaPods: **onnxruntime-mobile-c**                                                                                                               |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
+| Objective-C  | CocoaPods: **onnxruntime-mobile-objc**                                                                                                            |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
+| React Native | [**onnxruntime-react-native** (latest)](https://www.npmjs.com/package/onnxruntime-react-native)                                                   | [onnxruntime-react-native (dev)](https://www.npmjs.com/package/onnxruntime-react-native?activeTab=versions)                                   | [View](../api/js)                                                                              |
+| Node.js      | [**onnxruntime-node** (latest)](https://www.npmjs.com/package/onnxruntime-node)                                                                   | [onnxruntime-node (dev)](https://www.npmjs.com/package/onnxruntime-node?activeTab=versions)                                                   | [View](../api/js)                                                                              |
+| Web          | [**onnxruntime-web** (latest)](https://www.npmjs.com/package/onnxruntime-web)                                                                     | [onnxruntime-web (dev)](https://www.npmjs.com/package/onnxruntime-web?activeTab=versions)                                                     | [View](../api/js)                                                                              |
 
-
-
-*Note: Dev builds created from the master branch are available for testing newer changes between official releases. Please use these at your own risk. We strongly advise against deploying these to production workloads as support is limited for dev builds.*
-
-
-
+*Note: Dev builds created from the master branch are available for testing newer changes between official releases.
+Please use these at your own risk. We strongly advise against deploying these to production workloads as support is
+limited for dev builds.*
 
 ## Training install table for all languages
 
-Refer to the getting started with [Optimized Training](https://onnxruntime.ai/getting-started) page for more fine-grained installation instructions.
+Refer to the getting started with [Optimized Training](https://onnxruntime.ai/getting-started) page for more
+fine-grained installation instructions.
