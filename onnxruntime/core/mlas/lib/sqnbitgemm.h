@@ -100,6 +100,33 @@ Q8BlkAlignment()
 
 struct MLAS_SQNBIT_GEMM_DISPATCH {
     //
+    // Quantized B data packing function prototypes.
+    //
+
+    /** Gets size of packed quantized B data containing 4-bit integers. See MlasSQNBitGemmPackQuantBDataSize(). */
+    typedef size_t(SQ4BitGemmPackQuantBDataSize_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    );
+
+    SQ4BitGemmPackQuantBDataSize_Fn* SQ4BitGemmPackQuantBDataSize = nullptr;
+
+    /** Packs quantized B data containing 4-bit integers. See MlasSQNBitGemmPackQuantBData(). */
+    typedef void(SQ4BitGemmPackQuantBData_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const std::byte* QuantBDataBegin,
+        std::byte* PackedQuantBDataBegin,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+    SQ4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
+
+    //
     // CompFp32 kernel function prototypes.
     //
 
