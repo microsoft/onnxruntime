@@ -10,7 +10,14 @@ import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, TimestampQuery} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
+
+interface CommandInfo {
+  readonly kernelId: number;
+  readonly computePipeline: GPUComputePipeline;
+  readonly bindGroup: GPUBindGroup;
+  readonly dispatchGroup: [number, number, number];
+}
 
 interface KernelInfo {
   readonly kernelType: string;
@@ -104,6 +111,13 @@ export class WebGpuBackend {
   programManager: ProgramManager;
 
   /**
+   * representing the session ID of which is currently being run.
+   * `null` means no session is being run.
+   * only valid when session.run is executed.
+   */
+  currentSessionId: number|null = null;
+
+  /**
    * representing the kernel ID of which is currently being computed (CPU code perspective).
    * `null` means no kernel is being computed.
    * only one kernel can be computed at a moment.
@@ -155,6 +169,16 @@ export class WebGpuBackend {
   queryType: TimestampQuery;
 
   env: Env;
+  sessionStatus: SessionState = 'default';
+  /**
+   * a SessionID -> CommandInfo[] mapping. It's used to record all GPU commands for corresponding session.
+   */
+  capturedCommandList: Map<number, CommandInfo[]> = new Map();
+
+  /**
+   * a SessionID -> PendingKernelInfo[] mapping for profiling.
+   */
+  private capturedPendingKernels: Map<number, PendingKernelInfo[]> = new Map();
 
   /**
    * a SessionID -> a Map of (InputOutputIndex -> [ID, GPUBuffer]) mapping.
@@ -228,6 +252,7 @@ export class WebGpuBackend {
 
   getComputePassEncoder(): GPUComputePassEncoder {
     if (!this.computePassEncoder) {
+      const commandEncoder = this.getCommandEncoder();
       const computePassDescriptor: GPUComputePassDescriptor = {};
 
       if (this.queryType === 'at-passes') {
@@ -238,7 +263,7 @@ export class WebGpuBackend {
         };
       }
 
-      this.computePassEncoder = this.getCommandEncoder().beginComputePass(computePassDescriptor);
+      this.computePassEncoder = commandEncoder.beginComputePass(computePassDescriptor);
     }
     return this.computePassEncoder;
   }
@@ -493,7 +518,7 @@ export class WebGpuBackend {
         () => `[ProgramManager] run "${program.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
 
-    if (this.queryType !== 'none') {
+    if (this.queryType !== 'none' || this.sessionStatus === 'capturing') {
       const pendingKernelInfo: PendingKernelInfo = {
         kernelId: this.currentKernelId!,
         programName: artifact.programInfo.name,
@@ -501,6 +526,9 @@ export class WebGpuBackend {
         outputTensorViews,
       };
       this.pendingKernels.push(pendingKernelInfo);
+
+      const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
+      sessionPendingKernels!.push(pendingKernelInfo);
     }
 
     this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);
@@ -671,7 +699,71 @@ export class WebGpuBackend {
       }
     }
   }
-  onRunStart(): void {
+
+  captureBegin(): void {
+    LOG_DEBUG('info', 'captureBegin');
+    let sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
+    let sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
+    if (!sessionCommandList) {
+      sessionCommandList = [];
+      this.capturedCommandList.set(this.currentSessionId!, sessionCommandList);
+      sessionPendingKernels = [];
+      this.capturedPendingKernels.set(this.currentSessionId!, sessionPendingKernels);
+    }
+    // flush the left commands before we change the status.
+    this.flush();
+    this.sessionStatus = 'capturing';
+  }
+  captureEnd(): void {
+    LOG_DEBUG('info', 'captureEnd');
+    // flush the left commands before we change the status.
+    this.flush();
+    this.sessionStatus = 'default';
+  }
+  replay(): void {
+    LOG_DEBUG('info', 'replay');
+    this.sessionStatus = 'replaying';
+    const sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
+    const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
+    const length = sessionCommandList!.length;
+    this.pendingKernels = [];
+    for (let i = 0; i < length; i++) {
+      const computePassEncoder = this.getComputePassEncoder();
+      const command = sessionCommandList![i];
+      this.writeTimestamp(this.pendingDispatchNumber * 2);
+      computePassEncoder.setPipeline(command.computePipeline);
+      computePassEncoder.setBindGroup(0, command.bindGroup);
+      computePassEncoder.dispatchWorkgroups(...command.dispatchGroup);
+      this.writeTimestamp(this.pendingDispatchNumber * 2 + 1);
+      this.pendingDispatchNumber++;
+      if (this.queryType !== 'none') {
+        this.pendingKernels.push(sessionPendingKernels![i]);
+      }
+      if (this.pendingDispatchNumber >= this.maxDispatchNumber || this.queryType === 'at-passes') {
+        this.endComputePass();
+      }
+      if (this.pendingDispatchNumber >= this.maxDispatchNumber) {
+        this.flush();
+      }
+    }
+    // flush the left commands before we change the status.
+    this.flush();
+    this.sessionStatus = 'default';
+  }
+
+  onReleaseSession(sessionId: number): void {
+    this.unregisterBuffers(sessionId);
+    if (this.capturedCommandList.has(sessionId)) {
+      this.capturedCommandList.delete(sessionId);
+    }
+    if (this.capturedPendingKernels.has(sessionId)) {
+      this.capturedPendingKernels.delete(sessionId);
+    }
+    this.gpuDataManager.onReleaseSession(sessionId);
+  }
+
+  onRunStart(sessionId: number): void {
+    this.currentSessionId = sessionId;
     this.setQueryType();
   }
 }

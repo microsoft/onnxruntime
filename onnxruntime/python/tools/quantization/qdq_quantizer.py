@@ -270,6 +270,8 @@ class QDQQuantizer(ONNXQuantizer):
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
+        if self.qdq_op_domain == ms_domain:
+            self.model.set_opset_import(ms_domain, 1)
 
         return self.model.model
 

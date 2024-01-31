@@ -210,5 +210,11 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
                 contextDataOffset}`);
         const context = new ComputeContextImpl(module, backend, contextDataOffset);
         return backend.computeKernel(kernel, context, errors);
-      });
+      },
+      // jsepCaptureBegin
+      () => backend.captureBegin(),
+      // jsepCaptureEnd
+      () => backend.captureEnd(),
+      // jsepReplay
+      () => backend.replay());
 };
