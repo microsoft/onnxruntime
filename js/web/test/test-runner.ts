@@ -39,10 +39,6 @@ const ONNXRUNTIME_THRESHOLD_RELATIVE_ERROR = 1.00001;
  */
 const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : Date.now;
 
-function toInternalTensor(tensor: ort.Tensor): Tensor {
-  return new Tensor(
-      tensor.dims, tensor.type as Tensor.DataType, undefined, undefined, tensor.data as Tensor.NumberType);
-}
 function fromInternalTensor(tensor: Tensor): ort.Tensor {
   return new ort.Tensor(tensor.type, tensor.data as ort.Tensor.DataType, tensor.dims);
 }
@@ -329,6 +325,10 @@ export class TensorResultValidator {
   }
 
   checkTensorResult(actual: Tensor[], expected: Tensor[]): void {
+    this.checkApiTensorResult(actual.map(fromInternalTensor), expected.map(fromInternalTensor));
+  }
+
+  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
     // check output size
     expect(actual.length, 'size of output tensors').to.equal(expected.length);
 
@@ -346,10 +346,6 @@ export class TensorResultValidator {
     }
   }
 
-  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
-    this.checkTensorResult(actual.map(toInternalTensor), expected.map(toInternalTensor));
-  }
-
   checkNamedTensorResult(actual: Record<string, ort.Tensor>, expected: Test.NamedTensor[]): void {
     // check output size
     expect(Object.getOwnPropertyNames(actual).length, 'size of output tensors').to.equal(expected.length);
@@ -363,7 +359,7 @@ export class TensorResultValidator {
   }
 
   // This function check whether 2 tensors should be considered as 'match' or not
-  areEqual(actual: Tensor, expected: Tensor): boolean {
+  areEqual(actual: ort.Tensor, expected: ort.Tensor): boolean {
     if (!actual || !expected) {
       return false;
     }
@@ -391,13 +387,13 @@ export class TensorResultValidator {
 
     switch (actualType) {
       case 'string':
-        return this.strictEqual(actual.stringData, expected.stringData);
+        return this.strictEqual(actual.data, expected.data);
 
       case 'float32':
       case 'float64':
         return this.floatEqual(
-            actual.numberData as number[] | Float32Array | Float64Array,
-            expected.numberData as number[] | Float32Array | Float64Array);
+            actual.data as number[] | Float32Array | Float64Array,
+            expected.data as number[] | Float32Array | Float64Array);
 
       case 'uint8':
       case 'int8':
@@ -408,10 +404,8 @@ export class TensorResultValidator {
       case 'int64':
       case 'bool':
         return TensorResultValidator.integerEqual(
-            actual.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
-                Int32Array,
-            expected.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
-                Int32Array);
+            actual.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array,
+            expected.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array);
 
       default:
         throw new Error('type not implemented or not supported');
