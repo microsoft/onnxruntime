@@ -69,7 +69,8 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
                                                         static_cast<int>(N),
                                                         static_cast<int>(output_stride),
                                                         static_cast<int>(num_batches),
-                                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp()));
+                                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
+                                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->UseTF32()));
 
   return Status::OK();
 }

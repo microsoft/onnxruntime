@@ -76,6 +76,10 @@ struct CUDAExecutionProviderInfo {
 
   bool use_ep_level_unified_stream{false};
 
+  // TF32 uses 10 bit mantissa which has sufficient margin of precision for most use cases. It gets 8x throughput than FP32 in A100.
+  // By default, we enable TF32 to speed up inference. Set it to false will disable TF32 in cublas GEMM and cuDNN for FP32 MatMul.
+  bool use_tf32{true};
+
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtCUDAProviderOptionsV2& info);
