@@ -33,15 +33,7 @@ export const createNaiveMatmulProgramInfo =
         {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: M}, {type: DataType.uint32, data: N},
         {type: DataType.uint32, data: K}
       ];
-<<<<<<< HEAD
-      if (activationAttributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: DataType.float, data: activationAttributes.clipMax!},
-            {type: DataType.float, data: activationAttributes.clipMin!});
-      }
-=======
       appendActivationUniformsData(activationAttributes, programUniforms);
->>>>>>> main
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
           ...createTensorShapeVariables(bShape));

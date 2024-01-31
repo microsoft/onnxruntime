@@ -34,13 +34,7 @@ export const createGroupedConvProgramInfo =
         {type: DataType.uint32, data: [attributes.pads[0], attributes.pads[1]]},
         {type: DataType.uint32, data: outputChannelsPerGroup}
       ];
-<<<<<<< HEAD
-      if (attributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: DataType.float, data: attributes.clipMax!}, {type: DataType.float, data: attributes.clipMin!});
-      }
-      == == === appendActivationUniformsData(attributes, programUniforms);
->>>>>>> main
+      appendActivationUniformsData(attributes, programUniforms);
       programUniforms.push(
           ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
           ...createTensorShapeVariables(outputShape));

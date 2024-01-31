@@ -409,7 +409,7 @@ const matMulReadWriteFnSource =
         ${
           hasBias ?
               `value = value + ${isChannelsLast ? 'bias[colIn]' : `${typeSnippet(component, dataType)}(bias[row])`};` :
-                                                  ''}
+                                                  ''                                    }
         ${applyActivation}
         ${outputVariable.setByIndices('vec3<u32>(coords)', 'value')}
       }
