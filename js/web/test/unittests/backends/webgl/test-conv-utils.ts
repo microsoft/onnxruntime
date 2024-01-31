@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 import {Tensor} from '../../../../lib/onnxjs/tensor';
+import {Float16ArrayType} from '../../../../lib/wasm/wasm-common';
 
-type Float16ArrayType = InstanceType<typeof Float16Array>;
 /* eslint-disable no-bitwise */
 type FloatTypedArray = Float16ArrayType|Float32Array|Float64Array;
 

@@ -3,13 +3,12 @@
 
 import {Tensor} from 'onnxruntime-common';
 
-import {tensorTypeToTypedArrayConstructor} from '../wasm-common';
+import {Float16ArrayType, tensorTypeToTypedArrayConstructor} from '../wasm-common';
 
 export const createView = (dataBuffer: ArrayBuffer, type: Tensor.Type): Int32Array|Uint32Array|BigInt64Array|
     BigUint64Array|Uint8Array|Float32Array|Float64Array|Int8Array|Int16Array|Uint16Array =>
         new (tensorTypeToTypedArrayConstructor(type))(dataBuffer);
 
-export type Float16ArrayType = InstanceType<typeof Float16Array>;
 /**
  * a TensorView does not own the data.
  */

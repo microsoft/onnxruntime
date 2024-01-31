@@ -15,12 +15,11 @@ import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {Tensor} from '../lib/onnxjs/tensor';
 import {ProtoUtil} from '../lib/onnxjs/util';
 import {createView} from '../lib/wasm/jsep/tensor-view';
-import {getTensorElementSize, isGpuBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
+import {Float16ArrayType, getTensorElementSize, isGpuBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
 
 import {base64toBuffer, createMockGraph, readFile} from './test-shared';
 import {Test} from './test-types';
 
-type Float16ArrayType = InstanceType<typeof Float16Array>;
 // the threshold that used to compare 2 float numbers. See above for TensorResultValidator.floatEqual().
 const CPU_THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
 const CPU_THRESHOLD_RELATIVE_ERROR = 1.000001;
