@@ -6,7 +6,6 @@ import logging
 import os
 
 import onnx
-from onnx import ModelProto
 
 
 class DynamoOnnxHelper:

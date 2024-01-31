@@ -485,6 +485,17 @@ class FissionTransformerBlockPhi(Fission):
         ln_weight = self.get_io_by_name(node, "input_layernorm.weight")
         ln_bias = self.get_io_by_name(node, "input_layernorm.bias")
 
+        attn_q_weight, attn_q_bias, attn_k_weight, attn_k_bias, attn_v_weight, attn_v_bias = (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        attn_qkv_weight, attn_qkv_bias = None, None
+        cos_cache, sin_cache = None, None
+
         if attn_type != "Attention":
             attn_q_weight = self.process_initializer(
                 self.get_io_by_name(node, "self_attn.q_proj.weight"), ProcessGemmWFunc()

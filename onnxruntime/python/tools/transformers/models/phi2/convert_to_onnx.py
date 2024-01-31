@@ -432,7 +432,7 @@ def main():
     converter.set_quantization_params(args.block_size, args.int4_accuracy_level)
 
     temp_onnx_path = "phi2_temp.onnx"
-    original_onnx_path = "phi2.onnx"
+    original_onnx_path = "phi2.onnx"  # This model is processed as the intermediate model. Validility is not guaranteed.
 
     if not os.path.exists(original_onnx_path) or args.overwrite:
         converter.dynamo_export(temp_onnx_path)
