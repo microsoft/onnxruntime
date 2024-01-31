@@ -88,10 +88,10 @@ const createSkipLayerNormProgramInfo =
           const components = getMaxComponents(hiddenSize);
 
           const programUniforms: ProgramUniform[] = [
-            {type: 'uint32', data: outputSize},
-            {type: 'uint32', data: components},
-            {type: 'uint32', data: hiddenSize},
-            {type: 'float32', data: attributes.epsilon},
+            {type: DataType.uint32, data: outputSize},
+            {type: DataType.uint32, data: components},
+            {type: DataType.uint32, data: hiddenSize},
+            {type: DataType.float, data: attributes.epsilon},
           ];
           const getShaderSource = (shaderHelper: ShaderHelper) => {
             const uniformsArray: UniformsArrayType = [
