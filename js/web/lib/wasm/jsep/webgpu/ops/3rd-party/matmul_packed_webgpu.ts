@@ -19,6 +19,7 @@
 //
 // modified to fit the needs of the project
 
+import {DataType} from '../../../../wasm-common';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
@@ -447,8 +448,10 @@ export const createMatmulProgramInfo =
       const bShapeTemp = [...outerDimsB, dimInner, dimBOuter / components];
       const bRank = bShapeTemp.length;
       const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
-      const programUniforms: ProgramUniform[] =
-          [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
+      const programUniforms: ProgramUniform[] = [
+        {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
+        {type: DataType.int32, data: dimInner}
+      ];
       appendActivationUniformsData(activationAttributes, programUniforms);
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShapeTemp),

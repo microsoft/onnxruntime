@@ -185,7 +185,7 @@ export const createReduceSharedProgramInfo =
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: outputDataType}],
           dispatchGroup: {x: outputSize},
-          programUniforms: [{type: 'uint32', data: reduceSize}]
+          programUniforms: [{type: DataType.uint32, data: reduceSize}]
         }),
       };
     };
