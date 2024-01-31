@@ -123,6 +123,15 @@ struct Optimizer {
     return Status::OK();
   }
 
+  // Constructs the optimizer state and prepares the model inputs.
+  // This is called once during the construction of the Optimizer if the model state is available.
+  // In case the optimizer was instantiated with a nominal checkpoint, this function must be
+  // called when the model state is available.
+  // The optimizer checks if the optimizer state needs to be constructed in the train step function.
+  // However, this is exposed as a public function in case the user wants to construct the optimizer
+  // state before the train step function is called.
+  Status ConstructOptimizerStateAndInputs();
+
  private:
   void Initialize(const ModelIdentifiers& model_identifiers,
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
@@ -134,8 +143,7 @@ struct Optimizer {
 
   // Generates optimizer momentum states for parameters that require grad.
   Status GenerateMomentumNamedStates(OptimizerCheckpointState& optimizer_checkpoint_states);
-  // Constructs the ortvalue inputs to be fed to the graph
-  // at each step.
+  // Constructs the ortvalue inputs to be fed to the graph at each step.
   Status ConstructInputs();
 
   /**
@@ -160,6 +168,8 @@ struct Optimizer {
   InlinedVector<OrtValue> inputs_;
 
   int32_t group_count_{0};
+
+  bool delay_optimizer_state_contruction_{false};
 };
 
 }  // namespace api
