@@ -19,11 +19,12 @@
 //
 // modified to fit the needs of the project
 
+import {DataType} from '../../../../wasm-common';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
-import {getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
 
@@ -447,13 +448,11 @@ export const createMatmulProgramInfo =
       const bShapeTemp = [...outerDimsB, dimInner, dimBOuter / components];
       const bRank = bShapeTemp.length;
       const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
-      const programUniforms: ProgramUniform[] =
-          [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
-      if (activationAttributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: 'float32', data: activationAttributes.clipMax!},
-            {type: 'float32', data: activationAttributes.clipMin!});
-      }
+      const programUniforms: ProgramUniform[] = [
+        {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
+        {type: DataType.int32, data: dimInner}
+      ];
+      appendActivationUniformsData(activationAttributes, programUniforms);
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShapeTemp),
           ...createTensorShapeVariables(bShapeTemp));
@@ -481,9 +480,7 @@ export const createMatmulProgramInfo =
         }
         const uniforms: UniformsArrayType =
             [{name: 'dim_a_outer', type: 'i32'}, {name: 'dim_b_outer', type: 'i32'}, {name: 'dim_inner', type: 'i32'}];
-        if (activationAttributes.activation === 'Clip') {
-          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
-        }
+        appendActivationUniforms(activationAttributes, uniforms);
         const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
         const declareFunctions = matMulReadWriteFnSource(
             components, hasBias, applyActivation, [batchDims, A, B, output], [outerDimsA, outerDimsB, outerDims],

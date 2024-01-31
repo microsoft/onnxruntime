@@ -242,6 +242,8 @@ def parse_arguments(is_xl: bool, parser):
     parser.add_argument("--deterministic", action="store_true", help="use deterministic algorithms.")
     parser.add_argument("-dc", "--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
 
+    parser.add_argument("--framework-model-dir", default=None, help="framework model directory")
+
     group = parser.add_argument_group("Options for ORT_CUDA engine only")
     group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
 
@@ -406,6 +408,7 @@ def initialize_pipeline(
     lora_scale=1.0,
     use_fp16_vae=True,
     use_vae=True,
+    framework_model_dir=None,
 ):
     pipeline_info = PipelineInfo(
         version,
@@ -425,7 +428,7 @@ def initialize_pipeline(
     input_engine_dir = engine_dir
 
     onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
-        work_dir=work_dir, pipeline_info=pipeline_info, engine_type=engine_type
+        work_dir=work_dir, pipeline_info=pipeline_info, engine_type=engine_type, framework_model_dir=framework_model_dir
     )
 
     pipeline = StableDiffusionPipeline(
@@ -558,6 +561,7 @@ def load_pipelines(args, batch_size=None):
         "lora_scale": args.lora_scale,
         "use_fp16_vae": "xl" in args.version,
         "use_vae": True,
+        "framework_model_dir": args.framework_model_dir,
     }
 
     if "xl" in args.version:

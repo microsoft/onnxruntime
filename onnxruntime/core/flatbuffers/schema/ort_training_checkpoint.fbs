@@ -8,6 +8,10 @@ namespace onnxruntime.fbs;
 table ModuleState {
   requires_grad_params:[Tensor];
   frozen_params:[Tensor];
+  // Nominal state just means that the Tensors in the ModuleState
+  // are empty. i.e. The tensors are treated as named entities
+  // without any meaningful data.
+  is_nominal_state:bool;
 }
 
 table ParameterOptimizerState {
