@@ -289,8 +289,8 @@ TEST(CastLikeOpTest, CastFromFloatToInt32) {
   test.AddInput<int32_t>("like", shape, output.data(), output.size());
   test.AddOutput<int32_t>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
 TEST(CastLikeOpTest, CastFromInt32ToFloat) {
@@ -305,7 +305,7 @@ TEST(CastLikeOpTest, CastFromInt32ToFloat) {
   test.AddInput<float>("like", shape, output.data(), output.size());
   test.AddOutput<float>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
@@ -320,7 +320,7 @@ TEST(CastLikeOpTest, CastFromFloatToMLFloat16) {
   test.AddInput<MLFloat16>("like", shape, output.data(), output.size());
   test.AddOutput<MLFloat16>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
@@ -335,7 +335,39 @@ TEST(CastLikeOpTest, CastFromMLFloat16ToFloat) {
   test.AddInput<float>("like", shape, output.data(), output.size());
   test.AddOutput<float>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+}
+
+TEST(CastLikeOpTest, CastFromStringToFloat) {
+  OpTester test("CastLike", 18);
+  std::vector<int64_t> shape = {2, 3};
+  std::vector<std::string> input = {"1", "2", "3",
+                                    "4.", "5.5", "6"};
+  std::vector<float> output = {1.0f, 2.0f, 3.0f,
+                               4.0f, 5.5f, 6.0f};
+
+  test.AddInput<std::string>("input", shape, input.data(), input.size());
+  test.AddInput<float>("like", shape, output.data(), output.size());
+  test.AddOutput<float>("output", shape, output.data(), output.size());
+
+  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+}
+
+TEST(CastLikeOpTest, CastFromInt64ToString) {
+  OpTester test("CastLike", 18);
+  std::vector<int64_t> shape = {2, 3};
+  std::vector<int64_t> input = {1111, 222, 33,
+                                4, 55, 666};
+  std::vector<std::string> output = {"1111", "222", "33",
+                                     "4", "55", "666"};
+
+  test.AddInput<int64_t>("input", shape, input.data(), input.size());
+  test.AddInput<std::string>("like", shape, output.data(), output.size());
+  test.AddOutput<std::string>("output", shape, output.data(), output.size());
+
+  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 

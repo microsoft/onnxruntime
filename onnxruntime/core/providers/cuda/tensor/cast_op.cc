@@ -334,10 +334,10 @@ SPECIALIZE_IMPL_19(Float8E5M2)
 ///////////////////////////////////////////////////////////////////
 
 #define REGISTER_CASTLIKE_KERNEL_TYPED(T)                         \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       CastLike,                                                   \
       kOnnxDomain,                                                \
-      15, 18,                                                     \
+      15,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
