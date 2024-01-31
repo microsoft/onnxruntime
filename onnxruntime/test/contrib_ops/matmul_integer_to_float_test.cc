@@ -24,7 +24,12 @@ namespace onnxruntime {
 namespace test {
 
 template <typename IType, typename WType, typename OType>
-static void CalculateMatMulIntegerToFloat(const int64_t M, const int64_t N, const int64_t K, const std::vector<IType>& A_data, const std::vector<OType>& A_scale, const std::vector<IType>& A_zero_point, const std::vector<WType>& B_data, std::vector<OType>& B_scale, std::vector<WType>& B_zero_point, const std::vector<OType>& Bias, std::vector<float>& Y_data, bool per_column, bool has_zp, bool has_bias) {
+static void CalculateMatMulIntegerToFloat(const int64_t M, const int64_t N, const int64_t K,
+                                          const std::vector<IType>& A_data, const std::vector<OType>& A_scale,
+                                          const std::vector<IType>& A_zero_point, const std::vector<WType>& B_data,
+                                          std::vector<OType>& B_scale, std::vector<WType>& B_zero_point,
+                                          const std::vector<OType>& Bias, std::vector<float>& Y_data,
+                                          bool per_column, bool has_zp, bool has_bias) {
   if (!per_column) {
     B_zero_point.resize(N, B_zero_point[0]);
     B_scale.resize(N, B_scale[0]);
@@ -34,8 +39,10 @@ static void CalculateMatMulIntegerToFloat(const int64_t M, const int64_t N, cons
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
-        float A_dequantized = has_zp ? (A_data[m * K + k] - A_zero_point[0]) * A_scale[0] : A_data[m * K + k] * A_scale[0];
-        float B_dequantized = has_zp ? (B_data[k * N + n] - B_zero_point[n]) * B_scale[n] : B_data[k * N + n] * B_scale[n];
+        float A_dequantized = has_zp ?
+            (A_data[m * K + k] - A_zero_point[0]) * A_scale[0] : A_data[m * K + k] * A_scale[0];
+        float B_dequantized = has_zp ?
+            (B_data[k * N + n] - B_zero_point[n]) * B_scale[n] : B_data[k * N + n] * B_scale[n];
 
         sum += A_dequantized * B_dequantized;
       }
@@ -116,7 +123,9 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
   }
 
   std::vector<float> Y_data(M * N);
-  CalculateMatMulIntegerToFloat<IType, WType, OType>(M, N, K, A_data, A_scale, A_zero_point, B_data, B_scale, B_zero_point, Bias, Y_data, per_column, has_zp, has_bias);
+  CalculateMatMulIntegerToFloat<IType, WType, OType>(M, N, K, A_data, A_scale, A_zero_point,
+                                                     B_data, B_scale, B_zero_point, Bias, Y_data,
+                                                     per_column, has_zp, has_bias);
 
   if (constexpr(std::is_same_v<OType, float>)) {
     test.AddOutput<float>("Y", {M, N}, Y_data);
@@ -258,7 +267,9 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_U8U8) {
   test.AddInput<uint8_t>("b_zero_point", {1}, B_zero_point);
 
   std::vector<float> Y_data(M * N);
-  CalculateMatMulIntegerToFloat<uint8_t, uint8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point, B_data, B_scale, B_zero_point, {}, Y_data, false, true, false);
+  CalculateMatMulIntegerToFloat<uint8_t, uint8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point,
+                                                             B_data, B_scale, B_zero_point, {}, Y_data,
+                                                             false, true, false);
 
   test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -290,7 +301,9 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_U8S8) {
   test.AddInput<int8_t>("b_zero_point", {1}, B_zero_point);
 
   std::vector<float> Y_data(M * N);
-  CalculateMatMulIntegerToFloat<uint8_t, int8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point, B_data, B_scale, B_zero_point, {}, Y_data, false, true, false);
+  CalculateMatMulIntegerToFloat<uint8_t, int8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point,
+                                                            B_data, B_scale, B_zero_point, {}, Y_data,
+                                                            false, true, false);
 
   test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
 
@@ -324,7 +337,9 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_S8S8) {
   test.AddInput<MLFloat16>("bias", {N}, Bias);
 
   std::vector<float> Y_data(M * N);
-  CalculateMatMulIntegerToFloat<int8_t, int8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point, B_data, B_scale, B_zero_point, Bias, Y_data, false, true, true);
+  CalculateMatMulIntegerToFloat<int8_t, int8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point,
+                                                           B_data, B_scale, B_zero_point, Bias, Y_data,
+                                                           false, true, true);
 
   test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
 
@@ -358,7 +373,9 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_S8U8) {
   test.AddInput<MLFloat16>("bias", {N}, Bias);
 
   std::vector<float> Y_data(M * N);
-  CalculateMatMulIntegerToFloat<int8_t, uint8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point, B_data, B_scale, B_zero_point, Bias, Y_data, false, true, true);
+  CalculateMatMulIntegerToFloat<int8_t, uint8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point,
+                                                            B_data, B_scale, B_zero_point, Bias, Y_data,
+                                                            false, true, true);
 
   test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
 
@@ -396,7 +413,9 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16) {
   test.AddInput<MLFloat16>("bias", {N}, Bias);
 
   std::vector<float> Y_data(M * N);
-  CalculateMatMulIntegerToFloat<int8_t, int8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point, B_data, B_scale, B_zero_point, Bias, Y_data, true, true, true);
+  CalculateMatMulIntegerToFloat<int8_t, int8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point,
+                                                           B_data, B_scale, B_zero_point, Bias, Y_data,
+                                                           true, true, true);
 
   test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
   test.SetOutputRelErr("Y", 2e-2f);
