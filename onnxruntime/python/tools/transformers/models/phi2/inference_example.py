@@ -3,10 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import logging
-import os
-from typing import List
-
 import numpy as np
 import torch
 from transformers import AutoTokenizer

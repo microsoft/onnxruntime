@@ -11,8 +11,8 @@ import numpy as np
 from fusion_base import Fusion
 from fusion_options import FusionOptions
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
-from fusion_utils import FusionUtils, NumpyHelper
-from onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, helper, inliner, numpy_helper
+from fusion_utils import NumpyHelper
+from onnx import ModelProto, NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -469,7 +469,7 @@ class FissionTransformerBlockPhi(Fission):
     ):
         logger.info("Optimizing %s...", node.name)
 
-        attn_type = os.environ.get("AttentionOpType")
+        attn_type = os.environ.get("ATTENTIONOPTYPE")
         logger.info(f"AttentionOpType: {attn_type}")
 
         layer_id = self.get_layer_id(node)
