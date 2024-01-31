@@ -112,7 +112,10 @@ def _test_apple_packages(args):
         subprocess.run(["pod", "cache", "clean", "--all"], shell=False, check=True, cwd=target_proj_path)
 
         # install pods
-        subprocess.run(["pod", "install"], shell=False, check=True, cwd=target_proj_path)
+        # set env to skip macos test targets accordingly
+        env = os.environ.copy()
+        env["SKIP_MACOS_TEST"] = "true" if args.skip_macos_test else "false"
+        subprocess.run(["pod", "install"], shell=False, check=True, cwd=target_proj_path, env=env)
 
         # run the tests
         if not args.prepare_test_project_only:
@@ -144,7 +147,7 @@ def _test_apple_packages(args):
                 cwd=target_proj_path,
             )
 
-            if PackageVariant[args.variant] != PackageVariant.Mobile:
+            if PackageVariant[args.variant] != PackageVariant.Mobile and not args.skip_macos_test:
                 subprocess.run(
                     [
                         "xcrun",
@@ -204,6 +207,12 @@ def parse_args():
         "--prepare_test_project_only",
         action="store_true",
         help="Prepare the test project only, without running the tests",
+    )
+
+    parser.add_argument(
+        "--skip_macos_test",
+        action="store_true",
+        help="Skip macos platform tests. Specify this argument when build targets only contain ios archs. ",
     )
 
     return parser.parse_args()

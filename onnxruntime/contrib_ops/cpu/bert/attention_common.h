@@ -99,10 +99,15 @@ struct GroupQueryAttentionParameters {
   bool is_unidirectional;  // causal
   int local_window_size;
   bool kv_share_buffer;
+  bool is_packed_qkv;
   bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
+  bool do_rotary;
+  bool rotary_interleaved;
   float scale;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
+  int zeros_count;
+  int* zero_ptr;
 };
 
 namespace attention {
