@@ -258,7 +258,7 @@ else()
   endif()
   if (CMAKE_CXX_FLAGS MATCHES "sanitize=address")
     # The integer value below might often need be adjusted.
-    target_link_options(onnxruntime_webassembly PRIVATE "-s INITIAL_MEMORY=786432000")
+    target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s INITIAL_MEMORY=786432000")
   else()
     # Enable SAFE_HEAP in debug build
     target_link_options(onnxruntime_webassembly PRIVATE "$<$<CONFIG:Debug>:SHELL:-s ASSERTIONS=2>")
