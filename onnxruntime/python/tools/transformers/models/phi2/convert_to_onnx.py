@@ -49,6 +49,12 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
         self.phi2_edge_dict = self.get_phi2_edge_dict(self.phi_config)
         self.attn_op_type = None
         self.precision = None
+        self.block_size = 16
+        self.accuracy_level = None
+
+    def set_quantization_params(self, block_size: int, accuracy_level: int):
+        self.block_size = block_size
+        self.accuracy_level = accuracy_level
 
     def init_attn_type_and_precision(self, attn_op_type: AttentionOpType, precision: Precision):
         self.attn_op_type = attn_op_type
@@ -272,6 +278,7 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
         if (
             self.precision == Precision.FLOAT16 or self.precision == Precision.INT4
         ) and self.attn_op_type != AttentionOpType.MultiHeadAttention:
+            # We keep last three layers of Attention as float32 or bfloat16 to avoid overflow.
             node_block_list = [
                 "GroupQueryAttention_29",
                 "GroupQueryAttention_30",
@@ -297,8 +304,9 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
             assert self.precision == Precision.INT4
             quant = MatMul4BitsQuantizer(
                 model=optimizer.model,
-                block_size=16,
+                block_size=self.block_size,
                 is_symmetric=True,
+                accuracy_level=self.accuracy_level,
             )
             quant.process()
             quant.model.save_model_to_file(onnx_path_opt, use_external_data_format=True)
@@ -343,17 +351,17 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--fp16_a100",
+        "--fp16_gpu_sm8x",
         required=False,
         action="store_true",
-        help="Generate fp16 ONNX model for Nvidia A100",
+        help="Generate fp16 ONNX model for Nvidia GPUs with CUDA architecture SM=80~89",
     )
 
     parser.add_argument(
-        "--int4_a100",
+        "--int4_gpu_sm8x",
         required=False,
         action="store_true",
-        help="Generate int4 ONNX model for Nvidia A100",
+        help="Generate int4 ONNX model for Nvidia GPUs with CUDA architecture SM=80~89",
     )
 
     parser.add_argument(
@@ -393,6 +401,23 @@ def parse_arguments():
         help="Skip exporting ONNX model",
     )
 
+    parser.add_argument(
+        "--block_size",
+        required=False,
+        default=16,
+        type=int,
+        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+    )
+
+    parser.add_argument(
+        "--int4_accuracy_level",
+        required=False,
+        type=int,
+        help="Accuracy level of the 4-bit quantized MatMul computation. "
+        "Refer to the MatMulNBits contrib op's 'accuracy_level' attribute for details "
+        "(https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftmatmulnbits).",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -403,6 +428,7 @@ def main():
     device = torch.device("cuda", args.device_id) if torch.cuda.is_available() else torch.device("cpu")
 
     converter = ConvertPhi2ToONNX(device, cache_dir=args.cache_dir)
+    converter.set_quantization_params(args.block_size, args.int4_accuracy_level)
 
     temp_onnx_path = "phi2_temp.onnx"
     original_onnx_path = "phi2.onnx"
@@ -422,8 +448,8 @@ def main():
         "fp32_gpu": (AttentionOpType.Attention, Precision.FLOAT32, "phi2_decoder_fp32_gpu.onnx"),
         "fp16_gpu": (AttentionOpType.Attention, Precision.FLOAT16, "phi2_decoder_fp16_gpu.onnx"),
         "int4_gpu": (AttentionOpType.Attention, Precision.INT4, "phi2_decoder_int4_gpu.onnx"),
-        "fp16_a100": (AttentionOpType.GroupQueryAttention, Precision.FLOAT16, "phi2_decoder_fp16_a100.onnx"),
-        "int4_a100": (AttentionOpType.GroupQueryAttention, Precision.INT4, "phi2_decoder_int4_a100.onnx"),
+        "fp16_gpu_sm8x": (AttentionOpType.GroupQueryAttention, Precision.FLOAT16, "phi2_decoder_fp16_gpu_sm8x.onnx"),
+        "int4_gpu_sm8x": (AttentionOpType.GroupQueryAttention, Precision.INT4, "phi2_decoder_int4_gpu_sm8x.onnx"),
     }
 
     if not args.skip_export:
@@ -475,19 +501,19 @@ def main():
                 )
             )
 
-        if args.fp16_a100:
+        if args.fp16_gpu_sm8x:
             processes.append(
                 Process(
                     target=run_optimize_phi2_onnx,
-                    args=(converter, original_onnx_path, *model_type_to_args["fp16_a100"]),
+                    args=(converter, original_onnx_path, *model_type_to_args["fp16_gpu_sm8x"]),
                 )
             )
 
-        if args.int4_a100:
+        if args.int4_gpu_sm8x:
             processes.append(
                 Process(
                     target=run_optimize_phi2_onnx,
-                    args=(converter, original_onnx_path, *model_type_to_args["int4_a100"]),
+                    args=(converter, original_onnx_path, *model_type_to_args["int4_gpu_sm8x"]),
                 )
             )
 
@@ -497,17 +523,17 @@ def main():
     if args.run_example:
         from inference_example import run_phi2
 
-        if args.fp16_a100:
-            logging.info("Running fp16_a100 example...")
+        if args.fp16_gpu_sm8x:
+            logging.info("Running fp16_gpu_sm8x example...")
             run_phi2(
-                onnx_model_path=model_type_to_args["fp16_a100"][2],
+                onnx_model_path=model_type_to_args["fp16_gpu_sm8x"][2],
                 use_buffer_share=True,
                 device_id=args.device_id,
             )
-        if args.int4_a100:
-            logging.info("Running int4_a100 example...")
+        if args.int4_gpu_sm8x:
+            logging.info("Running int4_gpu_sm8x example...")
             run_phi2(
-                onnx_model_path=model_type_to_args["int4_a100"][2],
+                onnx_model_path=model_type_to_args["int4_gpu_sm8x"][2],
                 use_buffer_share=True,
                 device_id=args.device_id,
             )
