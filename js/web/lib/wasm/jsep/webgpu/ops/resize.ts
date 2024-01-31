@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -641,9 +642,9 @@ const createResizeProgramInfo =
           outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
           programUniforms: [
-            {type: 'uint32', data: outputSize},
-            {type: 'float32', data: scales},
-            {type: 'float32', data: roi},
+            {type: DataType.uint32, data: outputSize},
+            {type: DataType.float, data: scales},
+            {type: DataType.float, data: roi},
             ...createTensorShapeVariables(inputShape),
             ...createTensorShapeVariables(outputShape),
           ]

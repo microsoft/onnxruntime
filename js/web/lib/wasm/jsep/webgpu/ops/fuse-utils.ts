@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {MAX_CLIP, MIN_CLIP} from '../../util';
 import {ProgramUniform} from '../types';
 
@@ -36,9 +37,11 @@ export const getActivationSnippet = (attributes: InternalActivationAttributes, v
 export const appendActivationUniformsData =
     (attributes: InternalActivationAttributes, programUniform: ProgramUniform[]) => {
       if (attributes.activation === 'Clip') {
-        programUniform.push({type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
+        programUniform.push(
+            {type: DataType.float, data: attributes.clipMax!}, {type: DataType.float, data: attributes.clipMin!});
       } else if (attributes.activation === 'HardSigmoid') {
-        programUniform.push({type: 'float32', data: attributes.alpha!}, {type: 'float32', data: attributes.beta!});
+        programUniform.push(
+            {type: DataType.float, data: attributes.alpha!}, {type: DataType.float, data: attributes.beta!});
       }
     };
 

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../wasm-common';
 import {TensorView} from '../tensor-view';
 
 import {ShaderHelper} from './ops/common';
@@ -26,7 +27,7 @@ export interface TensorInfo {
 }
 
 export interface ProgramUniform {
-  type: 'int32'|'float16'|'float32'|'uint32';
+  type: DataType;
   data: number|readonly number[];
 }
 

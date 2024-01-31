@@ -19,6 +19,7 @@
 //
 // modified to fit the needs of the project
 
+import {DataType} from '../../../../wasm-common';
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
@@ -189,9 +190,9 @@ export const createConv2DMatMulProgramInfo =
       const elementsSize = isVec4 ? [innerElementSize, 4, 4] : [1, 1, 1];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner},
-        {type: 'int32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'int32', data: attributes.strides},
-        {type: 'int32', data: attributes.dilations}
+        {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
+        {type: DataType.int32, data: dimInner}, {type: DataType.int32, data: [attributes.pads[0], attributes.pads[1]]},
+        {type: DataType.int32, data: attributes.strides}, {type: DataType.int32, data: attributes.dilations}
       ];
       appendActivationUniformsData(attributes, programUniforms);
       programUniforms.push(
