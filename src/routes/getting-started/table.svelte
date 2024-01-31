@@ -52,12 +52,12 @@
 	// Training
 	const TrainingScenarios = ['Large Model Training', 'On-Device Training'];
 	const TrainingScenarioIds = ['ot_large_model', 'ot_on_device'];
-	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS'];
-	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios'];
-	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C'];
-	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc'];
-	const TrainingVersions = ['CUDA 11.8', 'CUDA 12.2', 'ROCm', 'CPU'];
-	const TrainingVersionIds = ['ot_CUDA118', 'ot_CUDA122', 'ot_ROCm', 'ot_CPU'];
+	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS', 'Web browser'];
+	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios', 'ot_web'];
+	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C', 'JavaScript'];
+	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc', 'ot_js'];
+	const TrainingVersions = ['CUDA 11.8', 'ROCm', 'CPU'];
+	const TrainingVersionIds = ['ot_CUDA118', 'ot_ROCm', 'ot_CPU'];
 	const TrainingBuilds = ['Stable', 'Preview (Nightly)'];
 	const TrainingBuildIds = ['ot_stable', 'ot_nightly'];
 	const validCombos = {
@@ -812,7 +812,14 @@
 			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
 
 		'ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly':
-			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>"
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
+
+		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_stable':
+			"npm install onnxruntime-web",
+
+		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_nightly':
+			"npm install onnxruntime-web@dev",
+
 	};
 	onMount(() => {
 		var supportedOperatingSystemsNew = [
@@ -1978,7 +1985,7 @@
 			</div>
 			<div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 				<h3 id="ot_selectOS">Platform</h3>
-				<p id="ot_decriptionOS" class="sr-only">Platform list contains five items</p>
+				<p id="ot_decriptionOS" class="sr-only">Platform list contains six items</p>
 			</div>
 			<div
 				class="col-span-4 w-full r-content"
@@ -1987,7 +1994,7 @@
 				aria-labelledby="ot_selectOS"
 				aria-describedby="ot_decriptionOS"
 			>
-				<div class="grid grid-cols-5 gap-4 ot_os">
+				<div class="grid grid-cols-6 gap-4 ot_os">
 					{#each TrainingPlatforms as trainingplatform, i}
 						<a
 							class="r-option version join-item btn rounded"
@@ -2002,7 +2009,7 @@
 
 			<div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 				<h3 id="ot_selectLanguage">API</h3>
-				<p id="ot_decriptionLanguage" class="sr-only">API list contains six items</p>
+				<p id="ot_decriptionLanguage" class="sr-only">API list contains seven items</p>
 			</div>
 			<div
 				class="col-span-4 w-full r-content"
@@ -2011,7 +2018,7 @@
 				aria-labelledby="ot_selectLanguage"
 				aria-describedby="ot_decriptionLanguage"
 			>
-				<div class="grid grid-cols-6 gap-4 ot_language">
+				<div class="grid grid-cols-7 gap-4 ot_language">
 					{#each TrainingAPIs as trainingapi, i}
 						<a
 							class="r-option version join-item btn rounded"
