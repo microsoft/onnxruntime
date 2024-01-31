@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
@@ -29,8 +30,8 @@ export const createNaiveMatmulProgramInfo =
       const outputShapeInShader = [batchSize, M, N];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N},
-        {type: 'uint32', data: K}
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: M}, {type: DataType.uint32, data: N},
+        {type: DataType.uint32, data: K}
       ];
       appendActivationUniformsData(activationAttributes, programUniforms);
       programUniforms.push(

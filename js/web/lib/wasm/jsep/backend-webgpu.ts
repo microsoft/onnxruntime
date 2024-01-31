@@ -3,7 +3,7 @@
 
 import {Env, Tensor, TRACE, TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
 
-import {tensorDataTypeEnumToString} from '../wasm-common';
+import {DataType, tensorDataTypeEnumToString} from '../wasm-common';
 
 import {configureLogger, LOG_DEBUG} from './log';
 import {createView, TensorView} from './tensor-view';
@@ -453,10 +453,10 @@ export class WebGpuBackend {
           return;
         }
         // https://www.w3.org/TR/WGSL/#alignof
-        const sizeOfElement = v.type === 'float16' ? 2 : 4;
+        const sizeOfElement = v.type === DataType.float16 ? 2 : 4;
         let sizeOfVecOrMat;
         let baseAlignment;
-        if (v.type === 'float16') {
+        if (v.type === DataType.float16) {
           baseAlignment = data.length > 4 ? 16 : (data.length > 2 ? 8 : data.length * sizeOfElement);
           sizeOfVecOrMat = data.length > 4 ? 16 : sizeOfElement * data.length;
         } else {
@@ -470,7 +470,7 @@ export class WebGpuBackend {
         // SizeOf(vec4<i32|u32|f32>). For float16 type, when data.length > 4, the uniform variable is of type
         // array<mat2x4<f16>,N>, where N = Math.ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte
         // length is N * SizeOf(mat2x4<f16>).
-        const elementPerVecOrMat = v.type === 'float16' ? 8 : 4;
+        const elementPerVecOrMat = v.type === DataType.float16 ? 8 : 4;
         currentOffset += data.length > 4 ? Math.ceil(data.length / elementPerVecOrMat) * sizeOfVecOrMat :
                                            data.length * sizeOfElement;
       });
@@ -483,14 +483,16 @@ export class WebGpuBackend {
       programUniforms.forEach((v, i) => {
         const offset = offsets[i];
         const data = typeof v.data === 'number' ? [v.data] : v.data;
-        if (v.type === 'int32') {
+        if (v.type === DataType.int32) {
           new Int32Array(arrayBuffer, offset, data.length).set(data);
-        } else if (v.type === 'uint32') {
+        } else if (v.type === DataType.uint32) {
           new Uint32Array(arrayBuffer, offset, data.length).set(data);
-        } else if (v.type === 'float16') {
+        } else if (v.type === DataType.float16) {
           new Float16Array(arrayBuffer, offset, data.length).set(data);
-        } else {
+        } else if (v.type === DataType.float) {
           new Float32Array(arrayBuffer, offset, data.length).set(data);
+        } else {
+          throw new Error(`Unsupported uniform type: ${tensorDataTypeEnumToString(v.type)}`);
         }
       });
 
@@ -702,13 +704,11 @@ export class WebGpuBackend {
 
   captureBegin(): void {
     LOG_DEBUG('info', 'captureBegin');
-    let sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
-    let sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
-    if (!sessionCommandList) {
-      sessionCommandList = [];
-      this.capturedCommandList.set(this.currentSessionId!, sessionCommandList);
-      sessionPendingKernels = [];
-      this.capturedPendingKernels.set(this.currentSessionId!, sessionPendingKernels);
+    if (!this.capturedCommandList.get(this.currentSessionId!)) {
+      this.capturedCommandList.set(this.currentSessionId!, []);
+    }
+    if (!this.capturedPendingKernels.get(this.currentSessionId!)) {
+      this.capturedPendingKernels.set(this.currentSessionId!, []);
     }
     // flush the left commands before we change the status.
     this.flush();
