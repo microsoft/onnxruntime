@@ -138,6 +138,7 @@ void ReadCpuLocalTensorIntoInt32(
     {
     case MLOperatorTensorDataType::Int32:
         {
+            result.resize(elementCount);
             const int32_t* data = tensor.GetData<int32_t>();
             std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<T>(v); });
         }
