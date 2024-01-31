@@ -168,6 +168,18 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
       setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
     }
 
+    if (sessionOptions.enableGraphCapture !== undefined) {
+      if (typeof sessionOptions.enableGraphCapture !== 'boolean') {
+        throw new Error(`enableGraphCapture must be a boolean value: ${sessionOptions.enableGraphCapture}`);
+      }
+      const keyDataOffset = allocWasmString('enableGraphCapture', allocs);
+      const valueDataOffset = allocWasmString(sessionOptions.enableGraphCapture.toString(), allocs);
+      if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+        checkLastError(
+            `Can't set a session config entry: 'enableGraphCapture' - ${sessionOptions.enableGraphCapture}.`);
+      }
+    }
+
     if (sessionOptions.freeDimensionOverrides) {
       for (const [name, value] of Object.entries(sessionOptions.freeDimensionOverrides)) {
         if (typeof name !== 'string') {
