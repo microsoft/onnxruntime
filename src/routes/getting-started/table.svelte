@@ -54,7 +54,7 @@
 	const TrainingScenarioIds = ['ot_large_model', 'ot_on_device'];
 	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS', 'Web browser'];
 	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios', 'ot_web'];
-	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C', 'JavaScript/TypeScript'];
+	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C', 'JavaScript'];
 	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc', 'ot_js'];
 	const TrainingVersions = ['CUDA 11.8', 'ROCm', 'CPU'];
 	const TrainingVersionIds = ['ot_CUDA118', 'ot_ROCm', 'ot_CPU'];
