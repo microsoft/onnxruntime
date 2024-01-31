@@ -26,6 +26,14 @@ using Microsoft::WRL::ComPtr;
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 
+// TODO: Ingest https://github.com/microsoft/DirectX-Headers
+#define D3D_FEATURE_LEVEL_1_0_GENERIC_PRIVATE ((D3D_FEATURE_LEVEL)0x100)
+
+// TODO: Ingest https://github.com/microsoft/DirectX-Headers
+#define INITGUID
+#include<guiddef.h>
+DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML_PRIVATE, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
+
 namespace onnxruntime {
 
 struct DMLProviderFactory : IExecutionProviderFactory {
@@ -157,12 +165,15 @@ static ComPtr<IDXCoreAdapterList> EnumerateDXCoreAdapters(IDXCoreAdapterFactory*
   // When DXCore APIs are available QI for relevant enumeration interfaces
   constexpr bool use_dxcore_workload_enumeration = false;
   if (!use_dxcore_workload_enumeration) {
-    // Get a list of all the adapters that support compute
-    GUID attributes[]{ DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE };
     ORT_THROW_IF_FAILED(
-      adapter_factory->CreateAdapterList(_countof(attributes),
-        attributes,
+      adapter_factory->CreateAdapterList(1,
+        &DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML_PRIVATE,
         adapter_list.GetAddressOf()));
+
+    if (adapter_list->GetAdapterCount() == 0)
+    {
+        ORT_THROW_IF_FAILED(adapter_factory->CreateAdapterList(1, &DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE, adapter_list.GetAddressOf()));
+    }
   }
 
   return adapter_list;
@@ -448,9 +459,6 @@ Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Devic
 
   return d3d12_device;
 }
-
-// TODO: Ingest https://github.com/microsoft/DirectX-Headers
-#define D3D_FEATURE_LEVEL_1_0_GENERIC_PRIVATE ((D3D_FEATURE_LEVEL)0x100)
 
 Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID3D12Device* d3d12_device) {
   DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
