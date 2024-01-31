@@ -250,7 +250,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
    * [Windows - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=WINDOWS&DISTRIBUTION=ARCHIVE).
    * [Linux - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=LINUX&DISTRIBUTION=ARCHIVE)
 
-   Follow [documentation](https://docs.openvino.ai/2023.3/home.html) for detailed instructions.
+   Follow [documentation](https://docs.openvino.ai/latest/index.html) for detailed instructions.
 
   *2023.1 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/archive/2022.1/index.html) is minimal OpenVINO™ version requirement.*
   *The minimum ubuntu version to support 2023.1 is 18.04.*
@@ -291,7 +291,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 * `--use_openvino` builds the OpenVINO™ Execution Provider in ONNX Runtime.
 * `<hardware_option>`: Specifies the default hardware target for building OpenVINO™ Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
-Refer to [Intel GPU device naming convention](https://docs.openvino.ai/2023.3/openvino_docs_OV_UG_supported_plugins_GPU.html#device-naming-convention) for specifying the correct hardware target in cases where both integrated and discrete GPU's co-exist.
+Refer to [Intel GPU device naming convention](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_GPU.html#device-naming-convention) for specifying the correct hardware target in cases where both integrated and discrete GPU's co-exist.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
