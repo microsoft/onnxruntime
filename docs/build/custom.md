@@ -165,7 +165,7 @@ _[This section is coming soon]_
 
 ### iOS
 
-To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/apple/build_and_assemble_ios_pods.py) script from the ONNX Runtime repo.
+To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/apple/build_and_assemble_apple_pods.py) script from the ONNX Runtime repo.
 
 1. Check out the version of ONNX Runtime you want to use.
 
