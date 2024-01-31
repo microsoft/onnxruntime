@@ -52,12 +52,21 @@
 	// Training
 	const TrainingScenarios = ['Large Model Training', 'On-Device Training'];
 	const TrainingScenarioIds = ['ot_large_model', 'ot_on_device'];
+<<<<<<< Updated upstream
 	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS'];
 	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios'];
 	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C'];
 	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc'];
 	const TrainingVersions = ['CUDA 11.8', 'CUDA 12.2', 'ROCm', 'CPU'];
 	const TrainingVersionIds = ['ot_CUDA118', 'ot_CUDA122', 'ot_ROCm', 'ot_CPU'];
+=======
+	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS', 'Web'];
+	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios', 'ot_web'];
+	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C', 'JavaScript/TypeScript'];
+	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc', 'ot_js'];
+	const TrainingVersions = ['CUDA 11.8', 'ROCm', 'CPU'];
+	const TrainingVersionIds = ['ot_CUDA118', 'ot_ROCm', 'ot_CPU'];
+>>>>>>> Stashed changes
 	const TrainingBuilds = ['Stable', 'Preview (Nightly)'];
 	const TrainingBuildIds = ['ot_stable', 'ot_nightly'];
 	const validCombos = {
@@ -812,7 +821,14 @@
 			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
 
 		'ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly':
-			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>"
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
+
+		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_stable':
+			"npm install onnxruntime-web",
+
+		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_nightly':
+			"npm install onnxruntime-web@dev",
+
 	};
 	onMount(() => {
 		var supportedOperatingSystemsNew = [

@@ -307,6 +307,19 @@ pod 'onnxruntime-training-objc'
       </ul>
     </td>
   </tr>
+  <tr>
+    <td>Web</td>
+    <td> JavaScript, TypeScript</td>
+     <td><b></b>onnxruntime-web</td>
+     <td>
+     <pre>npm install onnxruntime-web</pre>
+       <ul>
+        <li>
+            Use either <code>import * as ort from 'onnxruntime-web/training';</code> or <code>const ort = require('onnxruntime-web/training');</code>
+        </li>
+      </ul>
+    </td>
+  </tr>
 </table>
 
 ## Large Model Training

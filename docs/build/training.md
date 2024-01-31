@@ -49,6 +49,10 @@ redirect_from: /docs/how-to/build/training
 
     Refer to the [iOS build instructions](./ios.md) and add the ```--enable_training_apis``` build flag.
 
+   f. For web
+
+    Refer to the [web build instructions](./web.md).
+
 > **Note**
 >
 > - To build the C# bindings, add the ```--build_nuget``` flag to the build command above.
