@@ -488,7 +488,12 @@ export class WebGpuBackend {
         } else if (v.type === DataType.uint32) {
           new Uint32Array(arrayBuffer, offset, data.length).set(data);
         } else if (v.type === DataType.float16) {
-          new Float16Array(arrayBuffer, offset, data.length).set(data);
+          if (typeof Float16Array !== 'undefined') {
+            new Float16Array(arrayBuffer, offset, data.length).set(data);
+          } else {
+            // Fallback to Uint16Array when Float16Array polyfill is not available.
+            new Uint16Array(arrayBuffer, offset, data.length).set(data);
+          }
         } else if (v.type === DataType.float) {
           new Float32Array(arrayBuffer, offset, data.length).set(data);
         } else {

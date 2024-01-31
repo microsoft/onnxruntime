@@ -4,13 +4,13 @@
 import {Guid} from 'guid-typescript';
 import Long from 'long';
 
+import {Float16ArrayType} from '../../lib/wasm/wasm-common';
+
 import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
 import {onnx} from './ort-schema/protobuf/onnx';
 import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
-
-import {Float16ArrayType} from '../../lib/wasm/wasm-common';
 
 export declare namespace Tensor {
   export interface DataTypeMap {
