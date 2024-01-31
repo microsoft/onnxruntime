@@ -12,10 +12,25 @@ namespace util {
 bool HasRequiredBaseOS() {
   // This may look strange, but it is required "@available(macOS ....)" to safe-guard some code
   // otherwise the compiler will spit -Wunsupported-availability-guard
-  if (HAS_VALID_BASE_OS_VERSION)
+  if (HAS_COREML3_OR_LATER)
     return true;
   else
     return false;
+}
+
+int32_t CoreMLVersion() {
+  if (HAS_COREML7_OR_LATER)
+    return 7;
+  if (HAS_COREML6_OR_LATER)
+    return 6;
+  if (HAS_COREML5_OR_LATER)
+    return 5;
+  if (HAS_COREML4_OR_LATER)
+    return 4;
+  if (HAS_COREML3_OR_LATER)
+    return 3;
+
+  return -1;
 }
 
 std::string GetTemporaryFilePath() {

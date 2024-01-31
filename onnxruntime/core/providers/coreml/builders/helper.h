@@ -23,10 +23,14 @@ class Logger;
 
 namespace coreml {
 
-OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer, uint32_t coreml_flags);
+OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer,
+                                         int32_t coreml_version,
+                                         uint32_t coreml_flags);
 
-bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name,
-                      const OpBuilderInputParams& input_params, const logging::Logger& logger);
+const IOpBuilder* GetOpBuilder(const Node& node);
+
+bool IsInputSupported(const Node& node, const NodeArg& node_arg, const OpBuilderInputParams& input_params,
+                      const logging::Logger& logger);
 
 bool IsNodeSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger);
 
@@ -41,6 +45,7 @@ bool CheckIsConstantInitializer(const NodeArg& node_arg, const GraphViewer& grap
 // CoreML is more efficient running using Apple Neural Engine
 // This is to detect if the current system has Apple Neural Engine
 bool HasNeuralEngine(const logging::Logger& logger);
+
 
 }  // namespace coreml
 }  // namespace onnxruntime
