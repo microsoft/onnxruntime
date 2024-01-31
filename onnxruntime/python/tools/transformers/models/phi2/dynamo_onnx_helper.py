@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
-import onnx
 import os
 
+import onnx
 from onnx import ModelProto
 
 

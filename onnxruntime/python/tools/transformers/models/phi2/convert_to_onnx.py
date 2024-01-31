@@ -29,7 +29,7 @@ class AttentionOpType(Enum):
 
 
 def env_reset():
-    for flag in ["AttentionOpType"]:
+    for flag in ["ATTENTIONOPTYPE"]:
         if flag in os.environ:
             del os.environ[flag]
 
