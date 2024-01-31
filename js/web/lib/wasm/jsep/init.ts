@@ -8,7 +8,7 @@ import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
-import {TensorView} from './tensor-view';
+import {Float16ArrayType, TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
 import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
 
@@ -18,6 +18,15 @@ class TensorViewImpl implements TensorView {
   constructor(
       private module: OrtWasmModule, public readonly dataType: number, public readonly data: number,
       public readonly dims: readonly number[]) {}
+
+  getFloat16Array(): Float16ArrayType {
+    if (this.dataType !== DataType.float16) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Float16Array() :
+                                new Float16Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
 
   getFloat32Array(): Float32Array {
     if (this.dataType !== DataType.float) {

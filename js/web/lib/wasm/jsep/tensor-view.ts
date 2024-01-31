@@ -9,6 +9,7 @@ export const createView = (dataBuffer: ArrayBuffer, type: Tensor.Type): Int32Arr
     BigUint64Array|Uint8Array|Float32Array|Float64Array|Int8Array|Int16Array|Uint16Array =>
         new (tensorTypeToTypedArrayConstructor(type))(dataBuffer);
 
+export type Float16ArrayType = InstanceType<typeof Float16Array>;
 /**
  * a TensorView does not own the data.
  */
@@ -16,6 +17,11 @@ export interface TensorView {
   readonly data: number;
   readonly dataType: number;
   readonly dims: readonly number[];
+
+  /**
+   * get a Float16Array data view of the tensor data. tensor data must be on CPU.
+   */
+  getFloat16Array(): Float16ArrayType;
 
   /**
    * get a Float32Array data view of the tensor data. tensor data must be on CPU.

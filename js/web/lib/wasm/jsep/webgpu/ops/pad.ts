@@ -201,7 +201,9 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
 const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes: PadAttributes): PadAttributes => {
   if (inputs.length > 1) {
     const bigInt64Pads = inputs[1].getBigInt64Array();
-    const value = (inputs.length >= 3 && inputs[2].data) ? inputs[2].getFloat32Array()[0] : 0.0;
+    const value = (inputs.length >= 3 && inputs[2].data) ?
+        (inputs[2].dataType === DataType.float16 ? inputs[2].getFloat16Array()[0] : inputs[2].getFloat32Array()[0]) :
+        0.0;
 
     const inputRank = inputs[0].dims.length;
     const updatePads = new Int32Array(2 * inputRank).fill(0);

@@ -1,6 +1,6 @@
 [
   {
-    "name": "constant 2D",
+    "name": "constant 2D float16",
     "operator": "Pad",
     "opset": { "domain": "", "version": 10 },
     "attributes": [
@@ -15,6 +15,45 @@
           {
             "data": [1.0, 2.0, 3.0, 4.0],
             "dims": [2, 2],
+            "type": "float16"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2,
+              1.2, 1.2, 1.0, 2.0, 1.2, 1.2, 1.2, 1.2, 1.2, 3.0, 4.0, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2,
+              1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2
+            ],
+            "dims": [7, 7],
+            "type": "float16"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "constant 2D float16",
+    "operator": "Pad",
+    "opset": { "domain": "", "version": 19 },
+    "attributes": [{ "name": "mode", "data": "constant", "type": "string" }],
+    "cases": [
+      {
+        "name": "[2,2]->[7,7]",
+        "inputs": [
+          {
+            "data": [1.0, 2.0, 3.0, 4.0],
+            "dims": [2, 2],
+            "type": "float16"
+          },
+          {
+            "data": [3, 2, 2, 3],
+            "dims": [4],
+            "type": "int64"
+          },
+          {
+            "data": [1.2],
+            "dims": [1],
             "type": "float16"
           }
         ],
