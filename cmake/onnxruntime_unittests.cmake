@@ -829,8 +829,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc" )
 
   # The QDQTransformerTests are way too slow. They takes about 5 minutes in a non-ASAN build, 1 hour 20 minutes in an ASAN build on a 32 vCPUs Azure VM. 
-  list(REMOVE_ITEM all_tests "${TEST_SRC_DIR}/providers/cpu/reduction/optimizer/qdq_transformer_fastmath_test.cc"
-    "${TEST_SRC_DIR}/providers/cpu/reduction/optimizer/qdq_transformer_test.cc")
+  list(REMOVE_ITEM all_tests "${TEST_SRC_DIR}/optimizer/qdq_transformer_fastmath_test.cc"
+    "${TEST_SRC_DIR}/optimizer/qdq_transformer_test.cc")
 endif()
 
 set(test_all_args)
