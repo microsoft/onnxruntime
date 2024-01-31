@@ -30,6 +30,7 @@
 #include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
 #include "core/framework/murmurhash3.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -315,10 +316,6 @@ struct ProviderHostImpl : ProviderHost {
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
     return p->IExecutionProvider::Compile(fused_nodes_and_graphs, node_compute_funcs);
-  }
-
-  int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) override {
-    return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
   }
 
   // Status (direct)
@@ -1082,6 +1079,11 @@ struct ProviderHostImpl : ProviderHost {
   void TensorSeq__Add(TensorSeq* p, OrtValue&& tensor) override { p->Add(std::move(tensor)); }
   void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) override { p->Add(std::move(tensor)); }
   void TensorSeq__Reserve(TensorSeq* p, size_t capacity) override { p->Reserve(capacity); }
+
+  // ModelMetadefIdGenerator(wrapped)
+  std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__construct() override { return std::make_unique<ModelMetadefIdGenerator>(); }
+  void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) override { delete p; }
+  int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) override { return p->GenerateId(graph_viewer, model_hash); }
 
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
