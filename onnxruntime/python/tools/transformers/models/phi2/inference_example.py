@@ -34,9 +34,11 @@ class ORTGenerator:
 
         inputs = {
             "input_ids": input_ids.contiguous(),
-            "step": step.contiguous(),
             "attention_mask": attention_mask.contiguous(),
         }
+
+        if self.use_step:
+            inputs["step"] = step.contiguous()
 
         batch_size, sequence_length = input_ids.shape
 
@@ -109,7 +111,7 @@ class ORTGenerator:
 
         return io_binding
 
-    def create_session(self, device_id, use_fp16=True, use_buffer_share=True, packed_kv=False):
+    def create_session(self, device_id, use_fp16=True, use_buffer_share=True, packed_kv=False, use_step=False):
         sess_options = ort.SessionOptions()
         ep = ("CUDAExecutionProvider", {"device_id": device_id}) if device_id >= 0 else "CPUExecutionProvider"
         self.sess = ort.InferenceSession(self.onnx_decoder_path, sess_options=sess_options, providers=[ep])
@@ -118,6 +120,7 @@ class ORTGenerator:
         self.use_fp16 = use_fp16
         self.use_buffer_share = use_buffer_share
         self.packed_kv = packed_kv
+        self.use_step = use_step
 
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
         self.tokenizer.pad_token = "[PAD]"
@@ -159,7 +162,8 @@ class ORTGenerator:
             # Update inputs for next inference run
             current_length += 1
             inputs["input_ids"] = tokens_to_add.to(torch.int32)
-            inputs["step"] = torch.tensor([current_length - 1], device=self.device, dtype=torch.int64)
+            if self.use_step:
+                inputs["step"] = torch.tensor([current_length - 1], device=self.device, dtype=torch.int64)
             inputs["attention_mask"] = torch.cat([inputs["attention_mask"], (~has_eos).reshape(batch_size, 1)], 1).to(
                 torch.int32
             )
@@ -193,7 +197,7 @@ class ORTGenerator:
         return texts
 
 
-def run_phi2(onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_fp16=True):
+def run_phi2(onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_fp16=True, use_step=False):
     prompt = [
         '''```python
     def print_prime(n):
@@ -203,7 +207,7 @@ def run_phi2(onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_
     ]
 
     generator = ORTGenerator(onnx_model_path)
-    generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv)
+    generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv, use_step)
     texts = generator.generate(prompt, max_length=200)
 
     for i in range(len(texts)):

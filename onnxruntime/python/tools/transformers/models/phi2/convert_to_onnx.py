@@ -241,7 +241,6 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
             onnx_path_out,
             save_as_external_data=True,
             all_tensors_to_one_file=True,
-            location=onnx_path_out + ".data",
         )
 
     def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
@@ -403,6 +402,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="The output directory for the ONNX models",
+        default="phi2_onnx_models",
+    )
+
+    parser.add_argument(
         "--block_size",
         required=False,
         default=16,
@@ -431,26 +437,58 @@ def main():
     converter = ConvertPhi2ToONNX(device, cache_dir=args.cache_dir)
     converter.set_quantization_params(args.block_size, args.int4_accuracy_level)
 
-    temp_onnx_path = "phi2_temp.onnx"
-    original_onnx_path = "phi2.onnx"  # This model is processed as the intermediate model. Validility is not guaranteed.
+    output_dir = args.output_dir
 
-    if not os.path.exists(original_onnx_path) or args.overwrite:
-        converter.dynamo_export(temp_onnx_path)
-        converter.preprocess_onnx(
-            temp_onnx_path,
-            original_onnx_path,
-            func_name="modeling_phi_PhiModel_model_1",  # The function to unroll
-        )
-        converter.erase_onnx_model(temp_onnx_path)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    temp_onnx_path = os.path.join(output_dir, "phi2_temp.onnx")
+    original_onnx_path = os.path.join(
+        output_dir, "phi2.onnx"
+    )  # This model is processed as the intermediate model. Validility is not guaranteed.
+
+    if not args.skip_export:
+        if not os.path.exists(original_onnx_path) or args.overwrite:
+            converter.dynamo_export(temp_onnx_path)
+            converter.preprocess_onnx(
+                temp_onnx_path,
+                original_onnx_path,
+                func_name="modeling_phi_PhiModel_model_1",  # The function to unroll
+            )
+            converter.erase_onnx_model(temp_onnx_path)
 
     model_type_to_args = {
-        "fp32_cpu": (AttentionOpType.MultiHeadAttention, Precision.FLOAT32, "phi2_decoder_fp32_cpu.onnx"),
-        "int4_cpu": (AttentionOpType.MultiHeadAttention, Precision.INT4, "phi2_decoder_int4_cpu.onnx"),
-        "fp32_gpu": (AttentionOpType.Attention, Precision.FLOAT32, "phi2_decoder_fp32_gpu.onnx"),
-        "fp16_gpu": (AttentionOpType.Attention, Precision.FLOAT16, "phi2_decoder_fp16_gpu.onnx"),
-        "int4_gpu": (AttentionOpType.Attention, Precision.INT4, "phi2_decoder_int4_gpu.onnx"),
-        "fp16_gpu_sm8x": (AttentionOpType.GroupQueryAttention, Precision.FLOAT16, "phi2_decoder_fp16_gpu_sm8x.onnx"),
-        "int4_gpu_sm8x": (AttentionOpType.GroupQueryAttention, Precision.INT4, "phi2_decoder_int4_gpu_sm8x.onnx"),
+        "fp32_cpu": (
+            AttentionOpType.MultiHeadAttention,
+            Precision.FLOAT32,
+            os.path.join(output_dir, "phi2_decoder_fp32_cpu.onnx"),
+        ),
+        "int4_cpu": (
+            AttentionOpType.MultiHeadAttention,
+            Precision.INT4,
+            os.path.join(output_dir, "phi2_decoder_int4_cpu.onnx"),
+        ),
+        "fp32_gpu": (
+            AttentionOpType.Attention,
+            Precision.FLOAT32,
+            os.path.join(output_dir, "phi2_decoder_fp32_gpu.onnx"),
+        ),
+        "fp16_gpu": (
+            AttentionOpType.Attention,
+            Precision.FLOAT16,
+            os.path.join(output_dir, "phi2_decoder_fp16_gpu.onnx"),
+        ),
+        "int4_gpu": (AttentionOpType.Attention, Precision.INT4, os.path.join(output_dir, "phi2_decoder_int4_gpu.onnx")),
+        "fp16_gpu_sm8x": (
+            AttentionOpType.GroupQueryAttention,
+            Precision.FLOAT16,
+            os.path.join(output_dir, "phi2_decoder_fp16_gpu_sm8x.onnx"),
+        ),
+        "int4_gpu_sm8x": (
+            AttentionOpType.GroupQueryAttention,
+            Precision.INT4,
+            os.path.join(output_dir, "phi2_decoder_int4_gpu_sm8x.onnx"),
+        ),
     }
 
     if not args.skip_export:
@@ -521,6 +559,8 @@ def main():
         [p.start() for p in processes]
         [p.join() for p in processes]
 
+        converter.erase_onnx_model(original_onnx_path)
+
     if args.run_example:
         from inference_example import run_phi2
 
@@ -530,6 +570,7 @@ def main():
                 onnx_model_path=model_type_to_args["fp16_gpu_sm8x"][2],
                 use_buffer_share=True,
                 device_id=args.device_id,
+                use_step=True,
             )
         if args.int4_gpu_sm8x:
             logging.info("Running int4_gpu_sm8x example...")
@@ -537,6 +578,7 @@ def main():
                 onnx_model_path=model_type_to_args["int4_gpu_sm8x"][2],
                 use_buffer_share=True,
                 device_id=args.device_id,
+                use_step=True,
             )
         if args.fp32_gpu:
             logging.info("Running fp32_gpu example...")

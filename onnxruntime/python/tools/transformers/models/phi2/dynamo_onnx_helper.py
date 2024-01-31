@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 import logging
 import os
+from pathlib import Path
 
 import onnx
 
@@ -108,5 +109,6 @@ class DynamoOnnxHelper:
         logging.info(f"Erasing {onnx_path}...")
         os.remove(onnx_path)
         if onnx_data_path is not None:
+            onnx_data_path = os.path.join(Path(onnx_path).parent, onnx_data_path)
             logging.info(f"Erasing {onnx_data_path}...")
             os.remove(onnx_data_path)
