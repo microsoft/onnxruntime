@@ -277,6 +277,20 @@ TEST(CastOpTest, ToFloat8E5M2FNUZ) {
 
 #endif
 
+#ifdef USE_CUDA
+void RunWithSelectedExecutionProviders(OpTester& test) {
+  std::unordered_set<std::string> excluded_provider_types{
+      kCannExecutionProvider,
+      kDnnlExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kTensorrtExecutionProvider,
+      kMIGraphXExecutionProvider,
+      kQnnExecutionProvider,
+      kCpuExecutionProvider,
+      kAzureExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+}
+
 TEST(CastLikeOpTest, CastFromFloatToInt32) {
   OpTester test("CastLike", 18);
   std::vector<int64_t> shape = {2, 3};
@@ -289,8 +303,7 @@ TEST(CastLikeOpTest, CastFromFloatToInt32) {
   test.AddInput<int32_t>("like", shape, output.data(), output.size());
   test.AddOutput<int32_t>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+  RunWithSelectedExecutionProviders(test);
 }
 
 TEST(CastLikeOpTest, CastFromInt32ToFloat) {
@@ -305,8 +318,7 @@ TEST(CastLikeOpTest, CastFromInt32ToFloat) {
   test.AddInput<float>("like", shape, output.data(), output.size());
   test.AddOutput<float>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+  RunWithSelectedExecutionProviders(test);
 }
 
 TEST(CastLikeOpTest, CastFromFloatToMLFloat16) {
@@ -320,8 +332,7 @@ TEST(CastLikeOpTest, CastFromFloatToMLFloat16) {
   test.AddInput<MLFloat16>("like", shape, output.data(), output.size());
   test.AddOutput<MLFloat16>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+  RunWithSelectedExecutionProviders(test);
 }
 
 TEST(CastLikeOpTest, CastFromMLFloat16ToFloat) {
@@ -335,8 +346,7 @@ TEST(CastLikeOpTest, CastFromMLFloat16ToFloat) {
   test.AddInput<float>("like", shape, output.data(), output.size());
   test.AddOutput<float>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+  RunWithSelectedExecutionProviders(test);
 }
 
 TEST(CastLikeOpTest, CastFromStringToFloat) {
@@ -351,8 +361,7 @@ TEST(CastLikeOpTest, CastFromStringToFloat) {
   test.AddInput<float>("like", shape, output.data(), output.size());
   test.AddOutput<float>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+  RunWithSelectedExecutionProviders(test);
 }
 
 TEST(CastLikeOpTest, CastFromInt64ToString) {
@@ -367,9 +376,9 @@ TEST(CastLikeOpTest, CastFromInt64ToString) {
   test.AddInput<std::string>("like", shape, output.data(), output.size());
   test.AddOutput<std::string>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+  RunWithSelectedExecutionProviders(test);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
