@@ -52,7 +52,10 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
         self.block_size = 16
         self.accuracy_level = None
 
-    def set_quantization_params(self, block_size: int, accuracy_level: int):
+# at the beginning of the file
+from __future__ import annotations
+# ...
+    def set_quantization_params(self, block_size: int, accuracy_level: int | None):
         self.block_size = block_size
         self.accuracy_level = accuracy_level
 
