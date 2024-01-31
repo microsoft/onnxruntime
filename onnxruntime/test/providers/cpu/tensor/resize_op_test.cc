@@ -2266,7 +2266,7 @@ TEST(ResizeOpTest, Antialias_Large_half_pixel) {
   // Have absolute tolerance because ort is slightly different results.
   // DML implementation is equivalent to resize with variable input window size while ORT using a convolution approach.
   // Absolute error is for ORT CPU.
-  test.AddOutput<float>("Y", output_shape, Y, false, /*rel_error*/ 0.0f, /*abs_error*/ 0.f);
+  test.AddOutput<float>("Y", output_shape, Y, false, /*rel_error*/ 0.0f, /*abs_error*/ 0.12f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
