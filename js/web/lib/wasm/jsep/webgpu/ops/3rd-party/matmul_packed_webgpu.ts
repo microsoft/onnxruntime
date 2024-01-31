@@ -23,7 +23,7 @@ import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
-import {getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
 
@@ -443,17 +443,13 @@ export const createMatmulProgramInfo =
 
       const components = isVec4 ? 4 : 1;
       const aShapeTemp = [...outerDimsA, dimAOuter, dimInner / components];
-      const aShapeOrRank = aShapeTemp.length;
+      const aRank = aShapeTemp.length;
       const bShapeTemp = [...outerDimsB, dimInner, dimBOuter / components];
-      const bShapeOrRank = bShapeTemp.length;
+      const bRank = bShapeTemp.length;
       const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
       const programUniforms: ProgramUniform[] =
           [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
-      if (activationAttributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: 'float32', data: activationAttributes.clipMax!},
-            {type: 'float32', data: activationAttributes.clipMin!});
-      }
+      appendActivationUniformsData(activationAttributes, programUniforms);
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShapeTemp),
           ...createTensorShapeVariables(bShapeTemp));
@@ -467,12 +463,12 @@ export const createMatmulProgramInfo =
       programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const batchShapeOrRank = outerDims.length;
-        const batchDims = internalVariable('batchDims', inputs[0].dataType, batchShapeOrRank, 1);
+        const batchRank = outerDims.length;
+        const batchDims = internalVariable('batchDims', inputs[0].dataType, batchRank, 1);
         const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
 
-        const A = inputVariable('a', inputs[0].dataType, aShapeOrRank, components);
-        const B = inputVariable('b', inputs[1].dataType, bShapeOrRank, components);
+        const A = inputVariable('a', inputs[0].dataType, aRank, components);
+        const B = inputVariable('b', inputs[1].dataType, bRank, components);
         const output = outputVariable('result', inputs[0].dataType, outputShapeTemp.length, components);
         const inputVariables = [A, B];
         if (hasBias) {
@@ -481,9 +477,7 @@ export const createMatmulProgramInfo =
         }
         const uniforms: UniformsArrayType =
             [{name: 'dim_a_outer', type: 'i32'}, {name: 'dim_b_outer', type: 'i32'}, {name: 'dim_inner', type: 'i32'}];
-        if (activationAttributes.activation === 'Clip') {
-          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
-        }
+        appendActivationUniforms(activationAttributes, uniforms);
         const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
         const declareFunctions = matMulReadWriteFnSource(
             components, hasBias, applyActivation, [batchDims, A, B, output], [outerDimsA, outerDimsB, outerDims],

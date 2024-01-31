@@ -601,6 +601,13 @@ class TestQDQFormatConvRelu(TestQDQFormat):
         )
         check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next())
 
+        # If the model uses Q/DQ ops with "com.microsoft" domain (e.g., for int16 support),
+        # then ensure the model has the appropriate opset import.
+        if extra_options and extra_options.get("UseQDQContribOps", False):
+            qdq_model = onnx.load_model(model_qdq_path)
+            ms_opset = next((opset for opset in qdq_model.opset_import if opset.domain == "com.microsoft"), None)
+            self.assertIsNot(ms_opset, None)
+
     def verify_qop(self, per_channel, is_quant_type_int8):
         np.random.seed(1)
         model_fp32_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_fp32.{per_channel}.onnx")
