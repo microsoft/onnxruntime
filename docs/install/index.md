@@ -73,9 +73,8 @@ Per the instructions, "it is always recommended to use a virtualenv while develo
 
 Add a pip.ini (Windows) or pip.conf (Linux) file to your virtualenv
 
-```text
-[global]
-index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+```bash
+pip install onnxruntime-gpu --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 ```
 
 3. Install onnxruntime-gpu
