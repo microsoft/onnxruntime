@@ -10,7 +10,8 @@ import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
 
-type Float16ArrayType = InstanceType<typeof Float16Array>;
+import {Float16ArrayType} from '../../lib/wasm/wasm-common';
+
 export declare namespace Tensor {
   export interface DataTypeMap {
     bool: Uint8Array;
