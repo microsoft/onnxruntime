@@ -999,6 +999,7 @@ template <typename T>
 Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, Stream* ort_stream, int copyDirection) {
   assert(copyDirection >= 0 && copyDirection <= 3);
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
+  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   if (cuda_stream == nullptr) {
     CUDA_RETURN_IF_ERROR(cudaMemcpy(target.data(), source.data(), source.size_bytes(),
                                     static_cast<cudaMemcpyKind>(copyDirection)));
