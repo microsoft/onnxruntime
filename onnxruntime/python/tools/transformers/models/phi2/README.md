@@ -96,7 +96,7 @@ _From wheel:_
 ```
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_cpu --int4_cpu --fp32_gpu --fp16_gpu --int4_gpu --fp16_gpu_sm8x --int4_gpu_sm8x
 ```
-## Run example with ORT and benchmark
+## Run example with ORT
 **(e.g) Export FP16 and INT4 ONNX models for Nvidia GPUs with CUDA architecture SM=80~89 and run examples.** \
 _From source:_
 ```
