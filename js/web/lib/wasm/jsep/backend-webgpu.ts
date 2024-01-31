@@ -705,13 +705,11 @@ export class WebGpuBackend {
 
   captureBegin(): void {
     LOG_DEBUG('info', 'captureBegin');
-    let sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
-    let sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
-    if (!sessionCommandList) {
-      sessionCommandList = [];
-      this.capturedCommandList.set(this.currentSessionId!, sessionCommandList);
-      sessionPendingKernels = [];
-      this.capturedPendingKernels.set(this.currentSessionId!, sessionPendingKernels);
+    if (!this.capturedCommandList.get(this.currentSessionId!)) {
+      this.capturedCommandList.set(this.currentSessionId!, []);
+    }
+    if (!this.capturedPendingKernels.get(this.currentSessionId!)) {
+      this.capturedPendingKernels.set(this.currentSessionId!, []);
     }
     // flush the left commands before we change the status.
     this.flush();
