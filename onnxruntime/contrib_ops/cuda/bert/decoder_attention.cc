@@ -373,7 +373,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #ifdef USE_ROCM
       GetTuningContext(),
 #else
-      UseTF32(),      
+      UseTF32(),
 #endif
       context->GetComputeStream(),
       cublas,
@@ -397,8 +397,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       workspace_p.get(),
       output->MutableData<T>(),
       nullptr == new_key_cache ? nullptr : new_key_cache->MutableData<T>(),
-      nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>()
-      );
+      nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>());
 }
 
 }  // namespace cuda

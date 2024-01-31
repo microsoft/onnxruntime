@@ -85,7 +85,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
   parameters.use_tf32 = UseTF32();
-  
+
   // Use the second dimension from weight for bias to get q_hidden_size when bias is nullptr
   std::vector<int64_t> bias_dims{weights->Shape().GetDims()[1]};
   const TensorShape bias_shape{bias_dims};

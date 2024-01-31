@@ -214,7 +214,7 @@ void* CudaStream::GetResource(int version, int id) const {
       break;
     case CudaResource::use_tf32_t:
       return reinterpret_cast<void*>(ep_info_.use_tf32);
-      break;      
+      break;
     default:
       break;
   }

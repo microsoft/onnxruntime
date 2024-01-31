@@ -93,7 +93,7 @@ class CudaKernel : public OpKernel {
   bool UseTF32() const {
     return provider_->UseTF32();
   }
-  
+
   tunable::CudaTuningContext* GetTuningContext() const {
     return static_cast<tunable::CudaTuningContext*>(provider_->GetTuningContext());
   }
