@@ -4,17 +4,17 @@
 # --------------------------------------------------------------------------
 import argparse
 import logging
-import onnx
 import os
-import torch
-
-from dynamo_onnx_helper import DynamoOnnxHelper
 from enum import Enum
+
+import onnx
+import torch
+from benchmark_helper import Precision
+from dynamo_onnx_helper import DynamoOnnxHelper
 from onnx import ModelProto, TensorProto, helper
-from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 from transformers import AutoConfig, AutoModelForCausalLM
 
-from benchmark_helper import Precision
+from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
 
 class AttentionOpType(Enum):
@@ -243,9 +243,10 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
         )
 
     def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
+        import uuid
+
         from fusion_options import FusionOptions
         from optimizer import optimize_model
-        import uuid
 
         processed_onnx_path = f"{uuid.uuid1()}.onnx"
         model = onnx.load_model(onnx_path, load_external_data=True)

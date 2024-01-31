@@ -3,16 +3,17 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 from logging import getLogger
 from typing import List, Optional
+
+import numpy as np
 from fusion_base import Fusion
-from fusion_utils import FusionUtils, NumpyHelper
-from onnx import NodeProto, ModelProto, TensorProto, ValueInfoProto, helper, inliner, numpy_helper
-from onnx_model import OnnxModel
 from fusion_options import FusionOptions
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
-import numpy as np
-import os
+from fusion_utils import FusionUtils, NumpyHelper
+from onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, helper, inliner, numpy_helper
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 

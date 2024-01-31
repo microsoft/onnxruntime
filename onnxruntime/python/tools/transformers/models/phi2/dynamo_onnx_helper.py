@@ -4,8 +4,9 @@
 # --------------------------------------------------------------------------
 
 import logging
-import onnx
 import os
+
+import onnx
 from onnx import ModelProto
 
 

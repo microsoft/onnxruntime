@@ -4,12 +4,14 @@
 # --------------------------------------------------------------------------
 
 import logging
-import numpy as np
-import onnxruntime as ort
 import os
+from typing import List
+
+import numpy as np
 import torch
 from transformers import AutoTokenizer
-from typing import List
+
+import onnxruntime as ort
 
 pt_to_np = {
     "torch.int32": np.int32,
