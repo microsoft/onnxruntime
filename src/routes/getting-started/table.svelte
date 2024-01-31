@@ -1985,7 +1985,7 @@
 			</div>
 			<div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 				<h3 id="ot_selectOS">Platform</h3>
-				<p id="ot_decriptionOS" class="sr-only">Platform list contains five items</p>
+				<p id="ot_decriptionOS" class="sr-only">Platform list contains six items</p>
 			</div>
 			<div
 				class="col-span-4 w-full r-content"
@@ -1994,7 +1994,7 @@
 				aria-labelledby="ot_selectOS"
 				aria-describedby="ot_decriptionOS"
 			>
-				<div class="grid grid-cols-5 gap-4 ot_os">
+				<div class="grid grid-cols-6 gap-4 ot_os">
 					{#each TrainingPlatforms as trainingplatform, i}
 						<a
 							class="r-option version join-item btn rounded"
@@ -2009,7 +2009,7 @@
 
 			<div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 				<h3 id="ot_selectLanguage">API</h3>
-				<p id="ot_decriptionLanguage" class="sr-only">API list contains six items</p>
+				<p id="ot_decriptionLanguage" class="sr-only">API list contains seven items</p>
 			</div>
 			<div
 				class="col-span-4 w-full r-content"
@@ -2018,7 +2018,7 @@
 				aria-labelledby="ot_selectLanguage"
 				aria-describedby="ot_decriptionLanguage"
 			>
-				<div class="grid grid-cols-6 gap-4 ot_language">
+				<div class="grid grid-cols-7 gap-4 ot_language">
 					{#each TrainingAPIs as trainingapi, i}
 						<a
 							class="r-option version join-item btn rounded"
