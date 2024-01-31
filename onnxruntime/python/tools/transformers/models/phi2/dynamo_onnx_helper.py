@@ -2,11 +2,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-
 import logging
+import onnx
 import os
 
-import onnx
 from onnx import ModelProto
 
 
@@ -51,19 +50,14 @@ class DynamoOnnxHelper:
         for node in model.graph.node:
             if node.op_type == func_name:
                 nodes_to_remove.append(node)
-                for edge in node.input:
-                    edges_to_remove.append(edge)
-                for edge in node.output:
-                    edges_to_remove.append(edge)
+                edges_to_remove.extend(list(node.input) + list(node.output))
 
+        func_to_remove = None
         for f in model.functions:
             if f.name == func_name:
-                for node in f.node:
-                    nodes_to_add.append(node)
-                for edge in f.input:
-                    edges_to_add.append(edge)
-                for edge in f.output:
-                    edges_to_add.append(edge)
+                nodes_to_add.extend(list(f.node))
+                edges_to_add.extend(list(f.input) + list(f.output))
+                func_to_remove = f
 
         assert len(edges_to_remove) == len(edges_to_add)
 
@@ -71,6 +65,8 @@ class DynamoOnnxHelper:
             model.graph.node.remove(node)
         for node in nodes_to_add:
             model.graph.node.append(node)
+        if func_to_remove is not None:
+            model.functions.remove(func_to_remove)
 
         edge_mapping = {}
         for i in range(len(edges_to_remove)):

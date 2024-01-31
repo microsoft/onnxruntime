@@ -2,6 +2,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from __future__ import annotations
+
 import argparse
 import logging
 import os
@@ -52,9 +54,6 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
         self.block_size = 16
         self.accuracy_level = None
 
-# at the beginning of the file
-from __future__ import annotations
-# ...
     def set_quantization_params(self, block_size: int, accuracy_level: int | None):
         self.block_size = block_size
         self.accuracy_level = accuracy_level
@@ -64,7 +63,7 @@ from __future__ import annotations
         self.precision = precision
 
         env_reset()
-        os.environ["AttentionOpType"] = str(attn_op_type)
+        os.environ["ATTENTIONOPTYPE"] = str(attn_op_type)
 
     def get_phi2_edge_dict(self, config: AutoConfig) -> dict:
         edge_dict = {}
@@ -92,9 +91,9 @@ from __future__ import annotations
         use_attn = self.attn_op_type == AttentionOpType.Attention
         graph = onnx_model.graph
         new_inputs = []
-        for i, vi in enumerate(graph.input):
+        for vi in graph.input:
             if "input_ids" in vi.name:
-                vi = helper.make_tensor_value_info(
+                vi_iid = helper.make_tensor_value_info(
                     vi.name,
                     elem_type=TensorProto.INT32,
                     shape=["batch_size", "seq_len"],
@@ -110,7 +109,7 @@ from __future__ import annotations
                     elem_type=TensorProto.INT32,
                     shape=["batch_size", "seq_len"],
                 )
-                new_inputs.extend([vi, vi_pid, vi_mask])
+                new_inputs.extend([vi_iid, vi_pid, vi_mask])
             if not use_attn:
                 if "past_key" in vi.name or "past_value" in vi.name:
                     vi_cache = helper.make_tensor_value_info(
@@ -145,13 +144,13 @@ from __future__ import annotations
         new_outputs = []
         for i, vi in enumerate(graph.output):
             if i == 0:
-                vi = helper.make_tensor_value_info(
+                vi_logits = helper.make_tensor_value_info(
                     vi.name, elem_type=vi.type.tensor_type.elem_type, shape=["batch_size", "seq_len", config.vocab_size]
                 )
-                new_outputs.extend([vi])
+                new_outputs.extend([vi_logits])
             else:
                 if not use_attn:
-                    vi = helper.make_tensor_value_info(
+                    vi_cache = helper.make_tensor_value_info(
                         vi.name,
                         elem_type=vi.type.tensor_type.elem_type,
                         shape=[
@@ -161,10 +160,10 @@ from __future__ import annotations
                             config.hidden_size // config.num_attention_heads,
                         ],
                     )
-                    new_outputs.extend([vi])
+                    new_outputs.extend([vi_cache])
                 else:
                     if "present_key" in vi.name:
-                        vi = helper.make_tensor_value_info(
+                        vi_cache = helper.make_tensor_value_info(
                             vi.name.replace("present_key", "present"),
                             elem_type=vi.type.tensor_type.elem_type,
                             shape=[
@@ -175,7 +174,7 @@ from __future__ import annotations
                                 config.hidden_size // config.num_attention_heads,
                             ],
                         )
-                        new_outputs.extend([vi])
+                        new_outputs.extend([vi_cache])
 
         graph.ClearField("output")
         graph.output.extend(new_outputs)
@@ -291,14 +290,12 @@ from __future__ import annotations
                 "Attention_30",
                 "Attention_31",
             ]
-            logging.info(f"Converting onnx model to float16/bfloat16...")
+            logging.info("Converting onnx model to float16/bfloat16...")
             optimizer.convert_float_to_float16(
                 keep_io_types=False,
                 node_block_list=node_block_list,
                 use_symbolic_shape_infer=True,
-                use_bfloat16_as_blocked_nodes_dtype=True
-                if self.attn_op_type == AttentionOpType.GroupQueryAttention
-                else False,
+                use_bfloat16_as_blocked_nodes_dtype=self.attn_op_type == AttentionOpType.GroupQueryAttention,
             )
 
         if self.precision == Precision.FLOAT16:
