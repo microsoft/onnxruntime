@@ -8,7 +8,7 @@ import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
 import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, UniformsArrayType,} from './common';
-import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 
 export const createNaiveMatmulProgramInfo =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
@@ -33,11 +33,15 @@ export const createNaiveMatmulProgramInfo =
         {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: M}, {type: DataType.uint32, data: N},
         {type: DataType.uint32, data: K}
       ];
+<<<<<<< HEAD
       if (activationAttributes.activation === 'Clip') {
         programUniforms.push(
             {type: DataType.float, data: activationAttributes.clipMax!},
             {type: DataType.float, data: activationAttributes.clipMin!});
       }
+=======
+      appendActivationUniformsData(activationAttributes, programUniforms);
+>>>>>>> main
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
           ...createTensorShapeVariables(bShape));
@@ -70,9 +74,7 @@ export const createNaiveMatmulProgramInfo =
           {name: 'output_size', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'},
           {name: 'K', type: 'u32'}
         ];
-        if (activationAttributes.activation === 'Clip') {
-          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
-        }
+        appendActivationUniforms(activationAttributes, uniforms);
 
         const getIndices = (variable: IndicesHelper, broadCastDims: number[]) => {
           const rank = variable.rank;

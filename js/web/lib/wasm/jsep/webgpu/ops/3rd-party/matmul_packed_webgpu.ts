@@ -24,7 +24,7 @@ import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
-import {getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
 
@@ -452,11 +452,7 @@ export const createMatmulProgramInfo =
         {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
         {type: DataType.int32, data: dimInner}
       ];
-      if (activationAttributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: DataType.float, data: activationAttributes.clipMax!},
-            {type: DataType.float, data: activationAttributes.clipMin!});
-      }
+      appendActivationUniformsData(activationAttributes, programUniforms);
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShapeTemp),
           ...createTensorShapeVariables(bShapeTemp));
@@ -484,9 +480,7 @@ export const createMatmulProgramInfo =
         }
         const uniforms: UniformsArrayType =
             [{name: 'dim_a_outer', type: 'i32'}, {name: 'dim_b_outer', type: 'i32'}, {name: 'dim_inner', type: 'i32'}];
-        if (activationAttributes.activation === 'Clip') {
-          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
-        }
+        appendActivationUniforms(activationAttributes, uniforms);
         const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
         const declareFunctions = matMulReadWriteFnSource(
             components, hasBias, applyActivation, [batchDims, A, B, output], [outerDimsA, outerDimsB, outerDims],
