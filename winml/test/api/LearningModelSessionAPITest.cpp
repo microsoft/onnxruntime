@@ -308,6 +308,41 @@ static void EvaluateSessionAndCloseModel() {
   WINML_EXPECT_NO_THROW(::EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind::Cpu, false));
 }
 
+
+static void DisableGraphOptimization() {
+#ifndef BUILD_INBOX
+  LearningModel model = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", model));
+
+  LearningModelDevice device(nullptr);
+  WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance));
+
+  LearningModelSessionOptions options;
+
+  LearningModelSession session(nullptr);
+  auto start = std::chrono::high_resolution_clock::now();
+  WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
+  auto session_creation_duration_ms = evaluate_duration_in_microseconds.count();
+
+  options = LearningModelSessionOptions();
+  Experimental::LearningModelSessionOptionsExperimental experimental_options(options);
+  experimental_options.GraphOptimizationPolicy(Experimental::GraphOptimizationPolicy::None);
+
+  session = nullptr;
+  start = std::chrono::high_resolution_clock::now();
+  WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
+  end = std::chrono::high_resolution_clock::now();
+  evaluate_duration_in_microseconds = end - start;
+  auto session_creation_duration2_ms = evaluate_duration_in_microseconds.count();
+
+  WINML_EXPECT_TRUE(session_creation_duration2_ms < session_creation_duration_ms);
+  printf("SessionCreation with Optimizations Disabled = %f\n", session_creation_duration2_ms);
+  printf("SessionCreation with Optimizations Enabled = %f\n", session_creation_duration_ms);
+#endif
+}
+
 static void NamedDimensionOverride() {
   LearningModel model = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fns-candy.onnx", model));
@@ -2308,7 +2343,8 @@ const LearningModelSessionAPITestsApi& getapi() {
     ModelBuilding_STFT,
     ModelBuilding_MelSpectrogramOnThreeToneSignal,
     ModelBuilding_MelWeightMatrix,
-    SetName
+    SetName,
+    DisableGraphOptimization
   };
 
   if (SkipGpuTests()) {
@@ -2321,6 +2357,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     api.ModelBuilding_DiscreteFourierTransformDeviceDirectX = SkipTest;
     api.ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX = SkipTest;
     api.ModelBuilding_GridSampleDeviceDirectX = SkipTest;
+    api.DisableGraphOptimization = SkipTest;
   }
   if (RuntimeParameterExists(L"EdgeCore")) {
     api.AdapterIdAndDevice = SkipTest;
