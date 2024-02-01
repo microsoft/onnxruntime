@@ -435,7 +435,7 @@ static void RunModelWithRandomInput(
 
   // TF32 in SM >= 80 is enabled by default, need larger threshold for float when TF32 is enabled.
   float gpu_threshold = is_float16 ? 0.15f : (HasCudaEnvironment(800) ? 0.05f : 0.005f);
-  gpu_threshold *= sequence_length > 1024 ? 4.0f : 1.0f;   // threshold should increase with sequence length
+  gpu_threshold *= sequence_length > 1024 ? 4.0f : 1.0f;  // threshold should increase with sequence length
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   if (enable_cuda) {
     OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);
