@@ -322,10 +322,18 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         bool is_qnn_ctx_model,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
-  // Filter in the EPContext node if its QNN Context model
+  // Filter in the EPContext node for QNN
   if (is_qnn_ctx_model) {
     for (const auto& node : graph_viewer.Nodes()) {
-      if (qnn::EPCONTEXT_OP == node.OpType()) {
+      NodeAttrHelper node_helper(node);
+      std::string cache_source = node_helper.Get(qnn::SOURCE, "");
+
+      std::transform(cache_source.begin(),
+                     cache_source.end(),
+                     cache_source.begin(),
+                     [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+
+      if (qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
         LOGS(logger, VERBOSE) << "Node supported: [1] index: [" << node.Index()
                               << "] name: [" << node.Name()
                               << "] Operator type: [EPContext"
@@ -484,34 +492,36 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
     // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
     // We also count the number of supported nodes in all valid partitions.
-    for (auto& partition : partitions) {
-      bool is_valid_partition = true;
-      size_t nodes_in_partition = 0;
+    if (!is_qnn_ctx_model) {
+      for (auto& partition : partitions) {
+        bool is_valid_partition = true;
+        size_t nodes_in_partition = 0;
 
-      if (partition && partition->sub_graph) {
-        nodes_in_partition = partition->sub_graph->nodes.size();
+        if (partition && partition->sub_graph) {
+          nodes_in_partition = partition->sub_graph->nodes.size();
 
-        if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
-          const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
+          if (nodes_in_partition == 1) {
+            const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
 
-          if (!node) {
-            LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
-            is_valid_partition = false;
-          } else if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
-            LOGS(logger, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
-            is_valid_partition = false;
+            if (!node) {
+              LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
+              is_valid_partition = false;
+            } else if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
+              LOGS(logger, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
+              is_valid_partition = false;
+            }
           }
+        } else {
+          LOGS(logger, ERROR) << "QNN EP: Invalid partition.";
+          is_valid_partition = false;
         }
-      } else {
-        LOGS(logger, ERROR) << "QNN EP: Invalid partition.";
-        is_valid_partition = false;
-      }
 
-      if (is_valid_partition) {
-        result.push_back(std::move(partition));
-        num_of_supported_nodes += nodes_in_partition;
-      }
-    }
+        if (is_valid_partition) {
+          result.push_back(std::move(partition));
+          num_of_supported_nodes += nodes_in_partition;
+        }
+      } // for
+    } // if (!is_qnn_ctx_model)
   }
 
   const size_t num_of_partitions = result.size();
