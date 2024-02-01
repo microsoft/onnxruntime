@@ -520,8 +520,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
           result.push_back(std::move(partition));
           num_of_supported_nodes += nodes_in_partition;
         }
-      } // for
-    } // if (!is_qnn_ctx_model)
+      }  // for
+    }    // if (!is_qnn_ctx_model)
   }
 
   const size_t num_of_partitions = result.size();
