@@ -32,6 +32,7 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
+#include "core/platform/windows/hardware_core_enumerator.h"
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #include <wil/Resource.h>
 
@@ -248,16 +249,27 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
   Sleep(static_cast<DWORD>(micros) / 1000);
 }
 
-int WindowsEnv::DefaultNumCores() {
-  return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
-}
+static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
-  return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+  int regs[4];
+  memset(regs, 0, sizeof(regs));
+  __cpuid(regs, 0);
+  bool bIsIntel =
+      (kVendorID_Intel[0] == regs[1]) &&
+      (kVendorID_Intel[1] == regs[2]) &&
+      (kVendorID_Intel[2] == regs[3]);
+  if (bIsIntel) {
+    // On Intel CPUs we assume the HardwareCoreEnumerator::DefaultIntraOpNumThreads function would never fail.
+    // NOTE: due to resource restrictions, we do not run tests on Intel CPUs in CI build pipelines.
+    return std::max(static_cast<uint32_t>(1), HardwareCoreEnumerator::DefaultIntraOpNumThreads());
+  } else {
+    return cores_.empty() ? std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2)) : static_cast<int>(cores_.size());
+  }
 }
 
 std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
-  return cores_.empty() ? std::vector<LogicalProcessors>(DefaultNumCores(), LogicalProcessors{}) : cores_;
+  return cores_.empty() ? std::vector<LogicalProcessors>(GetNumPhysicalCpuCores(), LogicalProcessors{}) : cores_;
 }
 
 WindowsEnv& WindowsEnv::Instance() {
