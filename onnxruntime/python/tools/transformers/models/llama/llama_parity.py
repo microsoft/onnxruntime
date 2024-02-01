@@ -256,7 +256,7 @@ def main(argv: list[str] = []):  # noqa: B006
 
     kv_cache_ortvalues = {}
     if not args.merged:
-        verify_parity(args, location, kv_cache_ortvalues)
+        verify_parity(args, location, use_auth_token, kv_cache_ortvalues)
     else:
         # Verify prompt generation in merged model (decoder_model.onnx)
         args.use_past_kv = False
