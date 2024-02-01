@@ -83,6 +83,12 @@ bool IsInputSupported(const Node& node, const NodeArg& input,
                             << ", shape: " << Shape2String(shape);
       return false;
     }
+
+    if (dim == 0) {
+      LOGS(logger, WARNING) << "CoreML does not support shapes with dimension values of 0. Input:" << input_name
+                            << ", shape: " << Shape2String(shape);
+      return false;
+    }
   }
 
   // Limit input shape rank to 5.

@@ -70,12 +70,21 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto dilations = helper.GetInt64s("dilations");
     auto groups = helper.GetInt64("group");
 
+    // we know this input has a valid shape due to the check in IsOpSupportedImpl. ignore N and C dims.
+    const auto num_spatial_dims = input_defs[1]->Shape()->dim_size() - 2;
+
     if (strides) {
       model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "strides", *strides);
+    } else {
+      // spec says optional. testing suggests otherwise for at least the iOS15 target (CoreML5)
+      model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "strides", std::vector<int64_t>(num_spatial_dims, 1));
     }
 
     if (dilations) {
       model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "dilations", *dilations);
+    } else {
+      // spec says optional. testing suggests otherwise for at least the iOS15 target (CoreML5)
+      model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "dilations", std::vector<int64_t>(num_spatial_dims, 1));
     }
 
     if (groups) {
@@ -89,6 +98,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     //   custom - pads input  (ONNX NOTSET)
     //   same - inferred to be `d_out[i] = ceil(d_in[i] / strides[i])`  (assuming == ONNX SAME_UPPER)
     //   same_lower - as per same but any extra rows/cols are added at top/left if padding is odd (ONNX SAME_LOWER)
+    //
+    // TODO: See if we want to update HandleAutoPad to support 1D (and 3D) so we can infer if an autopad value
+    //       can be used. TBD if that provides any performance benefit with ML Program though as CoreML could
+    //       potentially do that for us.
     switch (auto_pad_type) {
       case AutoPadType::NOTSET: {
         // use `pads` attribute.
@@ -120,11 +133,17 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad_type", "valid");
         break;
       case AutoPadType::SAME_UPPER:
-        model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad_type", "same");
+      case AutoPadType::SAME_LOWER: {
+        const auto pad_type = (auto_pad_type == AutoPadType::SAME_UPPER ? "same" : "same_lower");
+        model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad_type", pad_type);
+
+        // despite what the spec says, a 'pad' input seems to be required.
+        // https://github.com/apple/coremltools/issues/2127
+        // provide the default value. passing in an empty vector also works. TBD what's better.
+        std::vector<int64_t> ignored_pads(num_spatial_dims * 2, 0);
+        model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad", ignored_pads);
         break;
-      case AutoPadType::SAME_LOWER:
-        model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad_type", "same_lower");
-        break;
+      }
     }
 
     // set output
