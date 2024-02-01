@@ -17,7 +17,7 @@ from llama_inputs import (
     get_sample_with_past_kv_inputs,
 )
 from llama_torch import setup_torch_model
-from transformers import AutoConfig, AutoModelForCausalLM
+from transformers import AutoConfig
 
 import onnxruntime as ort
 
@@ -66,21 +66,28 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
     return inputs
 
 
-def verify_parity(
-    args: argparse.Namespace, config: AutoConfig, pt_model: AutoModelForCausalLM, kv_cache_ortvalues: dict
-):
+def verify_parity(args: argparse.Namespace, location, use_auth_token, kv_cache_ortvalues: dict):
+    config, llama = setup_torch_model(
+        args,
+        location,
+        use_auth_token,
+        torch_dtype=(torch.float16 if args.use_fp16 else torch.float32),
+        device=args.device,
+    )
+
     inputs = get_inputs(args, config)
 
     # Run inference with PyTorch
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     start_time = time.time()
-    pt_outputs = pt_model(**inputs).logits.detach().cpu().numpy()
+    pt_outputs = llama(**inputs).logits.detach().cpu().numpy()
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     end_time = time.time()
     logger.info(f"PyTorch took {end_time - start_time} s")
-    del pt_model
+    del llama
+    torch.cuda.empty_cache()
 
     # Run inference with ORT
     past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
@@ -247,25 +254,17 @@ def main(argv: list[str] = []):  # noqa: B006
     use_auth_token = args.torch_model_directory == os.path.join(".")
     location = args.model_name if use_auth_token else args.torch_model_directory
 
-    config, llama = setup_torch_model(
-        args,
-        location,
-        use_auth_token,
-        torch_dtype=(torch.float16 if args.use_fp16 else torch.float32),
-        device=args.device,
-    )
-
     kv_cache_ortvalues = {}
     if not args.merged:
-        verify_parity(args, config, llama, kv_cache_ortvalues)
+        verify_parity(args, location, kv_cache_ortvalues)
     else:
         # Verify prompt generation in merged model (decoder_model.onnx)
         args.use_past_kv = False
-        kv_cache_ortvalues = verify_parity(args, config, llama, kv_cache_ortvalues)
+        kv_cache_ortvalues = verify_parity(args, location, use_auth_token, kv_cache_ortvalues)
 
         # Verify token generation in merged model (decoder_with_past_model.onnx)
         args.use_past_kv = True
-        verify_parity(args, config, llama, kv_cache_ortvalues)
+        verify_parity(args, location, use_auth_token, kv_cache_ortvalues)
 
 
 if __name__ == "__main__":

@@ -1021,6 +1021,8 @@ def main():
             args.precision,
             "--cache_dir",
             args.cache_dir,
+            "--torch_model_directory",
+            args.input,
         ]
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
@@ -1030,7 +1032,7 @@ def main():
             parity_cmd.append("--use_gqa")
 
         try:
-            logger.debug(f"check parity with cmd: {parity_cmd}")
+            logger.info(f"check parity with cmd: {parity_cmd}")
             parity_check(parity_cmd)
         except Exception as e:
             logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)
