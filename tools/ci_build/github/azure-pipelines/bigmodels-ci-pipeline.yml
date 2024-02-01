@@ -270,13 +270,13 @@ stages:
         packageType: upack
         feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
         version: 1.0.0
-        definition: '"6fe0c4ed-9d0e-4d66-94cc-fb6a111d02a5'
-        downloadPath: $(Agent.TempDirectory)/meta_lama2_7b_hf
+        definition: '6fe0c4ed-9d0e-4d66-94cc-fb6a111d02a5'
+        downloadPath: $(Agent.TempDirectory)/meta_llama2_7b_hf
 
     - script: |
         docker run --rm --gpus all -v $(Build.SourcesDirectory)/onnxruntime:/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
-           -v $(Agent.TempDirectory)/meta_lama2_7b_hf:/meta-llama2 \
+           -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest \
             bash -c "
               set -ex; \
