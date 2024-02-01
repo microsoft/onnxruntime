@@ -163,7 +163,7 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
 * `trt_engine_cache_path`: Specify path for TensorRT engine and profile files if `trt_engine_cache_enable` is `True`, or path for INT8 calibration table file if `trt_int8_enable` is `True`.
 
-* `trt_engine_cache_prefix`: Customize engine cache prefix when `trt_engine_cache_enable` is `True` (available on ORT 1.17).
+* `trt_engine_cache_prefix`: Customize engine cache prefix when `trt_engine_cache_enable` is `True`.
 
     * ORT-TRT will only reuse existing engine cache with customized prefix if the same prefix is assigned in `trt_engine_cache_prefix`. If this option is empty, new engine cache with default prefix will be generated.
 
