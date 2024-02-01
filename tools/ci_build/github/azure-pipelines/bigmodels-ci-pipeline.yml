@@ -253,9 +253,9 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: onnxruntime/tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
-        Context: onnxruntime/tools/ci_build/github/linux/docker/
-        ScriptName: onnxruntime/tools/ci_build/get_docker_image.py
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
@@ -270,7 +270,7 @@ stages:
         downloadPath: $(Agent.TempDirectory)/meta_llama2_7b_hf
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory)/onnxruntime:/workspace \
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest \
