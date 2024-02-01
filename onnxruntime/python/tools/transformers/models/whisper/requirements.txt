@@ -10,6 +10,9 @@ transformers>=4.24.0
 openai-whisper
 ffmpeg-python
 datasets
+soundfile
+librosa
+optimum
 onnxruntime>=1.15.1
 onnxruntime-extensions>=0.9.0
 protobuf==3.20.2
