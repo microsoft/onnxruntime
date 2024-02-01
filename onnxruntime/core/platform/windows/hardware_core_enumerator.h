@@ -9,4 +9,4 @@ struct HardwareCoreEnumerator {
   HardwareCoreEnumerator() = delete;
   static uint32_t DefaultIntraOpNumThreads();
 };
-} 
+}  // namespace onnxruntime

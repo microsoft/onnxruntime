@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include "hardware_core_enumerator.h"
 #include <memory>
 #include <Windows.h>
@@ -28,8 +27,7 @@ static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RE
   auto processorInformationBytes = std::make_unique<char[]>(length);
 
   rc = GetLogicalProcessorInformationEx(
-    relationship, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(processorInformationBytes.get()), &length
-  );
+      relationship, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(processorInformationBytes.get()), &length);
 
   assert(rc == TRUE);
 
@@ -53,10 +51,9 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
   size_t read = 0;
   PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX currentProcessorInfo = NULL;
 
-  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length
-  ) {
+  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length) {
     currentProcessorInfo =
-      reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(logicalProcessorInformation.Buffer.get() + read);
+        reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(logicalProcessorInformation.Buffer.get() + read);
     if ((read + currentProcessorInfo->Size) > logicalProcessorInformation.Length) {
       break;
     }
@@ -89,4 +86,4 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   return cores.PhysicalCores - cores.SocDieCores;
 }
 
-}
+}  // namespace onnxruntime
