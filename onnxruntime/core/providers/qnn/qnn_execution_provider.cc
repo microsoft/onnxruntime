@@ -416,7 +416,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   const auto& logger = *GetLogger();
-  bool load_from_cached_context = false;
   bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
 
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
@@ -492,7 +491,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       if (partition && partition->sub_graph) {
         nodes_in_partition = partition->sub_graph->nodes.size();
 
-        if (nodes_in_partition == 1 && !load_from_cached_context) {
+        if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
           const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
 
           if (!node) {
@@ -523,7 +522,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // Print list of unsupported nodes to the ERROR logger if the CPU EP
   // has been disabled for this inference session.
-  if (!load_from_cached_context && disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
+  if (!is_qnn_ctx_model && disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
     LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
   }
 

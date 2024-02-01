@@ -3,11 +3,9 @@
 
 #include <filesystem>
 #include <string>
-#include <thread>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
 #include "core/session/inference_session.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
@@ -28,7 +26,7 @@ namespace test {
 
 // Create a model with Case + Add (quantized)
 // input1 -> Add -> Q -> DQ \
-//                           Add -> Q -> DQ -> output
+//                           FusedMatMul -> Q -> DQ -> output
 //        input2 -> Q -> DQ /
 static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   return [single_ep_node](ModelTestBuilder& builder) {
