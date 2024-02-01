@@ -37,6 +37,7 @@ class AttentionCPUBase : public AttentionBase {
                         int v_hidden_size,                     // hidden size of V (D_v)
                         const Tensor* relative_position_bias,  // bias addition in QK. Its size is BxNxSxT
                         OpKernelContext* context) const {
+    auto func_start = std::chrono::high_resolution_clock::now();
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -84,23 +85,34 @@ class AttentionCPUBase : public AttentionBase {
       relative_position_bias_data = relative_position_bias->Data<T>();
     }
 
+    auto start = std::chrono::high_resolution_clock::now();
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data), causal,
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data,
                              present_data, present_key_data, tp, relative_position_bias_data);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "ComputeAttentionProbs: " << duration.count() << " us" << std::endl;
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
+    start = std::chrono::high_resolution_clock::now();
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data),
                             static_cast<T*>(attention_probs), V,
                             batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                             v_head_size, v_hidden_size, past_data, past_value_data,
                             present_data, present_value_data, tp);
+    end = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "ComputeVxAttentionScore: " << duration.count() << " us" << std::endl;
 
+    auto func_end = std::chrono::high_resolution_clock::now();
+    auto func_duration = std::chrono::duration_cast<std::chrono::microseconds>(func_end - func_start);
+    std::cout << "AttentionCPUBase::ApplyAttention: " << func_duration.count() << " us" << std::endl;
     return Status::OK();
   }
 
@@ -135,6 +147,7 @@ class AttentionCPUBase : public AttentionBase {
     const size_t kv_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;  // L x H
     const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;             // T x H
 
+    auto start = std::chrono::high_resolution_clock::now();
     {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
       if (mask_data != nullptr) {
@@ -199,13 +212,21 @@ class AttentionCPUBase : public AttentionBase {
         }
       });
     }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Q*K' + AttentionMask: " << duration.count() << " us" << std::endl;
 
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
+    start = std::chrono::high_resolution_clock::now();
     {
       const int N = batch_size * num_heads_ * sequence_length;
       const int D = total_sequence_length;
+      std::cout << "N: " << N << ", D: " << D << ", attention_probs: " << (void*)attention_probs << std::endl;
       ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
     }
+    end = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "ComputeAttentionSoftmaxInplace: " << duration.count() << " us" << std::endl;
   }
 
   template <typename T>

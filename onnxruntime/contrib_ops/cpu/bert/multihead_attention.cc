@@ -58,11 +58,12 @@ Status Reshape_BSD_to_BSNH(Tensor* qkv,
 
 // Transpose Q/K/V from BxSxNxH to BxNxSxH
 Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
-                              OrtValue& qkv_transposed) {
+                              OrtValue& qkv_transposed,
+                              concurrency::ThreadPool* tp = nullptr) {
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
   size_t from = 2, to = 1;
-  SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to);
+  SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, tp);
   return Status::OK();
 }
 
@@ -78,6 +79,7 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
                         int head_size,                       // head_size for Q/K, v_head_size for V
                         int hidden_size,                     // hidden_size for Q/K, v_hidden_size for V
                         OpKernelContext* context) {
+  //auto func_start = std::chrono::high_resolution_clock::now();
   // Note: the comments below will refer to Q's dimensions for simplicity
   auto element_type = DataTypeImpl::GetType<T>();
   constexpr size_t element_size = sizeof(T);
@@ -93,6 +95,7 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
       }};  // For element-wise add
 
   // Allocate space for output of Q(BS, D) + bias(D)
+  //auto start = std::chrono::high_resolution_clock::now();
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   std::vector<int64_t> old_dims({batch_size, sequence_length, hidden_size});
@@ -100,16 +103,24 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
   TensorShape qkv_with_bias_shape(old_dims_span);
   OrtValue qkv_with_bias;
   Tensor::InitOrtValue(element_type, qkv_with_bias_shape, allocator, qkv_with_bias);
+  //auto end = std::chrono::high_resolution_clock::now();
+  //auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  //std::cout << "Allocate space execution time: " << duration.count() << " microseconds" << std::endl;
 
   // Get Q's bias from combined bias
+  //start = std::chrono::high_resolution_clock::now();
   std::vector<int64_t> bias_dims({hidden_size});
   gsl::span<const int64_t> bias_dims_span{bias_dims};
   TensorShape bias_shape(bias_dims_span);
   OrtValue bias;
   Tensor::InitOrtValue(element_type, bias_shape, allocator, bias);
   memcpy(bias.GetMutable<Tensor>()->MutableData<T>(), qkv_bias + bias_offset, hidden_size * element_size);
+  //end = std::chrono::high_resolution_clock::now();
+  //duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  //std::cout << "Get Q's bias execution time: " << duration.count() << " microseconds" << std::endl;  
 
   // Compute Q(BS, D) + bias(D) as broadcasted element-wise add
+  //start = std::chrono::high_resolution_clock::now();
   {
     InputBroadcaster input_broadcaster(*bias.GetMutable<Tensor>(), *qkv);
     const InputBroadcaster& const_input_broadcaster = input_broadcaster;
@@ -138,13 +149,29 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
                                  BroadcastLooper(segment_helper, add_funcs);
                                });
   }
+  //end = std::chrono::high_resolution_clock::now();
+  //duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  //std::cout << "Compute Q(BS, D) + bias(D) execution time: " << duration.count() << " microseconds" << std::endl;
 
   // Reshape Q from BxSxD to BxSxNxH
+  //start = std::chrono::high_resolution_clock::now();
   ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(qkv_with_bias.GetMutable<Tensor>(), batch_size, sequence_length, num_heads, head_size));
+  //end = std::chrono::high_resolution_clock::now();
+  //duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  //std::cout << "Reshape_BSD_to_BSNH execution time: " << duration.count() << " microseconds" << std::endl;
 
   // Transpose Q from BxSxNxH to BxNxSxH
+  //start = std::chrono::high_resolution_clock::now();
+  //auto tp = context->GetOperatorThreadPool();
+  //ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed, tp));
   ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed));
+  //end = std::chrono::high_resolution_clock::now();
+  //duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  //std::cout << "Transpose_BSNH_to_BNSH execution time: " << duration.count() << " microseconds" << std::endl;
 
+  //auto func_end = std::chrono::high_resolution_clock::now();
+  //auto func_duration = std::chrono::duration_cast<std::chrono::microseconds>(func_end - func_start);
+  //std::cout << "AddBiasTranspose execution time: " << func_duration.count() << " microseconds" << std::endl;
   return Status::OK();
 }
 
@@ -229,31 +256,47 @@ template <typename T>
 Status MaybeTransposeToBNSHAndAddBias(OpKernelContext* context, AllocatorPtr allocator,
                                       int batch_size, int num_heads, int sequence_length, int head_size,
                                       const Tensor* in, const Tensor* bias, int bias_offset, OrtValue& out) {
+  //auto func_start = std::chrono::high_resolution_clock::now();
   auto element_type = DataTypeImpl::GetType<T>();
   std::vector<int64_t> new_dims({batch_size, num_heads, sequence_length, head_size});
   gsl::span<const int64_t> new_dims_span{new_dims};
   TensorShape v_BNLH(new_dims_span);
   Tensor::InitOrtValue(element_type, v_BNLH, allocator, out);
   if (bias == nullptr) {
+    abort();
     std::unique_ptr<Tensor> reshaped;
     if (in->Shape().GetDims().size() == 3) {
       reshaped = std::make_unique<Tensor>(in->DataType(), in->Shape(), const_cast<void*>(in->DataRaw()), in->Location());
+      //std::cout << "Reshape_BSD_to_BSNH" << std::endl;
       ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(reshaped.get(), batch_size, sequence_length, num_heads, head_size));
     }
+    //std::cout << "Transpose_BSNH_to_BNSH" << std::endl;
     ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((reshaped == nullptr) ? in : reshaped.get(), out));
   } else {
     const auto* qkv_bias = bias->Data<T>();
     if (sequence_length == 1) {
+      //std::cout << "AddBiasReshape" << std::endl;
+      abort();
       ORT_RETURN_IF_ERROR(AddBiasReshape(in, qkv_bias, out, bias_offset, batch_size, sequence_length, num_heads, head_size, num_heads * head_size, context));
     } else {
+      //std::cout << "AddBiasTranspose" << std::endl;
+      //auto start = std::chrono::high_resolution_clock::now();
       ORT_RETURN_IF_ERROR(AddBiasTranspose(in, qkv_bias, out, bias_offset, batch_size, sequence_length, num_heads, head_size, num_heads * head_size, context));
+      //auto end = std::chrono::high_resolution_clock::now();
+      //auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+      //std::cout << "AddBiasTranspose execution time: " << duration.count() << " microseconds" << std::endl;
     }
   }
+  //auto func_end = std::chrono::high_resolution_clock::now();
+  //auto func_duration = std::chrono::duration_cast<std::chrono::microseconds>(func_end - func_start);
+  //std::cout << "MaybeTransposeToBNSHAndAddBias execution time: " << func_duration.count() << " microseconds" << std::endl;
   return Status::OK();
 };
 
 template <typename T>
 Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
+  std::cout << "\n" << this->Node().Name() << std::endl;
+  auto func_start = std::chrono::high_resolution_clock::now();
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -329,10 +372,15 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   //    b) Q/K/V has seq_len > 1
 
   OrtValue Q;
+  auto start = std::chrono::high_resolution_clock::now();
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, q_sequence_length, qk_head_size, query, bias, q_bias_offset, Q));
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  std::cout << "Q execution time: " << duration.count() << " microseconds" << std::endl;
 
   if (kv_BNSH) {
+    abort();
     // No bias add needed for K/V, key already of shape BxNxLxH, value already of shape BxNxLxH_v
     return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), key->Data<T>(), value->Data<T>(),
                           key_padding_mask, nullptr /* past */, nullptr /* past_k */, nullptr /* past_v */,
@@ -343,16 +391,32 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   OrtValue K;
   OrtValue V;
+  start = std::chrono::high_resolution_clock::now();
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, kv_sequence_length, qk_head_size, key, bias, k_bias_offset, K));
+  end = std::chrono::high_resolution_clock::now();
+  duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  std::cout << "K execution time: " << duration.count() << " microseconds" << std::endl;
+  start = std::chrono::high_resolution_clock::now();
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, kv_sequence_length, v_head_size, value, bias, v_bias_offset, V));
+  end = std::chrono::high_resolution_clock::now();
+  duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  std::cout << "V execution time: " << duration.count() << " microseconds" << std::endl;
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(), V.GetMutable<Tensor>()->MutableData<T>(),
+  start = std::chrono::high_resolution_clock::now();
+  Status s = ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(), V.GetMutable<Tensor>()->MutableData<T>(),
                         key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
                         batch_size, q_sequence_length, kv_sequence_length,
                         qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
+  end = std::chrono::high_resolution_clock::now();
+  duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  std::cout << "ApplyAttention execution time: " << duration.count() << " microseconds" << std::endl;
+  auto func_end = std::chrono::high_resolution_clock::now();
+  auto func_duration = std::chrono::duration_cast<std::chrono::microseconds>(func_end - func_start);
+  std::cout << "MultiHeadAttention<T>::Compute execution time: " << func_duration.count() << " microseconds" << std::endl;
+  return s;
 }
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -19,6 +19,8 @@ Abstract:
 
 --*/
 
+#include <iostream>
+
 #include "mlasi.h"
 
 //
@@ -994,5 +996,15 @@ Return Value:
 
     WorkBlock.ThreadCountN = ThreadCountN;
 
+#if 0
+    std::cout << "WorkBlock.ThreadCountN: " << WorkBlock.ThreadCountN << ", "
+                << "WorkBlock.LogSoftmax: " << WorkBlock.LogSoftmax << ", "
+                << "WorkBlock.Input: " << (void*)WorkBlock.Input << ", "
+                << "WorkBlock.Output: " << (void*)WorkBlock.Output << ", "
+                << "WorkBlock.N: " << WorkBlock.N << ", "
+                << "WorkBlock.D: " << WorkBlock.D << ", "
+                << "ThreadCountN: " << ThreadCountN << ", "
+                << "ThreadPool: " << (void*)ThreadPool << std::endl;
+#endif
     MlasExecuteThreaded(MlasComputeSoftmaxThreaded, &WorkBlock, ThreadCountN, ThreadPool);
 }
