@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -272,8 +273,10 @@ const createEinsumProgramInfo =
           // filter is added to make sure that dimValue is never 0.
           const programUniformsInit: ProgramUniform[] =
               uniformsSymbols.filter((symbol) => einsumEquation.symbolToInfo.has(symbol))
-                  .map((symbol) => ({type: 'uint32', data: einsumEquation.symbolToInfo.get(symbol)?.dimValue || 0}));
-          programUniformsInit.push({type: 'uint32', data: outputSize});
+                  .map(
+                      (symbol) =>
+                          ({type: DataType.uint32, data: einsumEquation.symbolToInfo.get(symbol)?.dimValue || 0}));
+          programUniformsInit.push({type: DataType.uint32, data: outputSize});
           const programUniforms: ProgramUniform[] =
               inputShapes.map((dims, _) => [...createTensorShapeVariables(dims)])
                   .reduce((acc, inputProgramUniforms) => acc.concat(inputProgramUniforms), programUniformsInit);
