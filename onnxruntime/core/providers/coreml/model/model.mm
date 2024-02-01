@@ -310,8 +310,8 @@ NS_ASSUME_NONNULL_BEGIN
 
   // TODO: Update this to version with callback handler as the API used here is deprecated.
   // https://developer.apple.com/documentation/coreml/mlmodel/3929553-compilemodelaturl
-  // As we call loadModel during EP Compile there shouldn't be an issue letting the actual compile run in the 
-  // background. We will have to check for completion in `predict` and block until it is done. 
+  // As we call loadModel during EP Compile there shouldn't be an issue letting the actual compile run in the
+  // background. We will have to check for completion in `predict` and block until it is done.
   NSError* error = nil;
   NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
 
@@ -490,7 +490,7 @@ Model::Model(const std::string& path,
              std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
              std::unordered_set<std::string>&& scalar_outputs,
              std::unordered_set<std::string>&& int64_outputs,
-             const logging::Logger& logger, 
+             const logging::Logger& logger,
              uint32_t coreml_flags)
     : execution_(std::make_unique<Execution>(path, logger, coreml_flags)),
       input_output_info_(input_output_info),

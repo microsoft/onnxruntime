@@ -46,6 +46,5 @@ bool CheckIsConstantInitializer(const NodeArg& node_arg, const GraphViewer& grap
 // This is to detect if the current system has Apple Neural Engine
 bool HasNeuralEngine(const logging::Logger& logger);
 
-
 }  // namespace coreml
 }  // namespace onnxruntime
