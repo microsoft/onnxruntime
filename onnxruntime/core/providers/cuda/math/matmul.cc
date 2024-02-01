@@ -217,7 +217,10 @@ Status FuncMatMul(
   // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
   // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).
   // Assume that start memory of input/output tensor is aligned, we only check offsets of sub-matrix per batch here.
-  bool use_tf32 = std::is_same<T, float>::value && cuda_kernel->UseTF32() && device_prop.major >= 8 && helper.IsBatchedGemmAligned();
+  bool use_tf32 = std::is_same<T, float>::value &&
+                  cuda_kernel->UseTF32() &&
+                  device_prop.major >= 8 &&
+                  helper.IsBatchedGemmAligned();
 
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
@@ -365,7 +368,10 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
   // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).
   // Assume that start memory of input/output tensor is aligned, we only check offsets of sub-matrix per batch here.
-  bool use_tf32 = std::is_same<T, float>::value && this->UseTF32() && device_prop.major >= 8 && helper.IsBatchedGemmAligned();
+  bool use_tf32 = std::is_same<T, float>::value &&
+                  this->UseTF32() &&
+                  device_prop.major >= 8 &&
+                  helper.IsBatchedGemmAligned();
 
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands

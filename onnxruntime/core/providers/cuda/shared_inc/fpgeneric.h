@@ -32,7 +32,6 @@ cublasGemmHelper(cublasHandle_t handle,
                  const cudaDeviceProp& prop,
                  bool use_tf32) {
 #if defined(USE_CUDA)
-  // TF32 uses 10 bit mantissa which has sufficient margin of precision for most use cases. It gets 8x throughput than FP32 in A100.
   // To disable TF32, set environment variable NVIDIA_TF32_OVERRIDE = 0 or set provider option use_tf32 = 0
   cublasMath_t mode = use_tf32 ? CUBLAS_TF32_TENSOR_OP_MATH : CUBLAS_DEFAULT_MATH;
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, mode);
@@ -161,11 +160,11 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
 }
 
 #if defined(USE_CUDA)
-inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
-                                       int n, int k, const BFloat16* alpha, const BFloat16* A, int lda,
-                                       const BFloat16* B, int ldb, const BFloat16* beta, BFloat16* C, int ldc,
-                                       const cudaDeviceProp& /*prop*/,
-                                       bool /*use_tf32*/) {
+inline cublasStatus_t cublasGemmHelper(
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
+    int n, int k, const BFloat16* alpha, const BFloat16* A, int lda,
+    const BFloat16* B, int ldb, const BFloat16* beta, BFloat16* C, int ldc,
+    const cudaDeviceProp& /*prop*/, bool /*use_tf32*/) {
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
 
@@ -285,12 +284,12 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
 }
 
 #if defined(USE_CUDA)
-inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-                                              int m, int n, int k, const BFloat16* alpha, const BFloat16* Aarray[],
-                                              int lda, const BFloat16* Barray[], int ldb, const BFloat16* beta,
-                                              BFloat16* Carray[], int ldc, int batch_count,
-                                              const cudaDeviceProp& /*prop*/,
-                                              bool /*use_tf32*/) {
+inline cublasStatus_t cublasGemmBatchedHelper(
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+    int m, int n, int k, const BFloat16* alpha, const BFloat16* Aarray[],
+    int lda, const BFloat16* Barray[], int ldb, const BFloat16* beta,
+    BFloat16* Carray[], int ldc, int batch_count,
+    const cudaDeviceProp& /*prop*/, bool /*use_tf32*/) {
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
 
@@ -302,7 +301,8 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle, cublasOpera
 #else
 inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int, int,
                                               const BFloat16*, const BFloat16*[], int, const BFloat16*[], int,
-                                              const BFloat16*, BFloat16*[], int, int, const cudaDeviceProp&, bool /*use_tf32*/) {
+                                              const BFloat16*, BFloat16*[], int, int, const cudaDeviceProp&,
+                                              bool /*use_tf32*/) {
   return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 #endif
@@ -469,50 +469,66 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
 }
 
 #if defined(USE_CUDA)
-inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle, cublasOperation_t transa,
-                                                     cublasOperation_t transb, int m, int n, int k,
-                                                     const BFloat16* alpha, const BFloat16* A, int lda,
-                                                     long long int strideA, const BFloat16* B, int ldb,
-                                                     long long int strideB, const BFloat16* beta, BFloat16* C, int ldc,
-                                                     long long int strideC, int batch_count,
-                                                     const cudaDeviceProp& /*prop*/,
-                                                     bool /*use_tf32*/) {
+inline cublasStatus_t cublasGemmStridedBatchedHelper(
+    cublasHandle_t handle, cublasOperation_t transa,
+    cublasOperation_t transb, int m, int n, int k,
+    const BFloat16* alpha, const BFloat16* A, int lda,
+    long long int strideA, const BFloat16* B, int ldb,
+    long long int strideB, const BFloat16* beta, BFloat16* C, int ldc,
+    long long int strideC, int batch_count,
+    const cudaDeviceProp& /*prop*/, bool /*use_tf32*/) {
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
   // accumulating in FP32
-  return cublasGemmStridedBatchedEx(handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, strideA, B, CUDA_R_16BF,
-                                    ldb, strideB, &h_b, C, CUDA_R_16BF, ldc, strideC, batch_count, CUDA_R_32F,
-                                    CUBLAS_GEMM_DEFAULT);
+  return cublasGemmStridedBatchedEx(
+      handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, strideA, B, CUDA_R_16BF,
+      ldb, strideB, &h_b, C, CUDA_R_16BF, ldc, strideC, batch_count, CUDA_R_32F,
+      CUBLAS_GEMM_DEFAULT);
 }
 #else
-inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int,
-                                                     int, const BFloat16*, const BFloat16*, int, long long int,
-                                                     const BFloat16*, int, long long int, const BFloat16*, BFloat16*,
-                                                     int, long long int, int, const cudaDeviceProp&, bool /*use_tf32*/) {
+inline cublasStatus_t cublasGemmStridedBatchedHelper(
+    cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int,
+    int, const BFloat16*, const BFloat16*, int, long long int,
+    const BFloat16*, int, long long int, const BFloat16*, BFloat16*,
+    int, long long int, int, const cudaDeviceProp&, bool /*use_tf32*/) {
   return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 #endif
 
 // transpose using geam
-inline cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
+inline cublasStatus_t cublasTransposeHelper(
+    cudaStream_t, cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+    int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb,
+    float* C, int ldc) {
   return cublasSgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
 
-inline cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, const double* alpha, const double* A, int lda, const double* beta, const double* B, int ldb, double* C, int ldc) {
+inline cublasStatus_t cublasTransposeHelper(
+    cudaStream_t, cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+    int m, int n, const double* alpha, const double* A, int lda, const double* beta, const double* B, int ldb,
+    double* C, int ldc) {
   return cublasDgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
 
 bool CanUse_cublasTransposeHelper_MLFloat16(int m, int n);
-cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t, cublasOperation_t, cublasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
+
+cublasStatus_t cublasTransposeHelper(
+    cudaStream_t, cublasHandle_t, cublasOperation_t, cublasOperation_t,
+    int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
 
 // copy
-inline cublasStatus_t cublasCopyHelper(cudaStream_t, cublasHandle_t handle, int n, const float* x, int incx, float* y, int incy) {
+inline cublasStatus_t cublasCopyHelper(
+    cudaStream_t, cublasHandle_t handle, int n, const float* x, int incx, float* y, int incy) {
   return cublasScopy(handle, n, x, incx, y, incy);
 }
 
-inline cublasStatus_t cublasCopyHelper(cudaStream_t, cublasHandle_t handle, int n, const double* x, int incx, double* y, int incy) {
+inline cublasStatus_t cublasCopyHelper(
+    cudaStream_t, cublasHandle_t handle, int n, const double* x, int incx, double* y, int incy) {
   return cublasDcopy(handle, n, x, incx, y, incy);
 }
 
-cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int n, const half* x, int incx, half* y, int incy);
-cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int n, const BFloat16* x, int incx, BFloat16* y, int incy);
+cublasStatus_t cublasCopyHelper(
+    cudaStream_t stream, cublasHandle_t handle, int n, const half* x, int incx, half* y, int incy);
+
+cublasStatus_t cublasCopyHelper(
+    cudaStream_t stream, cublasHandle_t handle, int n, const BFloat16* x, int incx, BFloat16* y, int incy);

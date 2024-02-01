@@ -309,7 +309,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
-  // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
+  // The bias part is not included here since we fuse bias, transpose and output 3 matrices into one cuda kernel.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
