@@ -2412,8 +2412,10 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node)
 
     def _infer_GroupQueryAttention(self, node):  # noqa: N802
-        self._propagate_shape_and_type(node, 0, 0)
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        num_heads = get_attribute(node, "num_heads")
+        hidden_size = None
 
         past_shape = self._try_get_shape(node, 3)
         if past_shape is not None:
@@ -2421,6 +2423,20 @@ class SymbolicShapeInference:
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
             vi = self.known_vi_[node.output[2]]
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+            hidden_size = (
+                num_heads * past_shape[3] if isinstance(past_shape[3], int) else f"{num_heads}*{past_shape[3]}"
+            )
+
+        if node.input[1] != "" and node.input[2] != "":
+            self._propagate_shape_and_type(node, 0, 0)
+        else:
+            # combined qkv: (batch_size, sequence_length, num_heads * head_size + 2 * kv_num_heads * head_size)
+            assert node.input[1] == "" and node.input[2] == ""
+            query_shape = self._get_shape(node, 0)
+            if hidden_size is not None:
+                query_shape[2] = hidden_size
+                vi = self.known_vi_[node.output[0]]
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)

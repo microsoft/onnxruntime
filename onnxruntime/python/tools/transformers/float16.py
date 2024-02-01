@@ -437,7 +437,7 @@ def convert_float_to_float16(
                     node.input[i] = output_name
                     break
 
-    accuracy_type = TensorProto.FLOAT16 if use_bfloat16_as_blocked_nodes_dtype else TensorProto.FLOAT
+    accuracy_type = TensorProto.BFLOAT16 if use_bfloat16_as_blocked_nodes_dtype else TensorProto.FLOAT
     # process the nodes in block list that doesn't support tensor(float16)
     for node in node_list:
         # if input's name is in the value_info_list meaning input is tensor(float16) type,
