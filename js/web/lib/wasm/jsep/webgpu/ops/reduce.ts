@@ -101,7 +101,7 @@ export const createReduceProgramInfo =
           outputs: [{dims: outputShape, dataType: outputDataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
           programUniforms: [
-            {type: 'uint32', data: outputSize}, ...createTensorShapeVariables(inputShape),
+            {type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputShape),
             ...createTensorShapeVariables(outputShape)
           ]
         }),

@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -18,8 +18,7 @@ type BinaryFunctionCall = BuiltinFunctionName|BinaryCustomExpression|{
 const createBinaryOpProgramShader =
     (shaderHelper: ShaderHelper, dimsA: readonly number[], dimsB: readonly number[], dimsOutput: readonly number[],
      vectorize: boolean, doBroadcast: boolean, sharedDimensionDivisibleBy4: boolean, funcCall: BinaryFunctionCall,
-     typeA: number, typeB: number, typeOutput: number, useShapesUniforms: boolean,
-     additionalImplementation?: string) => {
+     typeA: number, typeB: number, typeOutput: number, additionalImplementation?: string) => {
       let expressionScalar: BinaryCustomExpression;
       let expressionVector: BinaryCustomExpression;
       if (typeof funcCall === 'string') {
@@ -31,12 +30,9 @@ const createBinaryOpProgramShader =
         expressionVector = funcCall.vector;
       }
 
-      const inputAShapeOrRank = useShapesUniforms ? dimsA.length : dimsA;
-      const inputBShapeOrRank = useShapesUniforms ? dimsB.length : dimsB;
-      const outputShapeOrRank = useShapesUniforms ? dimsOutput.length : dimsOutput;
-      const output = outputVariable('outputData', typeOutput, outputShapeOrRank, 4);
-      const a = inputVariable('aData', typeA, inputAShapeOrRank, 4);
-      const b = inputVariable('bData', typeB, inputBShapeOrRank, 4);
+      const output = outputVariable('outputData', typeOutput, dimsOutput.length, 4);
+      const a = inputVariable('aData', typeA, dimsA.length, 4);
+      const b = inputVariable('bData', typeB, dimsB.length, 4);
 
       let assignment: string;
       if (vectorize) {
@@ -169,30 +165,25 @@ const createBinaryOpProgramInfo =
         vectorize = true;
       }
       cacheKeyAux.push(vectorize);
-      const useShapesUniforms = enableShapesUniforms(a.dims.length) && enableShapesUniforms(b.dims.length) &&
-          enableShapesUniforms(outputShape.length);
+
       return {
         name,
         shaderCache: {
           hint: cacheKey + cacheKeyAux.map((x) => x.toString()).join('_'),
-          inputDependencies: useShapesUniforms ? ['rank', 'rank'] : ['dims', 'dims'],
+          inputDependencies: ['rank', 'rank'],
         },
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
             shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, sharedDimensionDivisibleBy4, funcCall,
-            a.dataType, b.dataType, outputDataType, useShapesUniforms, additionalImplementation),
+            a.dataType, b.dataType, outputDataType, additionalImplementation),
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: outputDataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)},
-          programUniforms: useShapesUniforms ?
-              [
-                {type: 'uint32', data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
-                ...createTensorShapeVariables(a.dims),
-                ...createTensorShapeVariables(b.dims),
-                ...createTensorShapeVariables(outputShape),
-              ] :
-              [
-                {type: 'uint32', data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
-              ],
+          programUniforms: [
+            {type: DataType.uint32, data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
+            ...createTensorShapeVariables(a.dims),
+            ...createTensorShapeVariables(b.dims),
+            ...createTensorShapeVariables(outputShape),
+          ],
         }),
       };
     };

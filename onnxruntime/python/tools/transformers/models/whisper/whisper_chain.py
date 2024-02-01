@@ -68,15 +68,18 @@ def chain_model(args):
         temperature_name if args.use_temperature else "",
     ]
 
+    sequence_scores_name = "sequence_scores_fp16" if args.precision == Precision.FLOAT16 else "sequence_scores"
+    scores_name = "scores_fp16" if args.precision == Precision.FLOAT16 else "scores"
     beam_outputs = [
         "sequences",
-        "sequence_scores" if args.output_sequence_scores else "",
-        "scores" if args.output_scores else "",
+        sequence_scores_name if args.output_sequence_scores else "",
+        scores_name if args.output_scores else "",
         "cross_qk" if args.collect_cross_qk else "",
         "no_speech_probs_beam" if args.output_no_speech_probs else "",
     ]
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node, temp_cast_node = None, None, None, None
+    output_sequence_scores_cast_node, output_scores_cast_node = None, None
     graph_nodes = []
     if args.precision == Precision.FLOAT16:
         input_features_cast_node = helper.make_node(
@@ -101,6 +104,7 @@ def chain_model(args):
             to=TensorProto.FLOAT16,
         )
         graph_nodes.extend([input_features_cast_node, len_pen_cast_node, rep_pen_cast_node])
+        
         if args.use_temperature:
             temp_cast_node = helper.make_node(
                 "Cast",
@@ -110,6 +114,26 @@ def chain_model(args):
                 to=TensorProto.FLOAT16,
             )
             graph_nodes.append(temp_cast_node)
+
+        if args.output_sequence_scores:
+            output_sequence_scores_cast_node = helper.make_node(
+                "Cast",
+                inputs=["sequence_scores_fp16"],
+                outputs=["sequence_scores"],
+                name="CastOutputSequenceScoresToFp32",
+                to=TensorProto.FLOAT,
+            )
+            graph_nodes.append(output_sequence_scores_cast_node)
+
+        if args.output_scores:
+            output_scores_cast_node = helper.make_node(
+                "Cast",
+                inputs=["scores_fp16"],
+                outputs=["scores"],
+                name="CastScoresToFp32",
+                to=TensorProto.FLOAT,
+            )
+            graph_nodes.append(output_scores_cast_node)
 
     # Create WhisperBeamSearch op
     beam_search_attrs = [

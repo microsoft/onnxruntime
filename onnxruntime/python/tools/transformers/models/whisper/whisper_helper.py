@@ -12,7 +12,9 @@ from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
+from packaging import version
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
+from transformers import __version__ as transformers_version
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
@@ -89,7 +91,10 @@ class WhisperHelper:
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
-        model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        extra_kwargs = {}
+        if version.parse(transformers_version) >= version.parse("4.36.0"):
+            extra_kwargs["attn_implementation"] = "eager"
+        model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir, **extra_kwargs)
         if state_dict_path:
             model.load_state_dict(torch.load(state_dict_path), strict=False)
 
@@ -263,11 +268,17 @@ class WhisperHelper:
     @staticmethod
     def verify_onnx(
         model_name_or_path: str,
+        cache_dir: str,
         ort_session: InferenceSession,
         device: torch.device,
     ):
         """Compare the result from PyTorch and ONNX Runtime to verify the ONNX model is good."""
-        pt_model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path).to(device)
+        extra_kwargs = {}
+        if version.parse(transformers_version) >= version.parse("4.36.0"):
+            extra_kwargs["attn_implementation"] = "eager"
+        pt_model = WhisperForConditionalGeneration.from_pretrained(
+            model_name_or_path, cache_dir=cache_dir, **extra_kwargs
+        ).to(device)
         processor = WhisperProcessor.from_pretrained(model_name_or_path)
         config = WhisperConfig.from_pretrained(model_name_or_path)
 
