@@ -251,6 +251,10 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
 
 static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
 
+int WindowsEnv::DefaultNumCores() {
+  return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
+}
+
 int WindowsEnv::GetNumPhysicalCpuCores() const {
   int regs[4];
   memset(regs, 0, sizeof(regs));
@@ -264,12 +268,12 @@ int WindowsEnv::GetNumPhysicalCpuCores() const {
     // NOTE: due to resource restrictions, we do not run tests on Intel CPUs in CI build pipelines.
     return std::max(static_cast<uint32_t>(1), HardwareCoreEnumerator::DefaultIntraOpNumThreads());
   } else {
-    return cores_.empty() ? std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2)) : static_cast<int>(cores_.size());
+    return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
   }
 }
 
 std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
-  return cores_.empty() ? std::vector<LogicalProcessors>(GetNumPhysicalCpuCores(), LogicalProcessors{}) : cores_;
+  return cores_.empty() ? std::vector<LogicalProcessors>(DefaultNumCores(), LogicalProcessors{}) : cores_;
 }
 
 WindowsEnv& WindowsEnv::Instance() {
