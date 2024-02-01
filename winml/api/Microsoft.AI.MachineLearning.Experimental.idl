@@ -24,6 +24,18 @@ import "Microsoft.AI.MachineLearning.idl";
 namespace ROOT_NS.AI.MachineLearning.Experimental {
   runtimeclass LearningModelBuilder;
 
+  //! \enum GraphOptimizationPolicy
+  //! \brief Defines the list of input and output feature types for a machine learning model.
+  //! Each of these maps to a corresponding FeatureDescriptor that you can use to learn more
+  //! about how to pass the feature into and out of the the model.
+  enum GraphOptimizationPolicy
+  {
+      //! The feature is a tensor, use TensorFeatureDescriptor
+      None = 0,
+      //! The feature is an image, use ImageFeatureDescriptor
+      All
+  };
+
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelSessionOptionsExperimental {
@@ -34,6 +46,8 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
 
     //! The RegisterCustomOpsLibrary method registers an onnxruntime custom operator library into session creation.
     void RegisterCustomOpsLibrary(String path);
+
+    GraphOptimizationPolicy GraphOptimizationPolicy { get; set; };
   }
 
   [threading(both)]

@@ -72,4 +72,14 @@ void LearningModelSessionOptions::RegisterCustomOpsLibrary(const winrt::hstring&
   custom_ops_lib_paths_.push_back(path);
 }
 
+bool LearningModelSessionOptions::GraphOptimizationEnabled() noexcept
+{
+  return graph_optimization_enabled_;
+}
+
+void LearningModelSessionOptions::GraphOptimizationEnabled(bool const& value) noexcept
+{
+  graph_optimization_enabled_ = value;
+}
+
 }  // namespace WINMLP

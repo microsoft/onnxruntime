@@ -12,6 +12,9 @@ struct LearningModelSessionOptionsExperimental
   wfc::IMapView<winrt::hstring, uint32_t> GetNamedDimensionOverrides();
   void RegisterCustomOpsLibrary(const hstring& path);
 
+  winml_experimental::GraphOptimizationPolicy GraphOptimizationPolicy();
+  void GraphOptimizationPolicy(winml_experimental::GraphOptimizationPolicy const& value);
+
  private:
   wfc::IMapView<winrt::hstring, uint32_t> overrides_;
   winml::LearningModelSessionOptions options_;

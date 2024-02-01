@@ -25,11 +25,6 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(OrtSessionOptions** options) 
 
   auto session_options = UniqueOrtSessionOptions(ort_options, ort_api->ReleaseSessionOptions);
 
-  // set the graph optimization level to all (used to be called level 3)
-  RETURN_HR_IF_NOT_OK_MSG(
-    ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL), ort_api
-  );
-
 #ifndef _WIN64
   auto use_arena = false;
 #else

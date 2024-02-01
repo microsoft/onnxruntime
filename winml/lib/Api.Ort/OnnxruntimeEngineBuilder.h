@@ -43,6 +43,9 @@ class OnnxruntimeEngineBuilder
   STDMETHOD(CreateEngine)
   (_Outptr_ IEngine** out);
 
+  STDMETHOD(SetGraphOptimizationEnabled)
+  (bool allow_graph_optimization);
+
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<ID3D12Device> device_ = nullptr;
@@ -54,6 +57,7 @@ class OnnxruntimeEngineBuilder
   std::optional<uint32_t> intra_op_num_threads_override_;
   bool allow_thread_spinning_ = true;
   std::vector<std::string> custom_ops_lib_paths_;
+  bool graph_optimization_enabled_ = true;
 };
 
 }  // namespace _winml

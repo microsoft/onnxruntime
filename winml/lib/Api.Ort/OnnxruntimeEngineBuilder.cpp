@@ -41,6 +41,15 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   RETURN_IF_FAILED(onnxruntime_session_builder->CreateSessionOptions(&ort_options));
   auto session_options = UniqueOrtSessionOptions(ort_options, ort_api->ReleaseSessionOptions);
 
+  // set the graph optimization level
+  auto optimization_level = graph_optimization_enabled_ ?
+    GraphOptimizationLevel::ORT_ENABLE_ALL :
+    GraphOptimizationLevel::ORT_DISABLE_ALL;
+
+  RETURN_HR_IF_NOT_OK_MSG(
+    ort_api->SetSessionGraphOptimizationLevel(session_options.get(), optimization_level), ort_api
+  );
+
   if (batch_size_override_.has_value()) {
     constexpr const char* DATA_BATCH = "DATA_BATCH";
     RETURN_HR_IF_NOT_OK_MSG(
@@ -141,5 +150,10 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpThreadSpinning(bool allow_spinn
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetThreadPool(IThreading* thread_pool) {
   thread_pool_ = thread_pool;
+  return S_OK;
+}
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetGraphOptimizationEnabled(bool allow_graph_optimization) {
+  graph_optimization_enabled_ = allow_graph_optimization;
   return S_OK;
 }

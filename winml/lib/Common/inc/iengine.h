@@ -245,6 +245,9 @@ IEngineBuilder : IUnknown {
 
   STDMETHOD(CreateEngine)
   (_Outptr_ IEngine** out) PURE;
+
+  STDMETHOD(SetGraphOptimizationEnabled)
+  (bool allow_graph_optimization) PURE;
 };
 
 

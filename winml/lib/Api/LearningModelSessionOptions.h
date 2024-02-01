@@ -38,6 +38,10 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<
 
   void RegisterCustomOpsLibrary(const winrt::hstring& path) noexcept;
 
+  bool GraphOptimizationEnabled() noexcept;
+
+  void GraphOptimizationEnabled(bool const& value) noexcept;
+
  private:
   // The batch size override property is used to inform the engine when the developer
   // wants to explicitly set the batch size of a model to a fixed batch size.
@@ -77,6 +81,9 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<
   bool allow_thread_spinning_ = true;
 
   std::vector<winrt::hstring> custom_ops_lib_paths_;
+
+  bool graph_optimization_enabled_ = true;
+
 };
 
 }  // namespace WINMLP
