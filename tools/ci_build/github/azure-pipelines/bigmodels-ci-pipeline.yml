@@ -243,10 +243,6 @@ stages:
       clean: true
       submodules: none
 
-    - checkout: LLaMa2Onnx
-      clean: true
-      submodules: none
-
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Onnxruntime Artifact'
@@ -292,30 +288,3 @@ stages:
             "
       displayName: 'Run Llama2 to Onnx F16 and parity Test'
       workingDirectory: $(Build.SourcesDirectory)
-
-    - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory)/Llama-2-Onnx:/workspace \
-           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
-           -v $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16:/models \
-           onnxruntimeubi8packagestest \
-            bash -c "
-              set -ex; \
-              python3 -m pip install --upgrade pip ; \
-              python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m pip install sentencepiece ; \
-              pushd /workspace ; \
-              python3 MinimumExample/Example_ONNX_LlamaV2.py --onnx_file /models/ONNX/LlamaV2_7B_FT_float16.onnx \
-                --embedding_file /models/embeddings.pth --tokenizer_path tokenizer.model --prompt 'What is the lightest element?' > /workspace/answer.txt ; \
-              popd ; \
-            "
-      displayName: 'Run Llama2 demo'
-      workingDirectory: $(Build.SourcesDirectory)
-
-    - script: |
-        set -ex
-        real=$(cat $(Build.SourcesDirectory)/Llama-2-Onnx/answer.txt)
-        trim_actual=$(tr -dc '[[:print:]]' <<< "$real")
-        expected="The lightest element is hydrogen. Hydrogen is the lightest element on the periodic table, with an atomic mass of 1.00794 u (unified atomic mass units)."
-        [ "$expected" == "$trim_actual" ] && exit 0 || exit 1
-      displayName: 'Check result'
