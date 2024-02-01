@@ -58,6 +58,7 @@ cuda_version = None
 rocm_version = None
 is_rocm = False
 is_openvino = False
+use_qnn = False
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
@@ -85,6 +86,7 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     # keep the same name since AzureEP will release with CpuEP by default.
     pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
+    use_qnn = True
     package_name = "onnxruntime-qnn"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
@@ -458,6 +460,10 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
 ]
+
+# QNN on Windows ARM64 requires a specific version of NumPy (1.25.2 as of Feb 2024).
+if use_qnn and platform.system() == "Windows" and platform.machine() == "ARM64":
+    requirements_file = "requirements-qnn-win-arm64.txt"
 
 if enable_training or enable_training_apis:
     packages.append("onnxruntime.training")

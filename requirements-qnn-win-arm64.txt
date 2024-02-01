@@ -1,0 +1,6 @@
+coloredlogs
+flatbuffers
+numpy == 1.25.2
+packaging
+protobuf
+sympy
