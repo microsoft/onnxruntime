@@ -1526,7 +1526,8 @@ def generate_build_tree(
                 ldflags = ["/profile", "/DYNAMICBASE"]
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                 if not args.enable_address_sanitizer:
-                    cflags += ["/Qspectre"]
+                    # Also enable a special perf patch that was made for Intel Meteor Lake mobile CPUs                  
+                    cflags += ["/Qspectre", "/DONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":

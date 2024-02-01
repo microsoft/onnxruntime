@@ -32,6 +32,9 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
+#if defined(_M_X64) && !defined(_M_ARM64EC)
+#include "core/platform/windows/hardware_core_enumerator.h"
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #include <wil/Resource.h>
 
@@ -248,12 +251,50 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
   Sleep(static_cast<DWORD>(micros) / 1000);
 }
 
+// EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
+#endif
 int WindowsEnv::DefaultNumCores() {
   return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
 }
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
-  return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+// EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+  // The following code was added per a request from Intel. It is to reduce the total number of threads
+  // by one on Intel MTL CPUs. This is a special perf optimzation for a special kind of CPU. It is based on assumptions
+  // that:
+  // 1. All Intel CPUs should have 3 levels of cache. (However it is not true)
+  // 2. If a CPU core is only associated with two levels of cache,  it should be a low performance CPU core and should
+  //    not be used.
+  // The code below is very hacky, but we expect it should not cause any crash. The worst is it might return 1 that
+  // a thread pool will not be created, which is just a perf issue that does not impact usability.
+  // TODO: detect if CPUID instruction is available per instructions at https://wiki.osdev.org/CPUID#Checking_CPUID_availability
+  int regs[4];
+  __cpuid(regs, 0);
+  bool bIsIntel =
+      (kVendorID_Intel[0] == regs[1]) &&
+      (kVendorID_Intel[1] == regs[2]) &&
+      (kVendorID_Intel[2] == regs[3]);
+  if (bIsIntel && regs[0] >= 7) {
+    // Query Structured Extended Feature Flags Enumeration Leaf
+    __cpuid(regs, 0x7);
+    // The bit 15 of EDX indicates if the processor is identified as a hybrid part.
+    bool ishybrid = regs[3] & (1 << 15);
+    if (ishybrid) {
+      // NOTE: even if ishybrid is true, it doesn't mean the processor must have P-cores/E-cores.
+      // On Intel CPUs we assume the HardwareCoreEnumerator::DefaultIntraOpNumThreads function would never fail.
+      // NOTE: due to resource restrictions, we cannot test this branch in our CI build pipelines.
+      return std::max(static_cast<uint32_t>(1), HardwareCoreEnumerator::DefaultIntraOpNumThreads());
+    } else {
+      return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+    }
+  } else
+#endif
+  {
+    return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+  }
 }
 
 std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
