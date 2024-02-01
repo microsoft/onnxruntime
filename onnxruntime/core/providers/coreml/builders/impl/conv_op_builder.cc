@@ -53,6 +53,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   NodeAttrHelper helper(node);
 
+#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     // https://github.com/apple/coremltools/blob/7.1/coremltools/converters/mil/mil/ops/defs/iOS15/conv.py
 
@@ -150,7 +151,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(conv_op));
-  } else {
+  } else
+#endif  // defined(COREML_ENABLE_MLPROGRAM)
+  {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     auto strides = helper.Get("strides", std::vector<int64_t>{1, 1});
@@ -158,28 +161,32 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
     const auto group = helper.Get("group", static_cast<int64_t>(1));
 
+    std::vector<int64_t> input_shape;
+    ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
+
     const auto& weight_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
     std::vector<int64_t> weight_shape = {weight_tensor.dims().cbegin(), weight_tensor.dims().cend()};
 
     const bool is_1d_conv = (weight_shape.size() == 3);
 
+    // add dummy 'W' dim with value of 1 so we can use 2D conv.
     if (is_1d_conv) {
-      // weight_shape needs to be expanded from MXCXH->MXCXHx1
+      input_shape.push_back(1);
       weight_shape.push_back(1);
-    }
 
-    // Strides/dilations for 1d conv is normally of length 1. Expand them by 1
-    // to meet the required length 2 (for 2d conv it's normally 2)
-    // Similarly 1d conv normally has a length 2 padding. Expand it to length 4 by adding additional zeros.
-    if (is_1d_conv) {
+      // Strides/dilations for 1d conv is normally of length 1. Expand them by 1
+      // to meet the required length 2 (for 2d conv it's normally 2)
       if (strides.size() < 2) {
         ORT_RETURN_IF_NOT(strides.size() == 1, "strides size does not equal 1 for Conv 1d");
         strides.push_back(1);
       }
+
       if (dilations.size() < 2) {
         ORT_RETURN_IF_NOT(dilations.size() == 1, "dilations size does not equal 1 for Conv 1d");
         dilations.push_back(1);
       }
+
+      // Similarly 1d conv normally has a length 2 padding. Expand it to length 4 by adding additional zeros.
       if (onnx_pads.size() < 4) {
         ORT_RETURN_IF_NOT(onnx_pads.size() == 2, "onnx_pads size does not equal 2 for Conv 1d");
         onnx_pads.insert(onnx_pads.begin() + 1, 0);
@@ -215,8 +222,6 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // Add Padding
     // Usually using autopadding is more efficient than using explicit padding
     // Try to see if we can map explicit padding to auto padding
-    std::vector<int64_t> input_shape;
-    ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
     AutoPadType auto_pad_type;
     ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
                                       onnx_pads, strides, dilations,
@@ -282,11 +287,14 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   const auto& weight_name = input_defs[1]->Name();
   const auto* weight = input_params.graph_viewer.GetConstantInitializer(weight_name, true);
 
+#if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     // ML Program supports non-const weight, 1D, 2D and 3D.
     // keep to 1D and 2D for consistency with the NeuralNetwork implementation for now.
     // add 3D support as/when needed.
-  } else {
+  } else
+#endif  // defined (COREML_ENABLE_MLPROGRAM)
+  {
     if (!weight) {
       LOGS(logger, VERBOSE) << "The weight of Conv [" << name << "] must be a constant initializer";
       return false;

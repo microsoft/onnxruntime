@@ -91,6 +91,8 @@ COREML_SPEC::MILSpec::DataType DataTypeToMILSpec() {
   }
 }
 
+// The TensorProto.data_type field is an int, but must be a valid TensorProto_DataType value.
+// Use int for the arg so the caller can pass TensorProto.data_type() value and do the cast to enum internally
 COREML_SPEC::MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type);
 
 // convert int64_t ONNX shape to int32_t CoreML shape

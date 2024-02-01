@@ -7,6 +7,7 @@
 #include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/providers/coreml/model/model.h"
 
+#if defined(COREML_ENABLE_MLPROGRAM)
 // coremltools classes
 namespace MPL {
 class ModelPackage;
@@ -17,6 +18,7 @@ namespace Blob {
 class StorageWriter;
 }
 }  // namespace MILBlob
+#endif
 
 namespace onnxruntime {
 namespace coreml {
@@ -49,7 +51,13 @@ class ModelBuilder {
   int32_t CoreMLSpecVersion() const { return coreml_version_ + 1; }
 
   // Returns true if we are creating an ML Program
-  bool CreateMLProgram() const { return create_ml_program_; }
+  bool CreateMLProgram() const {
+#if defined(COREML_ENABLE_MLPROGRAM)
+    return create_ml_program_;
+#else
+    return false;
+#endif
+  }
 
   /*
    * NeuralNetworkLayer helpers
@@ -62,6 +70,7 @@ class ModelBuilder {
   // Add layer to the Core ML NeuralNetwork model
   void AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer);
 
+#if defined(COREML_ENABLE_MLPROGRAM)
   /*
    * MLProgram helpers
    */
@@ -98,6 +107,7 @@ class ModelBuilder {
 
   // add the operation to the main function
   void AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation> operation);
+#endif
 
   /*
    * General helpers
@@ -115,10 +125,12 @@ class ModelBuilder {
   std::string GetUniqueName(const Node& node, std::string_view suffix);
 
  private:
+#if defined(COREML_ENABLE_MLPROGRAM)
   // when generating an mlpackage, should a weight be written to the external file or added directly
   bool UseWeightFile(const onnx::TensorProto& weight);
   uint64_t AddWeightToFile(const onnx::TensorProto& weight);
   void AddConstantOperation(std::string_view name, COREML_SPEC::MILSpec::Value&& initializer);
+#endif
 
   // Convert the ONNX model in graph_viewer_ to a CoreML::Specification::Model and serialize to disk.
   // We then load it using CoreML in order compile it.
@@ -161,12 +173,14 @@ class ModelBuilder {
   uint32_t name_token_{0};
   std::unordered_set<std::string> unique_names_;
 
+#if defined(COREML_ENABLE_MLPROGRAM)
   // mlprogram_main_ is the main block of the CoreML ML Program.
   // It is set in CreateModel to the CoreML Model.mlprogram.functions['main'].block_specializations['CoreML<ver>']
   // entry we create.
   COREML_SPEC::MILSpec::Block* mlprogram_main_{nullptr};
   std::unique_ptr<MPL::ModelPackage> mlpackage_;
   std::unique_ptr<MILBlob::Blob::StorageWriter> weights_file_writer_;
+#endif
 };
 
 }  // namespace coreml
