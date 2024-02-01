@@ -131,7 +131,7 @@ jobs:
             --config Release --update --build \
             --skip_submodule_sync \
             --build_shared_lib \
-            --parallel \
+            --parallel --use_binskim_compliant_compile_flags \
             --build_wheel \
             --enable_onnx_tests --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda-${{parameters.CudaVersion}} --cudnn_home=/usr/local/cuda-${{parameters.CudaVersion}} \
             --enable_cuda_profiling --enable_cuda_nhwc_ops \
@@ -215,7 +215,7 @@ jobs:
             cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
             cd /tmp; \
             /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests \
+              --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
               --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
               --enable_pybind --build_java --ctest_path '' "
 

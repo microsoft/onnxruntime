@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 
 namespace onnxruntime {
@@ -34,5 +35,6 @@ class CoreMLExecutionProvider : public IExecutionProvider {
 #ifdef __APPLE__
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
 #endif
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 }  // namespace onnxruntime

@@ -150,3 +150,11 @@ def next_power_of_2(n: int) -> int:
     n |= n >> 16
     n += 1
     return n
+
+
+def is_number(name: str) -> bool:
+    try:
+        float(name)
+        return True
+    except ValueError:
+        return name.startswith("float(") and name.endswith(")")

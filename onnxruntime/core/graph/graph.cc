@@ -2798,11 +2798,12 @@ Status Graph::Resolve(const ResolveOptions& options) {
                 graph.GraphProtoSyncNeeded(false);
             }
 
+            // set num_resolves_ here so the graph and any subgraphs all have the same value
+            ++graph.num_resolves_;
+
             return Status::OK(); };
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
-
-  ++num_resolves_;
 
   return Status::OK();
 }

@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
-import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper,} from './common';
-import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
+import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, UniformsArrayType,} from './common';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 
 export const createNaiveMatmulProgramInfo =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
@@ -27,11 +28,15 @@ export const createNaiveMatmulProgramInfo =
       const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
       const batchSize = ShapeUtil.size(outerDims);
       const outputShapeInShader = [batchSize, M, N];
+
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N},
-        {type: 'uint32', data: K}, ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
-        ...createTensorShapeVariables(bShape)
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: M}, {type: DataType.uint32, data: N},
+        {type: DataType.uint32, data: K}
       ];
+      appendActivationUniformsData(activationAttributes, programUniforms);
+      programUniforms.push(
+          ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
+          ...createTensorShapeVariables(bShape));
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
       }
@@ -42,7 +47,7 @@ export const createNaiveMatmulProgramInfo =
         const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
         const b = inputVariable('b', inputs[1].dataType, bShape.length, components);
         const output = outputVariable('output', inputs[0].dataType, outputShapeInShader.length, components);
-        const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
+        const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
         const inputVariables = [a, b];
         let processBias = '';
         if (hasBias) {
@@ -57,6 +62,12 @@ export const createNaiveMatmulProgramInfo =
         const outerDimsB = bShape.slice(0, -2);
         const broadCastADims = getBroadcastDims(outerDimsA, outerDims);
         const broadCastBDims = getBroadcastDims(outerDimsB, outerDims);
+        const uniforms: UniformsArrayType = [
+          {name: 'output_size', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'},
+          {name: 'K', type: 'u32'}
+        ];
+        appendActivationUniforms(activationAttributes, uniforms);
+
         const getIndices = (variable: IndicesHelper, broadCastDims: number[]) => {
           const rank = variable.rank;
           const name = variable.name;
@@ -96,15 +107,10 @@ export const createNaiveMatmulProgramInfo =
 
         return `
   ${
-            shaderHelper.registerUniform('outputSize', 'u32')
-                .registerUniform('M', 'u32')
-                .registerUniform('N', 'u32')
-                .registerUniform('K', 'u32')
-                .registerInternalVariables(batchDims)
-                .declareVariables(...inputVariables, output)}
-  ${activationFunction}
+            shaderHelper.registerUniforms(uniforms).registerInternalVariables(batchDims).declareVariables(
+                ...inputVariables, output)}
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
     let col = (global_idx % (uniforms.N / ${components})) * ${components};
     var index1 = global_idx / (uniforms.N / ${components});
     let stride1 = uniforms.M / ${outputNumber};
@@ -134,8 +140,7 @@ export const createNaiveMatmulProgramInfo =
       return {
         name: 'MatMulNaive',
         shaderCache: {
-          hint: `${activationAttributes.activationCacheKey}_${components}_${aComponents}_${outputNumber}_${
-              isChannelsLast}`,
+          hint: `${activationAttributes.activation};${components};${aComponents};${outputNumber};${isChannelsLast}`,
           inputDependencies: hasBias ? ['rank', 'rank', 'rank'] : ['rank', 'rank']
         },
         getRunData: () => ({
@@ -166,9 +171,8 @@ export const matMul = (context: ComputeContext): void => {
   const N = outputShape[outputShape.length - 1];
   const K = context.inputs[0].dims[context.inputs[0].dims.length - 1];
   if (N < 8 && K < 8) {
-    context.compute(
-        createNaiveMatmulProgramInfo(context.inputs, {activation: '', activationCacheKey: ''}, outputShape));
+    context.compute(createNaiveMatmulProgramInfo(context.inputs, {activation: ''}, outputShape));
   } else {
-    context.compute(createMatmulProgramInfo(context.inputs, {activation: '', activationCacheKey: ''}, outputShape));
+    context.compute(createMatmulProgramInfo(context.inputs, {activation: ''}, outputShape));
   }
 };
