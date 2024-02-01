@@ -645,3 +645,52 @@ class PhiOnnxModel(OnnxModel):
 
         self.fuse_sln.apply()
         self.fuse_bias_sln.apply()
+
+    def get_fused_operator_statistics(self):
+        """
+        Returns node count of fused operators.
+        """
+        op_count = {}
+        ops = [
+            "Attention",
+            "MultiHeadAttention",
+            "GroupQueryAttention",
+            "Gelu",
+            "BiasGelu",
+            "FastGelu",
+            "LayerNormalization",
+            "SkipLayerNormalization",
+        ]
+        for op in ops:
+            nodes = self.get_nodes_by_op_type(op)
+            op_count[op] = len(nodes)
+
+        logger.info(f"Optimized operators: {op_count}")
+        return op_count
+
+    def is_fully_optimized(self, fused_op_count=None):
+        """
+        Returns True when the model is fully optimized.
+        """
+        if fused_op_count is None:
+            fused_op_count = self.get_fused_operator_statistics()
+
+        def op_count(op_name: str):
+            return fused_op_count.get(op_name) or 0
+
+        attention = op_count("Attention") + op_count("MultiHeadAttention") + op_count("GroupQueryAttention")
+        gelu = op_count("Gelu") + op_count("BiasGelu") + op_count("FastGelu")
+        layer_norm = op_count("LayerNormalization") + op_count("SkipLayerNormalization")
+
+        is_perfect = (attention > 0) and (attention == gelu) and (layer_norm >= attention)
+
+        if layer_norm == 0:
+            logger.debug("Layer Normalization not fused")
+
+        if gelu == 0:
+            logger.debug("Gelu (or FastGelu) not fused")
+
+        if attention == 0:
+            logger.warning("Attention (or MultiHeadAttention) not fused")
+
+        return is_perfect

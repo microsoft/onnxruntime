@@ -271,6 +271,12 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
             only_onnxruntime=False,
         )
 
+        fused_op_count = optimizer.get_fused_operator_statistics()
+        if optimizer.is_fully_optimized(fused_op_count):
+            logging.info("Model is fully optimized.")
+        else:
+            logging.info("Model is not fully optimized.")
+
         self.erase_onnx_model(processed_onnx_path)
 
         if self.precision == Precision.FLOAT32:
@@ -296,6 +302,7 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
                 use_symbolic_shape_infer=True,
                 use_bfloat16_as_blocked_nodes_dtype=self.attn_op_type == AttentionOpType.GroupQueryAttention,
             )
+            logging.info("Converting onnx model to float16/bfloat16 done.")
 
         if self.precision == Precision.FLOAT16:
             optimizer.save_model_to_file(onnx_path_opt, use_external_data_format=True)
