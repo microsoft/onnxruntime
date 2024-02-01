@@ -194,9 +194,8 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               int batch_count,
                                               const cudaDeviceProp& prop,
                                               bool use_tf32) {
+// The caller shall check memory alignments of the matrices when use_tf32 is true.
 #if defined(USE_CUDA)
-  // TF32 uses 10 bit mantissa which has sufficient margin of precision for most use cases. It gets 8x throughput than FP32 in A100.
-  // To disable TF32, set environment variable NVIDIA_TF32_OVERRIDE = 0 or set provider option use_tf32 = 0
   cublasMath_t mode = use_tf32 ? CUBLAS_TF32_TENSOR_OP_MATH : CUBLAS_DEFAULT_MATH;
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, mode);
 #else
