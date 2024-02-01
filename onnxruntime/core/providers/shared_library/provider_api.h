@@ -95,12 +95,15 @@ enum OperatorStatus : int {
 };
 
 // onnx Protobuf types (All of these are direct mappings to the onnx types except for the Repeated*Field ones which map to a Repeated*Field type)
-struct int64s;  // RepeatedField
+struct int64s;    // RepeatedField
+struct float32s;  // RepeatedField
 struct AttributeProto;
 struct GraphProto;
 struct ModelProto;
 struct NodeProto;
 struct SparseTensorProto;
+struct StringStringEntryProto;
+struct StringStringEntryProtos;  // RepeatedPtrField
 struct TensorProto;
 struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
@@ -113,6 +116,9 @@ struct TypeProto_Sequence;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
+struct InferenceContext;
+class GraphInferencer;
+using InferenceFunction = std::function<void(InferenceContext&)>;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -249,6 +255,7 @@ constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
+constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
