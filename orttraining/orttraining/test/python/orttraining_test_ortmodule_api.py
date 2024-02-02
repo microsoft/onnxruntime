@@ -1808,7 +1808,7 @@ def test_resize_grad_correctness_bilinear_2d(interpolate_size_scale, align_corne
 def test_aten_upsample_bicubic():
     class _NeuralNetUpsampleBicubic(torch.nn.Module):
         def __init__(self):
-            super(_NeuralNetUpsampleBicubic, self).__init__()
+            super().__init__()
 
         def forward(self, input):
             return torch.nn.functional.interpolate(input, size=(8, 12), mode="bicubic")
