@@ -46,6 +46,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "dbb0094fd0cb936469e35320bf37e866ef7a1da4",
+          "repositoryUrl": "https://github.com/apple/coremltools.git"
+        },
+        "comments": "coremltools"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "3c73d91c0b04e2b59462f0a741be8c07024c1bc0",
           "repositoryUrl": "https://github.com/jarro2783/cxxopts.git"
         },
