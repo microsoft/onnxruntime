@@ -4,9 +4,8 @@
 #include "./vai_assert.h"
 
 #include "attr_proto.h"
-#include "core/graph/graph_utils.h"
-#include "core/graph/node_arg.h"
 #include "vaip/node_arg.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace vaip {
 
@@ -29,7 +28,6 @@ vaip_core::DllSafe<std::vector<NodeInput>> node_get_inputs(const Node& node) {
   }
   return vaip_core::DllSafe(ret);
 }
-
 vaip_core::DllSafe<std::vector<const NodeArg*>> node_get_output_node_args(const Node& node) {
   auto outputs = node.OutputDefs();
   auto size = outputs.size();
@@ -42,11 +40,4 @@ vaip_core::DllSafe<std::vector<const NodeArg*>> node_get_output_node_args(const 
   }
   return vaip_core::DllSafe(ret);
 }
-
-vaip_core::DllSafe<std::vector<int64_t>> node_get_output_shape(const Node& node, int index) {
-  auto outputs = node.OutputDefs();
-  assert((size_t)index < outputs.size());
-  return node_arg_get_shape_i64(*outputs[index]);
-}
-
 }  // namespace vaip
