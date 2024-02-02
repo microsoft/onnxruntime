@@ -3,7 +3,6 @@
 
 #pragma once
 
-// #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -14,8 +13,8 @@
 #include "core/common/logging/logging.h"
 #ifdef _WIN32
 #include <winmeta.h>
-#include "core/platform/tracing.h"
 #include <evntrace.h>
+#include "core/platform/tracing.h"
 #include "core/platform/windows/telemetry.h"
 #endif
 
