@@ -130,7 +130,7 @@ const conv2dCommonSnippet =
           isChannelsLast ? typeSnippet(innerElementSizeX, dataType) : typeSnippet(innerElementSizeW, dataType);
       const bType =
           isChannelsLast ? typeSnippet(innerElementSizeW, dataType) : typeSnippet(innerElementSizeX, dataType);
-      const applyActivation = getActivationSnippet(attributes, resType);
+      const applyActivation = getActivationSnippet(attributes, resType, dataType);
       const userCode = `
     fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${aType} {
       ${isChannelsLast ? sampleX : sampleW}
