@@ -16,7 +16,7 @@ export interface InternalActivationAttributes {
 }
 
 export const getActivationSnippet =
-    (attributes: InternalActivationAttributes, valueType: string, baseType: string): string => {
+    (attributes: InternalActivationAttributes, valueType: string, baseType = 'f32'): string => {
       switch (attributes.activation) {
         case 'Relu':
           return `value = max(value, ${valueType}(0.0));`;
