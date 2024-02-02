@@ -646,7 +646,7 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  void TraceSessionOptions(const SessionOptions& session_options);
+  void TraceSessionOptions(const SessionOptions& session_options, bool rundown);
 
   [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                                            const TensorShape& expected_shape, const char* input_output_moniker) const;

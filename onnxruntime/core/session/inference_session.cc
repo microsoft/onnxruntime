@@ -363,7 +363,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   active_sessions_[global_session_id_++] = this;
 
 #ifdef _WIN32
-  // auto& manager = WindowsTelemetry:: EtwRegistrationManager::Instance();
   WindowsTelemetry::RegisterInternalCallback(
       [this](
           LPCGUID SourceId,
@@ -393,7 +392,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
-  TraceSessionOptions(session_options);
+  TraceSessionOptions(session_options, false);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
@@ -507,7 +506,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 }
 
-void InferenceSession::TraceSessionOptions(const SessionOptions& session_options) {
+void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool rundown) {
   LOGS(*session_logger_, INFO) << session_options;
 
 #ifdef _WIN32
@@ -530,7 +529,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.graph_optimization_level), "graph_optimization_level"),
                     TraceLoggingBoolean(session_options.use_per_session_threads, "use_per_session_threads"),
                     TraceLoggingBoolean(session_options.thread_pool_allow_spinning, "thread_pool_allow_spinning"),
-                    TraceLoggingBoolean(session_options.use_deterministic_compute, "use_deterministic_compute"));
+                    TraceLoggingBoolean(session_options.use_deterministic_compute, "use_deterministic_compute"),
+                    TraceLoggingBoolean(rundown, "isRundown"));
 
   TraceLoggingWrite(
       telemetry_provider_handle,
@@ -543,7 +543,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
       TraceLoggingInt32(session_options.intra_op_param.dynamic_block_base_, "dynamic_block_base_"),
       TraceLoggingUInt32(session_options.intra_op_param.stack_size, "stack_size"),
       TraceLoggingString(!session_options.intra_op_param.affinity_str.empty() ? session_options.intra_op_param.affinity_str.c_str() : "", "affinity_str"),
-      TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"));
+      TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"),
+      TraceLoggingBoolean(rundown, "isRundown"));
 
   for (const auto& config_pair : session_options.config_options.configurations) {
     TraceLoggingWrite(
@@ -552,7 +553,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
         TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
         TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
-        TraceLoggingString(config_pair.second.c_str(), "Value"));
+        TraceLoggingString(config_pair.second.c_str(), "Value"),
+        TraceLoggingBoolean(rundown, "isRundown"));
   }
 #endif
 }
@@ -3111,7 +3113,7 @@ void InferenceSession::LogAllSessions() {
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
   for (const auto& session_pair : active_sessions_) {
     InferenceSession* session = session_pair.second;
-    TraceSessionOptions(session->session_options_);
+    TraceSessionOptions(session->session_options_, true);
   }
 }
 #endif
