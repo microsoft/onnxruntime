@@ -7,34 +7,18 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from enum import Enum
+from pathlib import Path
 
 import onnx
 import torch
 from benchmark_helper import Precision
-from dynamo_onnx_helper import DynamoOnnxHelper
-from onnx import ModelProto, TensorProto, helper
+from fusion_options import AttentionOpType
 from transformers import AutoConfig, AutoModelForCausalLM
 
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
 
-class AttentionOpType(Enum):
-    Attention = "Attention"
-    MultiHeadAttention = "MultiHeadAttention"
-    GroupQueryAttention = "GroupQueryAttention"
-
-    def __str__(self):
-        return self.value
-
-
-def env_reset():
-    for flag in ["ATTENTIONOPTYPE"]:
-        if flag in os.environ:
-            del os.environ[flag]
-
-
-class ConvertPhi2ToONNX(DynamoOnnxHelper):
+class ConvertPhi2ToONNX:
     def __init__(
         self,
         device: torch.device,
@@ -48,7 +32,6 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
         self.phi_model = None
         self.batch_size = 2
         self.sequence_length = 8
-        self.phi2_edge_dict = self.get_phi2_edge_dict(self.phi_config)
         self.attn_op_type = None
         self.precision = None
         self.block_size = 16
@@ -62,124 +45,23 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
         self.attn_op_type = attn_op_type
         self.precision = precision
 
-        env_reset()
-        os.environ["ATTENTIONOPTYPE"] = str(attn_op_type)
+    def erase_onnx_model(self, onnx_path: str) -> None:
+        assert onnx_path.endswith(".onnx")
+        if not os.path.exists(onnx_path):
+            return
 
-    def get_phi2_edge_dict(self, config: AutoConfig) -> dict:
-        edge_dict = {}
-        edge_dict["lm_head_1"] = "logits"
-        edge_dict["l_input_ids_"] = "input_ids"
-        edge_dict["key_states"] = "past_key_0"
-        edge_dict["value_states"] = "past_value_0"
-        for i in range(config.num_hidden_layers):
-            edge_dict[f"key_states_{i}"] = f"past_key_{i}"
-            edge_dict[f"value_states_{i}"] = f"past_value_{i}"
-            edge_dict[f"model_layers_{i}_1"] = f"present_key_{i}"
-            edge_dict[f"model_layers_{i}_1_1"] = f"present_value_{i}"
-        return edge_dict
-
-    def simplify_phi2_op_type(self, onnx_model: ModelProto):
-        phi2_transformer_layer_name = "modeling_phi_PhiDecoderLayer_model_layers"
-        for node in onnx_model.graph.node:
-            index = node.op_type.find(phi2_transformer_layer_name)
-            if index != -1:
-                node.op_type = node.op_type[index:]
-
-        return onnx_model
-
-    def process_graph_io(self, config: AutoConfig, onnx_model: ModelProto):
-        use_attn = self.attn_op_type == AttentionOpType.Attention
-        graph = onnx_model.graph
-        new_inputs = []
-        for vi in graph.input:
-            if "input_ids" in vi.name:
-                vi_iid = helper.make_tensor_value_info(
-                    vi.name,
-                    elem_type=TensorProto.INT32,
-                    shape=["batch_size", "seq_len"],
-                )
-                # "Step" is not needed in Attention, we add it here to make the inputs consistent
-                vi_pid = helper.make_tensor_value_info(
-                    "step",
-                    elem_type=TensorProto.INT64,
-                    shape=[1],
-                )
-                vi_mask = helper.make_tensor_value_info(
-                    "attention_mask",
-                    elem_type=TensorProto.INT32,
-                    shape=["batch_size", "seq_len"],
-                )
-                new_inputs.extend([vi_iid, vi_pid, vi_mask])
-            if not use_attn:
-                if "past_key" in vi.name or "past_value" in vi.name:
-                    vi_cache = helper.make_tensor_value_info(
-                        vi.name,
-                        elem_type=vi.type.tensor_type.elem_type,
-                        shape=[
-                            "batch_size",
-                            config.num_attention_heads,
-                            "past_seq_len",
-                            config.hidden_size // config.num_attention_heads,
-                        ],
-                    )
-                    new_inputs.extend([vi_cache])
-            else:
-                if "past_key" in vi.name:
-                    vi_cache = helper.make_tensor_value_info(
-                        vi.name.replace("past_key", "past"),
-                        elem_type=vi.type.tensor_type.elem_type,
-                        shape=[
-                            2,
-                            "batch_size",
-                            config.num_attention_heads,
-                            "past_seq_len",
-                            config.hidden_size // config.num_attention_heads,
-                        ],
-                    )
-                    new_inputs.extend([vi_cache])
-
-        graph.ClearField("input")
-        graph.input.extend(new_inputs)
-
-        new_outputs = []
-        for i, vi in enumerate(graph.output):
-            if i == 0:
-                vi_logits = helper.make_tensor_value_info(
-                    vi.name, elem_type=vi.type.tensor_type.elem_type, shape=["batch_size", "seq_len", config.vocab_size]
-                )
-                new_outputs.extend([vi_logits])
-            else:
-                if not use_attn:
-                    vi_cache = helper.make_tensor_value_info(
-                        vi.name,
-                        elem_type=vi.type.tensor_type.elem_type,
-                        shape=[
-                            "batch_size",
-                            config.num_attention_heads,
-                            "total_seq_len",
-                            config.hidden_size // config.num_attention_heads,
-                        ],
-                    )
-                    new_outputs.extend([vi_cache])
-                else:
-                    if "present_key" in vi.name:
-                        vi_cache = helper.make_tensor_value_info(
-                            vi.name.replace("present_key", "present"),
-                            elem_type=vi.type.tensor_type.elem_type,
-                            shape=[
-                                2,
-                                "batch_size",
-                                config.num_attention_heads,
-                                "total_seq_len",
-                                config.hidden_size // config.num_attention_heads,
-                            ],
-                        )
-                        new_outputs.extend([vi_cache])
-
-        graph.ClearField("output")
-        graph.output.extend(new_outputs)
-
-        return onnx_model
+        model = onnx.load_model(onnx_path, load_external_data=False)
+        onnx_data_path = None
+        for initializer in model.graph.initializer:
+            if initializer.data_location == 1 and initializer.external_data[0].key == "location":
+                onnx_data_path = "./" + initializer.external_data[0].value
+                break
+        logging.info(f"Erasing {onnx_path}...")
+        os.remove(onnx_path)
+        if onnx_data_path is not None:
+            onnx_data_path = os.path.join(Path(onnx_path).parent, onnx_data_path)
+            logging.info(f"Erasing {onnx_data_path}...")
+            os.remove(onnx_data_path)
 
     def get_phi2_torch_model(self):
         logging.info("Loading phi2 torch model...")
@@ -224,45 +106,14 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
         onnx.checker.check_model(onnx_path)
         onnx.shape_inference.infer_shapes_path(onnx_path)
 
-    def preprocess_onnx(self, onnx_path_in: str, onnx_path_out: str, func_name: str):
-        model = onnx.load_model(onnx_path_in, load_external_data=True)
-        function_name = None
-        for func in model.functions:
-            if func.name.endswith(func_name):
-                function_name = func.name
-                break
-        assert function_name is not None
-        model = self.unroll_function(model, function_name)
-        model = self.update_edges(model, self.phi2_edge_dict)
-        model = self.simplify_phi2_op_type(model)
-        model = self.remove_dropout_layer(model)
-        onnx.save_model(
-            model,
-            onnx_path_out,
-            save_as_external_data=True,
-            all_tensors_to_one_file=True,
-        )
-
     def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
-        import uuid
-
         from fusion_options import FusionOptions
         from optimizer import optimize_model
 
-        processed_onnx_path = f"{uuid.uuid1()}.onnx"
-        model = onnx.load_model(onnx_path, load_external_data=True)
-        model = self.process_graph_io(self.phi_config, model)
-        onnx.save_model(
-            model,
-            processed_onnx_path,
-            save_as_external_data=True,
-            all_tensors_to_one_file=True,
-            location=processed_onnx_path + ".data",
-        )
-
         optimization_options = FusionOptions("phi")
+        optimization_options.set_attention_op_type(self.attn_op_type)
         optimizer = optimize_model(
-            processed_onnx_path,
+            onnx_path,
             model_type="phi",
             num_heads=self.phi_config.num_attention_heads,
             hidden_size=self.phi_config.hidden_size,
@@ -276,8 +127,6 @@ class ConvertPhi2ToONNX(DynamoOnnxHelper):
             logging.info("Model is fully optimized.")
         else:
             logging.info("Model is not fully optimized.")
-
-        self.erase_onnx_model(processed_onnx_path)
 
         if self.precision == Precision.FLOAT32:
             optimizer.save_model_to_file(onnx_path_opt, use_external_data_format=True)
@@ -449,20 +298,11 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    temp_onnx_path = os.path.join(output_dir, "phi2_temp.onnx")
-    original_onnx_path = os.path.join(
-        output_dir, "phi2.onnx"
-    )  # This model is processed as the intermediate model. Validility is not guaranteed.
+    original_onnx_path = os.path.join(output_dir, "phi2_original.onnx")
 
     if not args.skip_export:
         if not os.path.exists(original_onnx_path) or args.overwrite:
-            converter.dynamo_export(temp_onnx_path)
-            converter.preprocess_onnx(
-                temp_onnx_path,
-                original_onnx_path,
-                func_name="modeling_phi_PhiModel_model_1",  # The function to unroll
-            )
-            converter.erase_onnx_model(temp_onnx_path)
+            converter.dynamo_export(original_onnx_path)
 
     model_type_to_args = {
         "fp32_cpu": (
@@ -565,8 +405,6 @@ def main():
 
         [p.start() for p in processes]
         [p.join() for p in processes]
-
-        converter.erase_onnx_model(original_onnx_path)
 
     if args.run_example:
         from inference_example import run_phi2

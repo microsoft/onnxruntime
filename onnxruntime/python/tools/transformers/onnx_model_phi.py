@@ -3,13 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import os
 from logging import getLogger
 from typing import List, Optional
 
 import numpy as np
+from dynamo_onnx_helper import DynamoOnnxHelper
 from fusion_base import Fusion
-from fusion_options import FusionOptions
+from fusion_options import AttentionOpType, FusionOptions
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 from fusion_utils import NumpyHelper
 from onnx import ModelProto, NodeProto, TensorProto, helper, numpy_helper
@@ -73,6 +73,9 @@ class Fission(Fusion):
         nodes_to_find: List[str],
     ):
         super().__init__(model, "DONOTUSE", nodes_to_find)
+
+    def set_attention_op_type(self, attn_op_type: AttentionOpType):
+        self.attn_op_type = attn_op_type
 
     def get_uname(self, layer_id, name):
         return name + "_" + str(layer_id)
@@ -251,6 +254,138 @@ class Fission(Fusion):
             rotary_embedding_dim=32,
         )
         return [node]
+
+
+class Phi2PreProcessor(DynamoOnnxHelper):
+    def __init__(self, model: ModelProto, num_heads: int, hidden_size: int):
+        super().__init__(model)
+        self.num_hidden_layers = 32
+        self.num_attention_heads = num_heads
+        self.hidden_size = hidden_size
+
+        self.phi2_edge_dict = self.get_phi2_edge_dict()
+        self.func_name = "modeling_phi_PhiModel_model_1"
+
+    def get_phi2_edge_dict(self) -> dict:
+        edge_dict = {}
+        edge_dict["lm_head_1"] = "logits"
+        edge_dict["l_input_ids_"] = "input_ids"
+        edge_dict["key_states"] = "past_key_0"
+        edge_dict["value_states"] = "past_value_0"
+        for i in range(self.num_hidden_layers):
+            edge_dict[f"key_states_{i}"] = f"past_key_{i}"
+            edge_dict[f"value_states_{i}"] = f"past_value_{i}"
+            edge_dict[f"model_layers_{i}_1"] = f"present_key_{i}"
+            edge_dict[f"model_layers_{i}_1_1"] = f"present_value_{i}"
+        return edge_dict
+
+    def simplify_phi2_op_type(self):
+        phi2_transformer_layer_name = "modeling_phi_PhiDecoderLayer_model_layers"
+        for node in self.model.graph.node:
+            index = node.op_type.find(phi2_transformer_layer_name)
+            if index != -1:
+                node.op_type = node.op_type[index:]
+
+    def process_graph_io(self, attn_op_type: AttentionOpType):
+        self.use_attn = attn_op_type == AttentionOpType.Attention
+        graph = self.model.graph
+        new_inputs = []
+        for vi in graph.input:
+            if "input_ids" in vi.name:
+                vi_iid = helper.make_tensor_value_info(
+                    vi.name,
+                    elem_type=TensorProto.INT32,
+                    shape=["batch_size", "seq_len"],
+                )
+                vi_pid = helper.make_tensor_value_info(
+                    "step",
+                    elem_type=TensorProto.INT64,
+                    shape=[1],
+                )
+                vi_mask = helper.make_tensor_value_info(
+                    "attention_mask",
+                    elem_type=TensorProto.INT32,
+                    shape=["batch_size", "seq_len"],
+                )
+                new_inputs.extend([vi_iid, vi_pid, vi_mask])
+            if not self.use_attn:
+                if "past_key" in vi.name or "past_value" in vi.name:
+                    vi_cache = helper.make_tensor_value_info(
+                        vi.name,
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=[
+                            "batch_size",
+                            self.num_attention_heads,
+                            "past_seq_len",
+                            self.hidden_size // self.num_attention_heads,
+                        ],
+                    )
+                    new_inputs.extend([vi_cache])
+            else:
+                if "past_key" in vi.name:
+                    vi_cache = helper.make_tensor_value_info(
+                        vi.name.replace("past_key", "past"),
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=[
+                            2,
+                            "batch_size",
+                            self.num_attention_heads,
+                            "past_seq_len",
+                            self.hidden_size // self.num_attention_heads,
+                        ],
+                    )
+                    new_inputs.extend([vi_cache])
+
+        graph.ClearField("input")
+        graph.input.extend(new_inputs)
+
+        new_outputs = []
+        for i, vi in enumerate(graph.output):
+            if i == 0:
+                new_outputs.extend([vi])
+            else:
+                if not self.use_attn:
+                    vi_cache = helper.make_tensor_value_info(
+                        vi.name,
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=[
+                            "batch_size",
+                            self.num_attention_heads,
+                            "total_seq_len",
+                            self.hidden_size // self.num_attention_heads,
+                        ],
+                    )
+                    new_outputs.extend([vi_cache])
+                else:
+                    if "present_key" in vi.name:
+                        vi_cache = helper.make_tensor_value_info(
+                            vi.name.replace("present_key", "present"),
+                            elem_type=vi.type.tensor_type.elem_type,
+                            shape=[
+                                2,
+                                "batch_size",
+                                self.num_attention_heads,
+                                "total_seq_len",
+                                self.hidden_size // self.num_attention_heads,
+                            ],
+                        )
+                        new_outputs.extend([vi_cache])
+
+        graph.ClearField("output")
+        graph.output.extend(new_outputs)
+
+    def preprocess_onnx(self, attn_op_type: AttentionOpType):
+        function_name = None
+        for func in self.model.functions:
+            if func.name.endswith(self.func_name):
+                function_name = func.name
+                break
+        assert function_name is not None
+        self.unroll_function(function_name)
+        self.update_edges(self.phi2_edge_dict)
+        self.simplify_phi2_op_type()
+        self.remove_dropout_layer()
+        self.process_graph_io(attn_op_type)
 
 
 class FissionTransformerEmbeddingPhi(Fission):
@@ -469,8 +604,7 @@ class FissionTransformerBlockPhi(Fission):
     ):
         logger.info("Optimizing %s...", node.name)
 
-        attn_type = os.environ.get("ATTENTIONOPTYPE")
-        logger.info(f"AttentionOpType: {attn_type}")
+        logger.info(f"AttentionOpType: {self.attn_op_type}")
 
         layer_id = self.get_layer_id(node)
 
@@ -496,7 +630,7 @@ class FissionTransformerBlockPhi(Fission):
         attn_qkv_weight, attn_qkv_bias = None, None
         cos_cache, sin_cache = None, None
 
-        if attn_type != "Attention":
+        if self.attn_op_type != AttentionOpType.Attention:
             attn_q_weight = self.process_initializer(
                 self.get_io_by_name(node, "self_attn.q_proj.weight"), ProcessGemmWFunc()
             )
@@ -542,7 +676,7 @@ class FissionTransformerBlockPhi(Fission):
         layer_known_edges_names.extend([i_hidden_states, i_key_cache, i_value_cache])
         layer_known_edges_names.extend([o_hidden_states, o_key_cache, o_value_cache])
         layer_known_edges_names.extend([ln_weight, ln_bias])
-        if attn_type != "Attention":
+        if self.attn_op_type != AttentionOpType.Attention:
             layer_known_edges_names.extend(
                 [
                     attn_q_weight,
@@ -570,20 +704,20 @@ class FissionTransformerBlockPhi(Fission):
         subgraph_nodes.extend(self.gemm(["gelu_out", mlp_fc2_weight, mlp_fc2_bias], ["fc2_out"], "FC2_"))
         subgraph_nodes.extend(self.add(["attn_add_out", "fc2_out"], ["residual_1_out"], "Residual_1"))
         subgraph_nodes.extend(self.add([i_hidden_states, "residual_1_out"], [o_hidden_states], "Residual_2"))
-        if attn_type != "Attention":
+        if self.attn_op_type != AttentionOpType.Attention:
             subgraph_nodes.extend(self.gemm(["ln_out", attn_q_weight, attn_q_bias], ["query"], "Q_"))
             subgraph_nodes.extend(self.gemm(["ln_out", attn_k_weight, attn_k_bias], ["key"], "K_"))
             subgraph_nodes.extend(self.gemm(["ln_out", attn_v_weight, attn_v_bias], ["value"], "V_"))
             subgraph_nodes.extend(self.rotary(["query", "step", cos_cache, sin_cache], ["query_rot"], "Q_"))
             subgraph_nodes.extend(self.rotary(["key", "step", cos_cache, sin_cache], ["key_rot"], "K_"))
-            if attn_type == "MultiHeadAttention":
+            if self.attn_op_type == AttentionOpType.MultiHeadAttention:
                 subgraph_nodes.extend(
                     self.mha(
                         ["query_rot", "key_rot", "value", "", "attention_mask", "", i_key_cache, i_value_cache],
                         ["attn_out", o_key_cache, o_value_cache],
                     )
                 )
-            elif attn_type == "GroupQueryAttention":
+            elif self.attn_op_type == AttentionOpType.GroupQueryAttention:
                 subgraph_nodes.extend(
                     self.gqa(
                         [
@@ -626,16 +760,22 @@ class FissionTransformerBlockPhi(Fission):
 
 
 class PhiOnnxModel(OnnxModel):
-    def __init__(self, model: ModelProto, num_heads: int = 0, head_size: int = 0):
+    def __init__(self, model: ModelProto, num_heads: int, hidden_size: int):
         super().__init__(model)
+        self.phi2_preprocessor = Phi2PreProcessor(self.model, num_heads, hidden_size)
         self.fission_transformer_block = FissionTransformerBlockPhi(self, num_heads)
         self.fission_causal_lm_head = FissionTransformerCausalLMHeadPhi(self)
         self.fission_transformer_layernorm = FissionTransformerLayerNormPhi(self)
         self.fission_transformer_embedding = FissionTransformerEmbeddingPhi(self)
-        self.fuse_sln = FusionSkipLayerNormalization(self)
-        self.fuse_bias_sln = FusionBiasSkipLayerNormalization(self)
 
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        assert options is not None
+        attn_op_type = options.attention_op_type
+
+        self.fission_transformer_block.set_attention_op_type(attn_op_type)
+
+        self.phi2_preprocessor.preprocess_onnx(attn_op_type)
+
         self.fission_transformer_block.apply()
         self.fission_transformer_layernorm.apply()
         self.fission_causal_lm_head.apply()
@@ -643,6 +783,9 @@ class PhiOnnxModel(OnnxModel):
 
         super().prune_graph()
 
+        # SLN ctor is placed here intentionally to delay the symbolic shape inference
+        self.fuse_sln = FusionSkipLayerNormalization(self)
+        self.fuse_bias_sln = FusionBiasSkipLayerNormalization(self)
         self.fuse_sln.apply()
         self.fuse_bias_sln.apply()
 

@@ -109,5 +109,4 @@ python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp16_gpu_sm8x -
 The inference example currently supports all models running on CUDA.
 
 ## Limitations
-- It's a known issue that symbolic shape inference fails. It can be ignored at the moment as it won't affect the optimized model's inference.
 - Torch dynamo export only support Linux. The model export cannot be run on Windows as of now.
