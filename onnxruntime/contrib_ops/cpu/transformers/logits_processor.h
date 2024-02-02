@@ -34,14 +34,6 @@ struct NextTokenScores {
   }
 };
 
-#ifdef DEBUG_GENERATION
-template <typename T>
-void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
-  std::cout << name << std::endl;
-  ORT_UNUSED_PARAMETER(next_token_scores);
-}
-#endif
-
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
 class ILogitsProcessor {
@@ -273,10 +265,6 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
     }
-
-#ifdef DEBUG_GENERATION
-    DumpScores("TimestampLogitsProcessor", next_token_scores);
-#endif
   }
 
  private:

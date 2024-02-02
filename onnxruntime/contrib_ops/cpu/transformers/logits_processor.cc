@@ -28,10 +28,6 @@ void MinLengthLogitsProcessor<T>::Process(const ISequences* sequences,
   if (sequences->GetSequenceLength() < min_length_) {
     next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
   }
-
-#ifdef DEBUG_GENERATION
-  DumpScores("MinLengthLogitsProcessor", next_token_scores);
-#endif
 }
 
 template <typename T>
@@ -60,10 +56,6 @@ void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
       beam_token_scores[word_id] = (score < 0 ? score * penalty_ : score / penalty_);
     }
   }
-
-#ifdef DEBUG_GENERATION
-  DumpScores("RepetitionPenaltyLogitsProcessor", next_token_scores);
-#endif
 }
 
 template <typename T>
@@ -101,10 +93,6 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
       beam_token_scores[word_id] = std::numeric_limits<T>::lowest();
     }
   }
-
-#ifdef DEBUG_GENERATION
-  DumpScores("NoRepeatNGramLogitsProcessor", next_token_scores);
-#endif
 }
 
 template <typename T>
@@ -128,10 +116,6 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
       }
     }
   }
-
-#ifdef DEBUG_GENERATION
-  DumpScores("VocabMaskLogitsProcessor", next_token_scores);
-#endif
 }
 
 template <typename T>
@@ -163,10 +147,6 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
       }
     }
   }
-
-#ifdef DEBUG_GENERATION
-  DumpScores("PrefixVocabMaskLogitsProcessor", next_token_scores);
-#endif
 }
 
 template <typename T>
@@ -185,10 +165,6 @@ void TemperatureLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
     *p /= temperature_;
     ++p;
   }
-
-#ifdef DEBUG_GENERATION
-  DumpScores("TemperatureLogitsProcessor", next_token_scores);
-#endif
 }
 
 template <typename T>
@@ -210,10 +186,6 @@ void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
   for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
     *p -= presence_mask_[i] * presence_penalty_;
   }
-
-#ifdef DEBUG_GENERATION
-  DumpScores("PresencePenaltyLogitsProcessor", next_token_scores);
-#endif
 }
 
 void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
