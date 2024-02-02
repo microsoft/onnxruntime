@@ -4,7 +4,6 @@ import argparse
 import logging
 import os
 import time
-from typing import Optional
 
 import numpy as np
 import torch
@@ -67,7 +66,14 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
     return inputs
 
 
-def verify_parity(args: argparse.Namespace, location, use_auth_token, kv_cache_ortvalues: dict, pytorch_model:Optional[torch.nn.Module] = None, config:Optional[AutoConfig] = None):
+def verify_parity(
+    args: argparse.Namespace,
+    location,
+    use_auth_token,
+    kv_cache_ortvalues: dict,
+    pytorch_model: None | torch.nn.Module = None,
+    config: None | AutoConfig = None,
+):
     # If it's running in a machine which GPU memory < 36GB, it should unload the llama in GPU in time and free the GPU memory for ORT.
     py_model = pytorch_model
     if py_model is None:
@@ -285,7 +291,9 @@ def main(argv: list[str] = []):  # noqa: B006
 
         # Verify prompt generation in merged model (decoder_model.onnx)
         args.use_past_kv = False
-        kv_cache_ortvalues = verify_parity(args, location, use_auth_token, kv_cache_ortvalues, pytorch_model=llama, config=config)
+        kv_cache_ortvalues = verify_parity(
+            args, location, use_auth_token, kv_cache_ortvalues, pytorch_model=llama, config=config
+        )
 
         # Verify token generation in merged model (decoder_with_past_model.onnx)
         args.use_past_kv = True
