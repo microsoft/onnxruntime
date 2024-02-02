@@ -256,6 +256,7 @@ int WindowsEnv::DefaultNumCores() {
 }
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
+#if defined(_M_X64) && !defined(_M_ARM64EC)
   int regs[4];
   memset(regs, 0, sizeof(regs));
   __cpuid(regs, 0);
@@ -267,7 +268,9 @@ int WindowsEnv::GetNumPhysicalCpuCores() const {
     // On Intel CPUs we assume the HardwareCoreEnumerator::DefaultIntraOpNumThreads function would never fail.
     // NOTE: due to resource restrictions, we do not run tests on Intel CPUs in CI build pipelines.
     return std::max(static_cast<uint32_t>(1), HardwareCoreEnumerator::DefaultIntraOpNumThreads());
-  } else {
+  } else
+#endif
+  {
     return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
   }
 }
