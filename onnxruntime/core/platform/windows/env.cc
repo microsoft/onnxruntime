@@ -32,7 +32,9 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
+#if defined(_M_X64) && !defined(_M_ARM64EC)
 #include "core/platform/windows/hardware_core_enumerator.h"
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #include <wil/Resource.h>
 
@@ -249,8 +251,9 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
   Sleep(static_cast<DWORD>(micros) / 1000);
 }
 
+#if defined(_M_X64) && !defined(_M_ARM64EC)
 static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
-
+#endif
 int WindowsEnv::DefaultNumCores() {
   return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
 }
