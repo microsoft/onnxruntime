@@ -507,6 +507,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool rundown) {
+  (void)rundown;  // Otherwise Linux build error
+
   LOGS(*session_logger_, INFO) << session_options;
 
 #ifdef _WIN32
