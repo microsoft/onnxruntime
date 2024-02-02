@@ -51,9 +51,7 @@ const createGatherElementsProgramInfo =
         {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: axisDimLimit},
         {type: DataType.uint32, data: axis}
       ];
-      programUniforms.push(...createTensorShapeVariables(inputShape));
-      programUniforms.push(...createTensorShapeVariables(indicesShape));
-      programUniforms.push(...createTensorShapeVariables(outputShape));
+      programUniforms.push(...createTensorShapeVariables(inputShape, indicesShape, outputShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
 
       // int64 indices would be treated as little endian i32 with assumption they fall in i32 limits
