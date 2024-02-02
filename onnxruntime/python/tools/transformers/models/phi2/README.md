@@ -36,21 +36,21 @@ python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_gpu
 **Export FP16 ONNX model for Nvidia GPUs** \
 _From source:_
 ```
-python -m models.phi2.convert_to_onnx --fp32_gpu
+python -m models.phi2.convert_to_onnx --fp16_gpu
 ```
 _From wheel:_
 ```
-python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_gpu
+python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp16_gpu
 ```
 \
 **Export INT4 ONNX model for Nvidia GPUs** \
 _From source:_
 ```
-python -m models.phi2.convert_to_onnx --fp32_gpu
+python -m models.phi2.convert_to_onnx --int4_gpu
 ```
 _From wheel:_
 ```
-python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp32_gpu
+python -m onnxruntime.transformers.models.phi2.convert_to_onnx --int4_gpu
 ```
 \
 **Export FP16 ONNX model for Nvidia GPUs with CUDA architecture SM=80~89** \
