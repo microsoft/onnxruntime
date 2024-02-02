@@ -7,7 +7,6 @@ from typing import Optional
 
 from fusion_attention import AttentionMask
 from fusion_bart_attention import FusionBartAttention
-from fusion_bart_attention_openai import FusionBartAttentionOpenai
 from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
 from onnx import numpy_helper
@@ -125,12 +124,7 @@ class BartOnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size, model_impl="hf"):
         super().__init__(model, num_heads, hidden_size)
         self.attention_mask = AttentionMask(self)
-        if model_impl == "openai":
-            self.attention_fusion = FusionBartAttentionOpenai(
-                self, self.hidden_size, self.num_heads, self.attention_mask
-            )
-        else:
-            self.attention_fusion = FusionBartAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.attention_fusion = FusionBartAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.bart_reshape_fusion_preprocess = FusionBartReshape(self)
 
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):

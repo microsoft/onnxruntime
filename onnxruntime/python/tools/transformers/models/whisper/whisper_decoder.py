@@ -68,7 +68,7 @@ class WhisperDecoderInit(torch.nn.Module):
 class WhisperDecoder(torch.nn.Module):
     """A Whisper decoder with past key values"""
 
-    def __init__(self, decoder, config, model_impl: str = "hf", model=None):
+    def __init__(self, decoder, config, model_impl: str = "hf", model: torch.nn.Module = None):
         super().__init__()
         self.decoder = decoder
         self.config = config

@@ -224,10 +224,7 @@ def optimize_by_fusion(
     if optimization_options is None:
         optimization_options = FusionOptions(model_type)
 
-    if optimization_options.model_impl == "openai":
-        optimizer = optimizer_class(model, num_heads, hidden_size, model_impl=optimization_options.model_impl)
-    else:
-        optimizer = optimizer_class(model, num_heads, hidden_size)
+    optimizer = optimizer_class(model, num_heads, hidden_size)
 
     optimizer.optimize(optimization_options)
 

@@ -9,7 +9,6 @@ from typing import List, Optional
 from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_bart_attention import FusionBartAttention
-from fusion_bart_attention_openai import FusionBartAttentionOpenai
 from fusion_biasgelu import FusionBiasGelu
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
@@ -350,11 +349,7 @@ class BertOnnxModel(OnnxModel):
 
         if options is not None:
             self.attention_mask.set_mask_format(options.attention_mask_format)
-            if (
-                options.use_multi_head_attention
-                and not isinstance(self.attention_fusion, FusionBartAttention)
-                and not isinstance(self.attention_fusion, FusionBartAttentionOpenai)
-            ):
+            if options.use_multi_head_attention and not isinstance(self.attention_fusion, FusionBartAttention):
                 self.attention_fusion = FusionAttention(
                     self,
                     self.hidden_size,

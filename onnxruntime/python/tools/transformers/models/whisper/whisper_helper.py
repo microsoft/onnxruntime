@@ -16,8 +16,6 @@ import torch
 from packaging import version
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from transformers import __version__ as transformers_version
-from whisper import _ALIGNMENT_HEADS, _MODELS, _download
-from whisper.model import ModelDimensions, Whisper
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
@@ -91,6 +89,8 @@ class WhisperHelper:
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
+        from whisper import _ALIGNMENT_HEADS, _MODELS, _download
+        from whisper.model import ModelDimensions, Whisper
 
         in_memory = False
 
@@ -297,14 +297,12 @@ class WhisperHelper:
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
         provider: str = "cpu",
-        model_impl: str = "hf",
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
         from fusion_options import FusionOptions
 
         optimization_options = FusionOptions("bart")
-        optimization_options.model_impl = model_impl
         optimization_options.use_multi_head_attention = True
         optimization_options.disable_multi_head_attention_bias = provider == "rocm"
 
@@ -418,7 +416,7 @@ class WhisperHelper:
         diff = pt_outputs - ort_outputs
         max_diff = max(diff.min(), diff.max(), key=abs)
 
-        if max_diff == 0:
+        if max_diff > 0:
             # For ONNX Runtime INT8 model
             pt_expected_transcription = (
                 " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
@@ -434,4 +432,5 @@ class WhisperHelper:
             )
             if parity:
                 max_diff = 0
+
         return max_diff

@@ -390,7 +390,6 @@ def export_onnx_models(
                         auto_mixed_precision=not disable_auto_mixed_precision,
                         use_gpu=use_gpu,
                         provider=provider,
-                        model_impl=model_impl,
                     )
                     onnx_path = output_path
 
