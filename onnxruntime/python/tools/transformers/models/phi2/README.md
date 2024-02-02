@@ -109,4 +109,5 @@ python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp16_gpu_sm8x -
 The inference example currently supports all models running on CUDA.
 
 ## Limitations
-- Torch dynamo export only support Linux. The model export cannot be run on Windows as of now.
+- Torch dynamo onnx export only supports Linux. The model export cannot be run on Windows as of now.
+- The program may not run as expected if the machine has limited memory. e.g Dynamo export may use ~11.6GB; Optimization may use ~4.5GB for each.
