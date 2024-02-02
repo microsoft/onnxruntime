@@ -11,7 +11,7 @@ cd onnxruntime/onnxruntime/python/tools/transformers
 python -m models.phi2.convert_to_onnx -h
 ```
 _From wheel:_ \
-Install [ORT nightly package]([https://onnxruntime.ai/docs/install/](https://onnxruntime.ai/docs/install/#inference-install-table-for-all-languages))
+Install [ORT nightly package](https://onnxruntime.ai/docs/install/#inference-install-table-for-all-languages)
 ```bash
 python -m onnxruntime.transformers.models.phi2.convert_to_onnx -h
 ```
