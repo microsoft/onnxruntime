@@ -68,8 +68,8 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
 
 def verify_parity(
     args: argparse.Namespace,
-    location,
-    use_auth_token,
+    location: str,
+    use_auth_token: bool,
     kv_cache_ortvalues: dict,
     pytorch_model: None | torch.nn.Module = None,
     config: None | AutoConfig = None,
@@ -77,14 +77,13 @@ def verify_parity(
     # If it's running in a machine which GPU memory < 36GB, it should unload the llama in GPU in time and free the GPU memory for ORT.
     py_model = pytorch_model
     if py_model is None:
-        config, llama = setup_torch_model(
+        config, py_model = setup_torch_model(
             args,
             location,
             use_auth_token,
             torch_dtype=(torch.float16 if args.use_fp16 else torch.float32),
             device=args.device,
         )
-        py_model = llama
 
     inputs = get_inputs(args, config)
 
@@ -98,7 +97,7 @@ def verify_parity(
     end_time = time.time()
     logger.info(f"PyTorch took {end_time - start_time} s")
 
-    if pytorch_model is None:
+    if args.small_gpu and py_model is not None:
         del py_model
         torch.cuda.empty_cache()
 
@@ -278,9 +277,8 @@ def main(argv: list[str] = []):  # noqa: B006
     if not args.merged:
         verify_parity(args, location, use_auth_token, kv_cache_ortvalues)
     else:
-        if args.small_gpu:
-            config = llama = None
-        else:
+        config = llama = None
+        if not args.small_gpu:
             config, llama = setup_torch_model(
                 args,
                 location,
@@ -289,7 +287,7 @@ def main(argv: list[str] = []):  # noqa: B006
                 device=args.device,
             )
 
-        # Verify prompt generation in merged model (decoder_model.onnx)
+        # Verify prompt processing in merged model (decoder_model.onnx)
         args.use_past_kv = False
         kv_cache_ortvalues = verify_parity(
             args, location, use_auth_token, kv_cache_ortvalues, pytorch_model=llama, config=config
