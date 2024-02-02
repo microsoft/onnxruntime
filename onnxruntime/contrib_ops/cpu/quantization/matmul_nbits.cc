@@ -10,7 +10,6 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
 
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -66,7 +65,6 @@ class MatMulNBits final : public OpKernel {
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_;
   size_t packed_b_size_{0};
-
 };
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
