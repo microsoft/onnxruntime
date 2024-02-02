@@ -9,6 +9,6 @@
 #error "This file should only be included when building on Apple platforms."
 #endif
 
-#include "coreml/Model.pb.h"
+#include "coreml_proto/Model.pb.h"
 
 namespace COREML_SPEC = CoreML::Specification;
