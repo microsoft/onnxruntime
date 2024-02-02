@@ -138,6 +138,9 @@ const computeMean =
       ];
 
       const getMeanShaderSource = (shaderHelper: ShaderHelper) => {
+        const outputInitial = outputType === 'vec2f' ?
+            `${outputType}(0.0);` :
+            `${outputType}(vec${components}<f32>(0.0),vec${components}<f32>(0.0));`;
         const inputHelper = inputVariable('input', input.dataType, input.dims, components);
         return `
   ${shaderHelper.declareVariables(inputHelper)}
@@ -151,6 +154,7 @@ const computeMean =
     let wgId = global_idx % ${WG};
     let wgOffset = wgId * uniforms.wg_size;
     if (wgOffset >= uniforms.H) {
+        output[global_idx] = ${outputInitial};
         return;
     }
     let wgMax = min(wgOffset + uniforms.wg_size, uniforms.H);
