@@ -283,7 +283,7 @@ stages:
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 ;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
               popd ; \
             "
       displayName: 'Run Llama2 to Onnx F16 and parity Test'

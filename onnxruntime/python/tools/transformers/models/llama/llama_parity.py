@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import time
+from typing import Optional
 
 import numpy as np
 import torch
@@ -66,14 +67,18 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
     return inputs
 
 
-def verify_parity(args: argparse.Namespace, location, use_auth_token, kv_cache_ortvalues: dict):
-    config, llama = setup_torch_model(
-        args,
-        location,
-        use_auth_token,
-        torch_dtype=(torch.float16 if args.use_fp16 else torch.float32),
-        device=args.device,
-    )
+def verify_parity(args: argparse.Namespace, location, use_auth_token, kv_cache_ortvalues: dict, pytorch_model:Optional[torch.nn.Module] = None, config:Optional[AutoConfig] = None):
+    # If it's running in a machine which GPU memory < 36GB, it should unload the llama in GPU in time and free the GPU memory for ORT.
+    py_model = pytorch_model
+    if py_model is None:
+        config, llama = setup_torch_model(
+            args,
+            location,
+            use_auth_token,
+            torch_dtype=(torch.float16 if args.use_fp16 else torch.float32),
+            device=args.device,
+        )
+        py_model = llama
 
     inputs = get_inputs(args, config)
 
@@ -81,13 +86,15 @@ def verify_parity(args: argparse.Namespace, location, use_auth_token, kv_cache_o
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     start_time = time.time()
-    pt_outputs = llama(**inputs).logits.detach().cpu().numpy()
+    pt_outputs = py_model(**inputs).logits.detach().cpu().numpy()
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     end_time = time.time()
     logger.info(f"PyTorch took {end_time - start_time} s")
-    del llama
-    torch.cuda.empty_cache()
+
+    if pytorch_model is None:
+        del py_model
+        torch.cuda.empty_cache()
 
     # Run inference with ORT
     past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
@@ -229,6 +236,13 @@ def get_args(argv: list[str]):
         help="model cache dir to override default HF cache dir to avoid overflood the /home dir",
     )
 
+    # The argument is used for CI mainly, because the CI machine has 24G GPU memory at most.
+    parser.add_argument(
+        "--small_gpu",
+        action="store_true",
+        help="Load the llama in GPU every time for parity_check if it's running in a machine which GPU memory < 36GB. ",
+    )
+
     args = parser.parse_args() if argv == [] else parser.parse_args(argv)
 
     # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
@@ -258,13 +272,24 @@ def main(argv: list[str] = []):  # noqa: B006
     if not args.merged:
         verify_parity(args, location, use_auth_token, kv_cache_ortvalues)
     else:
+        if args.small_gpu:
+            config = llama = None
+        else:
+            config, llama = setup_torch_model(
+                args,
+                location,
+                use_auth_token,
+                torch_dtype=(torch.float16 if args.use_fp16 else torch.float32),
+                device=args.device,
+            )
+
         # Verify prompt generation in merged model (decoder_model.onnx)
         args.use_past_kv = False
-        kv_cache_ortvalues = verify_parity(args, location, use_auth_token, kv_cache_ortvalues)
+        kv_cache_ortvalues = verify_parity(args, location, use_auth_token, kv_cache_ortvalues, pytorch_model=llama, config=config)
 
         # Verify token generation in merged model (decoder_with_past_model.onnx)
         args.use_past_kv = True
-        verify_parity(args, location, use_auth_token, kv_cache_ortvalues)
+        verify_parity(args, location, use_auth_token, kv_cache_ortvalues, pytorch_model=llama, config=config)
 
 
 if __name__ == "__main__":
