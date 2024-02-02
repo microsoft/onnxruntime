@@ -272,6 +272,7 @@ def upsample_nearest2d_gradient():
 def upsample_nearest3d_gradient():
     return _upsample_gradient("upsample_nearest3d_backward", 3)
 
+
 @register_gradient("org.pytorch.aten", "ATen", "upsample_bicubic2d", "vec")
 def upsample_bicubic2d_gradient():
     return _upsample_gradient("upsample_bicubic2d_backward", 2)

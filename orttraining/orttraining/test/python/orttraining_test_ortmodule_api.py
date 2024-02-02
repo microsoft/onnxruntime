@@ -1804,6 +1804,7 @@ def test_resize_grad_correctness_bilinear_2d(interpolate_size_scale, align_corne
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
+
 def test_aten_upsample_bicubic():
     class _NeuralNetUpsampleBicubic(torch.nn.Module):
         def __init__(self):
@@ -1830,6 +1831,7 @@ def test_aten_upsample_bicubic():
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
 
 def test_gradient_correctness_cast_chain():
     class NeuralNetCast(torch.nn.Module):
