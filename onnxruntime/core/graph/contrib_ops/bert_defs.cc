@@ -267,7 +267,7 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       int head_size = hidden_size / (num_heads + 2 * kv_num_heads);
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      output_shape.add_dim()->set_dim_value(head_size * num_heads);
+      output_shape.add_dim()->set_dim_value(int64_t(head_size * num_heads));
       updateOutputShape(ctx, 0, output_shape);
     }
   }
