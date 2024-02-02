@@ -26,7 +26,7 @@ const createInstanceNormProgramInfo =
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'type', 'type'];
       const programUniforms: ProgramUniform[] =
           [{type: DataType.uint32, data: normSize}, {type: DataType.uint32, data: normPackedSize}];
-      programUniforms.push(...createTensorShapeVariables(inputShape), ...createTensorShapeVariables(inputShape));
+      programUniforms.push(...createTensorShapeVariables(inputShape, inputShape));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const x = inputVariable('x', inputs[0].dataType, inputShape.length, components);

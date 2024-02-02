@@ -34,9 +34,7 @@ export const createNaiveMatmulProgramInfo =
         {type: DataType.uint32, data: K}
       ];
       appendActivationUniformsData(activationAttributes, programUniforms);
-      programUniforms.push(
-          ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
-          ...createTensorShapeVariables(bShape));
+      programUniforms.push(...createTensorShapeVariables(outerDims, aShape, bShape));
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
       }
