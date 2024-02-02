@@ -1,8 +1,14 @@
 # Phi2 Optimizations
 ## Prerequisites
+A Linux machine for [TorchDynamo-based ONNX Exporter](https://pytorch.org/docs/stable/onnx.html#torchdynamo-based-onnx-exporter)\
+Install onnx, onnxscript and transformers by running
 ```bash
 pip install -r requirements.txt
 ```
+To export ONNX, PyTorch version 2.2.0 or higher is required. The [official website](https://pytorch.org/) offers packages compatible with CUDA 11.8 and 12.1. Please select the appropriate version according to your needs.
+\
+\
+**There are two options to run the conversion script:**\
 _From source:_
 ```bash
 pip install onnxruntime-gpu==1.17.0 # or onnxruntime==1.17.0 if using cpu
@@ -109,5 +115,5 @@ python -m onnxruntime.transformers.models.phi2.convert_to_onnx --fp16_gpu_sm8x -
 The inference example currently supports all models running on CUDA.
 
 ## Limitations
-- Torch dynamo onnx export only supports Linux. The model export cannot be run on Windows as of now.
+- TorchDynamo-based ONNX Exporter only supports Linux.
 - The program may not run as expected if the machine has limited memory. e.g Dynamo export may use ~11.6GB; Optimization may use ~4.5GB for each.
