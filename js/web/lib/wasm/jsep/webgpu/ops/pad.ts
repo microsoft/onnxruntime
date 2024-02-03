@@ -158,7 +158,7 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
     programUniforms.push({type: inputs[0].dataType, data: attributes.value});
   }
 
-  programUniforms.push(...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(outputShape));
+  programUniforms.push(...createTensorShapeVariables(inputs[0].dims, outputShape));
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {

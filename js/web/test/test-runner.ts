@@ -138,8 +138,8 @@ async function loadTensors(
 
 async function initializeSession(
     modelFilePath: string, backendHint: ort.InferenceSession.ExecutionProviderConfig, ioBindingMode: Test.IOBindingMode,
-    profile: boolean, sessionOptions: ort.InferenceSession.SessionOptions,
-    fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
+    profile: boolean, externalData: ort.InferenceSession.SessionOptions['externalData'],
+    sessionOptions: ort.InferenceSession.SessionOptions, fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
   const preloadModelData: Uint8Array|undefined =
       fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
   Logger.verbose(
@@ -153,7 +153,8 @@ async function initializeSession(
     executionProviders: [backendHint],
     profiler: profilerConfig,
     enableProfiling: profile,
-    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined
+    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
+    externalData
   };
 
   let session: ort.InferenceSession;
@@ -246,8 +247,8 @@ export class ModelTestContext {
       const executionProviderConfig =
           modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || 'webnn') : modelTest.backend!;
       const session = await initializeSession(
-          modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, testOptions?.sessionOptions || {},
-          this.cache);
+          modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, modelTest.externalData,
+          testOptions?.sessionOptions || {}, this.cache);
 
       const initEnd = now();
 

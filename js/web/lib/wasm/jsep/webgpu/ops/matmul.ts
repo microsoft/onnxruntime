@@ -7,7 +7,7 @@ import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
-import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, UniformsArrayType,} from './common';
+import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
 import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 
 export const createNaiveMatmulProgramInfo =
@@ -34,9 +34,7 @@ export const createNaiveMatmulProgramInfo =
         {type: DataType.uint32, data: K}
       ];
       appendActivationUniformsData(activationAttributes, programUniforms);
-      programUniforms.push(
-          ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
-          ...createTensorShapeVariables(bShape));
+      programUniforms.push(...createTensorShapeVariables(outerDims, aShape, bShape));
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
       }
@@ -47,7 +45,8 @@ export const createNaiveMatmulProgramInfo =
         const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
         const b = inputVariable('b', inputs[1].dataType, bShape.length, components);
         const output = outputVariable('output', inputs[0].dataType, outputShapeInShader.length, components);
-        const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
+        const baseType = tensorTypeToWsglStorageType(output.type.tensor);
+        const applyActivation = getActivationSnippet(activationAttributes, output.type.value, baseType);
         const inputVariables = [a, b];
         let processBias = '';
         if (hasBias) {
