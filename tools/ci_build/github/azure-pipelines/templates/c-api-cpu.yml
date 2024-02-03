@@ -642,7 +642,7 @@ stages:
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64\lib'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-tensorrt\lib'
         Contents: 'libonnxruntime.so.*'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
     - task: CopyFiles@2
