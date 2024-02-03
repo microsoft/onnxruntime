@@ -51,36 +51,10 @@ pip install onnxruntime-gpu
 
 #### Install ONNX Runtime GPU (CUDA 12.x)
 
-For Cuda 12.x please using the following instructions to download the instruction
-from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/)
-
-1. Install keyring for Azure Artifacts
+For Cuda 12.x, please use the following instructions to install from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview)
 
 ```bash
-python -m pip install --upgrade pip
-pip install keyring artifacts-keyring
-```
-
-If you're using Linux, ensure you've installed the [prerequisites](https://go.microsoft.com/fwlink/?linkid=2103695),
-which are required for artifacts-keyring.
-
-2. Project setup
-
-Ensure you have installed the latest version of the Azure Artifacts keyring from the "Get the tools" menu.
-If you don't already have one, create a virtualenv
-using [these instructions](https://go.microsoft.com/fwlink/?linkid=2103878) from the official Python documentation.
-Per the instructions, "it is always recommended to use a virtualenv while developing Python applications."
-
-Add a pip.ini (Windows) or pip.conf (Linux) file to your virtualenv
-
-```bash
-pip install onnxruntime-gpu --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
-```
-
-3. Install onnxruntime-gpu
-
-```bash
-pip install onnxruntime-gpu
+pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 ```
 
 ### Install ONNX to export the model
@@ -443,7 +417,8 @@ below:
 |--------------|---------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
 | Python       | If using pip, run `pip install --upgrade pip` prior to downloading.                                                                               |                                                                                                                                               |                                                                                                |
 |              | CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)                                                                                      | [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly/overview)                    |                                                                                                |
-|              | GPU (CUDA/TensorRT): [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu)                                                              | [ort-nightly-gpu (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
+|              | GPU (CUDA/TensorRT) for CUDA 11.x: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu)                                                              | [ort-nightly-gpu (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
+|              | GPU (CUDA/TensorRT) for CUDA 12.x: [**onnxruntime-gpu**](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/)                                                              | [ort-nightly-gpu (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ort-cuda-12-nightly/PyPI/ort-nightly-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
 |              | GPU (DirectML): [**onnxruntime-directml**](https://pypi.org/project/onnxruntime-directml/)                                                        | [ort-nightly-directml (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview/) | [View](../execution-providers/DirectML-ExecutionProvider.md#requirements)                      |
 |              | OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*                                         |                                                                                                                                               | [View](../build/eps.md#openvino)                                                               |
 |              | TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*                                                |                                                                                                                                               |                                                                                                |
