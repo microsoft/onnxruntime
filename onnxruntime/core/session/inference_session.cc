@@ -363,6 +363,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   active_sessions_[global_session_id_++] = this;
 
 #ifdef _WIN32
+  // Register callback for ETW capture state (rundown)
   WindowsTelemetry::RegisterInternalCallback(
       [this](
           LPCGUID SourceId,
@@ -506,8 +507,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 }
 
-void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool rundown) {
-  (void)rundown;  // Otherwise Linux build error
+void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState) {
+  (void)captureState;  // Otherwise Linux build error
 
   LOGS(*session_logger_, INFO) << session_options;
 
@@ -532,7 +533,7 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
                     TraceLoggingBoolean(session_options.use_per_session_threads, "use_per_session_threads"),
                     TraceLoggingBoolean(session_options.thread_pool_allow_spinning, "thread_pool_allow_spinning"),
                     TraceLoggingBoolean(session_options.use_deterministic_compute, "use_deterministic_compute"),
-                    TraceLoggingBoolean(rundown, "isRundown"));
+                    TraceLoggingBoolean(captureState, "isCaptureState"));
 
   TraceLoggingWrite(
       telemetry_provider_handle,
@@ -546,7 +547,7 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
       TraceLoggingUInt32(session_options.intra_op_param.stack_size, "stack_size"),
       TraceLoggingString(!session_options.intra_op_param.affinity_str.empty() ? session_options.intra_op_param.affinity_str.c_str() : "", "affinity_str"),
       TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"),
-      TraceLoggingBoolean(rundown, "isRundown"));
+      TraceLoggingBoolean(captureState, "isCaptureState"));
 
   for (const auto& config_pair : session_options.config_options.configurations) {
     TraceLoggingWrite(
@@ -556,7 +557,7 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
         TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
         TraceLoggingString(config_pair.second.c_str(), "Value"),
-        TraceLoggingBoolean(rundown, "isRundown"));
+        TraceLoggingBoolean(captureState, "isCaptureState"));
   }
 #endif
 }

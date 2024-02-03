@@ -47,6 +47,7 @@ class ExecutionProviders {
 #ifdef _WIN32
     LogProviderOptions(provider_id, providerOptions, false);
 
+    // Register callback for ETW capture state (rundown)
     WindowsTelemetry::RegisterInternalCallback(
         [this](
             LPCGUID SourceId,
@@ -96,7 +97,7 @@ class ExecutionProviders {
           TraceLoggingString(provider_id.c_str(), "ProviderId"),
           TraceLoggingString(config_pair.first.c_str(), "Key"),
           TraceLoggingString(config_pair.second.c_str(), "Value"),
-          TraceLoggingBool(captureState, "CaptureState"));
+          TraceLoggingBool(captureState, "isCaptureState"));
     }
   }
 #endif
