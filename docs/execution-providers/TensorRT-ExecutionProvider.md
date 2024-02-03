@@ -84,6 +84,7 @@ There are two ways to configure TensorRT settings, either by **TensorRT Executio
 | trt_dla_core                          | ORT_TENSORRT_DLA_CORE                          | int    |
 | trt_engine_cache_enable               | ORT_TENSORRT_ENGINE_CACHE_ENABLE               | bool   |
 | trt_engine_cache_path                 | ORT_TENSORRT_CACHE_PATH                        | string |
+| trt_engine_cache_prefix               | ORT_TENSORRT_CACHE_PREFIX                      | string |
 | trt_dump_subgraphs                    | ORT_TENSORRT_DUMP_SUBGRAPHS                    | bool   |
 | trt_force_sequential_engine_build     | ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD     | bool   |
 | trt_context_memory_sharing_enable     | ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE     | bool   |
@@ -161,6 +162,10 @@ TensorRT configurations can be set by execution provider options. It's useful wh
   >    * TensorRT version changes (i.e. moving from TensorRT 7.0 to 8.0)
 
 * `trt_engine_cache_path`: Specify path for TensorRT engine and profile files if `trt_engine_cache_enable` is `True`, or path for INT8 calibration table file if `trt_int8_enable` is `True`.
+
+* `trt_engine_cache_prefix`: Customize engine cache prefix when `trt_engine_cache_enable` is `True`.
+
+    * ORT-TRT will only reuse existing engine cache with customized prefix if the same prefix is assigned in `trt_engine_cache_prefix`. If this option is empty, new engine cache with default prefix will be generated.
 
 * `trt_dump_subgraphs`: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem.
   * This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser.
