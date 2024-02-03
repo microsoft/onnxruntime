@@ -16,6 +16,7 @@ namespace logging {
 class Logger;
 }
 
+class GraphViewer;
 class Node;
 class NodeArg;
 class NodeUnit;
@@ -24,7 +25,7 @@ class NodeUnit;
 // If min/max are not known initializer tensors, will return false
 // For now we only support getting float min/max,
 // since in most cases, Clip(0,6)[Relu6] will be fused by quantization tool
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
+bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node,
                    float& min, float& max, const logging::Logger& logger);
 
 // Get the type of the given NodeArg
