@@ -3,14 +3,21 @@
 
 import {Env, Tensor, TRACE, TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
 
-import {tensorDataTypeEnumToString} from '../wasm-common';
+import {DataType, tensorDataTypeEnumToString} from '../wasm-common';
 
 import {configureLogger, LOG_DEBUG} from './log';
 import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, TimestampQuery} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
+
+interface CommandInfo {
+  readonly kernelId: number;
+  readonly computePipeline: GPUComputePipeline;
+  readonly bindGroup: GPUBindGroup;
+  readonly dispatchGroup: [number, number, number];
+}
 
 interface KernelInfo {
   readonly kernelType: string;
@@ -104,6 +111,13 @@ export class WebGpuBackend {
   programManager: ProgramManager;
 
   /**
+   * representing the session ID of which is currently being run.
+   * `null` means no session is being run.
+   * only valid when session.run is executed.
+   */
+  currentSessionId: number|null = null;
+
+  /**
    * representing the kernel ID of which is currently being computed (CPU code perspective).
    * `null` means no kernel is being computed.
    * only one kernel can be computed at a moment.
@@ -155,6 +169,16 @@ export class WebGpuBackend {
   queryType: TimestampQuery;
 
   env: Env;
+  sessionStatus: SessionState = 'default';
+  /**
+   * a SessionID -> CommandInfo[] mapping. It's used to record all GPU commands for corresponding session.
+   */
+  capturedCommandList: Map<number, CommandInfo[]> = new Map();
+
+  /**
+   * a SessionID -> PendingKernelInfo[] mapping for profiling.
+   */
+  private capturedPendingKernels: Map<number, PendingKernelInfo[]> = new Map();
 
   /**
    * a SessionID -> a Map of (InputOutputIndex -> [ID, GPUBuffer]) mapping.
@@ -228,6 +252,7 @@ export class WebGpuBackend {
 
   getComputePassEncoder(): GPUComputePassEncoder {
     if (!this.computePassEncoder) {
+      const commandEncoder = this.getCommandEncoder();
       const computePassDescriptor: GPUComputePassDescriptor = {};
 
       if (this.queryType === 'at-passes') {
@@ -238,7 +263,7 @@ export class WebGpuBackend {
         };
       }
 
-      this.computePassEncoder = this.getCommandEncoder().beginComputePass(computePassDescriptor);
+      this.computePassEncoder = commandEncoder.beginComputePass(computePassDescriptor);
     }
     return this.computePassEncoder;
   }
@@ -428,13 +453,26 @@ export class WebGpuBackend {
           return;
         }
         // https://www.w3.org/TR/WGSL/#alignof
-        const baseAlignment = data.length <= 2 ? data.length * 4 : 16;
+        const sizeOfElement = v.type === DataType.float16 ? 2 : 4;
+        let sizeOfVecOrMat;
+        let baseAlignment;
+        if (v.type === DataType.float16) {
+          baseAlignment = data.length > 4 ? 16 : (data.length > 2 ? 8 : data.length * sizeOfElement);
+          sizeOfVecOrMat = data.length > 4 ? 16 : sizeOfElement * data.length;
+        } else {
+          baseAlignment = data.length <= 2 ? data.length * sizeOfElement : 16;
+          sizeOfVecOrMat = 16;
+        }
         currentOffset = Math.ceil(currentOffset / baseAlignment) * baseAlignment;
         offsets.push(currentOffset);
-        // When data.length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where N =
-        // Math.ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N *
-        // SizeOf(vec4<i32|u32|f32>).
-        currentOffset += data.length > 4 ? Math.ceil(data.length / 4) * 16 : data.length * 4;
+        // For non-float16 type, when data.length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
+        // N = Math.ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N *
+        // SizeOf(vec4<i32|u32|f32>). For float16 type, when data.length > 4, the uniform variable is of type
+        // array<mat2x4<f16>,N>, where N = Math.ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte
+        // length is N * SizeOf(mat2x4<f16>).
+        const elementPerVecOrMat = v.type === DataType.float16 ? 8 : 4;
+        currentOffset += data.length > 4 ? Math.ceil(data.length / elementPerVecOrMat) * sizeOfVecOrMat :
+                                           data.length * sizeOfElement;
       });
 
       // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
@@ -445,12 +483,17 @@ export class WebGpuBackend {
       programUniforms.forEach((v, i) => {
         const offset = offsets[i];
         const data = typeof v.data === 'number' ? [v.data] : v.data;
-        if (v.type === 'int32') {
+        if (v.type === DataType.int32) {
           new Int32Array(arrayBuffer, offset, data.length).set(data);
-        } else if (v.type === 'uint32') {
+        } else if (v.type === DataType.uint32) {
           new Uint32Array(arrayBuffer, offset, data.length).set(data);
-        } else {
+        } else if (v.type === DataType.float16) {
+          // TODO: use Float16Array.
+          new Uint16Array(arrayBuffer, offset, data.length).set(data);
+        } else if (v.type === DataType.float) {
           new Float32Array(arrayBuffer, offset, data.length).set(data);
+        } else {
+          throw new Error(`Unsupported uniform type: ${tensorDataTypeEnumToString(v.type)}`);
         }
       });
 
@@ -478,7 +521,7 @@ export class WebGpuBackend {
         () => `[ProgramManager] run "${program.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
 
-    if (this.queryType !== 'none') {
+    if (this.queryType !== 'none' || this.sessionStatus === 'capturing') {
       const pendingKernelInfo: PendingKernelInfo = {
         kernelId: this.currentKernelId!,
         programName: artifact.programInfo.name,
@@ -486,6 +529,11 @@ export class WebGpuBackend {
         outputTensorViews,
       };
       this.pendingKernels.push(pendingKernelInfo);
+
+      if (this.sessionStatus === 'capturing') {
+        const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
+        sessionPendingKernels!.push(pendingKernelInfo);
+      }
     }
 
     this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);
@@ -656,7 +704,69 @@ export class WebGpuBackend {
       }
     }
   }
-  onRunStart(): void {
+
+  captureBegin(): void {
+    LOG_DEBUG('info', 'captureBegin');
+    if (!this.capturedCommandList.get(this.currentSessionId!)) {
+      this.capturedCommandList.set(this.currentSessionId!, []);
+    }
+    if (!this.capturedPendingKernels.get(this.currentSessionId!)) {
+      this.capturedPendingKernels.set(this.currentSessionId!, []);
+    }
+    // flush the left commands before we change the status.
+    this.flush();
+    this.sessionStatus = 'capturing';
+  }
+  captureEnd(): void {
+    LOG_DEBUG('info', 'captureEnd');
+    // flush the left commands before we change the status.
+    this.flush();
+    this.sessionStatus = 'default';
+  }
+  replay(): void {
+    LOG_DEBUG('info', 'replay');
+    this.sessionStatus = 'replaying';
+    const sessionCommandList = this.capturedCommandList.get(this.currentSessionId!);
+    const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
+    const length = sessionCommandList!.length;
+    this.pendingKernels = [];
+    for (let i = 0; i < length; i++) {
+      const computePassEncoder = this.getComputePassEncoder();
+      const command = sessionCommandList![i];
+      this.writeTimestamp(this.pendingDispatchNumber * 2);
+      computePassEncoder.setPipeline(command.computePipeline);
+      computePassEncoder.setBindGroup(0, command.bindGroup);
+      computePassEncoder.dispatchWorkgroups(...command.dispatchGroup);
+      this.writeTimestamp(this.pendingDispatchNumber * 2 + 1);
+      this.pendingDispatchNumber++;
+      if (this.queryType !== 'none') {
+        this.pendingKernels.push(sessionPendingKernels![i]);
+      }
+      if (this.pendingDispatchNumber >= this.maxDispatchNumber || this.queryType === 'at-passes') {
+        this.endComputePass();
+      }
+      if (this.pendingDispatchNumber >= this.maxDispatchNumber) {
+        this.flush();
+      }
+    }
+    // flush the left commands before we change the status.
+    this.flush();
+    this.sessionStatus = 'default';
+  }
+
+  onReleaseSession(sessionId: number): void {
+    this.unregisterBuffers(sessionId);
+    if (this.capturedCommandList.has(sessionId)) {
+      this.capturedCommandList.delete(sessionId);
+    }
+    if (this.capturedPendingKernels.has(sessionId)) {
+      this.capturedPendingKernels.delete(sessionId);
+    }
+    this.gpuDataManager.onReleaseSession(sessionId);
+  }
+
+  onRunStart(sessionId: number): void {
+    this.currentSessionId = sessionId;
     this.setQueryType();
   }
 }

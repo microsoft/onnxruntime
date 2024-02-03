@@ -645,6 +645,10 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     all_ep_context_nodes.insert(all_ep_context_nodes.begin(), ep_context_nodes.begin(), ep_context_nodes.end());
   }
 
+  if (all_ep_context_nodes.size() < 1) {
+    return Status::OK();
+  }
+
   auto get_ep_context_node = [&all_ep_context_nodes](const std::string& node_name) -> std::pair<bool, const Node*> {
     for (auto& node : all_ep_context_nodes) {
       if (node_name == node->Name()) {
@@ -656,75 +660,69 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   onnxruntime::PathString context_cache_path;
   PathString model_pathstring = graph.ModelPath().ToPathString();
-  if (all_ep_context_nodes.size() > 0) {
-    if (!ep_context_path.empty()) {
-      context_cache_path = ToPathString(ep_context_path);
-    } else if (!model_pathstring.empty()) {
-      context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
-    }
 
-    {
-#ifdef _WIN32
-      std::wifstream fs(context_cache_path);
-#else
-      std::ifstream fs(context_cache_path);
-#endif
-      ORT_RETURN_IF(fs.good(), "Failed to generate EP context model since the file exist already.");
-    }
-
-    Model ep_context_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                           graph.DomainToVersionMap(), {}, logger);
-    auto& ep_graph = ep_context_model.MainGraph();
-    ep_graph.SetDescription(graph.Description());
-
-    // Set inputs outputs explicitly to make sure the order is same as the user model.
-    auto inputs = graph.GetInputs();
-    auto outputs = graph.GetOutputs();
-
-    InlinedVector<const NodeArg*> ep_graph_inputs;
-    ep_graph_inputs.reserve(inputs.size());
-    for (auto& input : inputs) {
-      auto input_arg = graph.GetNodeArg(input->Name());
-      auto& ep_graph_input_arg = ep_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
-      ep_graph_inputs.push_back(&ep_graph_input_arg);
-    }
-
-    InlinedVector<const NodeArg*> ep_graph_outputs;
-    ep_graph_outputs.reserve(outputs.size());
-    for (auto& output : outputs) {
-      auto output_arg = graph.GetNodeArg(output->Name());
-      auto& ep_graph_output_arg = ep_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
-      ep_graph_outputs.push_back(&ep_graph_output_arg);
-    }
-
-    ep_graph.SetInputs(ep_graph_inputs);
-    ep_graph.SetOutputs(ep_graph_outputs);
-
-    for (const auto& node : graph.Nodes()) {
-      // the fused node and EPContext node has same node name
-      auto ep_context_node = get_ep_context_node(node.Name());
-      // Use EpContext node created by the EPs if name matched, otherwise use node from original model
-      if (ep_context_node.first) {
-        ep_graph.AddNode(*ep_context_node.second);
-      } else {
-        ep_graph.AddNode(node);
-      }
-    }
-
-    // handle initializers
-    for (const auto& input : graph.GetInputsIncludingInitializers()) {
-      const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-      if (graph.GetInitializedTensor(input->Name(), initializer)) {
-        // There initializer could have duplicates so make sure we only add once
-        const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-        if (!ep_graph.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-          ep_graph.AddInitializedTensor(*initializer);
-        }
-      }
-    }
-
-    ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
+  if (!ep_context_path.empty()) {
+    context_cache_path = ToPathString(ep_context_path);
+  } else if (!model_pathstring.empty()) {
+    context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
   }
+
+  {
+#ifdef _WIN32
+    std::wifstream fs(context_cache_path);
+#else
+    std::ifstream fs(context_cache_path);
+#endif
+    ORT_RETURN_IF(fs.good(), "Failed to generate EP context model since the file exist already.");
+  }
+
+  Model ep_context_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                         graph.DomainToVersionMap(), {}, logger);
+  auto& ep_graph = ep_context_model.MainGraph();
+  ep_graph.SetDescription(graph.Description());
+
+  // Set inputs outputs explicitly to make sure the order is same as the user model.
+  auto inputs = graph.GetInputs();
+  auto outputs = graph.GetOutputs();
+
+  InlinedVector<const NodeArg*> ep_graph_inputs;
+  ep_graph_inputs.reserve(inputs.size());
+  for (auto& input : inputs) {
+    auto input_arg = graph.GetNodeArg(input->Name());
+    auto& ep_graph_input_arg = ep_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+    ep_graph_inputs.push_back(&ep_graph_input_arg);
+  }
+
+  InlinedVector<const NodeArg*> ep_graph_outputs;
+  ep_graph_outputs.reserve(outputs.size());
+  for (auto& output : outputs) {
+    auto output_arg = graph.GetNodeArg(output->Name());
+    auto& ep_graph_output_arg = ep_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+    ep_graph_outputs.push_back(&ep_graph_output_arg);
+  }
+
+  ep_graph.SetInputs(ep_graph_inputs);
+  ep_graph.SetOutputs(ep_graph_outputs);
+
+  for (const auto& node : graph.Nodes()) {
+    // the fused node and EPContext node has same node name
+    auto ep_context_node = get_ep_context_node(node.Name());
+    // Use EpContext node created by the EPs if name matched, otherwise use node from original model
+    if (ep_context_node.first) {
+      ep_graph.AddNode(*ep_context_node.second);
+    } else {
+      ep_graph.AddNode(node);
+    }
+  }
+
+  // handle initializers
+  for (const auto& initialized_tensor : graph.GetAllInitializedTensors()) {
+    if (ep_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
+      ep_graph.AddInitializedTensor(*initialized_tensor.second);
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
 
   return Status::OK();
 }

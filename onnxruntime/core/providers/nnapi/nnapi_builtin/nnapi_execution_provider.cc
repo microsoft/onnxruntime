@@ -50,7 +50,7 @@ std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::strin
 
 NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
                                                const optional<std::string>& partitioning_stop_ops_list)
-    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
+    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider},
       nnapi_flags_(nnapi_flags),
       partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops_list)) {
   nnapi_handle_ = NnApiImplementation();
@@ -176,7 +176,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto gen_metadef_name = [&]() {
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 

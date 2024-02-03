@@ -24,7 +24,8 @@ namespace {
 
 template <typename T>
 struct DispatchGroupNorm {
-  Status operator()(cudaStream_t stream,
+  Status operator()(CudaTuningContext* tuning_ctx,
+                    Stream* ort_stream,
                     Tensor* output,
                     Tensor* add_out,
                     const Tensor* input,
@@ -44,7 +45,8 @@ struct DispatchGroupNorm {
                     int channels_per_block) {
     typedef typename ToCudaType<T>::MappedType CudaT;
     return LaunchGroupNormKernel<CudaT>(
-        stream,
+        tuning_ctx,
+        ort_stream,
         reinterpret_cast<CudaT*>(output->MutableData<T>()),
         add_out == nullptr ? nullptr : reinterpret_cast<CudaT*>(add_out->MutableData<T>()),
         reinterpret_cast<const CudaT*>(input->Data<T>()),
@@ -209,7 +211,8 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
                                           context->GetComputeStream());
 
   utils::MLTypeCallDispatcher<GROUP_NORM_TYPES> dispatcher(input->GetElementType());
-  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(Stream(context), output, add_out, input, skip, bias,
+  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(),
+                                                         context->GetComputeStream(), output, add_out, input, skip, bias,
                                                          gamma, beta, workspace.get(),
                                                          epsilon_,
                                                          batch_size,

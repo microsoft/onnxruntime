@@ -5,6 +5,7 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/session_options.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/graph/model.h"
 #include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
@@ -71,6 +72,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 
 }  // namespace onnxruntime

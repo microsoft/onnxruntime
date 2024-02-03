@@ -302,5 +302,137 @@ TEST(Scatter, BoolInputWithAxis) {
   scatter_bool_with_axis_tests("ScatterElements", 11);
 }
 
+TEST(ScatterElements, AddReduction) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<float>("data", {2, 3}, {-9.f, -4.f, -1.f, -7.f, -3.f, -6.f});
+  test.AddInput<int64_t>("indices", {4, 3}, {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {4, 3}, {1.f, 1.f, 1.f, 2.f, 2.f, 2.f, 3.f, 3.f, 3.f, 4.f, 4.f, 4.f});
+  test.AddOutput<float>("y", {2, 3}, {-9.f, -4.f, -1.f, -7.f + (1.f + 2.f + 3.f + 4.f), -3.f + (1.f + 2.f + 3.f + 4.f), -6.f + (1.f + 2.f + 3.f + 4.f)});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, AddReductionAxis1) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  // update's slice shape is {2, 1}
+  test.AddInput<float>("data", {2, 3}, {9.f, 4.f, 1.f, 7.f, 3.f, 6.f});
+  test.AddInput<int64_t>("indices", {2, 4}, {1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 4}, {2.f, 5.f, 3.f, 6.f, 7.f, 9.f, 8.f, 10.f});
+  test.AddOutput<float>("y", {2, 3}, {9.f, 4.f + (2.f + 5.f + 3.f + 6.f), 1.f, 7.f, 3.f + (7.f + 9.f + 8.f + 10.f), 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MulReduction) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "mul");
+
+  test.AddInput<float>("data", {2, 3}, {-9.f, -4.f, -1.f, -7.f, -3.f, -6.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 3}, {7.f, 3.f, 6.f, 7.f, 3.f, 6.f});
+  test.AddOutput<float>("y", {2, 3}, {-9.f, -4.f, -1.f, -7.f * 7.f * 7.f, -3.f * 3.f * 3.f, -6.f * 6.f * 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MulReductionAxis1) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<std::string>("reduction", "mul");
+
+  // update's slice shape is {2, 1}
+  test.AddInput<float>("data", {2, 3}, {9.f, 4.f, 1.f, 7.f, 3.f, 6.f});
+  test.AddInput<int64_t>("indices", {2, 4}, {1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 4}, {2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f});
+  test.AddOutput<float>("y", {2, 3}, {9.f, 4.f * (2.f * 3.f * 4.f * 5.f), 1.f, 7.f, 3.f * (6.f * 7.f * 8.f * 9.f), 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MaxReduction_MLFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "max");
+
+  test.AddInput<MLFloat16>("data", {2, 3}, ToFloat16({-9.f, -4.f, -1.f, -7.f, -3.f, -6.f}));
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<MLFloat16>("updates", {2, 3}, ToFloat16({1.f, 5.f, 3.f, 7.f, 3.f, 6.f}));
+  test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16({-9.f, -4.f, -1.f, 7.f, 5.f, 6.f}));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MaxReduction_Float) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "max");
+
+  test.AddInput<float>("data", {2, 3}, {-9.f, -4.f, -1.f, -7.f, -3.f, -6.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 3}, {1.f, 5.f, 3.f, 7.f, 3.f, 6.f});
+  test.AddOutput<float>("y", {2, 3}, {-9.f, -4.f, -1.f, 7.f, 5.f, 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MaxReduction_Double) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "max");
+
+  test.AddInput<double>("data", {2, 3}, {-9.f, -4.f, -1.f, -7.f, -3.f, -6.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<double>("updates", {2, 3}, {1.f, 5.f, 3.f, 7.f, 3.f, 6.f});
+  test.AddOutput<double>("y", {2, 3}, {-9.f, -4.f, -1.f, 7.f, 5.f, 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MinReduction_MLFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "min");
+
+  test.AddInput<MLFloat16>("data", {2, 3}, ToFloat16({-9.f, -4.f, -1.f, 8.f, -3.f, 5.f}));
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<MLFloat16>("updates", {2, 3}, ToFloat16({1.f, 5.f, 3.f, 7.f, 3.f, 6.f}));
+  test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16({-9.f, -4.f, -1.f, 1.f, -3.f, 3.f}));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MinReduction_Float) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "min");
+
+  test.AddInput<float>("data", {2, 3}, {-9.f, -4.f, -1.f, 8.f, -3.f, 5.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 3}, {1.f, 5.f, 3.f, 7.f, 3.f, 6.f});
+  test.AddOutput<float>("y", {2, 3}, {-9.f, -4.f, -1.f, 1.f, -3.f, 3.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MinReduction_Double) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "min");
+
+  test.AddInput<double>("data", {2, 3}, {-9.f, -4.f, -1.f, 8.f, -3.f, 5.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<double>("updates", {2, 3}, {1.f, 5.f, 3.f, 7.f, 3.f, 6.f});
+  test.AddOutput<double>("y", {2, 3}, {-9.f, -4.f, -1.f, 1.f, -3.f, 3.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

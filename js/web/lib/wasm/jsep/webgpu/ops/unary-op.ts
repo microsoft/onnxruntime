@@ -53,7 +53,7 @@ const createElementwiseProgramInfo =
         dispatchGroup:
             {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
         programUniforms: [
-          {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
+          {type: DataType.uint32, data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
         ],
       })
     });

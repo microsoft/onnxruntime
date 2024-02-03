@@ -21,8 +21,8 @@ namespace {
 constexpr char GROUP_ZERO_NAME[] = "group0";
 static constexpr std::array CommonOptimizerInputs{"learning_rate", "step", "params", "gradients"};
 
-Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
-                              gsl::span<std::string> expected_graph_inputs) {
+Status GraphInputsAreExpected(gsl::span<const std::string> actual_graph_inputs,
+                              gsl::span<const std::string> expected_graph_inputs) {
   const auto stringify = [](const auto& container) {
     if (container.empty()) {
       return std::string("[]");
@@ -245,8 +245,17 @@ Optimizer::Optimizer(const ModelIdentifiers& model_identifiers,
     if (!find_group_zero)
       state_->optimizer_checkpoint_state.group_named_optimizer_states.insert(
           {GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>()});
-    ORT_THROW_IF_ERROR(GenerateMomentumNamedStates(state_->optimizer_checkpoint_state));
-    ORT_THROW_IF_ERROR(ConstructInputs());
+    if (!state_->module_checkpoint_state.is_nominal_state) {
+      // Construct the optimizer state and inputs only if the complete state
+      // is available.
+      // For a nominal state, delay the construction of the optimizer state
+      // and inputs until the complete state is available. Once the complete
+      // state is available, the optimizer state and inputs can be constructed
+      // by invoking ConstructOptimizerStateAndInputs().
+      ORT_THROW_IF_ERROR(ConstructOptimizerStateAndInputs());
+    } else {
+      delay_optimizer_state_contruction_ = true;
+    }
   } else {
     ORT_THROW_IF_ERROR(LoadStateDict(state_->optimizer_checkpoint_state));
   }
@@ -298,6 +307,10 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
 }
 
 Status Optimizer::Step() {
+  if (delay_optimizer_state_contruction_) {
+    ORT_RETURN_IF_ERROR(ConstructOptimizerStateAndInputs());
+  }
+
   OrtValue learning_rate_input, step_input;
   utils::WrapInOrtValue<float>(optimizer_state_->learning_rate, &learning_rate_input);
   // Use step count + 1 before running optimizer step.
@@ -371,6 +384,17 @@ Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_s
   }
 
   ORT_THROW_IF_ERROR(ConstructInputs());
+
+  return Status::OK();
+}
+
+Status Optimizer::ConstructOptimizerStateAndInputs() {
+  ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
+                "The optimizer state cannot be constructed. Please load the model parameters first.");
+  ORT_RETURN_IF_ERROR(GenerateMomentumNamedStates(state_->optimizer_checkpoint_state));
+  ORT_RETURN_IF_ERROR(ConstructInputs());
+
+  delay_optimizer_state_contruction_ = false;
 
   return Status::OK();
 }
