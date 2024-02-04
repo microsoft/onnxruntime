@@ -34,8 +34,8 @@ Status LaunchGroupNormKernel(
     bool broadcast_skip,
     int channels_per_block) {
   GroupNormNHWCTunableParams<T> params(tuning_ctx, ort_stream, output, add_out, input, skip, bias, gamma, beta,
-                                       reinterpret_cast<float*>(workspace), epsilon, batch_size, num_channels, height, width,
-                                       num_groups, use_silu, broadcast_skip, channels_per_block);
+                                       reinterpret_cast<float*>(workspace), epsilon, batch_size, num_channels,
+                                       height, width, num_groups, use_silu, broadcast_skip, channels_per_block);
 
   if (params.channels_per_block % params.channels_per_group != 0 ||
       params.channels_per_block > kMaxSize ||
@@ -59,17 +59,17 @@ Status LaunchGroupNormKernel(
   return GroupNormNHWCStaticSelection(&params);
 }
 
-template Status LaunchGroupNormKernel<half>(RocmTuningContext* tuning_ctx, Stream* stream, half* output, half* add_out,
-                                            const half* input, const half* skip, const half* bias, const float* gamma,
-                                            const float* beta, void* workspace, float epsilon, int batch_size,
-                                            int num_channels, int height, int width, int num_groups, bool use_silu,
-                                            bool broadcast_skip, int channels_per_block);
+template Status LaunchGroupNormKernel<half>(RocmTuningContext* tuning_ctx, Stream* stream, half* output,
+                                            half* add_out, const half* input, const half* skip, const half* bias,
+                                            const float* gamma, const float* beta, void* workspace, float epsilon,
+                                            int batch_size, int num_channels, int height, int width, int num_groups,
+                                            bool use_silu, bool broadcast_skip, int channels_per_block);
 
-template Status LaunchGroupNormKernel<float>(RocmTuningContext* tuning_ctx, Stream* stream, float* output, float* add_out,
-                                             const float* input, const float* skip, const float* bias, const float* gamma,
-                                             const float* beta, void* workspace, float epsilon, int batch_size,
-                                             int num_channels, int height, int width, int num_groups, bool use_silu,
-                                             bool broadcast_skip, int channels_per_block);
+template Status LaunchGroupNormKernel<float>(RocmTuningContext* tuning_ctx, Stream* stream, float* output,
+                                             float* add_out, const float* input, const float* skip, const float* bias,
+                                             const float* gamma, const float* beta, void* workspace, float epsilon,
+                                             int batch_size, int num_channels, int height, int width, int num_groups,
+                                             bool use_silu, bool broadcast_skip, int channels_per_block);
 
 }  // namespace rocm
 }  // namespace contrib

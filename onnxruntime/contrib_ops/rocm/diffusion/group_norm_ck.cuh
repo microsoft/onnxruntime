@@ -49,8 +49,10 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
     auto type_string = onnxruntime::MakeString(impl->GetTypeString()) + swish_suffix;
     auto invoker = impl->MakeInvokerPointer();
 
-    auto ck_group_norm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GroupNormNHWCTunableParams<T>* params) -> Status {
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((params->skip != nullptr || params->bias != nullptr), "Skip is not supported");
+    auto ck_group_norm_op = [impl = std::move(impl), invoker = std::move(invoker)](
+                                const GroupNormNHWCTunableParams<T>* params) -> Status {
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((params->skip != nullptr || params->bias != nullptr),
+                                                "Skip is not supported");
       if constexpr (WithSwish) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
             !params->use_silu, "Swish version only support groupnorm with swish");
@@ -59,7 +61,8 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
             params->use_silu, "Pass version only support groupnorm without swish");
       }
       std::vector<ck::index_t> in_lengths{params->n, params->h, params->w, params->groups, params->channels_per_group};
-      std::vector<ck::index_t> in_out_strides{params->h * params->w * params->c, params->w * params->c, params->c, params->channels_per_group, 1};
+      std::vector<ck::index_t> in_out_strides{params->h * params->w * params->c, params->w * params->c,
+                                              params->c, params->channels_per_group, 1};
       std::vector<ck::index_t> gamma_beta_strides{0, 0, 0, params->channels_per_group, 1};
       std::vector<ck::index_t> reduce_dims{1, 2, 4};
 

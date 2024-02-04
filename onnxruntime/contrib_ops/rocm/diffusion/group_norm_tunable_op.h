@@ -81,13 +81,13 @@ void groupNormNHWCScale(const GroupNormNHWCTunableParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                                                                \
-  GroupNormNHWCScaleKernel<T, VecSize>                                                                                  \
-      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(                                                           \
-          params->dst, params->src, params->skip, params->gamma, params->beta, params->skip_workspace,                  \
-          params->group_sum_buffer, params->epsilon, params->c, params->channels_per_block, params->channels_per_group, \
-          params->groups, params->hwc, params->inv_hw_channels_per_group, params->hw, params->hw_per_block,             \
-          params->use_silu);                                                                                            \
+#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                                               \
+  GroupNormNHWCScaleKernel<T, VecSize>                                                                 \
+      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(                                          \
+          params->dst, params->src, params->skip, params->gamma, params->beta, params->skip_workspace, \
+          params->group_sum_buffer, params->epsilon, params->c, params->channels_per_block,            \
+          params->channels_per_group, params->groups, params->hwc, params->inv_hw_channels_per_group,  \
+          params->hw, params->hw_per_block, params->use_silu);                                         \
   break;
 
   // Threads_per_block is half of values in kSizes since CHANNELS_PER_THREAD = 2.
@@ -127,8 +127,10 @@ template <typename T, int ThreadsPerBlock, int VecSize>
 class GroupNormNHWCOp {
  public:
   Status operator()(const GroupNormNHWCTunableParams<T>* params) {
-    HIP_RETURN_IF_ERROR(hipMemsetAsync(
-        params->group_sum_buffer, 0, GetGroupNormWorkspaceSizeInBytes(params->n, params->groups), params->StreamHandle()));
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(params->group_sum_buffer,
+                                       0,
+                                       GetGroupNormWorkspaceSizeInBytes(params->n, params->groups),
+                                       params->StreamHandle()));
     auto status = GroupNormNHWCSumOp<T, ThreadsPerBlock, VecSize>(params);
     ORT_RETURN_IF_ERROR(status);
     HIP_RETURN_IF_ERROR(hipGetLastError());
@@ -155,8 +157,10 @@ class GroupNormNHWCOp {
 
 template <typename T>
 Status GroupNormNHWCStaticSelection(const GroupNormNHWCTunableParams<T>* params) {
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(
-      params->group_sum_buffer, 0, GetGroupNormWorkspaceSizeInBytes(params->n, params->groups), params->StreamHandle()));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(params->group_sum_buffer,
+                                     0,
+                                     GetGroupNormWorkspaceSizeInBytes(params->n, params->groups),
+                                     params->StreamHandle()));
   groupNormNHWCSum<T>(params);
   HIP_RETURN_IF_ERROR(hipGetLastError());
   groupNormNHWCScale<T>(params);
