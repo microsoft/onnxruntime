@@ -70,6 +70,9 @@ bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                       const Node& node,
                                       const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
+  // TODO: Update IsOpSupportedImpl to pass GraphViewer instead of InitializedTensorSet so the implementations
+  // can ensure initializers are constant. See #19401 for details of how this update was made to the NNAPI EP.
+  // GetClipMinMax(graph_viewer, node, minValue, maxValue, logger)
   float min, max;
   return GetClipMinMax(initializers, node, min, max, logger);
 }
