@@ -37,10 +37,7 @@ def group_norm_kernel(
     gamma_ptr += row_y * c_per_group
     beta_ptr += row_y * c_per_group
 
-
     add_out_ptr += row_x * stride + row_y * c_per_group
-
-
 
     cols = tl.arange(0, BLOCK_SIZE)
     hw = tl.arange(0, HW_SIZE)
