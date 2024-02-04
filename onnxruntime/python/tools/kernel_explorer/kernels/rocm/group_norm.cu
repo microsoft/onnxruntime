@@ -20,11 +20,11 @@ class GroupNormNHWC : public IKernelExplorer {
  public:
   GroupNormNHWC(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip, DeviceArray& bias,
                 DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace, float epsilon,
-                int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool boardcast_skip, int channels_per_block)
+                int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool broadcast_skip, int channels_per_block)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
-                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, boardcast_skip, channels_per_block) {
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip, channels_per_block) {
     type_string_ = "GroupNormNHWC_" + std::to_string(ThreadsPerBlock) + "_" + std::to_string(VecSize);
   }
 
@@ -53,11 +53,11 @@ class GroupNormNHWCStaticSelection : public IKernelExplorer {
  public:
   GroupNormNHWCStaticSelection(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip, DeviceArray& bias,
                                DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace, float epsilon,
-                               int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool boardcast_skip, int channels_per_block)
+                               int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool broadcast_skip, int channels_per_block)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
-                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, boardcast_skip, channels_per_block) {
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip, channels_per_block) {
     type_string_ = "GroupNormNHWCStaticSelection";
   }
 
@@ -89,11 +89,11 @@ class GroupNormNHWCTunable : public IKernelExplorer {
  public:
   GroupNormNHWCTunable(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip, DeviceArray& bias,
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace, float epsilon,
-                       int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool boardcast_skip, int channels_per_block)
+                       int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool broadcast_skip, int channels_per_block)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
-                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, boardcast_skip, channels_per_block) {
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip, channels_per_block) {
     params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
@@ -123,11 +123,11 @@ class CKGroupNormNHWC : public IKernelExplorer {
  public:
   CKGroupNormNHWC(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip, DeviceArray& bias,
                   DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace, float epsilon,
-                  int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool boardcast_skip, int channels_per_block)
+                  int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool broadcast_skip, int channels_per_block)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
-                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, boardcast_skip, channels_per_block) {
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip, channels_per_block) {
     for (auto&& [type_string, op] : contrib::rocm::GetCKGroupNormNHWCTypeStringAndOps<T, float, WithSwish>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
@@ -174,11 +174,11 @@ class GroupNormNHWCTriton : public IKernelExplorer {
  public:
   GroupNormNHWCTriton(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip, DeviceArray& bias,
                       DeviceArray& gamma, DeviceArray& beta, DeviceArray& workspace, float epsilon,
-                      int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool boardcast_skip, int channels_per_block)
+                      int batch_size, int num_channels, int height, int width, int num_groups, bool use_silu, bool broadcast_skip, int channels_per_block)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
-                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, boardcast_skip, channels_per_block) {
+                epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip, channels_per_block) {
     for (auto&& [name, op] : contrib::rocm::GetTritonGroupNormNHWCTypeStringAndOps<T, WithSwish>()) {
       name_strings_.emplace_back(name);
       ops_.emplace_back(std::move(op));

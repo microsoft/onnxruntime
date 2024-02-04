@@ -54,7 +54,9 @@ def group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, with_s
     return x, add_output
 
 
-def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: int, dtype: str, swish: bool, has_skip: bool, func):
+def run_group_norm(
+    batch_size: int, height: int, num_channels: int, num_groups: int, dtype: str, swish: bool, has_skip: bool, func
+):
     np.random.seed(0)
     width = height
     input_x = np.random.rand(batch_size, height, width, num_channels).astype(np.float32)
@@ -65,20 +67,20 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
     epsilon = 1e-05
     output_y = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
 
-    skip_x = (np.random.rand(batch_size, height, width, num_channels).astype(np.float32) if has_skip
+    skip_x = (
+        np.random.rand(batch_size, height, width, num_channels).astype(np.float32)
+        if has_skip
         else np.empty((0), dtype=dtype)
     )
-    bias_x = (np.random.rand(num_channels).astype(np.float32) if has_skip
-        else np.empty((0), dtype=dtype)
-    )
+    bias_x = np.random.rand(num_channels).astype(np.float32) if has_skip else np.empty((0), dtype=dtype)
     add_output = (
         np.random.rand(batch_size, height, width, num_channels).astype(dtype)
         if has_skip
         else np.empty((0), dtype=dtype)
     )
     use_swish = swish
-    boardcast_skip = False
-    channels_per_block = 0 # Compute in params initialization
+    broadcast_skip = False
+    channels_per_block = 0  # Compute in params initialization
 
     input_d = ke.DeviceArray(input_x.astype(dtype))
     skip_d = ke.DeviceArray(skip_x.astype(dtype))
@@ -106,7 +108,7 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
         width,
         num_groups,
         use_swish,
-        boardcast_skip,
+        broadcast_skip,
         channels_per_block,
     )
     y_ref, y_add_d_ref = group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, use_swish, has_skip)
@@ -168,7 +170,15 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
 
 
 def profile_group_norm_func(
-    batch_size: int, height: int, width: int, num_channels: int, num_groups: int, dtype: str, swish: bool, has_skip: bool, func
+    batch_size: int,
+    height: int,
+    width: int,
+    num_channels: int,
+    num_groups: int,
+    dtype: str,
+    swish: bool,
+    has_skip: bool,
+    func,
 ):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
@@ -178,22 +188,20 @@ def profile_group_norm_func(
     epsilon = 0.05
     output_y = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
 
-    skip_x = (np.random.rand(batch_size, height, width, num_channels).astype(dtype)
-              if has_skip
-              else np.empty((0), dtype=dtype)
+    skip_x = (
+        np.random.rand(batch_size, height, width, num_channels).astype(dtype)
+        if has_skip
+        else np.empty((0), dtype=dtype)
     )
-    bias_x = (np.random.rand(num_channels).astype(dtype)
-              if has_skip
-              else np.empty((0), dtype=dtype)
-    )
+    bias_x = np.random.rand(num_channels).astype(dtype) if has_skip else np.empty((0), dtype=dtype)
     add_output = (
         np.random.rand(batch_size, height, width, num_channels).astype(dtype)
         if has_skip
         else np.empty((0), dtype=dtype)
     )
     use_swish = swish
-    boardcast_skip = False
-    channels_per_block = 0 # Compute in params initialization
+    broadcast_skip = False
+    channels_per_block = 0  # Compute in params initialization
 
     input_d = ke.DeviceArray(input_x)
     skip_d = ke.DeviceArray(skip_x)
@@ -221,7 +229,7 @@ def profile_group_norm_func(
         width,
         num_groups,
         use_swish,
-        boardcast_skip,
+        broadcast_skip,
         channels_per_block,
     )
     for impl in my_op.ListOps():
