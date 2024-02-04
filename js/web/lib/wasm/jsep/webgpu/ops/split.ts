@@ -83,9 +83,8 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
     outputs[i] = outputVariable(`output${i}`, dataType, outputShape);
     outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType});
   }
-  programUniforms.push({type: DataType.uint32, data: sizeInSplitAxis});
-  programUniforms.push(...createTensorShapeVariables(inputShape));
-  outputShapes.forEach((outputShape) => programUniforms.push(...createTensorShapeVariables(outputShape)));
+  programUniforms.push(
+      {type: DataType.uint32, data: sizeInSplitAxis}, ...createTensorShapeVariables(inputShape, ...outputShapes));
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${
       shaderHelper.registerUniform('input_size', 'u32')

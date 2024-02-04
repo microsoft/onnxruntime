@@ -17,7 +17,7 @@ else()
 endif()
 
 # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml_proto
-set(COREML_PROTO_ROOT ${REPO_ROOT}/onnxruntime/core/providers/coreml/coremltools/mlmodel/format)
+set(COREML_PROTO_ROOT ${coremltools_SOURCE_DIR}/mlmodel/format)
 file(GLOB coreml_proto_srcs "${COREML_PROTO_ROOT}/*.proto")
 
 onnxruntime_add_static_library(coreml_proto ${coreml_proto_srcs})

@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet} from './fuse-utils';
 
@@ -35,9 +35,7 @@ export const createGroupedConvProgramInfo =
         {type: DataType.uint32, data: outputChannelsPerGroup}
       ];
       appendActivationUniformsData(attributes, programUniforms);
-      programUniforms.push(
-          ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
-          ...createTensorShapeVariables(outputShape));
+      programUniforms.push(...createTensorShapeVariables(xShape, wShape, outputShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
@@ -47,7 +45,8 @@ export const createGroupedConvProgramInfo =
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const output = outputVariable('output', inputs[0].dataType, outputShape.length);
-        const applyActivation = getActivationSnippet(attributes, output.type.value);
+        const baseType = tensorTypeToWsglStorageType(output.type.tensor);
+        const applyActivation = getActivationSnippet(attributes, output.type.value, baseType);
         const x = inputVariable('x', inputs[0].dataType, xShape.length);
         const w = inputVariable('w', inputs[1].dataType, wShape.length);
         const inputVars = [x, w];
@@ -134,13 +133,12 @@ export const createGroupedConvVectorizeProgramInfo =
         {type: DataType.int32, data: [attributes.pads[0], attributes.pads[1]]}
       ];
       appendActivationUniformsData(attributes, programUniforms);
-      programUniforms.push(
-          ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
-          ...createTensorShapeVariables(outputShapeInShader));
+      programUniforms.push(...createTensorShapeVariables(xShape, wShape, outputShapeInShader));
       const xNumber = (outputNumber - 1) * attributes.strides[1] + wShape[1];
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const output = outputVariable('output', inputs[0].dataType, outputShapeInShader.length, components);
-        const applyActivation = getActivationSnippet(attributes, output.type.value);
+        const baseType = tensorTypeToWsglStorageType(output.type.tensor);
+        const applyActivation = getActivationSnippet(attributes, output.type.value, baseType);
         const x = inputVariable('x', inputs[0].dataType, xShape.length, components);
         const w = inputVariable('w', inputs[1].dataType, wShape.length, components);
         const inputVars = [x, w];

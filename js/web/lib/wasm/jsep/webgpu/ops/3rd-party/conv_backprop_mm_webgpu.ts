@@ -204,8 +204,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         {type: DataType.int32, data: pads}
       ];
       appendActivationUniformsData(attributes, programUniforms);
-      programUniforms.push(
-          ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
+      programUniforms.push(...createTensorShapeVariables(inputs[0].dims, inputs[1].dims));
 
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       if (hasBias) {

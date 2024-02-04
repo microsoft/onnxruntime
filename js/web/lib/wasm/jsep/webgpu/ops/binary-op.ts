@@ -180,9 +180,7 @@ const createBinaryOpProgramInfo =
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)},
           programUniforms: [
             {type: DataType.uint32, data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
-            ...createTensorShapeVariables(a.dims),
-            ...createTensorShapeVariables(b.dims),
-            ...createTensorShapeVariables(outputShape),
+            ...createTensorShapeVariables(a.dims, b.dims, outputShape)
           ],
         }),
       };
