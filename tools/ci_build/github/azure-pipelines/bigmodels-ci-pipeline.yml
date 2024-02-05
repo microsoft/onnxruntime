@@ -278,6 +278,13 @@ stages:
       clean: true
       submodules: none
 
+    - script: |
+        set -ex
+        mkdir -p $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
+        cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
+        ls -l $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
+      displayName: 'Copy llama2-7b-fp16'
+
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Onnxruntime Artifact'
@@ -326,7 +333,7 @@ stages:
 
     - script: |
         set -ex
-        cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16 $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
+        cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
         ls -l $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
         docker run --rm --gpus all -v  $(pwd):/workspace \
            -v $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16:/model_dir \
