@@ -331,10 +331,10 @@ stages:
            onnxruntimeubi8packagestest \
             bash -c '
               set -ex; \
-	            pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
               python3 -m pip install --upgrade pip ; \
               pushd models/llama ; \
-	            python3 -m pip install -r requirements-cuda.txt ; \
+              python3 -m pip install -r requirements-cuda.txt ; \
               python3 ./test/infer_onnx_model.py --model_dir /model_dir; \
               popd ; \
               popd ; \ '
