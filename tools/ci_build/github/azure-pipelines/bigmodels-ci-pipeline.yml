@@ -320,7 +320,7 @@ stages:
 
     - script: |
         set -ex
-        copy $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
+        cp $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
         ls -l $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
         docker run --rm --gpus all -v  $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
