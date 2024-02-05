@@ -259,8 +259,16 @@ export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 
   return typeof mappedType === 'string' ? mappedType : mappedType[1];
 };
 
-export const createTensorShapeVariables = (dims: readonly number[]): ProgramUniform[] =>
-    dims.length === 0 ? [] : [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
+export const createTensorShapeVariables = (...dims: ReadonlyArray<readonly number[]>): ProgramUniform[] => {
+  const programUniforms: ProgramUniform[] = [];
+  dims.forEach(dim => {
+    if (dim.length !== 0) {
+      programUniforms.push(
+          {type: DataType.uint32, data: dim}, {type: DataType.uint32, data: ShapeUtil.computeStrides(dim)});
+    }
+  });
+  return programUniforms;
+};
 
 /**
  * A helper function to get maximum vector size for specified data length

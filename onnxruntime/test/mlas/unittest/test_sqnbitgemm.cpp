@@ -259,10 +259,11 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* PackedQuantBData = nullptr;
-    if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen);
+    if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
         PackedQuantBDataSize > 0) {
       PackedQuantBData = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
-      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, QuantBData, PackedQuantBData, GetMlasThreadPool());
+      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBData,
+                                   GetMlasThreadPool());
     }
 
     if (ComputeType == CompFp32) {
@@ -330,7 +331,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
                                    bool WithThreadpool, bool Symmetric, bool WithBias) {
     size_t tests_registered = 0;
 
-    if (MlasIsSQNBitGemmAvailable(M, N, K, BlkBitWidth, BlkLen, ComputeType)) {
+    if (MlasIsSQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
       std::stringstream ss;
       ss << (WithThreadpool ? "SingleThread" : "Threaded")
          << "/isSymmetric" << Symmetric

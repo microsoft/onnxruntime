@@ -95,7 +95,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path,
+                                  false /* nominal checkpoint */));
 
   /// Phase 3 - Run load checkpoint APIs.
   /// And check the result comparable with initial parameter values.
@@ -193,7 +194,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpointThenLoadFromBufferCPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path,
+                                  false /* nominal checkpoint */));
 
   /// Phase 3 - Run load checkpoint APIs.
   /// And check the result comparable with initial parameter values.
@@ -434,5 +436,38 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   ASSERT_EQ(i_data, restored_i_data);
   std::string restored_s_data = restored_property_bag.GetProperty<std::string>(s_property_name);
   ASSERT_EQ(s_data, restored_s_data);
+}
+
+/**
+ * Loads a nominal checkpoint. Checks for nominal flag, and that the state is empty.
+ * Saves the checkpoint, and loads it again. Checks for nominal flag, and that the state is empty.
+ */
+TEST(CheckpointApiTest, LoadAndSaveNominalCheckpoint) {
+  PathString nominal_checkpoint_path{ORT_TSTR("testdata/training_api/nominal_checkpoint")};
+
+  CheckpointState checkpoint_state;
+  ASSERT_STATUS_OK(LoadCheckpoint(nominal_checkpoint_path, checkpoint_state));
+  ASSERT_TRUE(checkpoint_state.module_checkpoint_state.is_nominal_state);
+  for (auto& [name, param] : checkpoint_state.module_checkpoint_state.named_parameters) {
+    ASSERT_TRUE(param->Data().IsTensor());
+    // An empty tensor will have size 1.
+    ASSERT_EQ(param->Data().Get<Tensor>().Shape().Size(), 1);
+  }
+
+  // Remove the temporary directory if it already exists.
+  auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
+  TemporaryDirectory tmp_dir{ckpt_test_root_dir};
+  PathString checkpoint_path{
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("nominal_checkpoint_2"))};
+  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, false));
+
+  CheckpointState checkpoint_state_2;
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_2));
+  ASSERT_TRUE(checkpoint_state_2.module_checkpoint_state.is_nominal_state);
+  for (auto& [name, param] : checkpoint_state_2.module_checkpoint_state.named_parameters) {
+    ASSERT_TRUE(param->Data().IsTensor());
+    // An empty tensor will have size 1.
+    ASSERT_EQ(param->Data().Get<Tensor>().Shape().Size(), 1);
+  }
 }
 }  // namespace onnxruntime::training::test
