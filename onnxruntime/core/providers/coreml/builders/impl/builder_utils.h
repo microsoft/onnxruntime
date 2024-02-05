@@ -49,7 +49,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 // MLProgram utils
 //
 
-// helper for static_assert at end of is_same tests
+// helper for static_assert where the value needs to be dependent on a template parameter
 template <typename>
 constexpr bool false_for_T = false;
 
@@ -128,7 +128,7 @@ void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
                        std::string_view input_name, std::string_view value_name);
 
 /// <summary>
-/// Add an output to a MILSpec::Operation.
+/// Add an output to a MILSpec::Operation. Name, data type and shape are used from the NodeArg.
 /// </summary>
 /// <param name="op">Operation to update.</param>
 /// <param name="output">NodeArg with details of output to add.</param>

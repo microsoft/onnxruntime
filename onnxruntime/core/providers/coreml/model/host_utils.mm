@@ -34,10 +34,14 @@ int32_t CoreMLVersion() {
 }
 
 std::string GetTemporaryFilePath() {
-  // Get temporary directory.
+  // Get temporary directory for user.
   NSURL* temporary_directory_url = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
   // Generate a Unique file name to use.
   NSString* temporary_filename = [[NSProcessInfo processInfo] globallyUniqueString];
+
+  // make it easy to see who generated it
+  temporary_filename = [@"onnxruntime-" stringByAppendingString:temporary_filename];
+
   // Create URL to that file.
   NSURL* temporary_file_url = [temporary_directory_url URLByAppendingPathComponent:temporary_filename];
 
