@@ -792,7 +792,7 @@ Status ModelBuilder::SaveModel() {
                                                     "CoreML Model Specification");
     auto model_info = mlpackage_->findItem(model_id);
     output_path = model_info->path();
-  } else
+  }
 #endif
 
   // scope this so the stream is closed and flushed by the ofstream dtor
