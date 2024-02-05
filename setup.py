@@ -419,6 +419,7 @@ packages = [
     "onnxruntime.transformers.models.gpt2",
     "onnxruntime.transformers.models.llama",
     "onnxruntime.transformers.models.longformer",
+    "onnxruntime.transformers.models.phi2",
     "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.stable_diffusion",
     "onnxruntime.transformers.models.whisper",
