@@ -41,8 +41,11 @@ struct GroupNormNHWCTunableParams : OpParams, GroupNormNHWCParams<T> {
 
   std::string Signature() const override {
     std::string swish_suffix = this->use_silu ? "_silu" : "_pass";
+    std::string skip_suffix = this->skip != nullptr ? "_skip" : "_noskip";
+    std::string broadcast_suffix = this->broadcast_skip ? "_broadcast" : "_nobroadcast";
     std::string sig = std::to_string(this->n) + "_" + std::to_string(this->h * this->w) + "_" +
-                      std::to_string(this->c) + "_" + std::to_string(this->groups) + swish_suffix;
+                      std::to_string(this->c) + "_" + std::to_string(this->groups) + swish_suffix +
+                      skip_suffix + broadcast_suffix;
     return sig;
   }
 };
