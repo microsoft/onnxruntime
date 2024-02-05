@@ -503,6 +503,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(QLinearMatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(QLinearConcat);
 DML_OP_EXTERN_CREATION_FUNCTION(DynamicQuantizeLinear);
 DML_OP_EXTERN_CREATION_FUNCTION(MatMulInteger);
+DML_OP_EXTERN_CREATION_FUNCTION(MatMulIntegerToFloat);
 DML_OP_EXTERN_CREATION_FUNCTION(ConvInteger);
 DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
 
@@ -615,14 +616,21 @@ constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListGroupN
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListNonZero = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Ints8Bit | SupportedTensorDataTypes::Ints16Bit | SupportedTensorDataTypes::Ints32Bit | SupportedTensorDataTypes::Bool};
 
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinearMatMul = {
-    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
-    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
-    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8
+    SupportedTensorDataTypes::Ints8Bit,
+    SupportedTensorDataTypes::Ints8Bit,
+    SupportedTensorDataTypes::Ints8Bit
 };
+
+constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListMatMulIntegerToFloat = {
+    SupportedTensorDataTypes::Ints8Bit,
+    SupportedTensorDataTypes::Ints8Bit,
+    SupportedTensorDataTypes::Float16to32
+};
+
 constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQLinearConv = {
-    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
-    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
-    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
+    SupportedTensorDataTypes::Ints8Bit,
+    SupportedTensorDataTypes::Ints8Bit,
+    SupportedTensorDataTypes::Ints8Bit,
     SupportedTensorDataTypes::Int32
 };
 
@@ -1055,8 +1063,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  QLinearSigmoid,                     typeNameListDefault,            supportedTypeListQLinearSigmoid,        DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQLinearSigmoid)},
     {REG_INFO_MS(   1,  Attention,                          typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryAttention)},
     {REG_INFO_MS(   1,  MultiHeadAttention,                 typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  RotaryEmbedding,                    typeNameListRotaryEmbedding,    supportedTypeListRotaryEmbedding,       DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QLinearConcat,                      typeNameListQLinearConcat,      supportedTypeListQLinearConcat,         DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  RotaryEmbedding,                    typeNameListRotaryEmbedding,    supportedTypeListRotaryEmbedding,       DmlGraphSupport::Supported)},
 
     {REG_INFO(     10,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,                 DmlGraphSupport::Supported)},
     {REG_INFO(     10,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
@@ -1077,6 +1085,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,           DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
     {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  MatMulIntegerToFloat,               typeNameListThree,              supportedTypeListMatMulIntegerToFloat,  DmlGraphSupport::Supported)},
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO(     11,  DynamicQuantizeLinear,              typeNameListTwo,                supportedTypeListDynamicQuantizeLinear, DmlGraphSupport::Supported)},
     {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
