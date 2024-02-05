@@ -46,12 +46,6 @@ resources:
     name: pypa/manylinux
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
-  - repository: LLaMa2Onnx
-    type: Github
-    endpoint: Microsoft
-    name: Microsoft/Llama-2-Onnx
-    ref: main
-
 variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
