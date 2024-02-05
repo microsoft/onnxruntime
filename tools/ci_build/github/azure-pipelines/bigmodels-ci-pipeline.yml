@@ -336,6 +336,6 @@ stages:
               cat /workspace/answer.txt ; \
               popd ; \
               '
-        diff $(Build.SourcesDirectory)/answer.txt $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/expected_answer.txt && exit 0 || exit 1
+        diff $(Build.SourcesDirectory)/answer.txt $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/expected_answer.txt && exit 0 || exit 1
       displayName: 'Run Llama2-Onnx-F16 E2E Test'
       workingDirectory: $(Build.SourcesDirectory)
