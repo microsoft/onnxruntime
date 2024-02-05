@@ -34,7 +34,7 @@ def main():
         num_return_sequences=1,
         eos_token_id=tokenizer.eos_token_id,
         pad_token_id=tokenizer.pad_token_id,
-        max_new_tokens=512,
+        max_new_tokens=256,
         return_full_text=False,
         repetition_penalty=1.1,
     )
