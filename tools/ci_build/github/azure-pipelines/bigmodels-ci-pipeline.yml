@@ -308,7 +308,7 @@ stages:
               pushd /workspace/onnxruntime/python/tools/transformers/ ; \
               python3 -m pip install --upgrade pip ; \
               pushd models/llama ; \
-              python3 -m pip install -r requirements-cuda.txt ; \
+              python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
@@ -320,21 +320,22 @@ stages:
 
     - script: |
         set -ex
-        cp $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
+        copy $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
         ls -l $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
         docker run --rm --gpus all -v  $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16:/model_dir \
            onnxruntimeubi8packagestest \
             bash -c '
               set -ex; \
-              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
               python3 -m pip install --upgrade pip ; \
-              pushd models/llama ; \
-              python3 -m pip install -r requirements-cuda.txt ; \
-              python3 ./test/infer_onnx_model.py --model_dir /model_dir --prompt "question: What is the lightest element?" > /workspace/answer.txt; \
+              pushd /workspace/onnxruntime/python/tools/transformers/models/llama ; \
+              python3 -m pip install -r requirements.txt ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 ./test/infer_onnx_model.py --model_dir /model_dir --prompt "question: What is the lightest element?" > /workspace/answer.txt ; \
+              cat /workspace/answer.txt ; \
               popd ; \
-              popd ; \ '
-        cat $(Build.SourcesDirectory)/answer.txt
+              '
         diff $(Build.SourcesDirectory)/answer.txt $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/expected_answer.txt && exit 0 || exit 1
       displayName: 'Run Llama2-Onnx-F16 E2E Test'
       workingDirectory: $(Build.SourcesDirectory)
