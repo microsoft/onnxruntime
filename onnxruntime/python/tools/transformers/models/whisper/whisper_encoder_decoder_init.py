@@ -131,6 +131,7 @@ class WhisperEncoderDecoderInitHelper:
         )
         input_list = inputs.to_list()
 
+        # TODO : Investigate whether copy of model if needed
         cloned_model = copy.deepcopy(model).to(device)
         out = cloned_model(inputs.encoder_input_ids, inputs.decoder_input_ids)
         present = out[2]

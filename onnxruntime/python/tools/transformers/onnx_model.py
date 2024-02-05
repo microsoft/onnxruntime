@@ -443,7 +443,6 @@ class OnnxModel:
             node (str): current node name.
             child_op_types (str): constraint of child node op_type of each input edge.
             child_output_index (list): constraint of input index of each input edge. None means no constraint.
-            output_name_to_node (dict): dictionary with output name as key, and node as value.
             return_indice (list): a list to append the input index
                                   When there is no constraint on input index of an edge.
 
