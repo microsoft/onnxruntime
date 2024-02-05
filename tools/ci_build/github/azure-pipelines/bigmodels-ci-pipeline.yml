@@ -309,7 +309,7 @@ stages:
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest \
-            bash -c "
+            bash -c '
               set -ex; \
               pushd /workspace/onnxruntime/python/tools/transformers/ ; \
               python3 -m pip install --upgrade pip ; \
@@ -320,6 +320,23 @@ stages:
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
               popd ; \
-            "
+            '
       displayName: 'Run Llama2 to Onnx F16 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16 $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
+        docker run --rm --gpus all -v  $(pwd):/workspace \
+           -v $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16:/model_dir \
+           onnxruntimeubi8packagestest \
+            bash -c '
+              set -ex; \
+	            pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/llama ; \
+	            python3 -m pip install -r requirements-cuda.txt ; \
+              python3 ./test/infer_onnx_model.py --model_dir /model_dir; \
+              popd ; \
+              popd ; \ '
+      displayName: 'Run Llama2-Onnx-F16 E2E Test'
       workingDirectory: $(Build.SourcesDirectory)
