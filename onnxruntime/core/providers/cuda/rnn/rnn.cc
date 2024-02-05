@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "rnn.h"
+
+#if CUDNN_MAJOR >= 8
+
+#include "core/providers/shared_library/provider_api.h"
 #include "rnn_impl.h"
 #include "core/providers/cuda/cudnn_common.h"
 
@@ -46,3 +49,5 @@ REGISTER_KERNEL_TYPED(MLFloat16);
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif
