@@ -82,6 +82,10 @@ class OnnxModel:
                     output_name_to_node[output_name] = node
         return output_name_to_node
 
+    def functions(self):
+        all_functions = [list(self.model.functions)]
+        return all_functions
+
     def nodes(self):
         all_nodes = []
         for graph in self.graphs():
@@ -733,6 +737,7 @@ class OnnxModel:
                     "node_block_list",
                     "force_fp16_initializers",
                     "force_fp16_inputs",
+                    "use_bfloat16_as_blocked_nodes_dtype",
                 ]
                 if key in kwargs
             }

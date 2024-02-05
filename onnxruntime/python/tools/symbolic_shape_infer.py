@@ -205,6 +205,7 @@ class SymbolicShapeInference:
             "GemmFastGelu": self._infer_GemmFastGelu,
             "GemmFloat8": self._infer_GemmFloat8,
             "GroupNorm": self._infer_GroupNorm,
+            "GroupQueryAttention": self._infer_GroupQueryAttention,
             "SkipGroupNorm": self._infer_SkipGroupNorm,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
@@ -471,6 +472,7 @@ class SymbolicShapeInference:
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
+            "GroupQueryAttention",
             "SkipGroupNorm",
             "BiasSplitGelu",
             "BiasAdd",
@@ -2408,6 +2410,32 @@ class SymbolicShapeInference:
 
     def _infer_GroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
+
+    def _infer_GroupQueryAttention(self, node):  # noqa: N802
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        past_shape = self._try_get_shape(node, 3)
+        if past_shape is not None:
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+            vi = self.known_vi_[node.output[2]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+        if node.input[1] != "" and node.input[2] != "":
+            self._propagate_shape_and_type(node, 0, 0)
+        else:
+            # combined qkv: (batch_size, sequence_length, num_heads * head_size + 2 * kv_num_heads * head_size)
+            assert node.input[1] == "" and node.input[2] == ""
+            num_heads = get_attribute(node, "num_heads")
+            kv_num_heads = get_attribute(node, "kv_num_heads")
+            query_shape = self._get_shape(node, 0)
+            if query_shape is not None:
+                hidden_size = query_shape[2]
+                if isinstance(hidden_size, int):
+                    head_size = int(hidden_size / (num_heads + 2 * kv_num_heads))
+                    query_shape[2] = num_heads * head_size
+                    vi = self.known_vi_[node.output[0]]
+                    vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)
