@@ -95,11 +95,10 @@ class WhisperHelper:
         in_memory = False
 
         model_name = model_name_or_path.split("/")[-1][8:]
-        checkpoint_file = None
+        checkpoint_file, alignment_heads = None, None
         if model_name in _MODELS:
             checkpoint_file = _download(_MODELS[model_name], cache_dir, in_memory)
             alignment_heads = _ALIGNMENT_HEADS[model_name]
-
 
         with io.BytesIO(checkpoint_file) if in_memory else open(checkpoint_file, "rb") as fp:
             checkpoint = torch.load(fp, map_location=device)
@@ -136,37 +135,29 @@ class WhisperHelper:
         if version.parse(transformers_version) >= version.parse("4.36.0"):
             extra_kwargs["attn_implementation"] = "eager"
         model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir, **extra_kwargs)
+
         if model_impl == "openai":
-            model = WhisperHelper.load_model_openai(model_name_or_path, cache_dir, device)
-            model_for_config = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+            openai_model = WhisperHelper.load_model_openai(model_name_or_path, cache_dir, device)
+            model_encoder, model_decoder = openai_model.encoder, openai_model.decoder
+            passed_model = openai_model
+        else:
+            model_encoder, model_decoder = model, model
+            passed_model = None
 
-            decoder = WhisperDecoder(model.decoder, model_for_config.config, model_impl=model_impl, model=model)
-            decoder.eval().to(device)
-
-            if merge_encoder_and_decoder_init:
-                encoder_decoder_init = WhisperEncoderDecoderInit(
-                    model.encoder,
-                    model.decoder,
-                    model_for_config.config,
-                    decoder_start_token_id=None,
-                    model_impl=model_impl,
-                    model=model,
-                )
-                return {"encoder_decoder_init": encoder_decoder_init, "decoder": decoder}
-
-        model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
         if state_dict_path:
             model.load_state_dict(torch.load(state_dict_path), strict=False)
 
-        decoder = WhisperDecoder(model, model.config)
+        decoder = WhisperDecoder(model_decoder, model.config, model_impl=model_impl, model=passed_model)
         decoder.eval().to(device)
 
         if merge_encoder_and_decoder_init:
             encoder_decoder_init = WhisperEncoderDecoderInit(
-                model,
-                model,
+                model_encoder,
+                model_decoder,
                 model.config,
                 decoder_start_token_id=None,
+                model_impl=model_impl,
+                model=passed_model,
             )
             return {"encoder_decoder_init": encoder_decoder_init, "decoder": decoder}
         else:
@@ -355,7 +346,6 @@ class WhisperHelper:
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
-        prompt_ids_list = [config.decoder_start_token_id, 50259, 50359, 50363]
 
         batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 26, 0, 5, 1
         length_penalty, repetition_penalty = 1.0, 1.0
@@ -416,7 +406,7 @@ class WhisperHelper:
         diff = pt_outputs - ort_outputs
         max_diff = max(diff.min(), diff.max(), key=abs)
 
-        if max_diff > 0:
+        if max_diff >= 0:
             # For ONNX Runtime INT8 model
             pt_expected_transcription = (
                 " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."

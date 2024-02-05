@@ -47,7 +47,6 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             self.whisper_decoder_openai_init = WhisperDecoderInitOpenai(model, decoder)
         self.model_impl = model_impl
 
-
     def forward(
         self,
         encoder_input_ids: torch.Tensor,

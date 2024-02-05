@@ -83,9 +83,7 @@ class FusionBartAttention(FusionAttention):
         add_q,
     ):
         reshape_qkv_2_path = self.model.match_parent_path(
-            reshape_qkv_2,
-            ["Concat", "Slice", "Gather", "Shape"],
-            [1, 0, 0, 0]
+            reshape_qkv_2, ["Concat", "Slice", "Gather", "Shape"], [1, 0, 0, 0]
         )
         if reshape_qkv_2_path is None:
             return False
@@ -94,14 +92,10 @@ class FusionBartAttention(FusionAttention):
                 return False
 
         matmul_qk_path_1 = self.model.match_parent_path(
-            matmul_qk,
-            ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"],
-            [0, 1, 0, 0, 0, 0]
+            matmul_qk, ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"], [0, 1, 0, 0, 0, 0]
         )
         matmul_qk_path_2 = self.model.match_parent_path(
-            matmul_qk,
-            ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"],
-            [1, 1, 0, 0, 0, 0]
+            matmul_qk, ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"], [1, 1, 0, 0, 0, 0]
         )
         if matmul_qk_path_1 is None or matmul_qk_path_2 is None:
             return False
@@ -110,8 +104,7 @@ class FusionBartAttention(FusionAttention):
         mul_2 = matmul_qk_path_2[0]
         if mul_1.input[1] != mul_2.input[1]:
             return False
-        if (matmul_qk_path_1[-1].input[0] != add_q.output[0]
-            and matmul_qk_path_2[-1].input[0] != add_q.output[0]):
+        if matmul_qk_path_1[-1].input[0] != add_q.output[0] and matmul_qk_path_2[-1].input[0] != add_q.output[0]:
             return False
 
         # For decoder attentions only
@@ -120,29 +113,22 @@ class FusionBartAttention(FusionAttention):
             if add_qk_path is None:
                 return False
             slice_q_path_1 = self.model.match_parent_path(
-                add_qk_path[0],
-                ["Slice", "Unsqueeze", "Gather", "Shape"],
-                [0, 2, 0, 0]
+                add_qk_path[0], ["Slice", "Unsqueeze", "Gather", "Shape"], [0, 2, 0, 0]
             )
-            slice_q_path_2 = self.model.match_parent_path(
-                add_qk_path[0],
-                ["Unsqueeze", "Gather", "Shape"],
-                [2, 0, 0]
-            )
+            slice_q_path_2 = self.model.match_parent_path(add_qk_path[0], ["Unsqueeze", "Gather", "Shape"], [2, 0, 0])
             if slice_q_path_1 is None and slice_q_path_2 is None:
                 return False
             _, unsqueeze_1, _, _ = slice_q_path_1
             unsqueeze_2, _, _ = slice_q_path_2
             if unsqueeze_1.input[0] != unsqueeze_2.input[0]:
                 return False
-            if (slice_q_path_1[-1].input[0] != add_q.output[0]
-                and slice_q_path_2[-1].input[0] != add_q.output[0]):
+            if slice_q_path_1[-1].input[0] != add_q.output[0] and slice_q_path_2[-1].input[0] != add_q.output[0]:
                 return False
 
         return True
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        # Track if fusion is occuring for openai variant
+        # Track if fusion is occurring for OpenAI implementation of Whisper
         model_impl_openai = False
 
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
@@ -274,10 +260,7 @@ class FusionBartAttention(FusionAttention):
             #               -> Concat <-
             #                    |
             #                    |--> Reshape -> Transpose -> Present_V
-            concat_path = self.model.match_child_path(
-                add_v,
-                ["Concat", "Reshape", "Transpose"]
-            )
+            concat_path = self.model.match_child_path(add_v, ["Concat", "Reshape", "Transpose"])
             if reshape_path is not None:
                 (_, transpose_add_v) = reshape_path
                 if transpose_add_v.output[0] in graph_output_names:
@@ -338,7 +321,6 @@ class FusionBartAttention(FusionAttention):
         elif qk_nodes_2_openai is not None:
             _, add_qk, matmul_qk = qk_nodes_2_openai
             qk_nodes = qk_nodes_2_openai
-            qk_nodes_2 = qk_nodes_2_openai
         else:
             return
 
@@ -402,7 +384,6 @@ class FusionBartAttention(FusionAttention):
             mul_k, transpose_k_1, reshape_k_1, matmul_k = k_nodes_with_bias_openai
             k_nodes = k_nodes_with_bias_openai
             present_k = matmul_k.output[0]
-            mat_k_out_tmp = matmul_k.output[0] + "_temp"
 
             # Find the child path to access the correct present_k values
             # Openai impl provides present/past k values in 3D format
@@ -422,10 +403,7 @@ class FusionBartAttention(FusionAttention):
             #               -> Concat <-
             #                    |
             #                    |--> Reshape -> Transpose -> Present_K
-            concat_path = self.model.match_child_path(
-                matmul_k,
-                ["Concat", "Reshape", "Transpose"]
-            )
+            concat_path = self.model.match_child_path(matmul_k, ["Concat", "Reshape", "Transpose"])
             if reshape_path is not None:
                 (_, transpose_matmul_k) = reshape_path
                 if transpose_matmul_k.output[0] in graph_output_names:
@@ -492,21 +470,29 @@ class FusionBartAttention(FusionAttention):
             add_name = self.model.create_node_name("Add")
             add_k = helper.make_node("Add", [empty_bias_name, matmul_k.output[0]], [reshape_k_1.name], add_name)
 
-        if model_impl_openai and not past_k and not self.check_runtime_shape_path_openai(
-            reshape_qkv_2,
-            matmul_qkv,
-            add_qk,
-            matmul_qk,
-            add_q,
+        if (
+            model_impl_openai
+            and not past_k
+            and not self.check_runtime_shape_path_openai(
+                reshape_qkv_2,
+                matmul_qkv,
+                add_qk,
+                matmul_qk,
+                add_q,
+            )
         ):
             return
-        elif not model_impl_openai and not past_k and not self.check_runtime_shape_path(
-            reshape_qkv_2,
-            reshape_qkv_1,
-            reshape_q_2,
-            reshape_k_2,
-            reshape_v_2,
-            root_input,
+        elif (
+            not model_impl_openai
+            and not past_k
+            and not self.check_runtime_shape_path(
+                reshape_qkv_2,
+                reshape_qkv_1,
+                reshape_q_2,
+                reshape_k_2,
+                reshape_v_2,
+                root_input,
+            )
         ):
             return
 
@@ -531,7 +517,7 @@ class FusionBartAttention(FusionAttention):
         # 4) Decoder cross attention with two_root_inputs=True and qk_nodes=qk_nodes_1
         # 5) Decoder cross attention with past with three_root_inputs=True and qk_nodes=qk_nodes_1
         encoder_attention = one_root_input and qk_nodes == qk_nodes_1
-        decoder_attention = one_root_input and qk_nodes == qk_nodes_2
+        decoder_attention = one_root_input and qk_nodes in (qk_nodes_2, qk_nodes_2_openai)
         decoder_attention_with_past = encoder_attention and past_k and past_v
         if model_impl_openai is True:
             decoder_attention_with_past = decoder_attention and past_k and past_v

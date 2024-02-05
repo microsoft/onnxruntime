@@ -431,7 +431,6 @@ class OnnxModel:
         node,
         child_op_types,
         child_output_index=None,
-        output_name_to_node=None,
         return_indice=None,
         exclude=[],  # noqa: B006
     ):
@@ -454,9 +453,6 @@ class OnnxModel:
         if child_output_index is not None:
             assert len(child_output_index) == len(child_op_types)
 
-        if output_name_to_node is None:
-            output_name_to_node = self.output_name_to_node()
-
         current_node = node
         matched_children = []
         for i, op_type in enumerate(child_op_types):
@@ -464,8 +460,7 @@ class OnnxModel:
             node_children = self.get_children(current_node)
             for child_i, child in enumerate(node_children):
                 if child.op_type == op_type and child not in exclude:
-                    if (child_output_index is not None
-                        and child_output_index[i] != child_i):
+                    if child_output_index is not None and child_output_index[i] != child_i:
                         logger.debug(
                             f"Failed to match index={i} child_output_index={child_output_index[i]} op_type={op_type}",
                             stack_info=True,

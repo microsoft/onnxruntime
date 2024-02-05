@@ -5,21 +5,8 @@
 # --------------------------------------------------------------------------
 
 import logging
-import os
-import tempfile
-from pathlib import Path
-from typing import List, Optional, Union
 
-import numpy
-import onnx
 import torch
-from io_binding_helper import TypeHelper
-from models.t5.past_helper import PastKeyValuesHelper
-from onnx_model import OnnxModel
-from torch_onnx_export_helper import torch_onnx_export
-from transformers import WhisperConfig, file_utils
-
-from onnxruntime import InferenceSession
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +51,7 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
 
         # Add concat node for past values
         if past is not None:
-            for idx, block in enumerate(self.whisper_decoder.blocks):
+            for block in self.whisper_decoder.blocks:
                 self.kv_cache[block.attn.key] = torch.cat(
                     [past_kv_cache[block.attn.key], self.kv_cache[block.attn.key]], dim=1
                 ).detach()
@@ -74,7 +61,7 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
 
         present_self, present_cross = [], []
         # Group self and cross values
-        for idx, block in enumerate(self.whisper_decoder.blocks):
+        for block in self.whisper_decoder.blocks:
             present_self.append(self.kv_cache[block.attn.key])
             present_self.append(self.kv_cache[block.attn.value])
             if past is None:
