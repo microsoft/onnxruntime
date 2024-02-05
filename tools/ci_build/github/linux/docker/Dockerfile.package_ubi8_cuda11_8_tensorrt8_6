@@ -11,7 +11,7 @@ FROM $BASEIMAGE AS base
 ARG TRT_VERSION
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 
-RUN dnf install -y bash wget &&\
+RUN dnf install -y bash wget diffutils &&\
     dnf clean dbcache
 
 # Install python3

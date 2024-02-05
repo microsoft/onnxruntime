@@ -337,7 +337,7 @@ stages:
               python3 -m pip install --upgrade pip ; \
               pushd models/llama ; \
               python3 -m pip install -r requirements-cuda.txt ; \
-              python3 ./test/infer_onnx_model.py --model_dir /model_dir --prompt "question: What is the lightest element?" /workspace/answer.txt; \
+              python3 ./test/infer_onnx_model.py --model_dir /model_dir --prompt "question: What is the lightest element?" > /workspace/answer.txt; \
               popd ; \
               popd ; \ '
         cat $(Build.SourcesDirectory)/answer.txt
