@@ -47,7 +47,7 @@ void addObjectMethodsForLazyTensor(py::module& m);
 #endif
 bool InitArray();
 
-bool GetDyanmicExecutionProviderHash(
+bool GetDynamicExecutionProviderHash(
     const std::string& ep_shared_lib_path,
     const ProviderOptions& provider_options,
     size_t& hash,
@@ -87,13 +87,7 @@ bool GetProviderInstanceHash(const std::string& type,
     if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
       const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
                                                                           provider_options_map);
-      hash = static_cast<size_t>(info.device_id) ^
-             info.gpu_mem_limit ^
-             (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
-             (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
-             (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
-             (static_cast<size_t>(info.has_user_compute_stream) << 22) ^
-             std::hash<cuda::TunableOpInfo>{}(info.tunable_op);
+      hash = std::hash<CUDAExecutionProviderInfo>{}(info);
       return true;
     }
 #endif
@@ -102,13 +96,7 @@ bool GetProviderInstanceHash(const std::string& type,
     if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
       const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
                                                                           provider_options_map);
-      hash = static_cast<size_t>(info.device_id) ^
-             info.gpu_mem_limit ^
-             (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
-             (static_cast<size_t>(info.miopen_conv_exhaustive_search) << 18) ^
-             (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
-             (static_cast<size_t>(info.has_user_compute_stream) << 22) ^
-             std::hash<rocm::TunableOpInfo>{}(info.tunable_op);
+      hash = std::hash<ROCMExecutionProviderInfo>{}(info);
       return true;
     }
 #endif
@@ -128,7 +116,7 @@ bool GetProviderInstanceHash(const std::string& type,
             provider_options.insert(option);
           }
         }
-        return GetDyanmicExecutionProviderHash(shared_lib_path_it->second, provider_options, hash);
+        return GetDynamicExecutionProviderHash(shared_lib_path_it->second, provider_options, hash);
       }
     }
   }
