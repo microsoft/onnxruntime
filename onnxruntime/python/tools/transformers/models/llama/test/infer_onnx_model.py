@@ -11,6 +11,11 @@ def get_args():
         required=True,
         help="model direcotory, including config.json and tokenizer.model",
     )
+    parser.add_argument(
+        "--prmopt",
+        required=True,
+        help="prompt string for the model to generate text from. e.g. 'question: What is the lightest element?'",
+    )
     args = parser.parse_args()
     return args
 
@@ -24,12 +29,12 @@ def main():
     ort_llama2_generator = pipeline("text-generation", model=model, tokenizer=tokenizer, device="cuda:0")
 
     sequences = ort_llama2_generator(
-        "question: What is the lightest element?\n",
+        args.prmopt,
         do_sample=False,
         num_return_sequences=1,
         eos_token_id=tokenizer.eos_token_id,
         pad_token_id=tokenizer.pad_token_id,
-        max_new_tokens=128,
+        max_new_tokens=512,
         return_full_text=False,
         repetition_penalty=1.1,
     )

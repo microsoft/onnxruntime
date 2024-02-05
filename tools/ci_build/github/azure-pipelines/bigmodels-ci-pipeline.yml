@@ -278,13 +278,6 @@ stages:
       clean: true
       submodules: none
 
-    - script: |
-        set -ex
-        mkdir -p $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
-        cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
-        ls -l $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
-      displayName: 'Copy llama2-7b-fp16'
-
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Onnxruntime Artifact'
@@ -333,9 +326,9 @@ stages:
 
     - script: |
         set -ex
-        cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
+        cp $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/llama2-7b-fp16/* $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16/
         ls -l $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16
-        docker run --rm --gpus all -v  $(pwd):/workspace \
+        docker run --rm --gpus all -v  $(Build.SourcesDirectory):/workspace \
            -v $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/llama2-7b-fp16:/model_dir \
            onnxruntimeubi8packagestest \
             bash -c '
@@ -344,8 +337,10 @@ stages:
               python3 -m pip install --upgrade pip ; \
               pushd models/llama ; \
               python3 -m pip install -r requirements-cuda.txt ; \
-              python3 ./test/infer_onnx_model.py --model_dir /model_dir; \
+              python3 ./test/infer_onnx_model.py --model_dir /model_dir --prompt "question: What is the lightest element?" /workspace/answer.txt; \
               popd ; \
               popd ; \ '
+        cat $(Build.SourcesDirectory)/answer.txt
+        diff $(Build.SourcesDirectory)/answer.txt $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/llama/test/expected_answer.txt && exit 0 || exit 1
       displayName: 'Run Llama2-Onnx-F16 E2E Test'
       workingDirectory: $(Build.SourcesDirectory)
