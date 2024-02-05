@@ -378,6 +378,8 @@ void CreateEmptyFile(const std::string& filename) {
   ORT_ENFORCE(file.is_open(), "Failed to open file ", filename);
 }
 
+#endif  // defined(COREML_ENABLE_MLPROGRAM)
+
 std::string GetModelOutputPath(bool create_ml_program_) {
   // path is used to create the ML Package directory for ML Program, and for the model directly otherwise.
   auto path = util::GetTemporaryFilePath();
@@ -387,8 +389,6 @@ std::string GetModelOutputPath(bool create_ml_program_) {
 
   return path;
 }
-
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 }  // namespace
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
