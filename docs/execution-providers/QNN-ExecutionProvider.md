@@ -31,9 +31,15 @@ ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.18.x an
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#qnn).
 
+## Pre-built Packages
 Alternatively, ONNX Runtime with QNN EP can be installed from:
 - [NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
-- Nightly Python package (Windows ARM64): `python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn`
+- Nightly Python package (Windows ARM64):
+  - Requirements:
+    - Windows ARM64
+    - Python 3.11.x
+    - Numpy 1.25.2 or >= 1.26.4
+  - Install: `python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn`
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
@@ -113,7 +119,7 @@ The QNN HTP backend only supports quantized models. Models with 32-bit floating-
 This section provides instructions for quantizing a model and then running the quantized model on QNN EP's HTP backend using Python APIs. Please refer to the [quantization page](../performance/model-optimizations/quantization.md) for a broader overview of quantization concepts.
 
 ### Generating a quantized model (x64)
-The ONNX Runtime python package provides utilities for quantizing ONNX models via the `onnxruntime.quantization` import. The quantization utilities are currently only supported on x86_64.
+The ONNX Runtime python package provides utilities for quantizing ONNX models via the `onnxruntime.quantization` import. The quantization utilities are currently only supported on x86_64 due to issues install the `onnx` package on ARM64.
 Therefore, it is recommended to either use an x64 machine to quantize models or, alternatively, use a separate x64 python installation on Windows ARM64 machines.
 
 Install the nightly ONNX Runtime x64 python package.
@@ -228,7 +234,7 @@ Add the `QNN_SDK\lib\aarch64-windows-msvc\` directory to your Windows PATH envir
 - Add a new entry that points to `QNN_SDK\lib\aarch64-windows-msvc\`
 ```
 
-Install the nightly ONNX Runtime ARM64 python package for QNN EP:
+Install the nightly ONNX Runtime ARM64 python package for QNN EP (requires Python 3.11.x and Numpy 1.25.2 or >= 1.26.4):
 ```shell
 python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn
 ```
