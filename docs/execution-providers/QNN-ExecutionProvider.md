@@ -83,43 +83,28 @@ The QNN HTP backend, which offloads compute to the NPU, only supports quantized 
 
 This section provides instructions for quantizing a model and then running the quantized model on QNN EP's HTP backend using Python APIs. Please refer to the [quantization page](../performance/model-optimizations/quantization.md) for a broader overview of quantization concepts.
 
-<p align="center"><img width="90%" src="../../images/qnn_ep_quant_workflow.png" alt="Offline workflow for quantizing an ONNX model for use on QNN EP"/></p>
+<p align="center"><img width="100%" src="../../images/qnn_ep_quant_workflow.png" alt="Offline workflow for quantizing an ONNX model for use on QNN EP"/></p>
 
-### Quantizing a model
-The ONNX Runtime python package provides utilities for quantizing ONNX models via the `onnxruntime.quantization` import. Note that the quantization utilities are currently only supported on x86_64.
+### Generating a quantized model (x64)
+The ONNX Runtime python package provides utilities for quantizing ONNX models via the `onnxruntime.quantization` import. The quantization utilities are currently only supported on x86_64.
 Therefore, it is recommend to either use an x64 machine to quantize models or, alternatively, use a separate x64 python installation on Windows ARM64 machines.
 
-Install the ONNX Runtime x64 python package. We currently recommend installing the nightly version of ONNX Runtime to get the latest updates to the quantization utilities.
+Install the nightly ONNX Runtime x64 python package.
 ```shell
-## Install nightly ORT built from main branch
 python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly
 ```
 
-Model quantization for QNN EP requires the use of calibration input data to compute quantization parameters for all activations and weights in the model. Using a calibration dataset that is representative of typical model inputs is crucial in generating an accurate quantized model.
-The following snippet defines a sample `CalibrationDataReader` class that provides calibration data to the quantization utilies. Note, however, that the following example uses random inputs as the calibration dataset only for simplicity. Using random input data results in inaccurate models in practice.
+Model quantization for QNN EP requires the use of calibration input data. Using a calibration dataset that is representative of typical model inputs is crucial in generating an accurate quantized model.
+
+The following snippet defines a sample `CalibrationDataReader` class that generates random float32 input data. Note, that using random input data will most likely produce an inaccurate quantized model.
 
 ```python
 # data_reader.py
 
 import numpy as np
 import onnxruntime
-import os
 from onnxruntime.quantization import CalibrationDataReader
 
-
-NP_TYPE = {
-    "tensor(float)": np.float32,
-    "tensor(uint8)": np.uint8,
-    "tensor(int8)": np.int8,
-    "tensor(uint16)": np.uint16,
-    "tensor(int16)": np.int16,
-}
-
-def get_np_type(onnx_type):
-    if onnx_type in NP_TYPE:
-        return NP_TYPE[onnx_type]
-    else:
-        raise Exception("Unhandled onnx_type in np_type_from_onnx_type")
 
 class DataReader(CalibrationDataReader):
     def __init__(self, model_path: str):
@@ -132,10 +117,10 @@ class DataReader(CalibrationDataReader):
 
         self.data_list = []
 
-        # Generate 10 random inputs
-        # TODO: Load valid calibration input data
+        # Generate 10 random float32 inputs
+        # TODO: Load valid calibration input data for your model
         for _ in range(10):
-            input_data = {inp.name : np.random.random(inp.shape).astype(get_np_type(inp.type)) for inp in inputs}
+            input_data = {inp.name : np.random.random(inp.shape).astype(np.float32) for inp in inputs}
             self.data_list.append(input_data)
 
         self.datasize = len(self.data_list)
@@ -152,7 +137,8 @@ class DataReader(CalibrationDataReader):
 
 ```
 
-The following snippet pre-processes the original model and then quantizes the pre-processed model using the above `CalibrationDataReader` class.
+The following snippet pre-processes the original model and then quantizes the pre-processed model to use `uint16` activations and `uint8` weights.
+QNN EP currently supports the `uint8` and `uint16` quantization data types.
 
 ```python
 # quantize_model.py
@@ -160,8 +146,7 @@ The following snippet pre-processes the original model and then quantizes the pr
 import data_reader
 import numpy as np
 import onnx
-import onnxruntime
-from onnxruntime.quantization import QuantFormat, QuantType, quantize
+from onnxruntime.quantization import QuantType, quantize
 from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config, qnn_preprocess_model
 
 if __name__ == "__main__":
@@ -185,11 +170,22 @@ if __name__ == "__main__":
     quantize(model_to_quantize, output_model_path, qnn_config)
 ```
 
-Running `python quantize_model.py` will generate a quantized model (`model.qdq.onnx`) that can be run on Windows ARM64 devices via ONNX Runtime's QNN EP.
+Running `python quantize_model.py` will generate a quantized model called `model.qdq.onnx` that can be run on Windows ARM64 devices via ONNX Runtime's QNN EP.
 
 Refer to the following pages for more information on API usage:
 - [quantization/execution_providers/qnn/preprocess.py](https://github.com/microsoft/onnxruntime/blob/23996bbbbe0406a5c8edbf6b7dbd71e5780d3f4b/onnxruntime/python/tools/quantization/execution_providers/qnn/preprocess.py#L16)
 - [quantization/execution_providers/qnn/quant_config.py](https://github.com/microsoft/onnxruntime/blob/23996bbbbe0406a5c8edbf6b7dbd71e5780d3f4b/onnxruntime/python/tools/quantization/execution_providers/qnn/quant_config.py#L20-L27)
+
+### Running a quantized model on Windows ARM64
+The QNN HTP backend can execute quantized models on Windows ARM64 devices with Qualcomm chipsets.
+
+Install the nightly ONNX Runtime ARM64 python package with QNN EP.
+```shell
+python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn
+```
+
+Download the Qualcomm AI Engine Direct SDK (QNN SDK) from https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct. ONNX Runtime's QNN EP is currently compatible with QNN SDK version 2.18.
+
 
 
 ## QNN context binary cache feature
