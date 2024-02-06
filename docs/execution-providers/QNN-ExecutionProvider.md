@@ -112,6 +112,7 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |Device ID (string)|The ID of the device to use when setting `htp_arch`. Defaults to "0" (for single device).|
 
 ## Supported ONNX operators
+
 |Operator|Notes|
 |---|---|
 |ai.onnx:Abs||
