@@ -67,10 +67,10 @@ export const createMatMulNBitsProgramInfo =
         {type: DataType.uint32, data: nBlocksPerCol}, {type: DataType.uint32, data: blobSize}
       ];
       programUniforms.push(...createTensorShapeVariables(a.dims));
-      programUniforms.push(...createTensorShapeVariables(b.dims));
+      programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(b.dims)));
       programUniforms.push(...createTensorShapeVariables(scales.dims));
       if (inputs.length === 4) {
-        programUniforms.push(...createTensorShapeVariables(inputs[3].dims));
+        programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(inputs[3].dims)));
       }
       programUniforms.push(...createTensorShapeVariables(outputShape));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -116,19 +116,19 @@ export const createMatMulNBitsProgramInfo =
           var zero_point_index = n * uniforms.n_blocks_per_col / 2;
           var zero_point_offset = (n * uniforms.n_blocks_per_col % 2) * 4;` :
                          ''}
-          // The number of iterations of the outer loop is equal to uniforms.n_blocks_per_col
-          // The inner loops combined perform block_size number of multiplications
           var scale_idex = n * uniforms.n_blocks_per_col;
-          for (var block_offset: u32 = 0; block_offset < uniforms.k; block_offset += uniforms.block_size) {
+          for (var block: u32 = 0; block < uniforms.n_blocks_per_col; block++) {
+            var block_offset = block * uniforms.block_size;
             // The scale and zero points are computed per block.
             let scale = ${scales.getByOffset('scale_idex')};
             // The default zero point is 8 for unsigned 4-bit quantization.
             let zero_point: f32 = ${
             zeroPoints ? `extractBits(${zeroPoints.getByOffset('zero_index')}, zero_point_offset, 4)` : 8.0};
-            for (var blob_offset: u32 = 0; blob_offset < uniforms.block_size; blob_offset += uniforms.blob_size) {
+            for (var blob: u32 = 0; blob < uniforms.block_size/uniforms.blob_size; blob++) {
+              var blob_offset = blob * uniforms.blob_size;
               var b_indices: ${b.type.indices};
-              ${b.indicesSet('b_indices', '2', 'blob_offset/8')};
-              ${b.indicesSet('b_indices', '1', 'block_offset')};
+              ${b.indicesSet('b_indices', '2', 'blob')};
+              ${b.indicesSet('b_indices', '1', 'block')};
               ${b.indicesSet('b_indices', '0', 'n')};
               let b_value = ${b.getByIndices('b_indices')};
               let b_quantized_values: array<f32, 8> = ortUnpack8x4snorm(b_value);
