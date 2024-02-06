@@ -137,7 +137,7 @@ export const createMatMulNBitsProgramInfo =
                 ${a.indicesSet('a_indices', aRank - 1, 'block_offset + blob_offset + i')};
                 let a_value = ${a.getByIndices('a_indices')};
                 let b_quantized_value = b_quantized_values[i];
-                let b_dequantized_value = (b_quantized_value - zero_point) / scale;
+                let b_dequantized_value = (b_quantized_value - zero_point) * scale;
                 value += a_value * b_dequantized_value;
               }
             }
