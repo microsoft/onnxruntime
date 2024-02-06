@@ -56,8 +56,8 @@
 	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios', 'ot_web'];
 	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C', 'JavaScript'];
 	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc', 'ot_js'];
-	const TrainingVersions = ['CUDA 11.8', 'ROCm', 'CPU'];
-	const TrainingVersionIds = ['ot_CUDA118', 'ot_ROCm', 'ot_CPU'];
+	const TrainingVersions = ['CUDA 11.8', 'CUDA 12.2', 'ROCm', 'CPU'];
+	const TrainingVersionIds = ['ot_CUDA118', 'ot_CUDA122', 'ot_ROCm', 'ot_CPU'];
 	const TrainingBuilds = ['Stable', 'Preview (Nightly)'];
 	const TrainingBuildIds = ['ot_stable', 'ot_nightly'];
 	const validCombos = {
@@ -706,6 +706,9 @@
 		'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_nightly':
 			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
 
+		'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA122,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
+
 		'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA122,ot_nightly':
 			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
 
@@ -726,6 +729,12 @@
 
 		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_nightly':
 			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training',
+
+		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA122,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ onnxruntime-training',
+
+		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA122,ot_nightly':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/simple/ onnxruntime-training',
 
 		'ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
 			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
