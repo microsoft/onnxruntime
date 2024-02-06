@@ -534,6 +534,50 @@ stages:
       workingDirectory: '$(Build.SourcesDirectory)'
       displayName: 'Testing: force EOL to lf on windows for /js/**'
 
+    ##################################################################
+    # Node.js binding artifacts preparation
+    #
+    # This stage prepares Node.js binding artifacts for publishing. The artifacts support the following platforms:
+    #  - Windows x64 with DML support
+    #  - Windows arm64 with DML support
+    #  - Linux x64 with TensorRT support
+    #  - Linux arm64 (CPU only)
+    #  - macOS x64 (CPU only)
+    #  - macOS arm64 (CPU only)
+    #
+    # ORT Node.js binding artifacts contain 2 parts:
+    #  1. ONNX Runtime native shared libraries and their dependencies
+    #     - Windows (x64, arm64):
+    #       - onnxruntime.dll
+    #       - DirectML.dll
+    #     - Linux (x64, arm64):
+    #       - libonnxruntime.so{.version}
+    #       - libonnxruntime_providers_shared.so
+    #       - libonnxruntime_providers_{provider}.so
+    #     - macOS (x64, arm64):
+    #       - libonnxruntime.dylib
+    #  2. ONNX Runtime Node.js binding
+    #     - onnxruntime_binding.node
+    #
+    # For windows platform, the artifact is named as 'onnxruntime-nodejs-win-x64-dml' for x64, and
+    # 'onnxruntime-nodejs-win-arm64-dml' for arm64. Each artifact contains both (1) and (2).
+    #
+    # For Linux and macOS platforms, (1) and (2) are packed into separate artifacts.
+    # The following artifacts contain (1):
+    #  - onnxruntime-osx
+    #  - onnxruntime-linux-x64-tensorrt
+    #  - onnxruntime-linux-aarch64
+    # The following artifacts contain (2):
+    #  - drop-onnxruntime-nodejs-linux-x64-tensorrt
+    #  - drop-onnxruntime-nodejs-linux-aarch64
+    #  - drop-onnxruntime-nodejs-osx-x86_64
+    #  - drop-onnxruntime-nodejs-osx-arm64
+    #
+    # All binary artifacts will eventually be put into folder before packaging 'onnxruntime-node':
+    #  $(Build.SourcesDirectory)\js\node\bin\napi-v3\{os}\{cpu_arch}\
+    #
+    # {os} is one of 'win32', 'darwin', 'linux' and {cpu_arch} is one of 'x64', 'arm64'.
+
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (OSX)'
       inputs:
