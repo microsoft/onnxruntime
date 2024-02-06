@@ -428,6 +428,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
 
+                test_get_and_set_option_with_values("use_tf32", ["1", "0"])
+
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
                 option["gpu_external_empty_cache"] = "0"
