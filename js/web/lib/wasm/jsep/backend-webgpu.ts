@@ -387,9 +387,11 @@ export class WebGpuBackend {
     for (let i = 0; i < inputTensorViews.length; ++i) {
       const gpuData = this.gpuDataManager.get(inputTensorViews[i].data);
       if (!gpuData) {
-        throw new Error(`no GPU data for input: ${inputTensorViews[i].data}`);
+        // zero sized tensor - create a dummy buffer
+        inputDatas[i] = this.gpuDataManager.create(4);
+      } else {
+        inputDatas[i] = gpuData;
       }
-      inputDatas[i] = gpuData;
     }
 
     const {outputs, dispatchGroup, programUniforms} = program.getRunData(inputTensorViews);

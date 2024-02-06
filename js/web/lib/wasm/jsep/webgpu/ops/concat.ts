@@ -65,7 +65,18 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
 };
 
 const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): ProgramInfo => {
-  const inputShape = inputs[0].dims.slice();
+  // find a none zero tensor to determine the output shape
+  let referenceSize = 0;
+  let referenceIndex = 0;
+  for (let j = 0; j < inputs.length; j++) {
+    const size = ShapeUtil.size(inputs[j].dims);
+    if (size > referenceSize) {
+      referenceSize = size;
+      referenceIndex = j;
+    }
+  }
+
+  const inputShape = inputs[referenceIndex].dims.slice();
   if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
     throw new Error('axis specified for concat doesn\'t match input dimensionality');
   }
@@ -73,16 +84,15 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
   // ensure all of the non-concatenated axes match each other
   // calculate the shape of the output tensor while we do that
   const outputShape = inputShape.slice(0);
-  for (let i = 1; i < inputs.length; i++) {
+  for (let i = 0; i < inputs.length; i++) {
+    if (i === referenceIndex) {
+      continue;
+    }
     const dataNShape = inputs[i].dims.slice();
     for (let axisIndex = 0; axisIndex < inputShape.length; axisIndex++) {
       // add to the placeholder for computing output shape
       if (axisIndex === adjustedAxis) {
         outputShape[adjustedAxis] += dataNShape[axisIndex];
-      }
-      // ensure all non-cancatenated axes match each other
-      else if (inputShape[axisIndex] !== dataNShape[axisIndex]) {
-        throw new Error('non concat dimensions must match');
       }
     }
   }

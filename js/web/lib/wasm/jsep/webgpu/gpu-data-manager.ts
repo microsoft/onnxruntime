@@ -168,7 +168,8 @@ class GpuDataManagerImpl implements GpuDataManager {
     // get destination gpu buffer
     const gpuDataCache = this.storageCache.get(id);
     if (!gpuDataCache) {
-      throw new Error('gpu data for uploading does not exist');
+      // zero sized tensors are allowed - do nothing
+      return;
     }
     if (gpuDataCache.originalSize !== srcLength) {
       throw new Error(`inconsistent data size. gpu data size=${gpuDataCache.originalSize}, data size=${srcLength}`);
@@ -314,7 +315,9 @@ class GpuDataManagerImpl implements GpuDataManager {
   async download(id: GpuDataId, getTargetBuffer: () => Uint8Array): Promise<void> {
     const cachedData = this.storageCache.get(id);
     if (!cachedData) {
-      throw new Error('data does not exist');
+      // console.log('data does not exist');
+      return;
+      // throw new Error('data does not exist');
     }
 
     await downloadGpuData(this.backend, cachedData.gpuData.buffer, cachedData.originalSize, getTargetBuffer);
