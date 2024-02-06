@@ -64,6 +64,7 @@ struct AttentionParameters {
   bool pass_past_in_kv;
   float mask_filter_value;
   float scale;
+  bool use_tf32;
   AttentionMaskType mask_type;
   AttentionQkvFormat qkv_format;
 };
@@ -82,6 +83,7 @@ struct PackedAttentionParameters {
   int token_count;
   bool has_relative_position_bias;
   bool broadcast_res_pos_bias;
+  bool use_tf32;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
