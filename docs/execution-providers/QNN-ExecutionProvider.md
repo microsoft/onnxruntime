@@ -80,9 +80,10 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 
 ## Running a model with QNN EP's HTP backend (Python)
 The QNN HTP backend, which offloads compute to the NPU, only supports quantized models. Models with 32-bit floating-point activations and weights must first be quantized to use a lower integer precision (e.g., 8-bit or 16-bit integers).
+
 This section provides instructions for quantizing a model and then running the quantized model on QNN EP's HTP backend using Python APIs. Please refer to the [quantization page](../performance/model-optimizations/quantization.md) for a broader overview of quantization concepts.
 
-<p align="center"><img width="50%" src="../../images/qnn_ep_quant_workflow.png" alt="Offline workflow for quantizing an ONNX model for use on QNN EP"/></p>
+<p align="center"><img width="90%" src="../../images/qnn_ep_quant_workflow.png" alt="Offline workflow for quantizing an ONNX model for use on QNN EP"/></p>
 
 ### Quantizing a model
 The ONNX Runtime python package provides utilities for quantizing ONNX models via the `onnxruntime.quantization` import. Note that the quantization utilities are currently only supported on x86_64.
@@ -97,7 +98,7 @@ python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_p
 Model quantization for QNN EP requires the use of calibration input data to compute quantization parameters for all activations and weights in the model. Using a calibration dataset that is representative of typical model inputs is crucial in generating an accurate quantized model.
 The following snippet defines a sample `CalibrationDataReader` class that provides calibration data to the quantization utilies. Note, however, that the following example uses random inputs as the calibration dataset only for simplicity. Using random input data results in inaccurate models in practice.
 
-```Python3
+```python
 # data_reader.py
 
 import numpy as np
@@ -153,7 +154,7 @@ class DataReader(CalibrationDataReader):
 
 The following snippet pre-processes the original model and then quantizes the pre-processed model using the above `CalibrationDataReader` class.
 
-```Python3
+```python
 # quantize_model.py
 
 import data_reader
