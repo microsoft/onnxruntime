@@ -74,13 +74,12 @@ export const createMatMulNBitsProgramInfo =
       }
       programUniforms.push(...createTensorShapeVariables(outputShape));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const a = inputVariable('a', inputs[0].dataType, inputs[0].dims);
-        const b = inputVariable('b', DataType.uint32, ShapeUtil.convertShape(inputs[1].dims));
-        const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims);
+        const a = inputVariable('a', inputs[0].dataType, inputs[0].dims.length);
+        const b = inputVariable('b', DataType.uint32, inputs[1].dims.length);
+        const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
         const inputVariables = [a, b, scales];
-        const zeroPoints = inputs.length === 4 ?
-            inputVariable('zero_points', inputs[3].dataType, ShapeUtil.convertShape(inputs[3].dims)) :
-            undefined;
+        const zeroPoints =
+            inputs.length === 4 ? inputVariable('zero_points', inputs[3].dataType, inputs[3].dims.length) : undefined;
         if (zeroPoints) {
           inputVariables.push(zeroPoints);
         }
