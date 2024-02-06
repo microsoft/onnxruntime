@@ -73,20 +73,31 @@ class DynamoOnnxHelper:
 
         return self.update_edges(edge_mapping)
 
-    def remove_dropout_layer(self) -> None:
+    def remove_function(self, func_name: str, input_id: int, output_id: int) -> None:
         """
-        Removes the dropout layer in the model.
+        Removes the function in the model.
         """
-        logging.info("Removing dropout layer...")
         edge_mapping = {}
         nodes_to_remove = []
         for node in self.model.graph.node:
-            if node.op_type.find("Dropout") != -1:
-                assert len(node.input) == 1
-                assert len(node.output) == 1
-                edge_mapping[node.output[0]] = node.input[0]
+            if node.op_type.find(func_name) != -1:
+                edge_mapping[node.input[input_id]] = node.output[output_id]
                 nodes_to_remove.append(node)
         for node in nodes_to_remove:
             self.model.graph.node.remove(node)
 
         self.update_edges(edge_mapping)
+
+    def remove_dropout_layer(self) -> None:
+        """
+        Removes the dropout layer in the model.
+        """
+        logging.info("Removing dropout layer...")
+        self.remove_function("Dropout", 0, 0)
+
+    def remove_lm_head_layer(self) -> None:
+        """
+        Removes the LM head layer in the model.
+        """
+        logging.info("Removing LM head layer...")
+        self.remove_function("Linear_lm_head", 2, 0)

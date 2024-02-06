@@ -364,7 +364,7 @@ class Phi2PreProcessor(DynamoOnnxHelper):
                     vi_cache = helper.make_tensor_value_info(
                         vi.name,
                         elem_type=vi.type.tensor_type.elem_type,
-                        shape=["num_blocks", self.num_attention_heads, "head_size_x", "block_size", "x"],
+                        shape=["num_blocks", "head_dm", "head_size_x", "block_size", "block_x"],
                     )
                     new_inputs.extend([vi_cache])
                 if "past_value" in vi.name:
@@ -373,8 +373,8 @@ class Phi2PreProcessor(DynamoOnnxHelper):
                         elem_type=vi.type.tensor_type.elem_type,
                         shape=[
                             "num_blocks",
-                            self.num_attention_heads,
-                            self.hidden_size // self.num_attention_heads,
+                            "head_dm",
+                            "head_dmv",
                             "block_size",
                         ],
                     )
@@ -444,6 +444,8 @@ class Phi2PreProcessor(DynamoOnnxHelper):
         self.update_edges(self.phi2_edge_dict)
         self.simplify_phi2_op_type()
         self.remove_dropout_layer()
+        if attn_op_type == AttentionOpType.PagedAttention:
+            self.remove_lm_head_layer()
         self.process_graph_io(attn_op_type)
 
 
