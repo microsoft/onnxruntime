@@ -12,7 +12,8 @@ Status GraphTransformer::Apply(Graph& graph, bool& modified, const logging::Logg
   // ORT_RETURN_IF_ERROR(graph.Resolve());
 
   auto status = ApplyImpl(graph, modified, 0, logger);
-  LOGS(logger, INFO) << "GraphTransformer " << Name() << " modified: " << modified << " with status: " << status;
+  LOGS(logger, INFO) << "[" << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()
+      << "] GraphTransformer " << Name() << " modified: " << modified << " with status: " << status;
   ORT_RETURN_IF_ERROR(status);
 
 #if !defined(ORT_MINIMAL_BUILD)
