@@ -127,9 +127,9 @@ export const createMatMulNBitsProgramInfo =
             zeroPoints ? `extractBits(${zeroPoints.getByOffset('zero_index')}, zero_point_offset, 4)` : 8.0};
             for (var blob_offset: u32 = 0; blob_offset < uniforms.block_size; blob_offset += uniforms.blob_size) {
               var b_indices: ${b.type.indices};
-              ${b.indicesSet('b_indices', '0', 'block_offset + blob_offset')};
+              ${b.indicesSet('b_indices', '0', 'blob_offset/8')};
               ${b.indicesSet('b_indices', '1', 'block_offset')};
-              ${b.indicesSet('b_indices', '2', 'blob_offset')};
+              ${b.indicesSet('b_indices', '2', 'n')};
               let b_value = ${b.getByIndices('b_indices')};
               let b_quantized_values: array<f32, 8> = ortUnpack8x4snorm(b_value);
               // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
