@@ -140,6 +140,7 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |ai.onnx:Flatten||
 |ai.onnx:Floor||
 |ai.onnx:Gather|Only supports positive indices|
+|ai.onnx:Gelu||
 |ai.onnx:Gemm||
 |ai.onnx:GlobalAveragePool||
 |ai.onnx:Greater||
@@ -192,6 +193,7 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |ai.onnx:Unsqueeze||
 |ai.onnx:Where||
 |com.microsoft:DequantizeLinear|Provides 16-bit integer dequantization support|
+|com.microsoft:Gelu||
 |com.microsoft:QuantizeLinear|Provides 16-bit integer quantization support|
 
 Supported data types vary by operator and QNN backend. Refer to the [QNN SDK documentation](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/operations.html) for more information.
