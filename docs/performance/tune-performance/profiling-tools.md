@@ -44,7 +44,7 @@ Starting with ONNX 1.17 support has been added to profile EPs or Neural Processi
 
 ## Qualcomm QNN EP
 
-As mentioned in the [QNN EP Doc](/docs/execution-providers/QNN-ExecutionProvider.md) profiling is supported
+As mentioned in the [QNN EP Doc](../../execution-providers/QNN-ExecutionProvider.md) profiling is supported
 
 ### Cross-Platform CSV Tracing
 

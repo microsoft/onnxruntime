@@ -46,8 +46,8 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 |'basic'||
 |'detailed'||
 
-See [profiling-tools](/docs/performance/tune-performance/profiling-tools.md) for more info on profiling  
-Alternanatively to setting profiling_level at compile time, profiling can be enabled dynamically with ETW (Windows). See [tracing](/docs/performance/tune-performance/logging_tracing.md) for more details
+See [profiling-tools](../performance/tune-performance/profiling-tools.md) for more info on profiling  
+Alternanatively to setting profiling_level at compile time, profiling can be enabled dynamically with ETW (Windows). See [tracing](../performance/tune-performance/logging_tracing.md) for more details
 
 |`provider_options_values` for `provider_options_keys = "rpc_control_latency"`|Description|
 |---|---|

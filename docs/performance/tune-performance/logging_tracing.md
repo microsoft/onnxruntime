@@ -49,6 +49,18 @@ Currently, only Tracelogging combined with Windows ETW is supported, although [T
 
 There are 2 main ONNX Runtime TraceLogging providers that can be enabled at run-time that can be captured with Windows [ETW](https://learn.microsoft.com/en-us/windows-hardware/test/weg/instrumenting-your-code-with-etw)
 
+### Quickstart Tracing with WPR
+
+On Windows, you can use Windows Performance Recorder ([WPR](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/wpr-command-line-options)) to capture a trace. The 2 providers covered below are already configured in these WPR profiles.
+
+- Download [ort.wprp](https://github.com/microsoft/onnxruntime/blob/main/ort.wprp) and [etw_provider.wprp](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/platform/windows/logging/etw_provider.wprp) (these could also be combined later)
+
+```dos
+wpr -start ort.wprp -start etw_provider.wprp
+echo Repro the issue allowing ONNX to run
+wpr -stop onnx.etl -compress
+```
+
 ### ONNXRuntimeTraceLoggingProvider
 Beginning in ONNX Runtime 1.17 the [ONNXRuntimeTraceLoggingProvider](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/platform/windows/logging/HowToValidateEtwSinkOutput.md) can also be enabled.
 
