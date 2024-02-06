@@ -25,13 +25,13 @@ const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAt
   const a = inputs[0];
   const aRank = a.dims.length;
   if (a.dims[aRank - 1] !== attributes.k) {
-    throw new Error('The input feature does not match the k value');
+    throw new Error('The last dim of input shape does not match the k value');
   }
   const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
   const blobSize = attributes.blockSize / 8 * attributes.bits;
   const b = inputs[1];
-  if (!ShapeUtil.areEqual(b.dims, [attributes.k, nBlocksPerCol, blobSize])) {
-    throw new Error('The second inputs must be 3D tensor with shape K X nBlocksPerCol X blobSize');
+  if (!ShapeUtil.areEqual(b.dims, [attributes.n, nBlocksPerCol, blobSize])) {
+    throw new Error('The second inputs must be 3D tensor with shape N X nBlocksPerCol X blobSize');
   }
   const scales = inputs[2];
   const scalesShape = scales.dims;
@@ -127,9 +127,9 @@ export const createMatMulNBitsProgramInfo =
             zeroPoints ? `extractBits(${zeroPoints.getByOffset('zero_index')}, zero_point_offset, 4)` : 8.0};
             for (var blob_offset: u32 = 0; blob_offset < uniforms.block_size; blob_offset += uniforms.blob_size) {
               var b_indices: ${b.type.indices};
-              ${b.indicesSet('b_indices', '0', 'blob_offset/8')};
+              ${b.indicesSet('b_indices', '2', 'blob_offset/8')};
               ${b.indicesSet('b_indices', '1', 'block_offset')};
-              ${b.indicesSet('b_indices', '2', 'n')};
+              ${b.indicesSet('b_indices', '0', 'n')};
               let b_value = ${b.getByIndices('b_indices')};
               let b_quantized_values: array<f32, 8> = ortUnpack8x4snorm(b_value);
               // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
