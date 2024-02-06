@@ -41,6 +41,7 @@ Do not modify directly.*
 | Erf | ai.onnx(9-12,13+) |  |
 | Exp | ai.onnx(6-12,13+) |  |
 | Expand | ai.onnx(8-12,13+) |  |
+| FastGelu | com.microsoft(1+) |  |
 | Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
 | FusedConv | com.microsoft(1+) |  |

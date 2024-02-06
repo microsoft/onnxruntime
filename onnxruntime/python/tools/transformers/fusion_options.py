@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from argparse import ArgumentParser
+from enum import Enum
 
 
 class AttentionMaskFormat:
@@ -17,6 +18,15 @@ class AttentionMaskFormat:
 
     # No attention mask
     NoMask = 3
+
+
+class AttentionOpType(Enum):
+    Attention = "Attention"
+    MultiHeadAttention = "MultiHeadAttention"
+    GroupQueryAttention = "GroupQueryAttention"
+
+    def __str__(self):
+        return self.value
 
 
 class FusionOptions:
@@ -57,6 +67,8 @@ class FusionOptions:
         elif model_type == "vit":
             self.attention_mask_format = AttentionMaskFormat.NoMask
 
+        self.attention_op_type = None
+
         # options for stable diffusion
         if model_type in ["unet", "vae", "clip"]:
             self.enable_nhwc_conv = True
@@ -75,6 +87,9 @@ class FusionOptions:
 
     def disable_attention_mask(self):
         self.attention_mask_format = AttentionMaskFormat.NoMask
+
+    def set_attention_op_type(self, attn_op_type: AttentionOpType):
+        self.attention_op_type = attn_op_type
 
     @staticmethod
     def parse(args):
