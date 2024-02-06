@@ -319,13 +319,18 @@ class Phi2PreProcessor(DynamoOnnxHelper):
             if "input_ids" in vi.name:
                 vi_iid = helper.make_tensor_value_info(
                     vi.name,
-                    elem_type=TensorProto.INT32,
+                    elem_type=TensorProto.INT32 if not self.use_vllm else TensorProto.INT64,
                     shape=["batch_size", "seq_len"],
                 )
-                vi_pid = helper.make_tensor_value_info(
+                vi_step = helper.make_tensor_value_info(
                     "step",
                     elem_type=TensorProto.INT64,
                     shape=[1],
+                )
+                vi_pid = helper.make_tensor_value_info(
+                    "position_ids",
+                    elem_type=TensorProto.INT64,
+                    shape=["batch_size", "seq_len"],
                 )
                 vi_mask = helper.make_tensor_value_info(
                     "attention_mask",
@@ -337,7 +342,7 @@ class Phi2PreProcessor(DynamoOnnxHelper):
                     elem_type=TensorProto.INT64,
                     shape=[1],
                 )
-                new_inputs.extend([vi_iid, vi_pid, vi_mask]) if not self.use_vllm else new_inputs.extend(
+                new_inputs.extend([vi_iid, vi_step, vi_mask]) if not self.use_vllm else new_inputs.extend(
                     [vi_iid, vi_pid, vi_meta]
                 )
             if self.use_attn:
@@ -749,7 +754,7 @@ class FissionTransformerBlockPhi(Fission):
             [attn_out_weight, attn_out_bias, mlp_fc1_weight, mlp_fc1_bias, mlp_fc2_weight, mlp_fc2_bias]
         )
         layer_known_edges_names.extend(
-            ["attention_mask", "step", "seqlens_k", "total_sequence_length", "input_metadata"]
+            ["attention_mask", "step", "seqlens_k", "total_sequence_length", "input_metadata", "position_ids"]
         )
 
         subgraph_nodes = []
@@ -764,8 +769,9 @@ class FissionTransformerBlockPhi(Fission):
             subgraph_nodes.extend(self.gemm(["ln_out", attn_q_weight, attn_q_bias], ["query"], "Q_"))
             subgraph_nodes.extend(self.gemm(["ln_out", attn_k_weight, attn_k_bias], ["key"], "K_"))
             subgraph_nodes.extend(self.gemm(["ln_out", attn_v_weight, attn_v_bias], ["value"], "V_"))
-            subgraph_nodes.extend(self.rotary(["query", "step", cos_cache, sin_cache], ["query_rot"], "Q_"))
-            subgraph_nodes.extend(self.rotary(["key", "step", cos_cache, sin_cache], ["key_rot"], "K_"))
+            pos_ids_name = "position_ids" if self.attn_op_type == AttentionOpType.PagedAttention else "step"
+            subgraph_nodes.extend(self.rotary(["query", pos_ids_name, cos_cache, sin_cache], ["query_rot"], "Q_"))
+            subgraph_nodes.extend(self.rotary(["key", pos_ids_name, cos_cache, sin_cache], ["key_rot"], "K_"))
             if self.attn_op_type == AttentionOpType.MultiHeadAttention:
                 subgraph_nodes.extend(
                     self.mha(
