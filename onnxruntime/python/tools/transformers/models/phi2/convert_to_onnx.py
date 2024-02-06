@@ -147,7 +147,7 @@ class ConvertPhi2ToONNX:
                 ]
                 if self.attn_op_type != AttentionOpType.PagedAttention
                 else []
-            )  # bugbug: temp setting for paged attention
+            )  # TODO: temp setting for paged attention
             logging.info("Converting onnx model to float16/bfloat16...")
             optimizer.convert_float_to_float16(
                 keep_io_types=False,
