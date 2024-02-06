@@ -111,6 +111,90 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |---|---|
 |Device ID (string)|The ID of the device to use when setting `htp_arch`. Defaults to "0" (for single device).|
 
+## Supported ONNX operators
+|Operator|Notes|
+|---|---|
+|ai.onnx:Abs||
+|ai.onnx:Add||
+|ai.onnx:And||
+|ai.onnx:ArgMax||
+|ai.onnx:ArgMin||
+|ai.onnx:Asin||
+|ai.onnx:Atan||
+|ai.onnx:AveragePool||
+|ai.onnx:BatchNormalization||
+|ai.onnx:Cast||
+|ai.onnx:Clip||
+|ai.onnx:Concat||
+|ai.onnx:Conv||
+|ai.onnx:ConvTranspose||
+|ai.onnx:Cos||
+|ai.onnx:DepthToSpace||
+|ai.onnx:DequantizeLinear||
+|ai.onnx:Div||
+|ai.onnx:Elu||
+|ai.onnx:Equal||
+|ai.onnx:Exp||
+|ai.onnx:Expand||
+|ai.onnx:Flatten||
+|ai.onnx:Floor||
+|ai.onnx:Gather|Only support positive indices|
+|ai.onnx:Gemm||
+|ai.onnx:GlobalAveragePool||
+|ai.onnx:Greater||
+|ai.onnx:GreaterOrEqual||
+|ai.onnx:GridSample||
+|ai.onnx:HardSwish||
+|ai.onnx:InstanceNormalization||
+|ai.onnx:LRN||
+|ai.onnx:LayerNormalization||
+|ai.onnx:LeakyRelu||
+|ai.onnx:Less||
+|ai.onnx:LessOrEqual||
+|ai.onnx:Log||
+|ai.onnx:LogSoftmax||
+|ai.onnx:LpNormalization|p == 2|
+|ai.onnx:MatMul|Supported input data types on HTP backend: (uint8, uint8), (uint8, uint16), (uint16, uint8)|
+|ai.onnx:Max||
+|ai.onnx:MaxPool||
+|ai.onnx:Min||
+|ai.onnx:Mul||
+|ai.onnx:Neg||
+|ai.onnx:Not||
+|ai.onnx:Or||
+|ai.onnx:Prelu||
+|ai.onnx:Pad||
+|ai.onnx:Pow||
+|ai.onnx:QuantizeLinear||
+|ai.onnx:ReduceMax||
+|ai.onnx:ReduceMean||
+|ai.onnx:ReduceMin||
+|ai.onnx:ReduceProd||
+|ai.onnx:ReduceSum||
+|ai.onnx:Relu||
+|ai.onnx:Resize||
+|ai.onnx:Round||
+|ai.onnx:Sigmoid||
+|ai.onnx:Sign||
+|ai.onnx:Sin||
+|ai.onnx:Slice||
+|ai.onnx:Softmax||
+|ai.onnx:SpaceToDepth||
+|ai.onnx:Split||
+|ai.onnx:Sqrt||
+|ai.onnx:Squeeze||
+|ai.onnx:Sub||
+|ai.onnx:Tanh||
+|ai.onnx:Tile||
+|ai.onnx:TopK||
+|ai.onnx:Transpose||
+|ai.onnx:Unsqueeze||
+|ai.onnx:Where||
+|com.microsoft:DequantizeLinear|Provides 16-bit integer dequantization support|
+|com.microsoft:QuantizeLinear|Provides 16-bit integer quantization support|
+
+Supported data types vary by operator and QNN backend. Refer to the [QNN SDK documentation](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/operations.html) for more information.
+
 ## Running a model with QNN EP's HTP backend (Python)
 <p align="center"><img width="100%" src="../../images/qnn_ep_quant_workflow.png" alt="Offline workflow for quantizing an ONNX model for use on QNN EP"/></p>
 
@@ -118,6 +202,10 @@ The QNN HTP backend only supports quantized models. Models with 32-bit floating-
 
 This section provides instructions for quantizing a model and then running the quantized model on QNN EP's HTP backend using Python APIs. Please refer to the [quantization page](../performance/model-optimizations/quantization.md) for a broader overview of quantization concepts.
 
+### Model requirements
+QNN EP does not support models with dynamic shapes (e.g., a dynamic batch size). Dynamic shapes must be fixed to a specific value. Refer to the documentation for [making dynamic input shapes fixed](../tutorials/mobile/helpers/make-dynamic-shape-fixed.md) for more information.
+
+Additionally, QNN EP supports a subset of ONNX operators (e.g., Loops and Ifs are not supported). Refer to the [list of supported ONNX operators](./QNN-ExecutionProvider.md#supported-onnx-operators).
 ### Generating a quantized model (x64)
 The ONNX Runtime python package provides utilities for quantizing ONNX models via the `onnxruntime.quantization` import. The quantization utilities are currently only supported on x86_64 due to issues installing the `onnx` package on ARM64.
 Therefore, it is recommended to either use an x64 machine to quantize models or, alternatively, use a separate x64 python installation on Windows ARM64 machines.
@@ -191,7 +279,7 @@ if __name__ == "__main__":
 
     # Pre-process the original float32 model.
     preproc_model_path = "model.preproc.onnx"
-    model_changed = qnn_preprocess_model(input_model_path, prepoc_model_path)
+    model_changed = qnn_preprocess_model(input_model_path, preproc_model_path)
     model_to_quantize = preproc_model_path if model_changed else input_model_path
 
     # Generate a suitable quantization configuration for this model.
@@ -262,8 +350,8 @@ session = onnxruntime.InferenceSession("model.qdq.onnx",
 
 # Run the model with your input.
 # TODO: Use numpy to load your actual input from a file or generate random input.
-input0 = np.ones((1,2,1,4), dtype=np.float32)
-result = session.run(None, {"input0": input0})
+input0 = np.ones((1,3,224,224), dtype=np.float32)
+result = session.run(None, {"input": input0})
 
 # Print output.
 print(result)
