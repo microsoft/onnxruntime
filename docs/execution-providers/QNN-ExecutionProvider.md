@@ -33,24 +33,28 @@ For build instructions, please see the [BUILD page](../build/eps.md#qnn).
 [prebuilt NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
 
 ## Configuration Options
-The QNN Execution Provider supports a number of configuration options. The `provider_option_keys`, `provider_options_values` enable different options for the application. Each `provider_options_keys` accepts values as shown below:
+The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
 
-|`provider_options_values` for `provider_options_keys = "backend_path"`|Description|
+|`"backend_path"`|Description|
 |---|-----|
 |'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. Useful for integration testing. CPU backend is a reference implementation of QNN operators|
-|'libQnnHtp.so' or 'QnnHtp.dll'|Enable Htp backend. Offloads compute to NPU.|
+|'libQnnHtp.so' or 'QnnHtp.dll'|Enable HTP backend. Offloads compute to NPU.|
 
-|`provider_options_values` for `provider_options_keys = "profiling_level"`|Description|
+|`"profiling_level"`|Description|
 |---|---|
 |'off'||
 |'basic'||
 |'detailed'||
 
-|`provider_options_values` for `provider_options_keys = "rpc_control_latency"`|Description|
+|`"rpc_control_latency"`|Description|
 |---|---|
 |microseconds (string)|allows client to set up RPC control latency in microseconds|
 
-|`provider_options_values` for `provider_options_keys = "htp_performance_mode"`|Description|
+|`"vtcm_mb"`|Description|
+|---|---|
+|size in MB (string)|QNN VTCM size in MB, defaults to 0 (not set)|
+
+|`"htp_performance_mode"`|Description|
 |---|---|
 |'burst'||
 |'balanced'||
@@ -62,8 +66,12 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 |'power_saver'||
 |'sustained_high_performance'||
 
+|`"qnn_saver_path"`|Description|
+|---|---|
+|filpath to 'QnnSaver.dll' or 'libQnnSaver.so'|File path to the QNN Saver backend library. Dumps QNN API calls to disk for replay/debugging.|
 
-|`provider_options_values` for `provider_options_keys = "qnn_context_priority"`|[Description](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_yielding.html)|
+
+|`"qnn_context_priority"`|[Description](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_yielding.html)|
 |---|---|
 |'low'||
 |'normal'|default.|
@@ -71,12 +79,28 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 |'high'||
 
 
-|`provider_options_values` for `provider_options_keys = "htp_graph_finalization_optimization_mode"`|Description|
+|`"htp_graph_finalization_optimization_mode"`|Description|
 |---|---|
 |'0'|default.|
 |'1'|faster preparation time, less optimal graph.|
 |'2'|longer preparation time, more optimal graph.|
 |'3'|longest preparation time, most likely even more optimal graph.|
+
+|`"soc_model"`|Description|
+|---|---|
+|Model number (string)|The SoC model number. Refer to the QNN SDK documentation for valid values.  Defaults to "0" (unknown).|
+
+|`"htp_arch"`|Description|
+|---|---|
+|"0"|Default (none)|
+|"68"||
+|"69"||
+|"73"||
+|"75"||
+
+|`"device_id"`|Description|
+|---|---|
+|Device ID (string)|The ID of the device to use when setting `htp_arch`. Defaults to "0" (for single device).|
 
 ## Running a model with QNN EP's HTP backend (Python)
 The QNN HTP backend, which offloads compute to the NPU, only supports quantized models. Models with 32-bit floating-point activations and weights must first be quantized to use a lower integer precision (e.g., 8-bit or 16-bit integers).
@@ -96,7 +120,7 @@ python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_p
 
 Model quantization for QNN EP requires the use of calibration input data. Using a calibration dataset that is representative of typical model inputs is crucial in generating an accurate quantized model.
 
-The following snippet defines a sample `CalibrationDataReader` class that generates random float32 input data. Note, that using random input data will most likely produce an inaccurate quantized model.
+The following snippet defines a sample `CalibrationDataReader` class that generates random float32 input data. Note that using random input data will most likely produce an inaccurate quantized model.
 
 ```python
 # data_reader.py
@@ -177,16 +201,70 @@ Refer to the following pages for more information on API usage:
 - [quantization/execution_providers/qnn/quant_config.py](https://github.com/microsoft/onnxruntime/blob/23996bbbbe0406a5c8edbf6b7dbd71e5780d3f4b/onnxruntime/python/tools/quantization/execution_providers/qnn/quant_config.py#L20-L27)
 
 ### Running a quantized model on Windows ARM64
-The QNN HTP backend can execute quantized models on Windows ARM64 devices with Qualcomm chipsets.
+The following assumes that the [Qualcomm AI Engine SDK (QNN SDK)](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct) has already been downloaded and installed to a location such as `C:\Qualcomm\AIStack\QNN\2.18.0.240101`.
 
-Install the nightly ONNX Runtime ARM64 python package with QNN EP.
+First, determine the HTP architecture version for your device by referring to the QNN SDK documentation:
+- <QNN_SDK>/docs/QNN/general/htp/htp_backend.html#qnn-htp-backend-api
+- <QNN_SDK>/docs/QNN/general/overview.html#supported-snapdragon-devices
+
+For example, Snapdragon 8cx Gen 3 (SC8280X) devices have an HTP architecture value of 68, and Snapdragon 8cx Gen 4 (SC8380XP) have an HTP architecture value of 73. In the following, replace `<HTP_ARCH>` with your device's HTP architecture value.
+
+Copy the `.so` file `<QNN_SDK>\lib\hexagon-v<HTP_ARCH>\unsigned\libQnnHtpV<HTP_ARCH>Skel.so` to the folder `<QNN_SDK>\lib\aarch64-windows-msvc\`. For example, the following terminal command copies the `libQnnHtpV73Skel.so` file:
+```
+cp C:\Qualcomm\AIStack\QNN\2.18.0.240101\lib\hexagon-v73\unsigned\libQnnHtpV73Skel.so C:\Qualcomm\AIStack\QNN\2.18.0.240101\lib\aarch64-windows-msvc\
+```
+
+Add the `<QNN_SDK>\lib\aarch64-windows-msvc\` directory your Windows PATH environment variable:
+```
+- Open the `Edit the system environment variables` Control Panel.
+- Click on `Environment variables`.
+- Highlight the `Path` entry under `User variables for ..` and click `Edit`.
+- Add a new entry that points to `<QNN_SDK>\lib\aarch64-windows-msvc\`
+```
+
+Install the nightly ONNX Runtime ARM64 python package for QNN EP:
 ```shell
 python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn
 ```
 
-Download the Qualcomm AI Engine Direct SDK (QNN SDK) from https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct. ONNX Runtime's QNN EP is currently compatible with QNN SDK version 2.18.
+The following Python snippet creates an ONNX Runtime session with QNN EP and runs the quantized model `model.qdq.onnx` on the HTP backend.
 
+```python
+# run_qdq_model.py
 
+import onnxruntime
+import numpy as np
+
+options = onnxruntime.SessionOptions()
+
+# (Optional) Enable configuration that raises an exception if the model can't be
+# run entirely on the QNN HTP backend.
+options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+
+# Create an ONNX Runtime session.
+# TODO: Provide the path to your ONNX model
+session = onnxruntime.InferenceSession("model.qdq.onnx",
+                                       sess_options=options,
+                                       providers=["QNNExecutionProvider"],
+                                       provider_options=[{"backend_path": "QnnHtp.dll"}]) # Provide path to Htp dll in QNN SDK
+
+# Run the model with your input.
+# TODO: Use numpy to load your actual input from a file or generate random input.
+input0 = np.ones((1,2,1,4), dtype=np.float32)
+result = session.run(None, {"input0": input0})
+
+# Print output.
+print(result)
+```
+
+Running `python run_qdq_model.py` will execute the quantized model on the QNN HTP backend.
+
+Notice that the session has been optionally configured to raise an exception if the entire model cannot be executed on the QNN HTP backend. This is useful to check that the quantized model is fully supported by QNN EP.
+Available session configurations include:
+- [session.disable_cpu_ep_fallback](https://github.com/microsoft/onnxruntime/blob/a4cfdc1c28ac95ec6fd0667e856b6a6b8dd1020c/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L229): Disables fallback of unsupported operators to the CPU EP.
+- [ep.context_enable](https://github.com/microsoft/onnxruntime/blob/a4cfdc1c28ac95ec6fd0667e856b6a6b8dd1020c/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L243): Enable EP context feature to dump a cached version of the model in order to decrease session creation time.
+
+Also, the above snippet only specifies the `backend_path` provider option, which denotes the path to the QNN SDK HTP dll. Refer to the [Configuration options section](./#configuration-options) for an list of all QNN EP provider options.
 
 ## QNN context binary cache feature
 There's a QNN context which contains QNN graphs after converting, compiling, filnalizing the model. QNN can serialize the context into binary file, so that user can use it for futher inference direclty (without the QDQ model) to improve the model loading cost.
