@@ -29,8 +29,7 @@ class CudnnConvolutionDescriptor final {
              const gsl::span<const int64_t>& dilations,
              int groups,
              cudnnConvolutionMode_t mode,
-             cudnnDataType_t data_type,
-             bool use_tf32);
+             cudnnDataType_t data_type);
 
   operator cudnnConvolutionDescriptor_t() const { return desc_; }
 
