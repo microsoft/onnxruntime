@@ -35,7 +35,7 @@ class UnaryOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
                                            const OpSupportCheckParams& params) const override;
 
   bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
