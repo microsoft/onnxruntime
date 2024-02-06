@@ -22,7 +22,7 @@ Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxrun
 
 ## Documents
 
-### Developement
+### Development
 
 Refer to the following links for development information:
 
