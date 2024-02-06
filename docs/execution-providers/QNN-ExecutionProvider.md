@@ -139,7 +139,7 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |ai.onnx:Expand||
 |ai.onnx:Flatten||
 |ai.onnx:Floor||
-|ai.onnx:Gather|Only support positive indices|
+|ai.onnx:Gather|Only supports positive indices|
 |ai.onnx:Gemm||
 |ai.onnx:GlobalAveragePool||
 |ai.onnx:Greater||
