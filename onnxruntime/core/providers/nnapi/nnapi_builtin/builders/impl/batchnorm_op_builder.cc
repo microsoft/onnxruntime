@@ -159,19 +159,19 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_vie
   const auto& mean_name = inputs[3].node_arg.Name();
   const auto& var_name = inputs[4].node_arg.Name();
   if (!graph_viewer.GetConstantInitializer(scale_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Scale of BN must be known";
+    LOGS_DEFAULT(VERBOSE) << "Scale of BN must be a constant initializer";
     return false;
   }
   if (!graph_viewer.GetConstantInitializer(b_name)) {
-    LOGS_DEFAULT(VERBOSE) << "B of BN must be known";
+    LOGS_DEFAULT(VERBOSE) << "B of BN must be a constant initializer";
     return false;
   }
   if (!graph_viewer.GetConstantInitializer(mean_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Mean of BN must be known";
+    LOGS_DEFAULT(VERBOSE) << "Mean of BN must be a constant initializer";
     return false;
   }
   if (!graph_viewer.GetConstantInitializer(var_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Var of BN must be known";
+    LOGS_DEFAULT(VERBOSE) << "Var of BN must be a constant initializer";
     return false;
   }
 

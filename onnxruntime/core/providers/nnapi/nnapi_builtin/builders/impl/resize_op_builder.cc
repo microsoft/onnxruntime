@@ -43,8 +43,8 @@ class ResizeOpBuilder : public BaseOpBuilder {
   // We only support Resize opset 11+ here
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 11; }
 
-  bool HasSupportedInputOutputsImpl(const GraphViewer& /* graph_viewer */, const NodeUnit& node_unit,
-                                    const OpSupportCheckParams& /* params */) const override;
+  bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                    const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
