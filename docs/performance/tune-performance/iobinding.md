@@ -2,7 +2,7 @@
 title: I/O Binding
 grand_parent: Performance
 parent: Tune performance
-nav_order: 4
+nav_order: 5
 ---
 
 # I/O Binding

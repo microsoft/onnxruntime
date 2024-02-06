@@ -2,7 +2,7 @@
 title: Troubleshooting
 grand_parent: Performance
 parent: Tune performance
-nav_order: 5
+nav_order: 6
 ---
 
 # Troubleshooting performance issues

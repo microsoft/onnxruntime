@@ -38,6 +38,34 @@ In both cases, you will get a JSON file which contains the detailed performance 
   * Type chrome://tracing in the address bar
   * Load the generated JSON file
 
+## Execution Provider (EP) Profiling
+
+Starting with ONNX 1.17 support has been added to profile EPs or Neural Processing Unit (NPU)s, if that EP supports profiling in it's SDK
+
+## Qualcomm QNN EP
+
+As mentioned in the [QNN EP Doc](/docs/execution-providers/QNN-ExecutionProvider.md) profiling is supported
+
+### Cross-Platform CSV Tracing
+
+The Qualcomm AI Engine Direct SDK (QNN SDK) supports profiling. QNN will output to CSV in a text format if a dev were to use the QNN SDK directly outside ONNX. To enable equivalent functionality, ONNX mimics this support and outputs the same CSV formatting.
+
+If profiling_level is provided then ONNX will append log to current working directory a qnn-profiling-data.csv [file](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/qnn/builder/qnn_backend_manager.cc#L911)
+
+### TraceLogging ETW (Windows) Profiling
+
+As covered in [logging](logging_tracing.md) ONNX supports dynamic enablement of tracing ETW providers. Specifically the following settings. If the Tracelogging provider is enabled and profiling_level was provided, then CSV support is automatically disabled
+
+- Provider Name: Microsoft.ML.ONNXRuntime  
+- Provider GUID: 3a26b1ff-7484-7484-7484-15261f42614d  
+- Keywords: Profiling = 0x100  per [logging.h](https://github.com/ivberg/onnxruntime/blob/user/ivberg/ETWRundown/include/onnxruntime/core/common/logging/logging.h#L81)  
+- Level: 
+  - 5 (VERBOSE) = profiling_level=basic (good details without perf loss)
+  - greater than 5 = profiling_level=detailed (individual ops are logged with inference perf hit)  
+- Event: [QNNProfilingEvent](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/qnn/builder/qnn_backend_manager.cc#L1083)
+
+## CUDA Profiling
+
 To profile CUDA kernels, please add the cupti library to your PATH and use the onnxruntime binary built from source with `--enable_cuda_profiling`.
 To profile ROCm kernels, please add the roctracer library to your PATH and use the onnxruntime binary built from source with `--enable_rocm_profiling`. 
 
