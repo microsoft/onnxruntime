@@ -138,11 +138,17 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 
 namespace {
 void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_type,
-                       const gsl::span<const int32_t> shape) {
+                       std::optional<const gsl::span<const int64_t>> shape) {
   tensor_type.set_datatype(data_type);
-  tensor_type.set_rank(shape.size());
-  for (const auto& dim : shape) {
-    tensor_type.add_dimensions()->mutable_constant()->set_size(dim);
+  if (shape) {
+    tensor_type.set_rank(shape->size());
+    for (const auto& dim : *shape) {
+      if (dim >= 0) {
+        tensor_type.add_dimensions()->mutable_constant()->set_size(narrow<int32_t>(dim));
+      } else {
+        tensor_type.add_dimensions()->mutable_unknown()->set_variadic(false);
+      }
+    }
   }
 }
 
@@ -153,7 +159,7 @@ void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_
     tensor_type.set_rank(shape->dim_size());
     for (const auto& dim : shape->dim()) {
       if (dim.has_dim_value()) {
-        tensor_type.add_dimensions()->mutable_constant()->set_size(dim.dim_value());
+        tensor_type.add_dimensions()->mutable_constant()->set_size(narrow<int32_t>(dim.dim_value()));
       } else {
         tensor_type.add_dimensions()->mutable_unknown()->set_variadic(false);
       }
@@ -192,17 +198,12 @@ void CopyDataToTensorValue<int64_t, int32_t>(MILSpec::TensorValue& tensor_value,
   }
 };
 
-}  // namespace
-
-// convert int64_t ONNX shape to int32_t CoreML shape
-std::vector<int32_t> GetCoreMLShape(const gsl::span<const int64_t> dims) {
-  std::vector<int32_t> shape;
-  shape.reserve(dims.size());
-  for (const auto& dim : dims) {
-    shape.push_back(narrow<int32_t>(dim));
-  }
-  return shape;
+template <>
+void CopyDataToTensorValue<bool>(MILSpec::TensorValue& tensor_value, const gsl::span<const bool> data) {
+  tensor_value.mutable_bools()->mutable_values()->Add(data.begin(), data.end());
 }
+
+}  // namespace
 
 MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
   switch (static_cast<ONNX_NAMESPACE::TensorProto_DataType>(onnx_type)) {
@@ -244,7 +245,7 @@ MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
 
 template <typename T1, typename T2>
 MILSpec::Value CreateTensorValue(const gsl::span<const T1> data,
-                                 std::optional<const gsl::span<const int32_t>> shape) {
+                                 std::optional<const gsl::span<const int64_t>> shape) {
   MILSpec::Value value;
   MILSpec::TensorType& tensor_type = *value.mutable_type()->mutable_tensortype();
 
@@ -252,7 +253,7 @@ MILSpec::Value CreateTensorValue(const gsl::span<const T1> data,
     SetTensorTypeInfo(tensor_type, DataTypeToMILSpec<T2>(), *shape);
   } else {
     // infer as 1D shape
-    std::vector<int32_t> coreml_shape{narrow<int32_t>(data.size())};
+    std::vector<int64_t> coreml_shape{narrow<int64_t>(data.size())};
     SetTensorTypeInfo(tensor_type, DataTypeToMILSpec<T2>(), coreml_shape);
   }
 
@@ -265,17 +266,18 @@ MILSpec::Value CreateTensorValue(const gsl::span<const T1> data,
 template <typename T>
 MILSpec::Value CreateScalarTensorValue(const T& data) {
   gsl::span<const T> data_span{&data, 1};
-  std::vector<int32_t> shape = {};  // empty for scalar
+  std::vector<int64_t> shape = {};  // empty for scalar
   return CreateTensorValue<T>(data_span, shape);
 }
 
 // explicit specializations for types we handle so the implementation can be in the .cc file
 template MILSpec::Value CreateTensorValue<int64_t, int32_t>(const gsl::span<const int64_t> data,
-                                                            std::optional<const gsl::span<const int32_t>> shape);
+                                                            std::optional<const gsl::span<const int64_t>> shape);
 
 template MILSpec::Value CreateScalarTensorValue(const float& data);
 template MILSpec::Value CreateScalarTensorValue(const int32_t& data);
 template MILSpec::Value CreateScalarTensorValue(const std::string& data);
+template MILSpec::Value CreateScalarTensorValue(const bool& data);
 
 COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& node_arg) {
   MILSpec::NamedValueType nvt;

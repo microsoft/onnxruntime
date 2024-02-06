@@ -94,9 +94,14 @@ class ModelBuilder {
   /// <param name="op_type">Typically MILSpec::Operation.type().</param>
   /// <param name="value_type">Typically the input name of the operation that will consume the value.</param>
   /// <param name="value">Value to add.</param>
+  /// <param name="shape">Optional shape for the value.
+  /// If T is a primitive type `shape` is ignored and the value is treated as a scalar.
+  /// For a container type, if `shape` is not provided the shape is inferred to be 1-D of {value.size()}.
+  /// </param>
   /// <returns>Unique name generated for value.</returns>
   template <typename T>
-  std::string AddConstant(const std::string& op_type, std::string_view value_type, const T& value);
+  std::string AddConstant(const std::string& op_type, std::string_view value_type, const T& value,
+                          std::optional<const gsl::span<const int64_t>> shape = std::nullopt);
 
   /// <summary>
   /// Add an existing a constant ONNX initializer to the ML Program as a 'const' operation
