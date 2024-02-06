@@ -30,7 +30,10 @@ ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.18.x an
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#qnn).
-[prebuilt NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
+
+Alternatively, ONNX Runtime with QNN EP can be installed from:
+- [NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
+- Nightly Python package (Windows ARM64): `python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn`
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
@@ -162,7 +165,8 @@ class DataReader(CalibrationDataReader):
 ```
 
 The following snippet pre-processes the original model and then quantizes the pre-processed model to use `uint16` activations and `uint8` weights.
-QNN EP typically supports the `uint8`, and `uint16` quantization data types. Refer to the [QNN SDK operator documentation](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/HtpOpDefSupplement.html) for the data type requirements for each QNN operator.
+Although the quantization utilities expose the `uint8`, `int8`, `uint16`, and `int16` quantization data types, QNN operators typically support the `uint8` and `uint16` data types.
+Refer to the [QNN SDK operator documentation](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/HtpOpDefSupplement.html) for the data type requirements of each QNN operator.
 
 ```python
 # quantize_model.py
@@ -215,7 +219,7 @@ Copy the `.so` file `QNN_SDK\lib\hexagon-v<HTP_ARCH>\unsigned\libQnnHtpV<HTP_ARC
 cp QNN_SDK\lib\hexagon-v73\unsigned\libQnnHtpV73Skel.so QNN_SDK\lib\aarch64-windows-msvc\
 ```
 
-Add the `QNN_SDK\lib\aarch64-windows-msvc\` directory your Windows PATH environment variable:
+Add the `QNN_SDK\lib\aarch64-windows-msvc\` directory to your Windows PATH environment variable:
 ```
 - Open the `Edit the system environment variables` Control Panel.
 - Click on `Environment variables`.
@@ -263,7 +267,7 @@ Running `python run_qdq_model.py` will execute the quantized `model.qdq.onnx` mo
 Notice that the session has been optionally configured to raise an exception if the entire model cannot be executed on the QNN HTP backend. This is useful to check that the quantized model is fully supported by QNN EP.
 Available session configurations include:
 - [session.disable_cpu_ep_fallback](https://github.com/microsoft/onnxruntime/blob/a4cfdc1c28ac95ec6fd0667e856b6a6b8dd1020c/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L229): Disables fallback of unsupported operators to the CPU EP.
-- [ep.context_enable](https://github.com/microsoft/onnxruntime/blob/a4cfdc1c28ac95ec6fd0667e856b6a6b8dd1020c/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L243): Enable EP context feature to dump a cached version of the model in order to decrease session creation time.
+- [ep.context_enable](https://github.com/microsoft/onnxruntime/blob/a4cfdc1c28ac95ec6fd0667e856b6a6b8dd1020c/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L243): [Enable QNN context cache](./QNN-ExecutionProvider.md#qnn-context-binary-cache-feature) feature to dump a cached version of the model in order to decrease session creation time.
 
 Also, the above snippet only specifies the `backend_path` provider option. Refer to the [Configuration options section](./QNN-ExecutionProvider.md#configuration-options) for a list of all available QNN EP provider options.
 
@@ -294,6 +298,14 @@ CheckStatus(g_ort, g_ort->CreateSessionOptions(&session_options));
 g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEnable, "1");
 ```
 
+```python
+# Python
+import onnxruntime
+
+options = onnxruntime.SessionOptions()
+options.add_session_config_entry("ep.context_enable", "1")
+```
+
 ### Configure the context binary file path
 The generated Onnx model with QNN context binary is default to [input_QDQ_model_path]_ctx.onnx in case user does not specify the path. User can to set the path in the session option with the key "ep.context_file_path". Example code below:
 
@@ -305,6 +317,11 @@ so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_a_ctx.onnx");
 g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextFilePath, "./model_a_ctx.onnx");
 ```
 
+```python
+# Python
+options.add_session_config_entry("ep.context_file_path", "./model_a_ctx.onnx")
+```
+
 ### Disable the embed mode
 The QNN context binary content is embeded in the generated Onnx model by default. User can to disable it by setting "ep.context_embed_mode" to "0". In that case, a bin file will be generated separately. The file name looks like [ctx.onnx]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes to the bin file. This bin file needs to sit together with the generated Onnx file.
 
@@ -314,6 +331,11 @@ so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
 
 // C
 g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEmbedMode, "0");
+```
+
+```python
+# Python
+options.add_session_config_entry("ep.context_embed_mode", "0")
 ```
 
 ## Usage
