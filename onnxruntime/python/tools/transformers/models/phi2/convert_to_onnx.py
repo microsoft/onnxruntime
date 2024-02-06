@@ -489,7 +489,7 @@ def main():
                 packed_kv=True,
             )
         if args.fp32_cpu or args.int4_cpu or args.fp16_vllm or args.int4_vllm:
-            raise NotImplementedError("CPU inference example is not implemented yet.")
+            raise NotImplementedError("CPU/vllm inference example is not implemented yet.")
 
 
 if __name__ == "__main__":
