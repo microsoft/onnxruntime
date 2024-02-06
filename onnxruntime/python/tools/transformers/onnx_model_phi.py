@@ -364,7 +364,7 @@ class Phi2PreProcessor(DynamoOnnxHelper):
                     vi_cache = helper.make_tensor_value_info(
                         vi.name,
                         elem_type=vi.type.tensor_type.elem_type,
-                        shape=["num_blocks", self.num_attention_heads, "head_size_x" "block_size", "x"],
+                        shape=["num_blocks", self.num_attention_heads, "head_size_x", "block_size", "x"],
                     )
                     new_inputs.extend([vi_cache])
                 if "past_value" in vi.name:

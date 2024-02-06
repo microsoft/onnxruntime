@@ -136,14 +136,18 @@ class ConvertPhi2ToONNX:
             self.precision == Precision.FLOAT16 or self.precision == Precision.INT4
         ) and self.attn_op_type != AttentionOpType.MultiHeadAttention:
             # We keep last three layers of Attention as float32 or bfloat16 to avoid overflow.
-            node_block_list = [
-                "GroupQueryAttention_29",
-                "GroupQueryAttention_30",
-                "GroupQueryAttention_31",
-                "Attention_29",
-                "Attention_30",
-                "Attention_31",
-            ] if self.attn_op_type != AttentionOpType.PagedAttention else [] # bugbug: temp setting for paged attention
+            node_block_list = (
+                [
+                    "GroupQueryAttention_29",
+                    "GroupQueryAttention_30",
+                    "GroupQueryAttention_31",
+                    "Attention_29",
+                    "Attention_30",
+                    "Attention_31",
+                ]
+                if self.attn_op_type != AttentionOpType.PagedAttention
+                else []
+            )  # bugbug: temp setting for paged attention
             logging.info("Converting onnx model to float16/bfloat16...")
             optimizer.convert_float_to_float16(
                 keep_io_types=False,
@@ -430,14 +434,16 @@ def main():
         if args.fp16_vllm:
             processes.append(
                 Process(
-                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["fp16_vllm"])
+                    target=run_optimize_phi2_onnx,
+                    args=(converter, original_onnx_path, *model_type_to_args["fp16_vllm"]),
                 )
             )
 
         if args.int4_vllm:
             processes.append(
                 Process(
-                    target=run_optimize_phi2_onnx, args=(converter, original_onnx_path, *model_type_to_args["int4_vllm"])
+                    target=run_optimize_phi2_onnx,
+                    args=(converter, original_onnx_path, *model_type_to_args["int4_vllm"]),
                 )
             )
 
