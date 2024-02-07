@@ -406,7 +406,7 @@ class WhisperHelper:
         diff = pt_outputs - ort_outputs
         max_diff = max(diff.min(), diff.max(), key=abs)
 
-        if max_diff >= 0:
+        if max_diff > 0:
             # For ONNX Runtime INT8 model
             pt_expected_transcription = (
                 " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
