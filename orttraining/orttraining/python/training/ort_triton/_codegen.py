@@ -37,7 +37,7 @@ from ._ir import (
 from ._lowering import lower
 from ._sorted_graph import SortedGraph
 from ._sympy_utils import parse_shape, sympy_dot
-from ._utils import may_add_brackets
+from ._utils import is_number, may_add_brackets
 
 
 class TritonCodegen(NodeVisitor):
@@ -159,7 +159,7 @@ class TritonCodegen(NodeVisitor):
 
         other_input_args = "seed_cuda, " if node.has_dropout else ""
         # Support symbolic shape if any.
-        symbolic_shape_args_str = ", ".join(node.symbolic_shape_variables)
+        symbolic_shape_args_str = ", ".join(sorted(node.offset_calc.symbolic_shape_variables))
         if symbolic_shape_args_str:
             other_input_args += f"{symbolic_shape_args_str}, "
 
@@ -318,7 +318,7 @@ class TritonCodegen(NodeVisitor):
         if op_type == "Cast":
             from_dtype = node.inputs[0].dtype.type
             to_dtype = node.outputs[0].dtype.type
-            if from_dtype == to_dtype:
+            if from_dtype == to_dtype or is_number(kwargs["i0"]):
                 op_type = "Identity"
             elif to_dtype == np.bool_:
                 op_type = "CastBool"
@@ -490,7 +490,7 @@ class TritonCodegen(NodeVisitor):
                 kernel_args_str += ", seed_cuda"
 
             # Support symbolic shape if any.
-            symbolic_shape_args_str = ", ".join(kernel_node.symbolic_shape_variables)
+            symbolic_shape_args_str = ", ".join(sorted(kernel_node.offset_calc.symbolic_shape_variables))
             if symbolic_shape_args_str:
                 kernel_args_str += f", {symbolic_shape_args_str}"
 

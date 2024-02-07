@@ -65,6 +65,7 @@ export declare namespace Test {
   export interface ModelTest {
     name: string;
     modelUrl: string;
+    externalData?: InferenceSession.SessionOptions['externalData'];
     backend?: string;  // value should be populated at build time
     ioBinding: IOBindingMode;
     platformCondition?: PlatformCondition;
@@ -143,6 +144,7 @@ export declare namespace Test {
     cudaFlags?: Record<string, unknown>;
     wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
+    webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
     globalEnvFlags?: EnvOptions;
   }
 

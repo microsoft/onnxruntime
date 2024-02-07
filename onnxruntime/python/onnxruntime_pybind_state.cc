@@ -49,15 +49,11 @@ namespace onnxruntime {
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
-#pragma warning(disable : 4267 4996 4503 4003)
+#pragma warning(disable : 4267 4996 4503)
 #endif  // _MSC_VER
 
 #include <iterator>
 #include <algorithm>
-
-#if defined(_MSC_VER)
-#pragma warning(disable : 4267 4996 4503 4003)
-#endif  // _MSC_VER
 
 namespace onnxruntime {
 namespace python {
@@ -447,9 +443,9 @@ void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOpti
     if (it != options.end()) {
       trt_extra_plugin_lib_paths = it->second;
     }
-    std::vector<OrtCustomOpDomain*> domain_list;
-    tensorrt_provider_info->GetTensorRTCustomOpDomainList(domain_list, trt_extra_plugin_lib_paths);
-    for (auto ptr : domain_list) {
+    std::vector<OrtCustomOpDomain*> custom_op_domains;
+    tensorrt_provider_info->GetTensorRTCustomOpDomainList(custom_op_domains, trt_extra_plugin_lib_paths);
+    for (auto ptr : custom_op_domains) {
       if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
         so.custom_op_domains_.push_back(ptr);
       } else {
@@ -479,7 +475,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
       // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
       // and TRT EP instance, so it won't be released.)
-      std::string calibration_table, cache_path, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
+      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -575,6 +571,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_engine_cache_path = cache_path.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a path string i.e. 'engine_cache'.\n");
+            }
+          } else if (option.first == "trt_engine_cache_prefix") {
+            if (!option.second.empty()) {
+              cache_prefix = option.second;
+              params.trt_engine_cache_prefix = cache_prefix.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_prefix' should be a string to customize engine cache prefix i.e. 'FRCNN' or 'yolov4'.\n");
             }
           } else if (option.first == "trt_engine_decryption_enable") {
             if (option.second == "True" || option.second == "true") {
@@ -716,6 +719,27 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_cuda_graph_enable = false;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_dump_ep_context_model") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_dump_ep_context_model = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_dump_ep_context_model = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_ep_context_model' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_ep_context_file_path") {
+            if (!option.second.empty()) {
+              ep_context_file_path = option.second;
+              params.trt_ep_context_file_path = ep_context_file_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_file_path' should be a string.\n");
+            }
+          } else if (option.first == "trt_ep_context_embed_mode") {
+            if (!option.second.empty()) {
+              params.trt_ep_context_embed_mode = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be a positive integer number i.e. '1'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
@@ -907,10 +931,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
-        } else if (option.first == "enable_dynamic_shapes") {
+        } else if (option.first == "disable_dynamic_shapes") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
+            ORT_THROW("Invalid value passed for disable_dynamic_shapes: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "device_id") {
@@ -958,7 +982,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
-#if USE_VITISAI
+#ifdef USE_VITISAI
     const auto it = provider_options_map.find(type);
     if (it == provider_options_map.end()) {
       LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
@@ -2059,15 +2083,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .export_values();
 }
 
-void CreateInferencePybindStateModule(py::module& m) {
+bool CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
-  // Initialization of the module
-  ([]() -> void {
-    // import_array1() forces a void return value.
-    import_array1();
-  })();
+  import_array1(false);
 
   auto env = GetEnv();
 
@@ -2087,13 +2107,13 @@ void CreateInferencePybindStateModule(py::module& m) {
   addGlobalSchemaFunctions(m);
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
+  return true;
 }
 
-void InitArray() {
-  ([]() -> void {
-    // import_array1() forces a void return value.
-    import_array1();
-  })();
+// This function is only used by orttraining module
+bool InitArray() {
+  import_array1(false);
+  return true;
 }
 
 namespace {
@@ -2136,8 +2156,6 @@ class EnvInitializer {
 
  private:
   EnvInitializer() {
-    // Initialization of the module
-    InitArray();
     std::unique_ptr<Environment> env_ptr;
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(

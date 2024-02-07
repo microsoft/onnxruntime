@@ -40,6 +40,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // Enable streams; default=1 unless ovverriden by user config
   EnableStreams();
 
+  // Set the inference_num_threads property of the CPU
+  SetNumThreads(device_config);
+
 #ifndef NDEBUG
   if (IsDebugEnabled()) {
     std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
@@ -67,8 +70,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #else
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
-      if (!subgraph_context_.has_dynamic_input_shape && dev_prec != "CPU_FP16") {
+      if (global_context_.disable_dynamic_shapes && dev_prec != "CPU_FP16") {
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.LoadNetwork(
             model, hw_target, device_config, subgraph_context_.subgraph_name);
@@ -79,12 +81,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
-#else
-      ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-      exe_network_ = global_context_.ie_core.LoadNetwork(
-          ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-#endif
 #endif
     } else {
       ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
@@ -96,16 +92,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     throw(msg);
   }
 
-  // The infer_requests_ pool will be intialized with a default value of 8 infer_request's
-  // The nireq value can also be configured to any num_of_threads during runtime
-  size_t nireq = global_context_.num_of_threads;
-  LOGS_DEFAULT(INFO) << log_tag << "The value of nireq being used is: " << nireq;
-#ifndef NDEBUG
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    std::cout << "The value of nireq being used is: " << nireq << std::endl;
-  }
-#endif
-  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, nireq));
+  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, 1));
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -132,13 +119,11 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     device_config.emplace(ov::enable_profiling(true));
   }
 #endif
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
   if (global_context_.device_type.find("NPU") != std::string::npos) {
     std::pair<std::string, ov::Any> device_property;
     device_property = std::make_pair("NPU_COMPILER_TYPE", "DRIVER");
     device_config.emplace(ov::device::properties("NPU", device_property));
   }
-#endif
 }
 
 void BasicBackend::EnableCaching() {
@@ -168,7 +153,24 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
 }
 
 void BasicBackend::EnableStreams() {
-  global_context_.ie_core.SetStreams(global_context_.device_type, global_context_.num_streams);
+  // Streams can be set only if the device is not one of AUTO, MULTI, or HETERO
+  // Throw an exception if the user tries to set num_streams for these devices
+  if ((global_context_.device_type.find("MULTI") != std::string::npos) ||
+      (global_context_.device_type.find("HETERO") != std::string::npos) ||
+      (global_context_.device_type.find("AUTO") != std::string::npos)) {
+    if (global_context_.num_streams != 1) {
+      throw(log_tag + "Cannot set NUM_STREAMS to " + std::to_string(global_context_.num_streams) + " for device " + global_context_.device_type);
+    }
+    // Do nothing
+  } else {
+    global_context_.ie_core.SetStreams(global_context_.device_type, global_context_.num_streams);
+  }
+}
+
+void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
+  // inference_num_threads is applicable only for the CPU device
+  if (global_context_.device_type.find("CPU") != std::string::npos)
+    device_config.emplace(ov::inference_num_threads(global_context_.num_of_threads));
 }
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
@@ -199,6 +201,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       }
       size_t batch_slice_idx = 0;
       if (subgraph_context_.has_dynamic_input_shape &&
+          !global_context_.disable_dynamic_shapes &&
           (global_context_.device_type.find("CPU") != std::string::npos ||
            global_context_.device_type.find("GPU") != std::string::npos)) {
         auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
@@ -451,8 +454,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 
 #ifdef IO_BUFFER_ENABLED
     if ((global_context_.device_type.find("GPU") != std::string::npos) &&
-        (global_context_.context != nullptr) &&
-        (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
+        (global_context_.context != nullptr) && global_context_.is_wholly_supported_graph) {
       try {
         StartRemoteAsyncInference(context, infer_request);
       } catch (std::string const& msg) {

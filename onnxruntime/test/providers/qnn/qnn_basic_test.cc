@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <string>
 #include <filesystem>
+#include <string>
+#include <thread>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -175,7 +176,10 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 // types and shapes.
 static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false,
                                std::string htp_graph_finalization_opt_mode = "",
-                               std::string qnn_context_priority = "") {
+                               std::string qnn_context_priority = "",
+                               std::string soc_model = "",
+                               std::string htp_arch = "",
+                               std::string device_id = "") {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -202,6 +206,18 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
 
   if (!qnn_context_priority.empty()) {
     options["qnn_context_priority"] = std::move(qnn_context_priority);
+  }
+
+  if (!soc_model.empty()) {
+    options["soc_model"] = std::move(soc_model);
+  }
+
+  if (!htp_arch.empty()) {
+    options["htp_arch"] = std::move(htp_arch);
+  }
+
+  if (!device_id.empty()) {
+    options["device_id"] = std::move(device_id);
   }
 
   so.AppendExecutionProvider("QNN", options);
@@ -287,7 +303,198 @@ TEST_F(QnnCPUBackendTests, QnnSaver_OutputFiles) {
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
 }
 
+struct ModelAndBuilder {
+  ModelAndBuilder(Graph& graph) : builder(graph) {}
+  std::string model_data;
+  ModelTestBuilder builder;
+};
+
+// Creates a model in memory. Input feeds and output names can be accessed from result.builder.
+static void CreateModelInMemory(std::unique_ptr<ModelAndBuilder>& result,
+                                const GetTestModelFn& model_build_fn,
+                                const std::string& model_name,
+                                int opset_version = 18) {
+  const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
+  auto& logging_manager = DefaultLoggingManager();
+
+  // Create float model and serialize it to a string.
+  onnxruntime::Model model(model_name, false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  result = std::make_unique<ModelAndBuilder>(model.MainGraph());
+  model_build_fn(result->builder);
+  result->builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  model.ToProto().SerializeToString(&result->model_data);
+}
+
+// Runs a session and verifies the outputs. Can be run by individual threads.
+static void RunSessionAndVerify(InferenceSession& session, const RunOptions& run_options, const NameMLValMap& feeds,
+                                const std::vector<std::string>& output_names,
+                                const std::vector<std::vector<int64_t>>& output_shapes,
+                                const std::vector<std::vector<float>>& expected_values) {
+  std::vector<OrtValue> fetches;
+  auto status = session.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+
+  for (size_t i = 0; i < fetches.size(); i++) {
+    auto& tensor = fetches[i].Get<Tensor>();
+    TensorShape expected_shape(output_shapes[i]);
+    ASSERT_EQ(expected_shape, tensor.Shape());
+
+    gsl::span<const float> actual = tensor.DataAsSpan<float>();
+    gsl::span<const float> expected(expected_values[i].data(), expected_values[i].size());
+    ASSERT_EQ(expected, actual);
+  }
+}
+
+// Returns a function that builds a float32 model that adds 3 tensors.
+static GetTestModelFn F32BuildAdd3Tensors(const TestInputDef<float>& input0_def,
+                                          const TestInputDef<float>& input1_def,
+                                          const TestInputDef<float>& input2_def) {
+  return [input0_def, input1_def, input2_def](ModelTestBuilder& builder) {
+    NodeArg* input0 = MakeTestInput<float>(builder, input0_def);
+    NodeArg* input1 = MakeTestInput<float>(builder, input1_def);
+    NodeArg* input2 = MakeTestInput<float>(builder, input1_def);
+
+    auto* add0_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input0, input1}, {add0_out});
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {add0_out, input2}, {output});
+  };
+}
+
+// Tests running a single session in multiple threads on the CPU backend.
+TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
+  std::unique_ptr<ModelAndBuilder> model;
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> shape = {1, 3, 2};
+  std::vector<std::vector<int64_t>> output_shapes = {shape};
+  std::vector<std::vector<float>> output_values = {{3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f}};
+
+  CreateModelInMemory(model,
+                      F32BuildAdd3Tensors(TestInputDef<float>(shape, false, input_data),
+                                          TestInputDef<float>(shape, false, input_data),
+                                          TestInputDef<float>(shape, false, input_data)),
+                      "add3.f32");
+
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  RunOptions run_opts;
+  run_opts.run_tag = session_opts.session_logid;
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnCpu.dll";
+#else
+  options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+
+  for (int i = 0; i < num_threads; i++) {
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values));
+  }
+
+  for (auto& th : threads) {
+    th.join();
+  }
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+// Returns a function that builds a QDQ model that adds 3 tensors. Forces all scales and zero-points to be (1.0f, 0),
+// so it is only accurate when using non-fractional positive inputs.
+template <typename QuantType>
+static GetTestModelFn QDQBuildAdd3Tensors(const TestInputDef<float>& input0_def,
+                                          const TestInputDef<float>& input1_def,
+                                          const TestInputDef<float>& input2_def) {
+  return [input0_def, input1_def, input2_def](ModelTestBuilder& builder) {
+    NodeArg* input0 = MakeTestInput<float>(builder, input0_def);
+    NodeArg* input0_after_qdq = AddQDQNodePair<QuantType>(builder, input0, 1.0f, 0);
+    NodeArg* input1 = MakeTestInput<float>(builder, input1_def);
+    NodeArg* input1_after_qdq = AddQDQNodePair<QuantType>(builder, input1, 1.0f, 0);
+    NodeArg* input2 = MakeTestInput<float>(builder, input1_def);
+    NodeArg* input2_after_qdq = AddQDQNodePair<QuantType>(builder, input2, 1.0f, 0);
+
+    auto* add0_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input0_after_qdq, input1_after_qdq}, {add0_out});
+
+    auto* add0_out_dq = AddQDQNodePair<QuantType>(builder, add0_out, 1.0f, 0);
+
+    auto* add1_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {add0_out_dq, input2_after_qdq}, {add1_out});
+
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, add1_out, 1.0f, 0);
+  };
+}
+
+// Tests running a single session in multiple threads on the HTP backend.
+TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
+  std::unique_ptr<ModelAndBuilder> model;
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> shape = {1, 3, 2};
+  std::vector<std::vector<int64_t>> output_shapes = {shape};
+  std::vector<std::vector<float>> output_values = {{3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f}};
+
+  CreateModelInMemory(model,
+                      QDQBuildAdd3Tensors<uint8_t>(TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data)),
+                      "add3.qdq");
+
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  RunOptions run_opts;
+  run_opts.run_tag = session_opts.session_logid;
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+
+  for (int i = 0; i < num_threads; i++) {
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values));
+  }
+
+  for (auto& th : threads) {
+    th.join();
+  }
+}
 
 // Test shape inference of QDQ NHWC Resize operator (opset 18) that uses
 // the sizes input. Use the QNN HTP backend.
@@ -327,6 +534,45 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
   }
 }
 
+// Test that models run with various SoC model values
+TEST_F(QnnHTPBackendTests, HTPSocModels) {
+  constexpr std::array<const char*, 3> soc_models = { "",   // No explicit SoC model specified
+                                                      "0",  // "Unknown"
+#if defined(_M_ARM64)
+                                                      "37" };  // SC8280X
+#elif defined(__linux__)
+                                                      "30" };  // SM8350
+#else
+                                                      "" };
+#endif
+
+  for (auto soc_model : soc_models) {
+    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                       true,   // use_htp
+                       false,  // enable_qnn_saver
+                       "",     // htp_graph_finalization_opt_mode
+                       "",     // qnn_context_priority
+                       soc_model);
+  }
+}
+
+// Test that models run with various HTP architecture values (and set device_id)
+TEST_F(QnnHTPBackendTests, HTPArchValues) {
+  constexpr std::array<const char*, 3> htp_archs = {"",     // No explicit arch specified
+                                                    "0",    // "None"
+                                                    "68"};  // v68
+  for (auto htp_arch : htp_archs) {
+    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                       true,      // use_htp
+                       false,     // enable_qnn_saver
+                       "",        // htp_graph_finalization_opt_mode
+                       "",        // qnn_context_priority
+                       "",        // soc_model
+                       htp_arch,  // htp_arch
+                       "0");      // device_id
+  }
+}
+
 // Test that models run with high QNN context priority.
 TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
@@ -334,6 +580,54 @@ TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
                      false,    // enable_qnn_saver
                      "",       // htp_graph_finalization_opt_mode
                      "high");  // qnn_context_priority
+}
+
+// Create a model with Case + Add (quantized)
+// cast_input -> Cast -> Q -> DQ \
+//                                Add -> Q -> DQ -> output
+//             input2 -> Q -> DQ /
+static GetTestModelFn BuildCastAddTestCase() {
+  return [](ModelTestBuilder& builder) {
+    // Creat Cast node int32 -> float32
+    NodeArg* cast_input = MakeTestInput(builder, TestInputDef<int32_t>({2, 3}, false, {0, 1, 0, 1, 0, 1}));
+
+    auto* cast_output = builder.MakeIntermediate();
+    Node& cast_node = builder.AddNode("Cast", {cast_input}, {cast_output});
+    cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+
+    // Create Add node
+    std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
+    gsl::span<float> data_range = gsl::make_span(data);
+    QuantParams<uint8_t> q_parameter = GetDataQuantParams<uint8_t>(data_range);
+    auto* add_input1_qdq = AddQDQNodePair<uint8_t>(builder, cast_output, q_parameter.scale, q_parameter.zero_point);
+
+    NodeArg* add_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, false, data));
+    auto* add_input2_qdq = AddQDQNodePair<uint8_t>(builder, add_input2, q_parameter.scale, q_parameter.zero_point);
+
+    auto* add_output = builder.MakeIntermediate();
+
+    builder.AddNode("Add", {add_input1_qdq, add_input2_qdq}, {add_output});
+
+    // add_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add_output, q_parameter.scale, q_parameter.zero_point);
+  };
+}
+
+// A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)
+// the value pair(1, 0.00392156886) at index #1 don't match,
+// which is -0.996078 from 1
+TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  RunQnnModelTest(BuildCastAddTestCase(),
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

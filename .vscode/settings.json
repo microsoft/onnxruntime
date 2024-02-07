@@ -11,8 +11,9 @@
         // Auto sort imports
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            "source.organizeImports": true
+            "source.organizeImports": "explicit"
         },
+        "editor.defaultFormatter": "ms-python.black-formatter"
     },
     // Enable Python linting and Pylance type checking
     "python.analysis.typeCheckingMode": "basic",

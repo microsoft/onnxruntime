@@ -47,6 +47,9 @@ set(contrib_ops_excluded_files
   "diffusion/group_norm.cc"
   "diffusion/group_norm_impl.cu"
   "diffusion/group_norm_impl.h"
+  "diffusion/group_norm_impl_kernel.cuh"
+  "diffusion/group_norm_common_base.h"
+  "diffusion/group_norm_common_base.cc"
   "diffusion/nhwc_conv.cc"
   "math/gemm_float8.cc"
   "math/gemm_float8.cu"
@@ -109,6 +112,8 @@ if (NOT onnxruntime_USE_NCCL)
   # Those are string patterns to exclude. Do NOT use stars such as
   # collective/*.cc or *.h.
   list(APPEND contrib_ops_excluded_files "collective/nccl_kernels.cc")
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.h")
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.cc")
   list(APPEND contrib_ops_excluded_files "collective/sharding.cc")
   list(APPEND contrib_ops_excluded_files "collective/sharding_spec.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_matmul.cc")

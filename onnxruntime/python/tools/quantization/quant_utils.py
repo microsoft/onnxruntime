@@ -124,23 +124,39 @@ ONNX_TYPE_TO_NP_TYPE = {
 }
 
 ONNX_INT_TYPE_RANGE = {
-    onnx_proto.TensorProto.UINT8: (0, 255),
-    onnx_proto.TensorProto.INT8: (-128, 127),
-    onnx_proto.TensorProto.UINT16: (0, 65535),
-    onnx_proto.TensorProto.INT16: (-32768, 32767),
+    onnx_proto.TensorProto.UINT8: (numpy.array(0, dtype=numpy.uint8), numpy.array(255, dtype=numpy.uint8)),
+    onnx_proto.TensorProto.INT8: (numpy.array(-128, dtype=numpy.int8), numpy.array(127, dtype=numpy.int8)),
+    onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(65535, dtype=numpy.uint16)),
+    onnx_proto.TensorProto.INT16: (numpy.array(-32768, dtype=numpy.int16), numpy.array(32767, dtype=numpy.int16)),
 }
 
 ONNX_INT_TYPE_SYMMETRIC_RANGE = {
-    onnx_proto.TensorProto.INT8: (-127, 127),
-    onnx_proto.TensorProto.INT16: (-32767, 32767),
+    onnx_proto.TensorProto.INT8: (numpy.array(-127, dtype=numpy.int8), numpy.array(127, dtype=numpy.int8)),
+    onnx_proto.TensorProto.INT16: (numpy.array(-32767, dtype=numpy.int16), numpy.array(32767, dtype=numpy.int16)),
 }
 
 ONNX_INT_TYPE_REDUCED_RANGE = {
-    onnx_proto.TensorProto.UINT8: (0, 127),
-    onnx_proto.TensorProto.INT8: (-64, 64),
-    onnx_proto.TensorProto.UINT16: (0, 32767),
-    onnx_proto.TensorProto.INT16: (-16384, 16384),
+    onnx_proto.TensorProto.UINT8: (numpy.array(0, dtype=numpy.uint8), numpy.array(127, dtype=numpy.uint8)),
+    onnx_proto.TensorProto.INT8: (numpy.array(-64, dtype=numpy.int8), numpy.array(64, dtype=numpy.int8)),
+    onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(32767, dtype=numpy.uint16)),
+    onnx_proto.TensorProto.INT16: (numpy.array(-16384, dtype=numpy.int16), numpy.array(16384, dtype=numpy.int16)),
 }
+
+
+def _check_type(*args, zero_point_index=-1):
+    new_args = []
+    for i, a in enumerate(args):
+        if numpy.issubdtype(type(a), numpy.number):
+            new_args.append(numpy.array(a))
+        elif isinstance(a, numpy.ndarray):
+            new_args.append(a)
+        else:
+            raise TypeError(f"arg {i} is not an array: {a}")
+        if i == zero_point_index:
+            v = new_args[-1]
+            if v.dtype == numpy.float32 or v.dtype == numpy.float16:
+                raise TypeError(f"zero_point cannot be {v.dtype}")
+    return tuple(new_args) if len(new_args) > 1 else new_args[0]
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
@@ -155,6 +171,12 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     ):
         if zero_point != 0:
             raise NotImplementedError(f"zero_point is expected to be null for float 8 not {zero_point!r}.")
+        if arr.dtype == numpy.float32:
+            onnx_type = TensorProto.FLOAT
+        elif arr.dtype == numpy.float16:
+            onnx_type = TensorProto.FLOAT16
+        else:
+            raise ValueError(f"Unexpected dtype {arr.dtype}.")
         onnx_model = make_model(
             make_graph(
                 [
@@ -165,14 +187,14 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
                 ],
                 "qu",
                 [
-                    make_tensor_value_info("X", TensorProto.FLOAT, None),
-                    make_tensor_value_info("scale", TensorProto.FLOAT, None),
+                    make_tensor_value_info("X", onnx_type, None),
+                    make_tensor_value_info("scale", onnx_type, None),
                 ],
                 [make_tensor_value_info("Y", qType, None)],
             )
         )
         ref = ReferenceEvaluator(onnx_model)
-        return ref.run(None, {"X": arr.astype(numpy.float32), "scale": scale.astype(numpy.float32)})[0]
+        return _check_type(ref.run(None, {"X": arr, "scale": scale})[0])
     else:
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
@@ -181,7 +203,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         cliphigh = min(qmax, high) if high is not None else qmax
         arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
         numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
-        return arr_fp32.astype(dtype)
+        return _check_type(arr_fp32.astype(dtype))
 
 
 def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=None):
@@ -210,24 +232,29 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     # Adjust rmin and rmax such that 0 is included in the range. This is
     # required to make sure zero can be represented by the quantization data
     # type (i.e. to make sure qmin <= zero_point <= qmax)
-    rmin = min(rmin, 0)
-    rmax = max(rmax, 0)
+    rmin = numpy.minimum(rmin, numpy.array(0, dtype=rmin.dtype))
+    rmax = numpy.maximum(rmax, numpy.array(0, dtype=rmax.dtype))
 
     # Ensure a minimum float-point range if specified.
     if min_real_range is not None:
         rmax = max(rmax, rmin + min_real_range)
 
     if symmetric:
-        absmax = max(abs(rmin), abs(rmax))
+        absmax = numpy.maximum(numpy.abs(rmin), numpy.abs(rmax))
         rmin = -absmax
         rmax = +absmax
 
-    scale = (rmax - rmin) / float(qmax - qmin)
-    if scale < numpy.finfo(numpy.float32).tiny:
-        scale = 1.0
-        zero_point = 0
+    assert qmin <= qmax, f"qmin={rmin} > qmax={rmax}"
+    dr = numpy.array(rmax - rmin, dtype=numpy.float64)
+    dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
+    scale = numpy.array(dr / dq)
+    assert scale >= 0, "scale isse"
+    if scale < numpy.finfo(rmax.dtype).tiny:
+        scale = numpy.array(1.0, dtype=rmax.dtype)
+        zero_point = numpy.array(0, dtype=qmin.dtype)
     else:
-        zero_point = round(qmin - rmin / scale)
+        zero_point = numpy.array(numpy.round(qmin - rmin / scale), dtype=qmin.dtype)
+        scale = scale.astype(rmax.dtype)
 
     return [zero_point, scale]
 
@@ -242,10 +269,13 @@ def compute_scale_zp_float8(element_type, std):
     More details in notebook `quantization_fp8.ipynb
     <https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/quantization_fp8.ipynb>`_.
     """
+    zp_dtype = None
     if element_type not in FLOAT8_DISTRIBUTIONS:
         if element_type == TensorProto.FLOAT8E4M3FN:
             from onnx.numpy_helper import float8e4m3_to_float32
+            from onnx.reference.custom_element_types import float8e4m3fn
 
+            zp_dtype = float8e4m3fn
             all_values = [float8e4m3_to_float32(i) for i in range(0, 256)]
             values = numpy.array(
                 [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
@@ -253,20 +283,30 @@ def compute_scale_zp_float8(element_type, std):
         else:
             raise ValueError(f"Quantization to element_type={element_type} not implemented.")
         FLOAT8_DISTRIBUTIONS[element_type] = values
+    elif element_type == TensorProto.FLOAT8E4M3FN:
+        from onnx.reference.custom_element_types import float8e4m3fn
 
+        zp_dtype = float8e4m3fn
+
+    if zp_dtype is None:
+        raise TypeError(f"Unexpected element_type {element_type}.")
     std_f8 = numpy.std(FLOAT8_DISTRIBUTIONS[element_type])
-    zero = 0
-    scale = std / std_f8
+    zero = numpy.array(0, dtype=zp_dtype)
+    scale = numpy.array(std / std_f8, dtype=std.dtype)
     return [zero, scale]
 
 
-def quantize_data(data, qType, symmetric, reduce_range=False, min_real_range=None):
+def quantize_data(
+    data, qType, symmetric, reduce_range=False, min_real_range=None, rmin_override=None, rmax_override=None
+):
     """
     :param data: data to quantize
     :param qType: data type to quantize to. Supported types UINT8 and INT8
     :param symmetric: whether symmetric quantization is used or not. This is applied to INT8.
     :parameter reduce_range: True if the quantization range should be reduced. Defaults to False.
     :parameter min_real_range: Minimum floating-point range (i.e., rmax - rmin) to enforce. Defaults to None.
+    :parameter rmin_override: The value of rmin to use if not None. Otherwise, uses min(data).
+    :parameter rmax_override: The value of rmax to use if not None. Otherwise, uses max(data).
     :return: minimum, maximum, zero point, scale, and quantized weights
 
     To pack weights, we compute a linear transformation
@@ -284,34 +324,43 @@ def quantize_data(data, qType, symmetric, reduce_range=False, min_real_range=Non
     - *S*: scale
     - *z*: zero point
     """
-    rmin = 0
-    rmax = 0
+    if not isinstance(data, numpy.ndarray):
+        raise TypeError(f"Weight must be given as an array not {type(data)}.")
+    if rmin_override is not None:
+        rmin = rmin_override
+    else:
+        rmin = data.min() if len(data) else 0.0
+
+    if rmax_override is not None:
+        rmax = rmax_override
+    else:
+        rmax = data.max() if len(data) else 0.0
+
+    rmin = numpy.array(rmin, dtype=data.dtype)
+    rmax = numpy.array(rmax, dtype=data.dtype)
     zero_point = 0
-    scale = 1.0
-    if len(data):
-        rmin = min(data)
-        rmax = max(data)
+    scale = numpy.array(1.0, dtype=data.dtype)
 
     if qType == TensorProto.FLOAT8E4M3FN:
         if reduce_range:
             raise RuntimeError("Unsupported option reduce_range=True for float 8.")
         std = numpy.std(data)
         zero_point, scale = compute_scale_zp_float8(qType, std)
-        quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+        quantized_data = quantize_nparray(qType, data, scale, zero_point)
         if any((quantized_data.astype(numpy.uint8).ravel() & 127) == 127):
             np_data = numpy.asarray(data)
             raise RuntimeError(
                 f"One of the quantized value is NaN data in [{np_data.min()}, {np_data.max()}], "
                 f"quantized_data in [{quantized_data.min()}, {quantized_data.max()}]."
             )
-        return rmin, rmax, zero_point, scale, quantized_data
+        return _check_type(rmin, rmax, zero_point, scale, quantized_data, zero_point_index=2)
 
     if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
-        quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
-        return rmin, rmax, zero_point, scale, quantized_data
+        quantized_data = quantize_nparray(qType, data, scale, zero_point)
+        return _check_type(rmin, rmax, zero_point, scale, quantized_data, zero_point_index=2)
 
     raise ValueError(f"Unexpected value for qType={qType}.")
 
@@ -336,6 +385,14 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
 
     if not qrange:
         raise ValueError(f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported.")
+
+    qmin, qmax = qrange
+    if qmin > 0 or qmax < 0:
+        raise ValueError(
+            f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while "
+            f"qmin:{qmin}, qmmax:{qmax}, dtype={qmin.dtype}, reduce_range={reduce_range}, "
+            f"symmetric={symmetric}, qType={qType}"
+        )
 
     return qrange
 
@@ -396,6 +453,7 @@ class QuantizedValue:
         axis=None,
         node_type=None,
         node_qtype=None,
+        scale_type=None,
     ):
         self.original_name = name
         self.q_name = new_quantized_name
@@ -405,6 +463,7 @@ class QuantizedValue:
         self.axis = axis
         self.node_type = node_type
         self.node_qtype = node_qtype
+        self.scale_type = scale_type
 
 
 class BiasToQuantize:
@@ -594,7 +653,7 @@ def smooth_distribution(p, eps=0.0001):
 
     if not n_nonzeros:
         # raise ValueError('The discrete probability distribution is malformed. All entries are 0.')
-        return -1
+        return None
     eps1 = eps * float(n_zeros) / float(n_nonzeros)
     assert eps1 < 1.0, "n_zeros=%d, n_nonzeros=%d, eps1=%f" % (
         n_zeros,
@@ -684,7 +743,7 @@ def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
 
 
 def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
-    if initializer.data_type == onnx_proto.TensorProto.FLOAT:
+    if initializer.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
         return onnx.numpy_helper.to_array(initializer)
 
     raise ValueError(

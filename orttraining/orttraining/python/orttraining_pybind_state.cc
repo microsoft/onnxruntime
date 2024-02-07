@@ -316,16 +316,18 @@ void addObjectMethodsForTraining(py::module& m) {
 
   m.def("register_forward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
+    size_t function_address = py::cast<size_t>(obj);
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterForwardRunner(obj.ptr());
+    pool.RegisterForwardRunner(function_address);
 #else
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_backward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
+    size_t function_address = py::cast<size_t>(obj);
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterBackwardRunner(obj.ptr());
+    pool.RegisterBackwardRunner(function_address);
 #else
         ORT_UNUSED_PARAMETER(obj);
 #endif
@@ -433,7 +435,20 @@ void addObjectMethodsForTraining(py::module& m) {
         if (!status.IsOK()) {
           throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
         }
-      });
+      })
+      .def("get_serialized_ortmodule_memory_stat",            // for memory optimization
+           [](TrainingAgent* agent,                           // agent
+              const std::string& memory_optimization_config,  // user config string
+              const std::string& recompute_probe_level        // user config string for probe level
+              ) -> std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>> {
+             std::map<std::string, std::pair<std::string, int>> cluster_id_combinations_to_saved_symbolic_byte_map;
+             std::string opportunity_table =
+                 agent->GetSerializedORTModuleMemoryStat(memory_optimization_config,
+                                                         recompute_probe_level,
+                                                         cluster_id_combinations_to_saved_symbolic_byte_map);
+             return std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>>(
+                 opportunity_table, cluster_id_combinations_to_saved_symbolic_byte_map);
+           });
 
   py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local(), py::arithmetic{})
       .value("NONE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None)
@@ -787,6 +802,9 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("copy_parameter_from",
            [](onnxruntime::training::api::CheckpointState* state,
               const std::string& parameter_name, OrtValue& value) -> void {
+             if (state->module_checkpoint_state.is_nominal_state) {
+               ORT_THROW("Cannot copy parameter to a nominal state. Please load all the parameter states first");
+             }
              auto it = state->module_checkpoint_state.named_parameters.find(parameter_name);
              if (it == state->module_checkpoint_state.named_parameters.end()) {
                ORT_THROW("Parameter with name ", parameter_name, " does not exist.");
@@ -796,6 +814,9 @@ void addObjectMethodsForTraining(py::module& m) {
            })
       .def("get_parameter",
            [](onnxruntime::training::api::CheckpointState* state, const std::string& parameter_name) {
+             if (state->module_checkpoint_state.is_nominal_state) {
+               ORT_THROW("Cannot get parameter from a nominal state. Please load the parameter states first");
+             }
              auto it = state->module_checkpoint_state.named_parameters.find(parameter_name);
              if (it == state->module_checkpoint_state.named_parameters.end()) {
                ORT_THROW("Parameter with name ", parameter_name, " does not exist.");
@@ -836,6 +857,9 @@ void addObjectMethodsForTraining(py::module& m) {
         return std::make_unique<PyOptimizer>(optimizer_model_uri, state, providers, session_options);
       }))
       .def("optimizer_step", [](PyOptimizer* optimizer) -> void {
+        // In case the optimizer was constructed using a nominal checkpoint,
+        // the optimizer state construction is delayed until the first call to Optimizer::Step().
+        // It is expected that the model parameter state is available at this point.
         ORT_THROW_IF_ERROR(optimizer->optimizer_->Step());
       })
       .def("set_learning_rate", [](PyOptimizer* optimizer, float lr) -> void {
@@ -878,7 +902,7 @@ void addObjectMethodsForTraining(py::module& m) {
       "save_checkpoint",
       [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
          const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
-         const std::string& checkpoint_path) {
+         const std::string& checkpoint_path, const bool nominal_checkpoint) {
         std::vector<TensorProto> trainable_tensor_protos(trainable_tensor_protos_pybytes.size());
         std::vector<TensorProto> non_trainable_tensor_protos(non_trainable_tensor_protos_pybytes.size());
 
@@ -899,7 +923,8 @@ void addObjectMethodsForTraining(py::module& m) {
 
         ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
                                                                       non_trainable_tensor_protos,
-                                                                      ToPathString(checkpoint_path)));
+                                                                      ToPathString(checkpoint_path),
+                                                                      nominal_checkpoint));
       });
 
   m.def("save_checkpoint",

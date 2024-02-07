@@ -189,7 +189,6 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_SNPE}
   ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
-  ${PROVIDERS_VITISAI}
   ${PROVIDERS_XNNPACK}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
@@ -282,11 +281,7 @@ endif()
 
 # Assemble the Apple static framework (iOS and macOS)
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
-  if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
-  else() # macOS
-    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
-  endif()
+  set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
 
   # Setup the various directories required. Remove any existing ones so we start with a clean directory.
   set(STATIC_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/static_libraries)

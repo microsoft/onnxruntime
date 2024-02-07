@@ -17,7 +17,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "_common"))
 # -- Project information -----------------------------------------------------
 
 project = "Python API"
-copyright = "2018-2023, Microsoft"
+copyright = "2018-2024, Microsoft"
 author = "Microsoft"
 
 # -- General configuration ---------------------------------------------------

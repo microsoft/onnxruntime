@@ -582,6 +582,17 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
     onnx_function_proto = *func_template_->onnx_func_proto_;
     return true;
   } else if (op_) {
+    auto get_opset_version = [op = op_](Graph* graph) -> std::optional<int> {
+      if (op->domain() == kOnnxDomain) {
+        const auto& domain_to_version = graph->DomainToVersionMap();
+        const auto iter = domain_to_version.find(kOnnxDomain);
+        if (iter != domain_to_version.cend()) {
+          return iter->second;
+        }
+      }
+      return {};
+    };
+
     // Check if this node has a schema defined function proto.
     if (op_->HasContextDependentFunction()) {
       NodeProto node_proto;
@@ -595,8 +606,13 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
         } else
           input_types.emplace_back();
       }
+
+      auto requested_opset_version = get_opset_version(graph_);
+      if (!requested_opset_version.has_value()) {
+        requested_opset_version = SinceVersion();
+      }
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
-      return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+      return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto, *requested_opset_version);
     } else if (op_->HasFunction()) {
       const FunctionProto* function_ptr = nullptr;
       // We need to get a function-body suitable for the ONNX opset used by the model.
@@ -605,17 +621,12 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       // as the default-version, which is incorrect in the case of functions belonging to
       // non-onnx domains, like MSDOMAIN.
 
-      // We use the following as a temporary hack.
-      function_ptr = op_->GetFunction(SinceVersion(), false);
-
-      // TODO: Switch to following, once ONNX issue is fixed.
-      // auto& map = graph_->DomainToVersionMap();
-      // const auto iter = map.find(kOnnxDomain);
-      // if (iter != map.end()) {
-      //   function_ptr = op_->GetFunction(iter->second, true);
-      // } else {
-      //   function_ptr = op_->GetFunction();
-      // }
+      auto requested_opset_version = get_opset_version(graph_);
+      if (requested_opset_version.has_value()) {
+        function_ptr = op_->GetFunction(*requested_opset_version, true);
+      } else {
+        function_ptr = op_->GetFunction(SinceVersion(), false);
+      }
 
       if (function_ptr != nullptr) {
         onnx_function_proto = *function_ptr;
@@ -2356,8 +2367,14 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       inferred_type = existing_type;
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
+      std::stringstream ss;
+      ss << "index=" << operand_index;
+      for (auto it = op_formal_parameter.GetTypes().begin(); it != op_formal_parameter.GetTypes().end(); ++it) {
+        ss << "," << *(*it);
+      }
       Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
-                    "Node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
+                    "Node (" + node_name + ") Op (" + node.OpType() + ") output arg (" +
+                        output_def->Name() + ") type inference failed, inferred types: " + ss.str());
       return status;
     }
 
@@ -2539,14 +2556,14 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     // Node verification.
     auto& node = *GetNode(node_index);
 
-    NodeProto node_proto;
-    node.ToProto(node_proto);
     const auto& node_name = node.Name();
 
     if (!node.Op()) {
       {
         auto status = Status::OK();
         ORT_TRY {
+          NodeProto node_proto;
+          node.ToProto(node_proto);
           checker::check_node(node_proto, ctx, lsc);
         }
         ORT_CATCH(const std::exception& ex) {
@@ -2619,8 +2636,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op, options)));
 
     // Accumulate output names of the iterated Node
-    for (auto& output_name : node_proto.output()) {
-      lsc.output_names.insert(output_name);
+    for (const auto& output : node.OutputDefs()) {
+      lsc.output_names.insert(output->Name());
     }
   }
 
@@ -2781,11 +2798,12 @@ Status Graph::Resolve(const ResolveOptions& options) {
                 graph.GraphProtoSyncNeeded(false);
             }
 
+            // set num_resolves_ here so the graph and any subgraphs all have the same value
+            ++graph.num_resolves_;
+
             return Status::OK(); };
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
-
-  ++num_resolves_;
 
   return Status::OK();
 }

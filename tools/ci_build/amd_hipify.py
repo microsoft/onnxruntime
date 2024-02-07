@@ -35,6 +35,9 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("HIPBLAS_OP_T", "rocblas_operation_transpose")
     s = s.replace("HIPBLAS_OP_N", "rocblas_operation_none")
 
+    # in rocm 6.0, hipify-perl, the -roc option also maps __half -> rocblas_half which we don't want
+    s = s.replace("rocblas_half", "__half")
+
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")
     s = s.replace("CreateCudaAllocator", "CreateRocmAllocator")
@@ -114,7 +117,6 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("HIPBLAS_R_16F", "rocblas_datatype_f16_r")
     s = s.replace("HIPBLAS_R_32F", "rocblas_datatype_f32_r")
     s = s.replace("ROCBLAS_GEMM_DEFAULT_TENSOR_OP", "rocblas_gemm_algo_standard")
-    s = s.replace("ROCBLAS_TENSOR_OP_MATH", "0 /* CUBLAS_TENSOR_OP_MATH is deprecated */")
 
     # compatible layer
     s = s.replace("rocblas_gemm_strided_batched_ex", "_compat_rocblas_gemm_strided_batched_ex")

@@ -74,6 +74,8 @@ jobs:
     clean: true
     submodules: none
 
+  - template: "templates/use-android-ndk.yml"
+
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
@@ -139,7 +141,7 @@ jobs:
               --config Debug \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --skip_tests \
               --minimal_build \
               --disable_exceptions \
@@ -220,7 +222,7 @@ jobs:
               --build_dir /build/5 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
-              --build_shared_lib \
+              --build_shared_lib --use_binskim_compliant_compile_flags \
               --parallel \
               --minimal_build extended
       workingDirectory: $(Build.SourcesDirectory)
@@ -244,7 +246,7 @@ jobs:
               --skip_submodule_sync \
               --build_shared_lib \
               --build_wheel \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --skip_tests \
               --disable_ml_ops \
               --disable_types sparsetensor float8 optional \
@@ -270,7 +272,7 @@ jobs:
               --config MinSizeRel \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --minimal_build \
               --disable_exceptions \
               --disable_ml_ops \
@@ -298,7 +300,7 @@ jobs:
               --cmake_generator Ninja \
               --config MinSizeRel \
               --skip_submodule_sync \
-              --build_shared_lib \
+              --build_shared_lib --use_binskim_compliant_compile_flags \
               --parallel \
               --minimal_build extended \
               --disable_exceptions \
@@ -328,7 +330,7 @@ jobs:
               --cmake_generator Ninja \
               --config MinSizeRel \
               --skip_submodule_sync \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --android \
               --android_sdk_path /android_home \
               --android_ndk_path /ndk_home \

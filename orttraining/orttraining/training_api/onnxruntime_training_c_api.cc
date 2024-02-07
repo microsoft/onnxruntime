@@ -568,9 +568,16 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetParameterTypeAndShape, _In_ const OrtChe
   API_IMPL_BEGIN
 
   auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  if (chkpt_state->module_checkpoint_state.is_nominal_state) {
+    const std::string err_msg =
+        "Parameter type and shape cannot be retrieved from nominal checkpoint state. "
+        "Please load the parameter states first.";
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
+  }
+
   auto it = chkpt_state->module_checkpoint_state.named_parameters.find(parameter_name);
   if (it == chkpt_state->module_checkpoint_state.named_parameters.end()) {
-    std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
+    const std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
   }
 
@@ -586,9 +593,15 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::UpdateParameter, _Inout_ OrtCheckpointState
   }
 
   auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  if (chkpt_state->module_checkpoint_state.is_nominal_state) {
+    const std::string err_msg =
+        "Parameter cannot be updated for nominal checkpoint state. Please load all the parameter states first.";
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
+  }
+
   auto it = chkpt_state->module_checkpoint_state.named_parameters.find(parameter_name);
   if (it == chkpt_state->module_checkpoint_state.named_parameters.end()) {
-    std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
+    const std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
   }
   ORT_API_RETURN_IF_STATUS_NOT_OK(it->second->CopyFrom(
@@ -608,9 +621,15 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetParameter, _In_ const OrtCheckpointState
   }
 
   auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  if (chkpt_state->module_checkpoint_state.is_nominal_state) {
+    const std::string err_msg =
+        "Parameter cannot be retrieved from nominal checkpoint state. Please load the parameter states first.";
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
+  }
+
   auto it = chkpt_state->module_checkpoint_state.named_parameters.find(parameter_name);
   if (it == chkpt_state->module_checkpoint_state.named_parameters.end()) {
-    std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
+    const std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
   }
 

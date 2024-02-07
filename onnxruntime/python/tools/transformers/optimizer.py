@@ -34,6 +34,7 @@ from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_clip import ClipOnnxModel
 from onnx_model_conformer import ConformerOnnxModel
 from onnx_model_gpt2 import Gpt2OnnxModel
+from onnx_model_phi import PhiOnnxModel
 from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
@@ -58,6 +59,7 @@ MODEL_TYPES = {
     "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
     "conformer": (ConformerOnnxModel, "pytorch", 1),
+    "phi": (PhiOnnxModel, "pytorch", 0),
 }
 
 
@@ -209,6 +211,10 @@ def optimize_by_fusion(
     if model_type not in ["bert", "swin", "unet", "vae", "clip"] and (num_heads == 0 or hidden_size == 0):
         logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
 
+    if model_type not in MODEL_TYPES:
+        logger.warning(f"Unsupported model type: {model_type} for graph fusion, directly return model.")
+        return OnnxModel(model)
+
     (optimizer_class, producer, _) = MODEL_TYPES[model_type]
 
     if model.producer_name and producer != model.producer_name:
@@ -289,6 +295,10 @@ def optimize_model(
         object of an optimizer class.
     """
     assert opt_level is None or opt_level in [0, 1, 2, 99]
+
+    if model_type not in MODEL_TYPES:
+        logger.warning(f"Unsupported model type: {model_type} for optimization, directly return model.")
+        return OnnxModel(load_model(input))
 
     (optimizer_class, _producer, default_opt_level) = MODEL_TYPES[model_type]
 

@@ -22,98 +22,20 @@
 
 import coloredlogs
 from cuda import cudart
-from demo_utils import get_metadata, init_pipeline, parse_arguments, repeat_prompt
-from diffusion_models import PipelineInfo
-from engine_builder import EngineType, get_engine_type
-from pipeline_img2img_xl import Img2ImgXLPipeline
-from pipeline_txt2img_xl import Txt2ImgXLPipeline
+from demo_utils import (
+    add_controlnet_arguments,
+    arg_parser,
+    get_metadata,
+    load_pipelines,
+    parse_arguments,
+    process_controlnet_arguments,
+    repeat_prompt,
+)
 
 
-def load_pipelines(args, batch_size):
-    # Register TensorRT plugins
-    engine_type = get_engine_type(args.engine)
-    if engine_type == EngineType.TRT:
-        from trt_utilities import init_trt_plugins
-
-        init_trt_plugins()
-
-    max_batch_size = 16
-    if (engine_type in [EngineType.ORT_TRT, EngineType.TRT]) and (
-        args.build_dynamic_shape or args.height > 512 or args.width > 512
-    ):
-        max_batch_size = 4
-
-    if batch_size > max_batch_size:
-        raise ValueError(f"Batch size {batch_size} is larger than allowed {max_batch_size}.")
-
-    # For TensorRT,  performance of engine built with dynamic shape is very sensitive to the range of image size.
-    # Here, we reduce the range of image size for TensorRT to trade-off flexibility and performance.
-    # This range can cover most frequent shape of landscape (832x1216), portrait (1216x832) or square (1024x1024).
-    min_image_size = 832 if args.engine != "ORT_CUDA" else 512
-    max_image_size = 1216 if args.engine != "ORT_CUDA" else 2048
-
-    # No VAE decoder in base when it outputs latent instead of image.
-    base_info = PipelineInfo(
-        args.version,
-        use_vae=args.disable_refiner,
-        min_image_size=min_image_size,
-        max_image_size=max_image_size,
-        use_lcm=args.lcm,
-    )
-
-    # Ideally, the optimized batch size and image size for TRT engine shall align with user's preference. That is to
-    # optimize the shape used most frequently. We can let user config it when we develop a UI plugin.
-    # In this demo, we optimize batch size 1 and image size 1024x1024 for SD XL dynamic engine.
-    # This is mainly for benchmark purpose to simulate the case that we have no knowledge of user's preference.
-    opt_batch_size = 1 if args.build_dynamic_batch else batch_size
-    opt_image_height = base_info.default_image_size() if args.build_dynamic_shape else args.height
-    opt_image_width = base_info.default_image_size() if args.build_dynamic_shape else args.width
-
-    base = init_pipeline(
-        Txt2ImgXLPipeline,
-        base_info,
-        engine_type,
-        args,
-        max_batch_size,
-        opt_batch_size,
-        opt_image_height,
-        opt_image_width,
-    )
-
-    refiner = None
-    if not args.disable_refiner:
-        refiner_info = PipelineInfo(
-            args.version, is_refiner=True, min_image_size=min_image_size, max_image_size=max_image_size
-        )
-        refiner = init_pipeline(
-            Img2ImgXLPipeline,
-            refiner_info,
-            engine_type,
-            args,
-            max_batch_size,
-            opt_batch_size,
-            opt_image_height,
-            opt_image_width,
-        )
-
-    if engine_type == EngineType.TRT:
-        max_device_memory = max(base.backend.max_device_memory(), (refiner or base).backend.max_device_memory())
-        _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
-        base.backend.activate_engines(shared_device_memory)
-        if refiner:
-            refiner.backend.activate_engines(shared_device_memory)
-
-    if engine_type == EngineType.ORT_CUDA:
-        enable_vae_slicing = args.enable_vae_slicing
-        if batch_size > 4 and not enable_vae_slicing:
-            print("Updating enable_vae_slicing to be True to avoid cuDNN error for batch size > 4.")
-            enable_vae_slicing = True
-        if enable_vae_slicing:
-            (refiner or base).backend.enable_vae_slicing()
-    return base, refiner
-
-
-def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False):
+def run_pipelines(
+    args, base, refiner, prompt, negative_prompt, controlnet_image=None, controlnet_scale=None, is_warm_up=False
+):
     image_height = args.height
     image_width = args.width
     batch_size = len(prompt)
@@ -127,11 +49,13 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
             negative_prompt,
             image_height,
             image_width,
-            warmup=warmup,
             denoising_steps=args.denoising_steps,
             guidance=args.guidance,
             seed=args.seed,
-            return_type="latent" if refiner else "image",
+            controlnet_images=controlnet_image,
+            controlnet_scales=controlnet_scale,
+            show_latency=not warmup,
+            output_type="latent" if refiner else "pil",
         )
         if refiner is None:
             return images, base_perf
@@ -142,14 +66,14 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
         images, refiner_perf = refiner.run(
             prompt,
             negative_prompt,
-            images,
             image_height,
             image_width,
-            warmup=warmup,
-            denoising_steps=args.refiner_steps,
+            denoising_steps=args.refiner_denoising_steps,
+            image=images,
             strength=args.strength,
             guidance=args.refiner_guidance,
             seed=seed,
+            show_latency=not warmup,
         )
 
         perf_data = None
@@ -180,9 +104,9 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
         cudart.cudaProfilerStop()
 
     if refiner:
-        print("|------------|--------------|")
-        print("| {:^10} | {:>9.2f} ms |".format("e2e", perf_data["latency"]))
-        print("|------------|--------------|")
+        print("|----------------|--------------|")
+        print("| {:^14} | {:>9.2f} ms |".format("e2e", perf_data["latency"]))
+        print("|----------------|--------------|")
 
     metadata = get_metadata(args, True)
     metadata.update({"base." + key: val for key, val in base.metadata().items()})
@@ -197,11 +121,11 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
 
 def run_demo(args):
     """Run Stable Diffusion XL Base + Refiner together (known as ensemble of expert denoisers) to generate an image."""
-
+    controlnet_image, controlnet_scale = process_controlnet_arguments(args)
     prompt, negative_prompt = repeat_prompt(args)
     batch_size = len(prompt)
     base, refiner = load_pipelines(args, batch_size)
-    run_pipelines(args, base, refiner, prompt, negative_prompt)
+    run_pipelines(args, base, refiner, prompt, negative_prompt, controlnet_image, controlnet_scale)
     base.teardown()
     if refiner:
         refiner.teardown()
@@ -211,8 +135,6 @@ def run_dynamic_shape_demo(args):
     """Run demo of generating images with different settings with ORT CUDA provider."""
     args.engine = "ORT_CUDA"
     args.disable_cuda_graph = True
-    if args.lcm:
-        args.disable_refiner = True
     base, refiner = load_pipelines(args, 1)
 
     prompts = [
@@ -226,12 +148,12 @@ def run_dynamic_shape_demo(args):
         "close-up photography of old man standing in the rain at night, in a street lit by lamps, leica 35mm",
     ]
 
-    # refiner, batch size, height, width, scheduler, steps, prompt, seed, guidance, refiner scheduler, refiner steps, refiner strength
+    # batch size, height, width, scheduler, steps, prompt, seed, guidance, refiner scheduler, refiner steps, refiner strength
     configs = [
         (1, 832, 1216, "UniPC", 8, prompts[0], None, 5.0, "UniPC", 10, 0.3),
         (1, 1024, 1024, "DDIM", 24, prompts[1], None, 5.0, "DDIM", 30, 0.3),
-        (1, 1216, 832, "UniPC", 16, prompts[2], None, 5.0, "UniPC", 10, 0.3),
-        (1, 1344, 768, "DDIM", 24, prompts[3], None, 5.0, "UniPC", 20, 0.3),
+        (1, 1216, 832, "EulerA", 16, prompts[2], 1716921396712843, 5.0, "EulerA", 10, 0.3),
+        (1, 1344, 768, "EulerA", 24, prompts[3], 123698071912362, 5.0, "EulerA", 20, 0.3),
         (2, 640, 1536, "UniPC", 16, prompts[4], 4312973633252712, 5.0, "UniPC", 10, 0.3),
         (2, 1152, 896, "DDIM", 24, prompts[5], 1964684802882906, 5.0, "UniPC", 20, 0.3),
     ]
@@ -266,7 +188,7 @@ def run_dynamic_shape_demo(args):
         seed,
         guidance,
         refiner_scheduler,
-        refiner_steps,
+        refiner_denoising_steps,
         strength,
     ) in configs:
         args.prompt = [example_prompt]
@@ -278,7 +200,7 @@ def run_dynamic_shape_demo(args):
         args.seed = seed
         args.guidance = guidance
         args.refiner_scheduler = refiner_scheduler
-        args.refiner_steps = refiner_steps
+        args.refiner_denoising_steps = refiner_denoising_steps
         args.strength = strength
         base.set_scheduler(scheduler)
         if refiner:
@@ -291,12 +213,44 @@ def run_dynamic_shape_demo(args):
         refiner.teardown()
 
 
+def run_turbo_demo(args):
+    """Run demo of generating images with test prompts with ORT CUDA provider."""
+    args.engine = "ORT_CUDA"
+    args.disable_cuda_graph = True
+    base, refiner = load_pipelines(args, 1)
+
+    from datasets import load_dataset
+
+    dataset = load_dataset("Gustavosta/Stable-Diffusion-Prompts")
+    num_rows = dataset["test"].num_rows
+    batch_size = args.batch_size
+    num_batch = int(num_rows / batch_size)
+    args.batch_size = 1
+    for i in range(num_batch):
+        args.prompt = [dataset["test"][i]["Prompt"] for i in range(i * batch_size, (i + 1) * batch_size)]
+        base.set_scheduler(args.scheduler)
+        if refiner:
+            refiner.set_scheduler(args.refiner_scheduler)
+        prompt, negative_prompt = repeat_prompt(args)
+        run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False)
+
+    base.teardown()
+    if refiner:
+        refiner.teardown()
+
+
 if __name__ == "__main__":
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
 
-    args = parse_arguments(is_xl=True, description="Options for Stable Diffusion XL Demo")
+    parser = arg_parser("Options for Stable Diffusion XL Demo")
+    add_controlnet_arguments(parser)
+    args = parse_arguments(is_xl=True, parser=parser)
+
     no_prompt = isinstance(args.prompt, list) and len(args.prompt) == 1 and not args.prompt[0]
     if no_prompt:
-        run_dynamic_shape_demo(args)
+        if args.version == "xl-turbo":
+            run_turbo_demo(args)
+        else:
+            run_dynamic_shape_demo(args)
     else:
         run_demo(args)

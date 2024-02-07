@@ -197,6 +197,7 @@ class SymbolicShapeInference:
             "BiasGelu": self._infer_BiasGelu,
             "BiasSplitGelu": self._infer_BiasSplitGelu,
             "DecoderMaskedMultiHeadAttention": self._infer_DecoderMaskedMultiHeadAttention,
+            "DequantizeLinear": self._infer_DequantizeLinear,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "GatedRelativePositionBias": self._infer_GatedRelativePositionBias,
@@ -204,6 +205,7 @@ class SymbolicShapeInference:
             "GemmFastGelu": self._infer_GemmFastGelu,
             "GemmFloat8": self._infer_GemmFloat8,
             "GroupNorm": self._infer_GroupNorm,
+            "GroupQueryAttention": self._infer_GroupQueryAttention,
             "SkipGroupNorm": self._infer_SkipGroupNorm,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
@@ -212,6 +214,7 @@ class SymbolicShapeInference:
             "PackedAttention": self._infer_PackedAttention,
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
             "PythonOp": self._infer_PythonOp,
+            "QuantizeLinear": self._infer_QuantizeLinear,
             "QuickGelu": self._infer_FastGelu,
             "RelativePositionBias": self._infer_RelativePositionBias,
             "RemovePadding": self._infer_RemovePadding,
@@ -238,6 +241,7 @@ class SymbolicShapeInference:
             "upsample_nearest1d": self._infer_aten_upsample,
             "upsample_nearest2d": self._infer_aten_upsample,
             "upsample_nearest3d": self._infer_aten_upsample,
+            "upsample_bicubic2d": self._infer_aten_upsample,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -457,6 +461,8 @@ class SymbolicShapeInference:
             "GemmFastGelu",
             "LayerNormalization",
             "LongformerAttention",
+            "DequantizeLinear",
+            "QuantizeLinear",
             "RelativePositionBias",
             "RemovePadding",
             "RestorePadding",
@@ -467,6 +473,8 @@ class SymbolicShapeInference:
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
+            "GroupQueryAttention",
+            "SkipGroupNorm",
             "BiasSplitGelu",
             "BiasAdd",
             "NhwcConv",
@@ -977,6 +985,29 @@ class SymbolicShapeInference:
                 get_shape_from_sympy_shape(sympy_shape),
             )
         )
+
+    def _infer_DequantizeLinear(self, node):  # noqa: N802
+        # Get the output data type from the scale input (index 1, required).
+        output_dtype = self.known_vi_[node.input[1]].type.tensor_type.elem_type
+
+        # Get the output shape from the first input.
+        output_shape = self._get_shape(node, 0)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+    def _infer_QuantizeLinear(self, node):  # noqa: N802
+        # Get the output data type from the zero-point input (index 2, optional).
+        # Otherwise, default to uint8
+        output_dtype = onnx.TensorProto.UINT8
+        if len(node.input) > 2 and node.input[2]:
+            output_dtype = self.known_vi_[node.input[2]].type.tensor_type.elem_type
+
+        # Get the output shape from the first input.
+        output_shape = self._get_shape(node, 0)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_Einsum(self, node):  # noqa: N802
         # ref:https://github.com/onnx/onnx/blob/623dfaa0151b2e4ce49779c3ec31cbd78c592b80/onnx/defs/math/defs.cc#L3275
@@ -2381,6 +2412,32 @@ class SymbolicShapeInference:
     def _infer_GroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 
+    def _infer_GroupQueryAttention(self, node):  # noqa: N802
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        past_shape = self._try_get_shape(node, 3)
+        if past_shape is not None:
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+            vi = self.known_vi_[node.output[2]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+        if node.input[1] != "" and node.input[2] != "":
+            self._propagate_shape_and_type(node, 0, 0)
+        else:
+            # combined qkv: (batch_size, sequence_length, num_heads * head_size + 2 * kv_num_heads * head_size)
+            assert node.input[1] == "" and node.input[2] == ""
+            num_heads = get_attribute(node, "num_heads")
+            kv_num_heads = get_attribute(node, "kv_num_heads")
+            query_shape = self._get_shape(node, 0)
+            if query_shape is not None:
+                hidden_size = query_shape[2]
+                if isinstance(hidden_size, int):
+                    head_size = int(hidden_size / (num_heads + 2 * kv_num_heads))
+                    query_shape[2] = num_heads * head_size
+                    vi = self.known_vi_[node.output[0]]
+                    vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
+
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)
         if len(node.output) > 1:
@@ -2414,9 +2471,9 @@ class SymbolicShapeInference:
 
     def _infer_PythonOp(self, node):  # noqa: N802
         output_tensor_types = get_attribute(node, "output_tensor_types")
-        assert output_tensor_types
+        assert output_tensor_types, f"PythonOp '{node.name}' has no output_tensor_types attribute."
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
-        assert output_tensor_ranks
+        assert output_tensor_ranks, f"PythonOp '{node.name}' has no output_tensor_ranks attribute."
 
         from onnxruntime.capi._pybind_state import get_shape_inference_function
 
@@ -2437,7 +2494,10 @@ class SymbolicShapeInference:
                 input_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
                 input_dtypes.append(input_dtype)
             output_shapes, output_dtypes = shape_inferer(node, input_shapes, input_dtypes)
-            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1)
+            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1), (
+                f"PythonOp '{func_name}' returned {len(output_shapes)} shapes and {len(output_dtypes)} dtypes, "
+                f"but expected {len(node.output) - 1} outputs."
+            )
             for i in range(len(node.output) - 1):
                 output_index = i + 1
                 vi = self.known_vi_[node.output[output_index]]

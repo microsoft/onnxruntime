@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {tensorDataTypeEnumToString} from '../../wasm-common';
+import {TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
+
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
-import {TensorView} from '../tensor-view';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
@@ -32,13 +32,12 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputTensorViews: readonly TensorView[], outputTensorViews: readonly TensorView[],
-      inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
+  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
       uniformBufferBinding: GPUBindingResource|undefined): void {
+    TRACE_FUNC_BEGIN(buildArtifact.programInfo.name);
     const device = this.backend.device;
-
     const computePassEncoder = this.backend.getComputePassEncoder();
-    computePassEncoder.setPipeline(buildArtifact.computePipeline);
+    this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2);
     const entries = [];
     for (const input of inputs) {
       entries.push({binding: entries.length, resource: {buffer: input.buffer}});
@@ -51,73 +50,38 @@ export class ProgramManager {
     }
     const bindGroup = device.createBindGroup(
         {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
+
+    if (this.backend.sessionStatus === 'capturing') {
+      const commandInfo = {
+        kernelId: this.backend.currentKernelId!,
+        computePipeline: buildArtifact.computePipeline,
+        bindGroup,
+        dispatchGroup
+      };
+      const sessionCommandList = this.backend.capturedCommandList.get(this.backend.currentSessionId!);
+      sessionCommandList!.push(commandInfo);
+    }
+
+    computePassEncoder.setPipeline(buildArtifact.computePipeline);
     computePassEncoder.setBindGroup(0, bindGroup);
-
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
-
+    this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2 + 1);
     this.backend.pendingDispatchNumber++;
 
-    if (this.backend.isQueryEnabled()) {
-      if (typeof this.backend.queryData === 'undefined') {
-        this.backend.queryData = this.backend.gpuDataManager.create(
-            // eslint-disable-next-line no-bitwise
-            this.backend.querySetCount * 8, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
-      }
-      const syncData = this.backend.gpuDataManager.create(
-          // eslint-disable-next-line no-bitwise
-          this.backend.querySetCount * 8, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
-
+    if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber ||
+        this.backend.queryType === 'at-passes') {
       this.backend.endComputePass();
-      this.backend.getCommandEncoder().resolveQuerySet(this.backend.querySet!, 0, 2, this.backend.queryData.buffer, 0);
-      this.backend.getCommandEncoder().copyBufferToBuffer(
-          this.backend.queryData.buffer, 0, syncData.buffer, 0, this.backend.querySetCount * 8);
-      this.backend.flush();
-
-      const kernelId = this.backend.currentKernelId!;
-      const kernelInfo = this.backend.kernels.get(kernelId)!;
-      const kernelName = `[${kernelInfo[0]}] ${kernelInfo[1]}`;
-
-      void syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
-        const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
-        const startTimeU64 = mappedData[0];
-        const endTimeU64 = mappedData[1];
-
-        syncData.buffer.unmap();
-
-        if (typeof this.backend.queryTimeBase === 'undefined') {
-          this.backend.queryTimeBase = startTimeU64;
-        }
-
-        const startTime = Number(startTimeU64 - this.backend.queryTimeBase);
-        const endTime = Number(endTimeU64 - this.backend.queryTimeBase);
-
-        if (!Number.isSafeInteger(startTime) || !Number.isSafeInteger(endTime)) {
-          throw new RangeError('incorrect timestamp range');
-        }
-
-        this.backend.gpuDataManager.release(syncData.id);
-        let inputShapes = '';
-        inputTensorViews.forEach((value, i) => {
-          inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
-        });
-        let outputShapes = '';
-        outputTensorViews.forEach((value, i) => {
-          outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
-        });
-        // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
-            endTime - startTime} ns`);
-      });
     }
-
-    if (this.backend.pendingDispatchNumber >= 16) {
+    if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber) {
       this.backend.flush();
     }
+    TRACE_FUNC_END(buildArtifact.programInfo.name);
   }
   dispose(): void {
     // this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
+    TRACE_FUNC_BEGIN(programInfo.name);
     const device = this.backend.device;
     const extensions: string[] = [];
     if (device.features.has('shader-f16')) {
@@ -132,6 +96,7 @@ export class ProgramManager {
     const computePipeline = device.createComputePipeline(
         {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
 
+    TRACE_FUNC_END(programInfo.name);
     return {programInfo, computePipeline};
   }
 

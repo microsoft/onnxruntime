@@ -155,6 +155,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Corresponding past and present are same tensor, its size is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
 <dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
+<dt><tt>rotary_embedding_dim</tt> : int</dt>
+<dd>Dimension of rotary embedding. Limited to 32, 64 or 128. Default value is head_size</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
@@ -1586,6 +1588,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0.</dd>
 <dt><tt>ep_sdk_version</tt> : string</dt>
 <dd>(Optional) SDK version used to convert the model.</dd>
+<dt><tt>hardware_architecture</tt> : string</dt>
+<dd>(Optional) Hardware architecture.</dd>
 <dt><tt>main_context</tt> : int</dt>
 <dd>Usually each single EPContext associate with a graph partition.But for some case like QNN, it has single EPContext contains all partitions.In that case, the node with ep_cache_context should set main_context=1. Other nodes set main_context=0 and skip ep_cache_context.The path is relative to this Onnx file. Default is 1.</dd>
 <dt><tt>notes</tt> : string</dt>
@@ -1599,14 +1603,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (1 - &#8734;)
 
 <dl>
-<dt><tt>inputs</tt> (variadic) : T</dt>
+<dt><tt>inputs</tt> (variadic, heterogeneous) : T</dt>
 <dd>List of tensors for inputs</dd>
 </dl>
 
 #### Outputs (1 - &#8734;)
 
 <dl>
-<dt><tt>outputs</tt> (variadic) : T</dt>
+<dt><tt>outputs</tt> (variadic, heterogeneous) : T</dt>
 <dd>One or more outputs, list of tensors for outputs</dd>
 </dl>
 
@@ -2394,24 +2398,28 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs
+#### Inputs (7 - 9)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>key</tt> : T</dt>
+<dd>Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape(batch_size, sequence_length, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
 <dd>Key with shape (batch_size, kv_sequence_length, kv_hidden_size) </dd>
-<dt><tt>value</tt> : T</dt>
+<dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, kv_sequence_length, kv_hidden_size)</dd>
 <dt><tt>past_key</tt> (optional) : T</dt>
 <dd>past state key with support for format BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
@@ -2421,6 +2429,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
 <dd>Scalar tensor of total sequence length (past + new).</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 </dl>
 
 #### Outputs
@@ -2437,7 +2449,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>
@@ -2824,6 +2836,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>size of each input feature</dd>
 <dt><tt>N</tt> : int (required)</dt>
 <dd>size of each output feature</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) (default unset). It is used to control how input A is quantized or downcast internally while doing computation, for example: 0 means input A will not be quantized or downcast while doing computation. 4 means input A can be quantized with the same block_size to int8 internally from type T1.</dd>
 <dt><tt>bits</tt> : int (required)</dt>
 <dd>number of bits used for weight quantization (default 4)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
@@ -3025,6 +3039,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of attention heads</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>unidirectional</tt> : int</dt>
+<dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
 #### Inputs (1 - 8)
@@ -5015,6 +5031,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>num_heads</tt> : int</dt>
+<dd>Number of attention heads. Default value is 0. Must use with rotary_embedding_dim</dd>
+<dt><tt>rotary_embedding_dim</tt> : int</dt>
+<dd>Rotary embedding dimension. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1.0</dd>
 </dl>
@@ -5027,9 +5047,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>position_ids</tt> : M</dt>
 <dd>1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)</dd>
 <dt><tt>cos_cache</tt> : T</dt>
-<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)</dd>
 <dt><tt>sin_cache</tt> : T</dt>
-<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)</dd>
 </dl>
 
 #### Outputs
@@ -5042,7 +5062,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int64)</dt>
 <dd>Constrain input and output types to integer tensors</dd>
@@ -5749,7 +5769,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (5 - 14)
+#### Inputs (5 - 15)
 
 <dl>
 <dt><tt>input_ids</tt> : F</dt>
@@ -5780,6 +5800,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only keep this list of (layer, head) of QK in the final cross_qk output when use_cross_qk is set. Default collect allits shape is (number of (layer, head) to keep, 2), i.e., [[layer_id1, head_id1], [layer_id2, head_id2]......]</dd>
 <dt><tt>extra_decoding_ids</tt> (optional) : I</dt>
 <dd>Part of the decoder_input_ids that we need cross qk for it. it is of shape  (batch_size, extra_decoding_ids_len).In such case, we should remove this from the tail of the decoder_input_ids, and put it here. ids < 0 in it (for multiple batch) are treated as stop of the extra_decoding_ids for corresponding batch.</dd>
+<dt><tt>temperature</tt> (optional) : T</dt>
+<dd>Temperature value to apply to logits processing during this execution's decoding. Shape is (1)</dd>
 </dl>
 
 #### Outputs (1 - 5)

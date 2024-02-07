@@ -60,6 +60,35 @@ class TestInferenceSession(unittest.TestCase):
             predict = session_object.run(None, {input_name: input_value})[0]
             queue.put(max(predict.flatten().tolist()))
 
+    def load_cuda_lib(self):
+        cuda_lib = None
+        if sys.platform == "win32":
+            cuda_lib = "cuda.dll"
+        elif sys.platform == "linux":
+            cuda_lib = "libcuda.so"
+        elif sys.platform == "darwin":
+            cuda_lib = "libcuda.dylib"
+
+        if cuda_lib is not None:
+            try:
+                return ctypes.CDLL(cuda_lib)
+            except OSError:
+                pass
+        return None
+
+    def cuda_device_count(self, cuda_lib):
+        if cuda_lib is None:
+            return -1
+        num_device = ctypes.c_int()
+        cuda_lib.cuInit(0)
+        result = cuda_lib.cuDeviceGetCount(ctypes.byref(num_device))
+        if result != 0:
+            error_str = ctypes.c_char_p()
+            cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
+            print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+            return -1
+        return num_device.value
+
     def test_tvm_imported(self):
         if "TvmExecutionProvider" not in onnxrt.get_available_providers():
             return
@@ -385,6 +414,8 @@ class TestInferenceSession(unittest.TestCase):
                             str(option_value),
                         )
 
+                test_get_and_set_option_with_values("enable_cuda_graph", ["1", "0"])
+
                 test_get_and_set_option_with_values("arena_extend_strategy", ["kNextPowerOfTwo", "kSameAsRequested"])
 
                 test_get_and_set_option_with_values("cudnn_conv_algo_search", ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
@@ -397,6 +428,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
 
+                test_get_and_set_option_with_values("use_tf32", ["1", "0"])
+
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
                 option["gpu_external_empty_cache"] = "0"
@@ -405,6 +438,25 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_alloc"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_free"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_empty_cache"], "0")
+
+                option["user_compute_stream"] = "0"
+                sess.set_providers(["CUDAExecutionProvider"], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], "0")
+
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        s = torch.cuda.Stream()
+                        option["user_compute_stream"] = str(s.cuda_stream)
+                        sess.set_providers(["CUDAExecutionProvider"], [option])
+                        options = sess.get_provider_options()
+                        self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], str(s.cuda_stream))
+                        self.assertEqual(options["CUDAExecutionProvider"]["has_user_compute_stream"], "1")
+                except ImportError:
+                    print("torch is not installed, skip testing setting user_compute_stream from torch cuda stream")
+
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
@@ -428,21 +480,7 @@ class TestInferenceSession(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(["CUDAExecutionProvider"], [option])
 
-            def get_cuda_device_count():
-                num_device = ctypes.c_int()
-                result = ctypes.c_int()
-                error_str = ctypes.c_char_p()
-
-                result = cuda.cuInit(0)
-                result = cuda.cuDeviceGetCount(ctypes.byref(num_device))
-                if result != cuda_success:
-                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
-                    print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
-                    return -1
-
-                return num_device.value
-
-            def set_device_id_test(i):
+            def set_device_id_test(i, cuda_lib):
                 device = ctypes.c_int()
                 result = ctypes.c_int()
                 error_str = ctypes.c_char_p()
@@ -454,22 +492,22 @@ class TestInferenceSession(unittest.TestCase):
                     ["CUDAExecutionProvider", "CPUExecutionProvider"],
                     sess.get_providers(),
                 )
-                result = cuda.cuCtxGetDevice(ctypes.byref(device))
+                result = cuda_lib.cuCtxGetDevice(ctypes.byref(device))
                 if result != cuda_success:
-                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
+                    cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
                     print(f"cuCtxGetDevice failed with error code {result}: {error_str.value.decode()}")
 
                 self.assertEqual(result, cuda_success)
                 self.assertEqual(i, device.value)
 
-            def run_advanced_test():
-                num_device = get_cuda_device_count()
+            def run_advanced_test(cuda_lib):
+                num_device = self.cuda_device_count(cuda_lib)
                 if num_device < 0:
                     return
 
                 # Configure session to be ready to run on all available cuda devices
                 for i in range(num_device):
-                    set_device_id_test(i)
+                    set_device_id_test(i, cuda_lib)
 
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
 
@@ -485,21 +523,12 @@ class TestInferenceSession(unittest.TestCase):
                     option = {"invalid_option": 123}
                     sess.set_providers(["CUDAExecutionProvider"], [option])
 
-            libnames = ("libcuda.so", "libcuda.dylib", "cuda.dll")
-            for libname in libnames:
-                try:
-                    cuda = ctypes.CDLL(libname)
-                    run_base_test1()
-                    run_base_test2()
-                    run_advanced_test()
-
-                except OSError:
-                    continue
-                else:
-                    break
-            else:
-                run_base_test1()
-                run_base_test2()
+            run_base_test1()
+            run_base_test2()
+            cuda = self.load_cuda_lib()
+            if cuda is not None:
+                print("run advanced_test")
+                run_advanced_test(cuda)
 
         if "ROCMExecutionProvider" in onnxrt.get_available_providers():
 
@@ -527,6 +556,8 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
                 test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
+
+                test_get_and_set_option_with_values("enable_hip_graph", ["1", "0"])
 
             run_rocm_options_test()
 
@@ -624,6 +655,14 @@ class TestInferenceSession(unittest.TestCase):
 
         if "ROCMExecutionProvider" in onnxrt.get_available_providers():
             do_test_get_and_set_tuning_results("ROCMExecutionProvider")
+
+    def test_run_model_with_optional_sequence_input(self):
+        sess = onnxrt.InferenceSession(get_name("identity_opt.onnx"))
+        x = [np.array([1, 2, 3, 4, 5]).astype(np.float32)]
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+        res = sess.run([output_name], {input_name: x})
+        np.testing.assert_allclose(res[0], x)
 
     def test_run_model(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
@@ -1707,6 +1746,49 @@ class TestInferenceSession(unittest.TestCase):
         }
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
+
+    def test_multiple_devices(self):
+        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+            cuda_lib = self.load_cuda_lib()
+            cuda_devices = self.cuda_device_count(cuda_lib)
+            if cuda_devices <= 1:
+                return
+
+            # https://github.com/microsoft/onnxruntime/issues/18432. Make sure device Id is properly set
+            # Scenario 1, 3 sessions created with differnt device Id under IOBinding
+            sessions = []
+            for i in range(3):
+                sessions.append(
+                    onnxrt.InferenceSession(
+                        get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": i % 2})]
+                    )
+                )
+
+            for i in range(3):
+                binding = sessions[i].io_binding()
+                image = np.ones([1, 1, 28, 28], np.float32)
+                image_on_gpu = onnxrt.OrtValue.ortvalue_from_numpy(image, "cuda", i % 2)
+
+                binding.bind_ortvalue_input("Input3", image_on_gpu)
+                binding.bind_output(name="Plus214_Output_0", device_type="cuda", device_id=i % 2)
+
+                binding.synchronize_inputs()
+                sessions[i].run_with_iobinding(binding)
+                binding.synchronize_outputs()
+
+            # Scenario 2, 2 normal sessions created with different device Id
+            device0_session = onnxrt.InferenceSession(
+                get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": 0})]
+            )
+            device1_session = onnxrt.InferenceSession(
+                get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": 1})]
+            )
+            image = {
+                "Input3": np.ones([1, 1, 28, 28], np.float32),
+            }
+            device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
+            device1_session.run(output_names=["Plus214_Output_0"], input_feed=image)
+            device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
 
 
 if __name__ == "__main__":

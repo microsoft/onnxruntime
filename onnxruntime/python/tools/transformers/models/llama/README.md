@@ -1,3 +1,13 @@
+# Contents
+ - [LLaMA-2](#llama-2)
+   - [Exporting LLaMA-2](#exporting-llama-2)
+   - [Benchmarking LLaMA-2](#benchmark-llama-2)
+ - [Mistral](#mistral)
+   - [Exporting Mistral](#exporting-mistral)
+   - [Optimizing and Quantizing Mistral](#optimizing-and-quantizing-mistral)
+   - [Benchmarking Mistral](#benchmark-mistral)
+
+
 # LLaMA-2
 
 ## Prerequisites
@@ -31,23 +41,6 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 ```
 
 To make this option compatible with [Hugging Face's Optimum](https://github.com/huggingface/optimum), you will need to create `config.json` and `generation_config.json` for your model and store them in the same directory as your ONNX models. For example, you can find those JSON files for LLaMA-2 7B on Hugging Face [here](https://huggingface.co/meta-llama/Llama-2-7b-hf).
-
-As indicated in `requirements.txt`, you will also need to install Optimum from source. Once installed, you will need to modify `ORTModelForCausalLM.forward` in `optimum/optimum/onnxruntime/modeling_decoder.py` as follows:
-
-```
-# Before
-if self.use_cache:
-    if past_key_values is not None:
-        input_ids = input_ids[:, -1:]
-        # Flatten the past_key_values (no need to flatten for models using multi-query attn)
-
-
-# After
-if self.use_cache:
-    if past_key_values is not None:
-        input_ids = input_ids[:, -1:] if past_key_values[0][0].shape[2] != 0 else input_ids
-        # Flatten the past_key_values (no need to flatten for models using multi-query attn)
-```
 
 ### Option 2: from [Microsoft's custom export](https://github.com/microsoft/Llama-2-Onnx)
 
@@ -244,7 +237,7 @@ Here are some examples of how you can benchmark LLaMA-2.
 
 1. PyTorch without `torch.compile`, FP32
 ```
-python3 -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type hf-pt-eager \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp32 \
@@ -256,7 +249,7 @@ python3 -m models.llama.benchmark \
 
 2. PyTorch with `torch.compile`, FP16
 ```
-python3 -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type hf-pt-compile \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp16 \
@@ -268,7 +261,7 @@ python3 -m models.llama.benchmark \
 
 3. Optimum + ONNX Runtime, FP32, export via Optimum or convert_to_onnx
 ```
-python3 -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
     --hf-ort-dir-path ./Llama-2-7b-hf-onnx/ \
     --model-name meta-llama/Llama-2-7b-hf \
@@ -281,7 +274,7 @@ python3 -m models.llama.benchmark \
 
 4. Optimum + ONNX Runtime, FP16, export via Optimum or convert_to_onnx
 ```
-python3 -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
     --hf-ort-dir-path ./Llama-2-7b-hf-onnx/ \
     --model-name meta-llama/Llama-2-7b-hf \
@@ -294,7 +287,7 @@ python3 -m models.llama.benchmark \
 
 5. ONNX Runtime, FP32, Microsoft custom export
 ```
-python3 -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
     --ort-model-path ./llama-2-onnx/7B_float32/ONNX/LlamaV2_7B_float32.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
@@ -306,7 +299,7 @@ python3 -m models.llama.benchmark \
 
 6. ONNX Runtime, FP16, Microsoft custom export
 ```
-python3 -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
     --ort-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
@@ -357,7 +350,7 @@ You can profile a variant by adding the `--profile` flag and providing one batch
 ### Benchmark All
 You can use `benchmark_all.py` to benchmark across various options and automatically store the results in a CSV file. Here is an example.
 ```
-python3 -m models.llama.benchmark_all \
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_all \
     --hf-pt-eager \
     --hf-pt-compile \
     --hf-ort-dir-path ./llama2-7b-fp16/ \
@@ -372,3 +365,58 @@ python3 -m models.llama.benchmark_all \
     --num-runs 1000 \
     --timeout 60  # number of minutes before moving to the next benchmark
 ```
+
+# Mistral
+
+## Introduction
+
+These tools for LLaMA-2 also allow the quantization and optimization of Mistral in ORT. 
+
+## Exporting Mistral
+
+There is currently one supported way to export Mistral to ONNX format:
+
+### [Hugging Face Optimum](https://github.com/huggingface/optimum)
+
+
+The following command will export Mistral in full precision:
+```
+python -m optimum.exporters.onnx -m mistralai/Mistral-7B-v0.1 --library-name transformers /path/to/model/directory
+```
+
+## Optimizing and Quantizing Mistral
+
+To quantize Mistral to FP16 and apply fusion optimizations, you can run the following command:
+```
+python -m models.llama.convert_to_onnx -i /path/to/model/directory -o /path/to/optimized_model/directory -p fp16 --optimize_optimum -m mistralai/Mistral-7B-v0.1
+```
+
+## Benchmark Mistral
+The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT version, you can run: 
+
+```
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
+    -bt ort-convert-to-onnx \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1 \
+    --ort-model-path /path/to/model.onnx
+```
+
+To benchmark the Hugging Face implementation without `torch.compile`:
+
+```
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
+    -bt hf-pt-eager \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1
+```
+
+And to benchmark the Hugging Face implementation with `torch.compile`:
+
+```
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
+    -bt hf-pt-compile \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1
+```
+

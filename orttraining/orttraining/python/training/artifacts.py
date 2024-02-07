@@ -43,7 +43,11 @@ def generate_artifacts(
     loss: Optional[Union[LossType, onnxblock.Block]] = None,
     optimizer: Optional[OptimType] = None,
     artifact_directory: Optional[Union[str, bytes, os.PathLike]] = None,
-    **extra_options,
+    prefix: str = "",
+    ort_format: bool = False,
+    custom_op_library: Optional[Union[str, bytes, os.PathLike]] = None,
+    additional_output_names: Optional[List[str]] = None,
+    nominal_checkpoint: bool = False,
 ) -> None:
     """Generates artifacts required for training with ORT training api.
 
@@ -63,11 +67,16 @@ def generate_artifacts(
         optimizer: The optimizer enum to be used for training. If None, no optimizer model is generated.
         artifact_directory: The directory to save the generated artifacts.
             If None, the current working directory is used.
-        prefix (str): The prefix to be used for the generated artifacts. If not specified, no prefix is used.
-        ort_format (bool): Whether to save the generated artifacts in ORT format or not. Default is False.
-        custom_op_library (str | os.PathLike): The path to the custom op library.
-                                               If not specified, no custom op library is used.
-        additional_output_names (List[str]): List of additional output names to be added to the training/eval model.
+        prefix: The prefix to be used for the generated artifacts. If not specified, no prefix is used.
+        ort_format: Whether to save the generated artifacts in ORT format or not. Default is False.
+        custom_op_library: The path to the custom op library.
+            If not specified, no custom op library is used.
+        additional_output_names: List of additional output names to be added to the training/eval model in addition
+            to the loss output. Default is None.
+        nominal_checkpoint: Whether to generate the nominal checkpoint in addition to the complete checkpoint.
+            Default is False. Nominal checkpoint is a checkpoint that contains nominal information about the model
+            parameters. It can be used on the device to reduce overhead while constructing the training model
+            as well as to reduce the size of the checkpoint packaged with the on-device application.
 
     Raises:
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
@@ -107,19 +116,19 @@ def generate_artifacts(
             self._loss = _loss
 
         def build(self, *inputs_to_loss):
-            if "additional_output_names" in extra_options:
+            if additional_output_names:
                 # If additional output names is not a list, raise an error
-                if not isinstance(extra_options["additional_output_names"], list):
+                if not isinstance(additional_output_names, list):
                     raise RuntimeError(
-                        f"Unknown type provided for additional output names {type(extra_options['additional_output_names'])}. "
+                        f"Unknown type provided for additional output names {type(additional_output_names)}. "
                         "Expected additional output names to be a list of strings."
                     )
 
                 loss_output = self._loss(*inputs_to_loss)
                 if isinstance(loss_output, tuple):
-                    return (*loss_output, *tuple(extra_options["additional_output_names"]))
+                    return (*loss_output, *tuple(additional_output_names))
                 else:
-                    return (loss_output, *tuple(extra_options["additional_output_names"]))
+                    return (loss_output, *tuple(additional_output_names))
 
             return self._loss(*inputs_to_loss)
 
@@ -143,58 +152,57 @@ def generate_artifacts(
     eval_model = None
     model_params = None
 
-    custom_op_library = extra_options.get("custom_op_library", None)
+    custom_op_library_path = None
     if custom_op_library is not None:
         logging.info("Custom op library provided: %s", custom_op_library)
-        custom_op_library = pathlib.Path(custom_op_library)
+        custom_op_library_path = pathlib.Path(custom_op_library)
 
     with onnxblock.base(model), onnxblock.custom_op_library(
-        custom_op_library
+        custom_op_library_path
     ) if custom_op_library is not None else contextlib.nullcontext():
         _ = training_block(*[output.name for output in model.graph.output])
         training_model, eval_model = training_block.to_model_proto()
         model_params = training_block.parameters()
 
-    def _export_to_ort_format(model_path, output_dir, extra_options):
-        if extra_options.get("ort_format", False):
-            custom_op_library = extra_options.get("custom_op_library", None)
-            if custom_op_library is not None:
-                custom_op_library = pathlib.Path(custom_op_library)
+    def _export_to_ort_format(model_path, output_dir, ort_format, custom_op_library_path):
+        if ort_format:
             convert_onnx_models_to_ort(
                 model_path,
                 output_dir=output_dir,
-                custom_op_library_path=custom_op_library,
+                custom_op_library_path=custom_op_library_path,
                 optimization_styles=[OptimizationStyle.Fixed],
             )
 
     if artifact_directory is None:
         artifact_directory = pathlib.Path.cwd()
-    prefix = ""
-    if "prefix" in extra_options:
-        prefix = extra_options["prefix"]
-        logging.info("Using prefix %s for generated artifacts.", prefix)
-
     artifact_directory = pathlib.Path(artifact_directory)
+
+    if prefix:
+        logging.info("Using prefix %s for generated artifacts.", prefix)
 
     training_model_path = artifact_directory / f"{prefix}training_model.onnx"
     if os.path.exists(training_model_path):
         logging.info("Training model path %s already exists. Overwriting.", training_model_path)
     onnx.save(training_model, training_model_path)
-    _export_to_ort_format(training_model_path, artifact_directory, extra_options)
+    _export_to_ort_format(training_model_path, artifact_directory, ort_format, custom_op_library_path)
     logging.info("Saved training model to %s", training_model_path)
 
     eval_model_path = artifact_directory / f"{prefix}eval_model.onnx"
     if os.path.exists(eval_model_path):
         logging.info("Eval model path %s already exists. Overwriting.", eval_model_path)
     onnx.save(eval_model, eval_model_path)
-    _export_to_ort_format(eval_model_path, artifact_directory, extra_options)
+    _export_to_ort_format(eval_model_path, artifact_directory, ort_format, custom_op_library_path)
     logging.info("Saved eval model to %s", eval_model_path)
 
     checkpoint_path = artifact_directory / f"{prefix}checkpoint"
     if os.path.exists(checkpoint_path):
         logging.info("Checkpoint path %s already exists. Overwriting.", checkpoint_path)
-    onnxblock.save_checkpoint(training_block.parameters(), checkpoint_path)
+    onnxblock.save_checkpoint(training_block.parameters(), checkpoint_path, nominal_checkpoint=False)
     logging.info("Saved checkpoint to %s", checkpoint_path)
+    if nominal_checkpoint:
+        nominal_checkpoint_path = artifact_directory / f"{prefix}nominal_checkpoint"
+        onnxblock.save_checkpoint(training_block.parameters(), nominal_checkpoint_path, nominal_checkpoint=True)
+        logging.info("Saved nominal checkpoint to %s", nominal_checkpoint_path)
 
     # If optimizer is not specified, skip creating the optimizer model
     if optimizer is None:
@@ -225,5 +233,5 @@ def generate_artifacts(
 
     optimizer_model_path = artifact_directory / f"{prefix}optimizer_model.onnx"
     onnx.save(optim_model, optimizer_model_path)
-    _export_to_ort_format(optimizer_model_path, artifact_directory, extra_options)
+    _export_to_ort_format(optimizer_model_path, artifact_directory, ort_format, custom_op_library_path)
     logging.info("Saved optimizer model to %s", optimizer_model_path)

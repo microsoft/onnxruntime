@@ -46,11 +46,12 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
     }
 #endif
 
-// Disabled because of NNAPI treat float::inf as float::max
-#if defined(USE_NNAPI)
+// Disabled because NNAPI and QNN EP (SDK 2.17) treat float::inf as float::max
+#if defined(USE_NNAPI) || defined(USE_QNN)
     int relu = strcmp(szOp, "Relu");
     if (relu == 0) {
       excluded_providers.insert(kNnapiExecutionProvider);
+      excluded_providers.insert(kQnnExecutionProvider);
     }
 #endif
 // Use relative error because of computation error for float::max

@@ -1,26 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "js_execution_provider.h"
+
+#include <emscripten.h>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "js_execution_provider.h"
-
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/js/js_contrib_kernels.h"
 #endif
 
-#include "core/graph/function_utils.h"
-#include "core/graph/indexed_sub_graph.h"
+#include "allocator.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
-#include "core/framework/kernel_registry.h"
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/framework/kernel_registry.h"
+#include "core/graph/function_utils.h"
+#include "core/graph/indexed_sub_graph.h"
 #include "core/providers/shared/node_unit/node_unit.h"
-#include "allocator.h"
 #include "data_transfer.h"
 
 namespace onnxruntime {
@@ -98,6 +99,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomai
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Erf);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Sigmoid);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Sigmoid);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, HardSigmoid);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Log);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Log);
 
@@ -353,6 +355,17 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomai
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 18, If);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 19, If);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, 8, BatchNormalization);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, 13, BatchNormalization);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, 14, BatchNormalization);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 15, BatchNormalization);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 7, 8, BatchNormalization);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 9, 13, BatchNormalization);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 14, 14, BatchNormalization);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 15, BatchNormalization);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 13, CumSum);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, CumSum);
+
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
@@ -381,6 +394,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(13, Erf),
       KERNEL_CREATE_INFO_VERSIONED(6, 12, Sigmoid),
       KERNEL_CREATE_INFO(13, Sigmoid),
+      KERNEL_CREATE_INFO(6, HardSigmoid),
       KERNEL_CREATE_INFO_VERSIONED(6, 12, Log),
       KERNEL_CREATE_INFO(13, Log),
 
@@ -636,6 +650,17 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 12, If)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 18, If)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 19, If)>,
+
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 7, 8, BatchNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, 13, BatchNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, 14, BatchNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 15, BatchNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 7, 8, BatchNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 9, 13, BatchNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 14, 14, BatchNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 15, BatchNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 13, CumSum)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, CumSum)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -657,9 +682,13 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 using namespace js;
 
-JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
-    : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), true},
+JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info, const SessionOptions* session_options)
+    : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)},
       preferred_data_layout_{info.data_layout} {
+  if (session_options) {
+    enable_graph_capture_ = session_options->config_options.GetConfigOrDefault("enableGraphCapture", "false") == "true";
+    LOGS_DEFAULT(VERBOSE) << "Graph capture enable: " << enable_graph_capture_;
+  }
 }
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
@@ -727,4 +756,46 @@ std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer
 JsExecutionProvider::~JsExecutionProvider() {
 }
 
+Status JsExecutionProvider::OnRunStart() {
+  if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+    LOGS(*GetLogger(), INFO) << "Capturing the webgpu graph for this model";
+    EM_ASM({ Module.jsepCaptureBegin(); });
+  }
+  return Status::OK();
+}
+
+Status JsExecutionProvider::OnRunEnd(bool sync_stream) {
+  if (IsGraphCaptureEnabled() && !IsGraphCaptured()) {
+    if (IsGraphCaptureAllowed()) {
+      EM_ASM({ Module.jsepCaptureEnd(); });
+      is_graph_captured_ = true;
+    } else {
+      IncrementRegularRunCountBeforeGraphCapture();
+    }
+  }
+
+  return Status::OK();
+}
+
+bool JsExecutionProvider::IsGraphCaptureEnabled() const {
+  return enable_graph_capture_;
+}
+
+bool JsExecutionProvider::IsGraphCaptured() const {
+  return is_graph_captured_;
+}
+
+Status JsExecutionProvider::ReplayGraph() {
+  ORT_ENFORCE(IsGraphCaptured());
+  EM_ASM({ Module.jsepReplay(); });
+  return Status::OK();
+}
+
+bool JsExecutionProvider::IsGraphCaptureAllowed() const {
+  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+}
+
+void JsExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
+  ++regular_run_count_before_graph_capture_;
+}
 }  // namespace onnxruntime
