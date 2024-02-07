@@ -19,7 +19,7 @@ class MatMulNBits final : public JsKernel {
                                           block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))} {
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
-    ORT_ENFORCE(block_size_ >= 16 && !(block_size_ & (block_size_ -1)),
+    ORT_ENFORCE(block_size_ >= 16 && !(block_size_ & (block_size_ - 1)),
                 "Block size must be a power of 2 and greater than or equal to 16.");
     JSEP_INIT_KERNEL_ATTRIBUTE(MatMulNBits, ({
                                  "k" : $1,
