@@ -2,7 +2,7 @@
 title: Thread management
 grand_parent: Performance
 parent: Tune performance
-nav_order: 3
+nav_order: 4
 ---
 
 # Thread management
