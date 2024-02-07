@@ -100,6 +100,8 @@ class FusedConv : public onnxruntime::cuda::Conv<T, false> {
   Status MapMode(const std::string& activaton_mode) {
     if (activaton_mode == "Relu") {
       activation_mode_ = cudnnActivationMode_t::CUDNN_ACTIVATION_RELU;
+    } else if (activaton_mode == "Tanh") {
+      activation_mode_ = cudnnActivationMode_t::CUDNN_ACTIVATION_TANH;
     } else {
       return ORT_MAKE_STATUS(
           StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT,

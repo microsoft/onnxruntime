@@ -8,6 +8,10 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #ifndef USE_CUDA_MINIMAL
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
+#include <cudnn_frontend.h>
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -257,6 +261,26 @@ SetPoolingNdDescriptorHelper(cudnnPoolingDescriptor_t poolingDesc,
                              const int strideA[]) {
   return cudnnSetPoolingNdDescriptor(poolingDesc, mode, maxpoolingNanOpt, nbDims, windowDimA, paddingA, strideA);
 }
+
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
+template <bool NHWC = true>
+class CudnnFeTensor final {
+ public:
+  CudnnFeTensor(const Tensor* tensor, const std::string& name,
+                std::optional<cudnn_frontend::DataType_t> dtype = {})
+      : CudnnFeTensor(tensor->Shape().AsShapeVector(), name, dtype){};
+
+  CudnnFeTensor(const onnxruntime::TensorShapeVector& shape, const std::string& name,
+                std::optional<cudnn_frontend::DataType_t> dtype);
+
+  template <typename T>
+  static cudnn_frontend::DataType_t GetDataType();
+  cudnn_frontend::graph::Tensor_attributes Get() { return tensor_; }
+
+ private:
+  cudnn_frontend::graph::Tensor_attributes tensor_;
+};
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

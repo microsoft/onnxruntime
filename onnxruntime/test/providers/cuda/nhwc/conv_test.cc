@@ -71,6 +71,12 @@ TYPED_TEST(CudaNhwcTypedTest, ConvNhwcGroupNoBias) {
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
+TYPED_TEST(CudaNhwcTypedTest, ConvNhwcGroupBias) {
+  auto op = ConvOp<TypeParam>{.input_dims = {1, 16, 64, 64}, .kernel_shape = {3, 3}, .channels = 16, .group = 4, .bias = true};
+
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
+}
+
 TYPED_TEST(CudaNhwcTypedTest, ConvNhwcPadding) {
   auto op = ConvOp<TypeParam>{};
   op.input_dims = {2, 4, 64, 64};

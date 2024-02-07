@@ -220,6 +220,94 @@ const Float8E5M2 Consts<Float8E5M2>::One = Float8E5M2(1.0f, true);
 
 #endif
 
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
+static std::vector<int64_t> generateStrides(const std::vector<int64_t>& shape, bool channels_last) {
+  // For INT8x4 and INT8x32 we still compute standard strides here to input
+  // into the cuDNN functions. We will manually scale by resizeFactor in the cpu ref.
+  std::vector<int64_t> strides(shape.size());
+  int64_t nbDims = strides.size();
+  if (nbDims <= 1) {
+    strides[0] = 1;
+    return strides;
+  }
+  if (channels_last) {
+    // Here we assume that the format is CUDNN_TENSOR_NHWC
+    strides[1] = 1;
+    strides[nbDims - 1] = strides[1] * shape[1];
+    for (int64_t d = nbDims - 2; d >= 2; d--) {
+      strides[d] = strides[d + 1] * shape[d + 1];
+    }
+    strides[0] = strides[2] * shape[2];
+  } else {
+    strides[nbDims - 1] = 1;
+    for (int64_t d = nbDims - 2; d >= 0; d--) {
+      strides[d] = strides[d + 1] * shape[d + 1];
+    }
+  }
+  return strides;
+}
+
+template <bool NHWC>
+CudnnFeTensor<NHWC>::CudnnFeTensor(const onnxruntime::TensorShapeVector& shape, const std::string& name, std::optional<cudnn_frontend::DataType_t> dtype) {
+  std::vector<int64_t> shape_vec;
+  if (shape.size() == 1) {
+    shape_vec = {1, shape[0], 1, 1};
+  } else if (shape.size() == 4) {
+    shape_vec = {shape[0], shape[3], shape[1], shape[2]};
+  } else if (shape.size() == 5) {
+    shape_vec = {shape[0], shape[4], shape[1], shape[2], shape[3]};
+  } else {
+    ORT_THROW("Invalid tensor shape size, tensor name: ", name, ", shape size: ", shape.size());
+  }
+  auto strides = generateStrides(shape_vec, NHWC);
+  if (dtype.has_value()) {
+    tensor_ = cudnn_frontend::graph::Tensor_attributes().set_name(name).set_dim(shape_vec).set_stride(strides).set_data_type(dtype.value());
+  } else {
+    tensor_ = cudnn_frontend::graph::Tensor_attributes().set_name(name).set_dim(shape_vec).set_stride(strides);
+  }
+}
+
+template <>
+template <typename T>
+cudnn_frontend::DataType_t CudnnFeTensor<NHWC>::GetDataType() {
+  return cudnn_frontend::DataType_t::NOT_SET;
+}
+
+template <>
+template <>
+cudnn_frontend::DataType_t CudnnFeTensor<NHWC>::GetDataType<float>() {
+  return cudnn_frontend::DataType_t::FLOAT;
+}
+
+template <>
+template <>
+cudnn_frontend::DataType_t CudnnFeTensor<NHWC>::GetDataType<half>() {
+  return cudnn_frontend::DataType_t::HALF;
+}
+
+template <>
+template <>
+cudnn_frontend::DataType_t CudnnFeTensor<NHWC>::GetDataType<double>() {
+  return cudnn_frontend::DataType_t::DOUBLE;
+}
+
+template <>
+template <>
+cudnn_frontend::DataType_t CudnnFeTensor<NHWC>::GetDataType<int8_t>() {
+  return cudnn_frontend::DataType_t::INT8;
+}
+
+template <>
+template <>
+cudnn_frontend::DataType_t CudnnFeTensor<NHWC>::GetDataType<uint8_t>() {
+  return cudnn_frontend::DataType_t::UINT8;
+}
+
+template class CudnnFeTensor<true>;
+template class CudnnFeTensor<false>;
+
+#endif
+
 }  // namespace cuda
 }  // namespace onnxruntime
 #endif
