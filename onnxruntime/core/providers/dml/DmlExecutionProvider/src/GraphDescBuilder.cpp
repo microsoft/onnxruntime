@@ -344,20 +344,25 @@ namespace Dml::GraphDescBuilder
                             dmlFusedNodeInputIndex < isConstGpuGraphInputCount &&
                             isConstGpuGraphInput[dmlFusedNodeInputIndex])
                         {
-                            // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data 
-                            // across the graph input as well as every consumer's unique constant node.  However it is currently 
+                            // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data
+                            // across the graph input as well as every consumer's unique constant node.  However it is currently
                             // only used for small inputs.
                             uint32_t c_maxConstNodeDataSize = 8;
 
-                            ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
 
                             auto& operatorGraphInputNode = graphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphInputEdge.ToNodeIndex];
                             std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = operatorGraphInputNode->GetInputTensors();
                             DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];
+                            ComPtr<OnnxTensorWrapper> constantInput;
 
-                            if (constantInput && tensorDesc->totalTensorSizeInBytes < c_maxConstNodeDataSize)
+                            if (tensorDesc->totalTensorSizeInBytes < c_maxConstNodeDataSize)
                             {
-                                // The tensor description's size should be no larger than the constant input unless it was rounded to 
+                                constantInput = constantCpuGraphInputGetter(arg->Name());
+                            }
+
+                            if (constantInput)
+                            {
+                                // The tensor description's size should be no larger than the constant input unless it was rounded to
                                 // the required alignment.
                                 assert(((constantInput->GetTensorByteSize() + 3) & ~3) >= tensorDesc->totalTensorSizeInBytes);
                                 size_t minimumConstantSize = std::min(constantInput->GetTensorByteSize(), gsl::narrow_cast<size_t>(tensorDesc->totalTensorSizeInBytes));
