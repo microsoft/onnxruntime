@@ -64,7 +64,7 @@ As covered in [logging](logging_tracing.md) ONNX supports dynamic enablement of 
   - greater than 5 = profiling_level=detailed (individual ops are logged with inference perf hit)  
 - Event: [QNNProfilingEvent](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/qnn/builder/qnn_backend_manager.cc#L1083)
 
-## CUDA Profiling
+## GPU Profiling
 
 To profile CUDA kernels, please add the cupti library to your PATH and use the onnxruntime binary built from source with `--enable_cuda_profiling`.
 To profile ROCm kernels, please add the roctracer library to your PATH and use the onnxruntime binary built from source with `--enable_rocm_profiling`. 
