@@ -7655,30 +7655,30 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
       auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(-2)});
       auto* gather_out_1 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
       builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
-        .AddAttribute("axis", static_cast<int64_t>(2));
+          .AddAttribute("axis", static_cast<int64_t>(2));
 
       // Create Transpose 1-Ops
       auto* transpose_out_1 = builder.MakeOutput();
       builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
-        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
 
       // Create Gather-2 Ops
       auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(-1)});
       auto* gather_out_2 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
       builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
-        .AddAttribute("axis", static_cast<int64_t>(2));
+          .AddAttribute("axis", static_cast<int64_t>(2));
 
       // Create Transpose-2 Ops
       auto* transpose_out_2 = builder.MakeOutput();
       builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2})
-        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
 
       // Create Slice Ops
       auto* slice_output = builder.MakeIntermediate();
       auto* starts = builder.MakeInitializer<int64_t>({1}, {0});
-      auto* ends   = builder.MakeInitializer<int64_t>({1}, {-2});
-      auto* axes   = builder.MakeInitializer<int64_t>({1}, {2});
-      auto* steps  = builder.MakeInitializer<int64_t>({1}, {1});
+      auto* ends = builder.MakeInitializer<int64_t>({1}, {-2});
+      auto* axes = builder.MakeInitializer<int64_t>({1}, {2});
+      auto* steps = builder.MakeInitializer<int64_t>({1}, {1});
       builder.AddNode("Slice", {reshape_out, starts, ends, axes, steps}, {slice_output});
 
       // Create Shape-1 Ops
@@ -7692,7 +7692,7 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
       // Create Transpose-3 Ops
       auto* transpose_out_3 = builder.MakeOutput();
       builder.AddNode("Transpose", {slice_output}, {transpose_out_3})
-        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
@@ -7717,7 +7717,67 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
-                      TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  };
+}
+
+TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{54}});
+      auto* reshape_arg = builder.MakeInput<int64_t>({{4}});
+      auto* reshape_out = builder.MakeIntermediate<float>({{2, 512, 73, 64}});
+      builder.AddNode("Reshape", {data_arg, reshape_arg}, {reshape_out});
+
+      // Create Gather-1 Ops
+      auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(-2)});
+      auto* gather_out_1 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
+      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+
+      // Create Transpose 1-Ops
+      auto* transpose_out_1 = builder.MakeOutput();
+      builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+
+      // Create Slice Ops
+      auto* slice_output = builder.MakeIntermediate();
+      auto* starts = builder.MakeInitializer<int64_t>({1}, {0});
+      auto* ends = builder.MakeInitializer<int64_t>({1}, {-2});
+      auto* axes = builder.MakeInitializer<int64_t>({1}, {2});
+      auto* steps = builder.MakeInitializer<int64_t>({1}, {1});
+      builder.AddNode("Slice", {reshape_out, starts, ends, axes, steps}, {slice_output});
+
+      // Create Shape-1 Ops
+      auto* shape_output_1 = builder.MakeOutput();
+      builder.AddNode("Shape", {slice_output}, {shape_output_1});
+
+      // Create Shape-2 Ops
+      auto* shape_output_2 = builder.MakeOutput();
+      builder.AddNode("Shape", {slice_output}, {shape_output_2});
+
+      // Create Transpose-3 Ops
+      auto* transpose_out_3 = builder.MakeOutput();
+      builder.AddNode("Transpose", {slice_output}, {transpose_out_3})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Slice"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Slice"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 0);
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   };
 }
 
