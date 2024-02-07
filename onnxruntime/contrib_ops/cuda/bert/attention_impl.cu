@@ -461,7 +461,8 @@ Status UnfusedAttention(
       total_sequence_length, sequence_length, qk_head_size,
       &alpha, data.k, qk_head_size, present_size_per_batch_k,
       data.q, qk_head_size, sequence_length * qk_head_size,
-      &zero, data.scratch, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
+      &zero, data.scratch, total_sequence_length, sequence_length * total_sequence_length, batches,
+      device_prop, parameters.use_tf32));
 
   DUMP_TENSOR_D("Q", data.q, batch_size, num_heads, sequence_length, qk_head_size);
   DUMP_TENSOR_D("K", data.k, batch_size, num_heads, qk_head_size, sequence_length);
@@ -514,7 +515,7 @@ Status UnfusedAttention(
       v_head_size, sequence_length, total_sequence_length,
       &one, data.v, v_head_size, present_size_per_batch_v,
       scratch2, total_sequence_length, sequence_length * total_sequence_length,
-      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
+      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
 
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,

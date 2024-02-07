@@ -241,7 +241,7 @@ def native_group_norm_gradient():
 # are available for all versions, though they are not that convienent to use.
 def _upsample_gradient(backward_fn, dims):
     scales = ["" for _ in range(dims)]
-    if "bilinear" in backward_fn:
+    if "bicubic" in backward_fn:
         scales = ["I(2)", *scales]
     return [
         ("Shape", ["I(0)"], ["Shape_X"]),
@@ -271,3 +271,8 @@ def upsample_nearest2d_gradient():
 @register_gradient("org.pytorch.aten", "ATen", "upsample_nearest3d", "vec")
 def upsample_nearest3d_gradient():
     return _upsample_gradient("upsample_nearest3d_backward", 3)
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_bicubic2d", "vec")
+def upsample_bicubic2d_gradient():
+    return _upsample_gradient("upsample_bicubic2d_backward", 2)
