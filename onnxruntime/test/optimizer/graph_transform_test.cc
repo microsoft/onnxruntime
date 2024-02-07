@@ -7718,7 +7718,7 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
-  };
+  }
 }
 
 TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
@@ -7763,7 +7763,7 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
-      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 2);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 1);
       TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Slice"] == 1);
       return Status::OK();
     };
@@ -7778,7 +7778,7 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
-  };
+  }
 }
 
 }  // namespace test

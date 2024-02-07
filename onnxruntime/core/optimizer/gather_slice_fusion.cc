@@ -292,9 +292,8 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     for (int64_t i = 0; i < rank; i++) {
       if (i == split_axis)
         split_output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1LL);
-      else {
+      else
         *(split_output_type.mutable_tensor_type()->mutable_shape()->add_dim()) = shape->dim(static_cast<int>(i));
-      }
     }
 
     InlinedVector<NodeArg*> split_output_types;
