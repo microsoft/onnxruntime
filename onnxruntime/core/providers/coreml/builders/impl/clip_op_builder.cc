@@ -37,7 +37,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input_name = node.InputDefs()[0]->Name();
   const auto& output_name = node.OutputDefs()[0]->Name();
   float min, max;
-  ORT_RETURN_IF_NOT(GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max, logger), "GetClipMinMax failed");
+  ORT_RETURN_IF_NOT(GetClipMinMax(model_builder.GetGraphViewer(), node, min, max, logger), "GetClipMinMax failed");
 
   bool has_min = min != std::numeric_limits<float>::lowest();
   bool has_max = max != std::numeric_limits<float>::max();
@@ -111,8 +111,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool ClipOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   float min, max;
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-  return GetClipMinMax(initializers, node, min, max, logger);
+  return GetClipMinMax(input_params.graph_viewer, node, min, max, logger);
 }
 
 void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
