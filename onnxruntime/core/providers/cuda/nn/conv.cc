@@ -378,6 +378,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     auto handle = GetCudnnHandle(context);
 
     int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+#if !defined(__CUDACC__)
     cudnn_frontend::HeurMode_t heur_mode;
     switch (cudnn_conv_algo) {
       case 0:
@@ -396,7 +397,6 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
     size_t kernel_shape_size = kernel_shape.size();
 
-#if !defined(__CUDACC__)
     ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(X, W, B, y_dims_cudnn, handle, heur_mode,
                                                    std::vector<int64_t>(pads.begin(),
                                                                         pads.begin() + kernel_shape_size),
