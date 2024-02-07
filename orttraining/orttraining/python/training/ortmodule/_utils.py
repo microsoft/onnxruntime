@@ -13,7 +13,7 @@ import os
 import random
 import traceback
 import types
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union, Dict
 
 import numpy as np
 import torch
@@ -461,3 +461,64 @@ def get_world_size() -> int:
         return torch.distributed.get_world_size()
 
     return 1
+
+
+def get_device_map(model: torch.nn.Module) -> Dict[str, str]:
+    """
+    This function creates a dictionary mapping from layer names to devices.
+    It iterates over all children of the given model, and for each child, it tries to get its device.
+    If the child has parameters, its device is the device of its first parameter.
+    If the child does not have parameters (like a ReLU layer), it is not included in the map.
+
+    Args:
+        model (nn.Module): The model for which to create the device map.
+
+    Returns:
+        Dict[str, str]: A dictionary where the keys are layer names and the values are device names.
+    """
+    device_map = {}
+
+    for name, layer in model.named_children():
+        device = None
+        try:
+            device = next(layer.parameters()).device
+        except StopIteration:
+            # Model doesn't have a device set to any of the model parameters
+            pass
+
+        # If the device is set, add it to the device map, this to ignore the layers that don't have any parameters.
+        if device:
+            device_map[name] = str(device)
+
+    return device_map
+
+
+def is_model_dispatched(model: torch.nn.Module) -> bool:
+    """
+    This function checks if at least two children of a model live on different GPUs.
+    It iterates over all children of the given model, and for each child, it tries to get its device.
+    If the child has parameters, its device is the device of its first parameter.
+    If the child does not have parameters (like a ReLU layer), it is ignored.
+    Once it finds at least two children that live on different devices, it returns True.
+
+    Args:
+        model (nn.Module): The model to check.
+
+    Returns:
+        bool: True if at least two children live on different devices, False otherwise.
+    """
+    devices = set()
+
+    for _, layer in model.named_children():
+        try:
+            device = next(layer.parameters()).device
+        except StopIteration:
+            # Model doesn't have a device set to any of the model parameters
+            continue
+
+        devices.add(str(device))
+
+        if len(devices) > 1:
+            return True
+
+    return False
