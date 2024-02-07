@@ -211,7 +211,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     InlinedVector<NodeArg*> split_outputs(3);
 
     InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
-    int64_t gather_node_count = 0, slice_node_count = 0;
+    size_t gather_node_count = 0, slice_node_count = 0;
 
     // find the nodes to be merged
     for (auto consumer : consumers) {
@@ -260,8 +260,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         Node& gather_node = *graph.GetNode(consumer->Index());
         nodes_to_fuse.push_back(gather_node);
         NodeArg* gather_output_args = gather_node.MutableOutputDefs()[0];
-        gather_node_count++;
-        split_outputs[gather_node_count] = gather_output_args;
+        split_outputs[++gather_node_count] = gather_output_args;
       }
 
       // check the Slice Ops
