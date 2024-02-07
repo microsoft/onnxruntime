@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType,} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
 
 //  TODO support quantization bits not equal to 4
 export interface MatMulNBitsAttributes extends AttributeWithCacheKey {
@@ -41,9 +41,9 @@ const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAt
   if (inputs.length === 4) {
     const zeroPoints = inputs[3];
     const zeroPointsShape = zeroPoints.dims;
-    const zeroPointsSize =
-        attributes.bits > 4 ? (attributes.n * nBlocksPerCol) : (attributes.n * nBlocksPerCol + 1) / 2;
-    if (ShapeUtil.size(zeroPointsShape) !== zeroPointsSize) {
+    const expectedZeroPointsSize =
+        attributes.bits > 4 ? (attributes.n * nBlocksPerCol) : attributes.n * Math.floor((nBlocksPerCol + 1) / 2);
+    if (ShapeUtil.size(zeroPointsShape) !== expectedZeroPointsSize) {
       throw new Error('zeroPoints input size error.');
     }
   }
@@ -79,7 +79,7 @@ export const createMatMulNBitsProgramInfo =
         const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
         const inputVariables = [a, b, scales];
         const zeroPoints =
-            inputs.length === 4 ? inputVariable('zero_points', inputs[3].dataType, inputs[3].dims.length) : undefined;
+            inputs.length === 4 ? inputVariable('zero_points', DataType.uint32, inputs[3].dims.length) : undefined;
         if (zeroPoints) {
           inputVariables.push(zeroPoints);
         }
@@ -89,13 +89,14 @@ export const createMatMulNBitsProgramInfo =
           {name: 'accuracy_level', type: 'u32'}, {name: 'bits', type: 'u32'}, {name: 'block_size', type: 'u32'},
           {name: 'n_blocks_per_col', type: 'u32'}, {name: 'blob_size', type: 'u32'}
         ];
+        const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
         return `
-        fn ortUnpack8x4snorm(value: u32) -> array<f32, 8>{
-          var result = array<f32, 8>();
+        fn ortUnpack8x4snorm(value: u32) -> array<${dataType}, 8>{
+          var result = array<${dataType}, 8>();
           var offset: u32 = 0;
           let count: u32 = 4;
           for (var i: u32 = 0; i < 8u; i++) {
-            result[i] = f32(extractBits(value, offset, count));
+            result[i] = ${dataType}(extractBits(value, offset, count));
             offset += count;
           }
           return result;
@@ -103,7 +104,7 @@ export const createMatMulNBitsProgramInfo =
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
-          var value = 0.0;
+          var value: ${dataType} = 0.0;
           let output_indices = ${output.offsetToIndices('global_idx')};
           var a_indices: ${a.type.indices} = output_indices;
           var n = ${output.indicesGet('output_indices', aRank - 1)};
@@ -112,8 +113,9 @@ export const createMatMulNBitsProgramInfo =
           // TODO support zero_point_offset for bits > 4
           ${
             zeroPoints ? `
-          var zero_point_index = n * uniforms.n_blocks_per_col / 2;
-          var zero_point_offset = (n * uniforms.n_blocks_per_col % 2) * 4;` :
+            var zero_point_index: u32 = n * ((uniforms.n_blocks_per_col + 1) / 2);
+            var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_index')};
+            var zero_point_offset: u32 = 0;` :
                          ''}
           var scale_idex = n * uniforms.n_blocks_per_col;
           for (var block: u32 = 0; block < uniforms.n_blocks_per_col; block++) {
@@ -121,8 +123,8 @@ export const createMatMulNBitsProgramInfo =
             // The scale and zero points are computed per block.
             let scale = ${scales.getByOffset('scale_idex')};
             // The default zero point is 8 for unsigned 4-bit quantization.
-            let zero_point: f32 = ${
-            zeroPoints ? `extractBits(${zeroPoints.getByOffset('zero_index')}, zero_point_offset, 4)` : 8.0};
+            let zero_point: ${dataType} = ${
+            zeroPoints ? `${dataType}(extractBits(zero_point_word, zero_point_offset, 4))` : 8.0};
             for (var blob: u32 = 0; blob < uniforms.block_size/uniforms.blob_size; blob++) {
               var blob_offset = blob * uniforms.blob_size;
               var b_indices: ${b.type.indices};
@@ -130,7 +132,7 @@ export const createMatMulNBitsProgramInfo =
               ${b.indicesSet('b_indices', '1', 'block')};
               ${b.indicesSet('b_indices', '0', 'n')};
               let b_value = ${b.getByIndices('b_indices')};
-              let b_quantized_values: array<f32, 8> = ortUnpack8x4snorm(b_value);
+              let b_quantized_values: array<${dataType}, 8> = ortUnpack8x4snorm(b_value);
               // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
               for (var i: u32 = 0; i < 8; i++) {
                 ${a.indicesSet('a_indices', aRank - 1, 'block_offset + blob_offset + i')};
@@ -143,15 +145,16 @@ export const createMatMulNBitsProgramInfo =
             scale_idex++;
             ${
             zeroPoints ? `
-            if (zero_point_offset == 4) {
+            if (zero_point_offset == 28) {
               zero_point_offset = 0;
               zero_point_index++;
+              var zero_point_word = ${zeroPoints.getByOffset('zero_point_index')};
             } else {
-              zero_point_offset = 4;
+              zero_point_offset += 4;
             }` :
                          ''}
           }
-          ${output.setByOffset('global_idx', 'f32(value)')};
+          ${output.setByOffset('global_idx', 'value')};
         }
         `;
       };
