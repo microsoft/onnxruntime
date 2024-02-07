@@ -259,6 +259,16 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       *output_shape.add_dim() = query_dims[1];
       *output_shape.add_dim() = query_dims[2];
       updateOutputShape(ctx, 0, output_shape);
+    } else {
+      ONNX_NAMESPACE::TensorShapeProto output_shape;
+      int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+      int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
+      int64_t hidden_size = query_dims[2].dim_value();
+      int64_t head_size = hidden_size / (num_heads + 2 * kv_num_heads);
+      *output_shape.add_dim() = query_dims[0];
+      *output_shape.add_dim() = query_dims[1];
+      output_shape.add_dim()->set_dim_value(head_size * num_heads);
+      updateOutputShape(ctx, 0, output_shape);
     }
   }
 

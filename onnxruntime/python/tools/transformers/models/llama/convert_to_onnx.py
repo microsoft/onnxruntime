@@ -781,6 +781,13 @@ def get_args():
         action="store_true",
         help="Avoid exporting model, only apply quantizations and optimizations to existing model exported from optimum.",
     )
+
+    parser.add_argument(
+        "--small_gpu",
+        action="store_true",
+        help="Load the llama in GPU every time for parity_check if it's running in a machine which GPU memory < 36GB.",
+    )
+
     parser.set_defaults(optimize_optimum=False)
 
     args = parser.parse_args()
@@ -788,9 +795,7 @@ def get_args():
 
 
 def main():
-    if version.parse(torch.__version__) < version.parse("2.2.0") and "2.2.0.dev" not in torch.__version__:
-        # Second predicate is for comparing nightly (ex: 2.2.0.dev20230920 vs 2.2.0) since first predicate is false
-        # in that scenario. It can be removed when torch v2.2.0 is released in stable.
+    if version.parse(torch.__version__) < version.parse("2.2.0"):
         logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
         return
 
@@ -1021,7 +1026,11 @@ def main():
             args.precision,
             "--cache_dir",
             args.cache_dir,
+            "--torch_model_directory",
+            args.input,
         ]
+        if args.small_gpu:
+            parity_cmd.append("--small_gpu")
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
         if "merged" in filename:
@@ -1030,7 +1039,7 @@ def main():
             parity_cmd.append("--use_gqa")
 
         try:
-            logger.debug(f"check parity with cmd: {parity_cmd}")
+            logger.info(f"check parity with cmd: {parity_cmd}")
             parity_check(parity_cmd)
         except Exception as e:
             logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)
