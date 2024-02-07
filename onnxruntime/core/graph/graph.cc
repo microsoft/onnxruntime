@@ -2367,8 +2367,14 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       inferred_type = existing_type;
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
+      std::stringstream ss;
+      ss << "index=" << operand_index;
+      for (auto it = op_formal_parameter.GetTypes().begin(); it != op_formal_parameter.GetTypes().end(); ++it) {
+        ss << "," << *(*it);
+      }
       Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
-                    "Node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
+                    "Node (" + node_name + ") Op (" + node.OpType() + ") output arg (" +
+                        output_def->Name() + ") type inference failed, inferred types: " + ss.str());
       return status;
     }
 
@@ -2550,14 +2556,14 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     // Node verification.
     auto& node = *GetNode(node_index);
 
-    NodeProto node_proto;
-    node.ToProto(node_proto);
     const auto& node_name = node.Name();
 
     if (!node.Op()) {
       {
         auto status = Status::OK();
         ORT_TRY {
+          NodeProto node_proto;
+          node.ToProto(node_proto);
           checker::check_node(node_proto, ctx, lsc);
         }
         ORT_CATCH(const std::exception& ex) {
@@ -2630,8 +2636,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op, options)));
 
     // Accumulate output names of the iterated Node
-    for (auto& output_name : node_proto.output()) {
-      lsc.output_names.insert(output_name);
+    for (const auto& output : node.OutputDefs()) {
+      lsc.output_names.insert(output->Name());
     }
   }
 
@@ -2792,11 +2798,12 @@ Status Graph::Resolve(const ResolveOptions& options) {
                 graph.GraphProtoSyncNeeded(false);
             }
 
+            // set num_resolves_ here so the graph and any subgraphs all have the same value
+            ++graph.num_resolves_;
+
             return Status::OK(); };
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
-
-  ++num_resolves_;
 
   return Status::OK();
 }

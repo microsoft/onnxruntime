@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=5.7
+ARG ROCM_VERSION=6.0
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -67,9 +67,6 @@ ENV CONDA_DEFAULT_ENV rocm-ci
 RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.9
 ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 
-# Conda base patch
-RUN pip install cryptography==41.0.4
-
 # Enable rocm-ci environment
 SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
 
@@ -94,7 +91,7 @@ RUN wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.b
 
 # Install CuPy, No stable version is available
 RUN git clone https://github.com/ROCmSoftwarePlatform/cupy && cd cupy && \
-    git checkout fc251a808037f8a2270860c2a23a683bfc0de43e && \
+    git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
     export CUPY_INSTALL_USE_HIP=1 && \
     export ROCM_HOME=/opt/rocm && \
     export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
@@ -128,7 +125,8 @@ RUN pip install \
     pytorch_lightning==1.6.0 \
     pytest-xdist \
     pytest-rerunfailures \
-    ml_dtypes==0.3.0
+    ml_dtypes==0.3.0 \
+    pytest==7.4.4
 
 # Install migraphx
 RUN apt update && apt install -y migraphx

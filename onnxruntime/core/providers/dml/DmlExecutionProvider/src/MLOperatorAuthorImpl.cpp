@@ -1153,6 +1153,33 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::TryGetConstantInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept
+    {
+        ORT_TRY
+        {
+            auto constantInput = m_constantInputGetter(inputIndex);
+            ORT_THROW_HR_IF(E_INVALIDARG, !std::holds_alternative<ComPtr<IMLOperatorTensor>>(constantInput));
+
+            auto tensorWrapper = std::get<ComPtr<IMLOperatorTensor>>(constantInput);
+            if (tensorWrapper == nullptr)
+            {
+                bool inputRequiredAsConstant = std::find(
+                                                 m_requiredConstantCpuInputs.begin(),
+                                                 m_requiredConstantCpuInputs.end(),
+                                                 inputIndex) != m_requiredConstantCpuInputs.end();
+
+                // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
+                ORT_THROW_HR_IF(E_UNEXPECTED, inputRequiredAsConstant);
+            }
+
+            *tensor = tensorWrapper.Detach();
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
     HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetOutputTensorShape(uint32_t outputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept
     {
         ORT_TRY
@@ -1535,7 +1562,13 @@ namespace Windows::AI::MachineLearning::Adapter
     OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::Path& modelPath) : m_impl(impl)
     {
         // The tensor may be stored as raw data or in typed fields.
-        if (impl->has_raw_data())
+        if (impl->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
+        {
+            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*impl, modelPath, m_unpackedExternalTensor));
+            m_dataPtr = reinterpret_cast<std::byte*>(m_unpackedExternalTensor.data());
+            m_tensorByteSize = m_unpackedExternalTensor.size();
+        }
+        else if (impl->has_raw_data())
         {
             m_dataPtr = reinterpret_cast<std::byte*>(impl->mutable_raw_data()->data());
             m_tensorByteSize = impl->raw_data().size();

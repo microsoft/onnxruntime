@@ -265,10 +265,6 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
     }
-
-#ifdef DEBUG_GENERATION
-    DumpScores("TimestampLogitsProcessor", next_token_scores);
-#endif
   }
 
  private:

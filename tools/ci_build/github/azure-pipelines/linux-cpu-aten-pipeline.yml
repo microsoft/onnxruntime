@@ -43,7 +43,7 @@ jobs:
   variables:
     CCACHE_DIR: $(Agent.TempDirectory)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  pool: onnxruntime-Ubuntu2004-AMD-CPU
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
@@ -94,7 +94,7 @@ jobs:
                       --config Release \
                       --skip_submodule_sync \
                       --build_shared_lib \
-                      --parallel \
+                      --parallel --use_binskim_compliant_compile_flags \
                       --build_wheel \
                       --skip_tests \
                       --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON \
@@ -126,7 +126,7 @@ jobs:
                 --config Release \
                 --skip_submodule_sync \
                 --build_shared_lib \
-                --parallel \
+                --parallel --use_binskim_compliant_compile_flags \
                 --build_wheel \
                 --test \
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON"

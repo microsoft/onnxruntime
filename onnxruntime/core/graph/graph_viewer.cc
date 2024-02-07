@@ -212,6 +212,8 @@ const std::string& GraphViewer::Description() const noexcept {
 
 bool GraphViewer::GetInitializedTensor(const std::string& tensor_name,
                                        const ONNX_NAMESPACE::TensorProto*& value) const {
+  value = nullptr;
+
   // if we are using filtered subgraph, the initializer has to be part of the subgraph
   if (filter_info_ != nullptr && filtered_initializers_.find(tensor_name) == filtered_initializers_.cend())
     return false;

@@ -3,9 +3,10 @@
 
 import {env} from 'onnxruntime-common';
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil, ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
+import {AttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
 import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
@@ -56,48 +57,49 @@ const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoo
   const isChannelsLast = attributes.format === 'NHWC';
   const outputSize = ShapeUtil.size(outputShape);
   const kernelSize = ShapeUtil.size(attributes.kernelShape);
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}, {type: 'uint32', data: kernelSize}];
+  const programUniforms: ProgramUniform[] =
+      [{type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: kernelSize}];
   const uniforms: UniformsArrayType = [{name: 'outputSize', type: 'u32'}, {name: 'kernelSize', type: 'u32'}];
   if (attributes.kernelShape.length <= 2) {
     const kw = attributes.kernelShape[attributes.kernelShape.length - 1];
     const sw = attributes.strides[attributes.strides.length - 1];
     const pwStart = attributes.pads[attributes.pads.length / 2 - 1];
     const pwEnd = attributes.pads[attributes.pads.length - 1];
-    const pwStartEnd = !!(pwStart + pwEnd);
+    const pwStartEndNotZero = !!(pwStart + pwEnd);
     programUniforms.push(
-        {type: 'uint32', data: kw},
-        {type: 'uint32', data: sw},
-        {type: 'uint32', data: pwStart},
-        {type: 'uint32', data: pwEnd},
+        {type: DataType.uint32, data: kw},
+        {type: DataType.uint32, data: sw},
+        {type: DataType.uint32, data: pwStart},
+        {type: DataType.uint32, data: pwEnd},
     );
     uniforms.push(
         {name: 'kw', type: 'u32'}, {name: 'sw', type: 'u32'}, {name: 'pwStart', type: 'u32'},
         {name: 'pwEnd', type: 'u32'});
 
-    let phStartEnd = false;
+    let phStartEndNotZero = false;
     if (attributes.kernelShape.length === 2) {
       const kh = attributes.kernelShape[attributes.kernelShape.length - 2];
       const sh = attributes.strides[attributes.strides.length - 2];
       const phStart = attributes.pads[attributes.pads.length / 2 - 2];
       const phEnd = attributes.pads[attributes.pads.length - 2];
-      phStartEnd = !!(phStart + phEnd);
+      phStartEndNotZero = !!(phStart + phEnd);
       programUniforms.push(
-          {type: 'uint32', data: kh}, {type: 'uint32', data: sh}, {type: 'uint32', data: phStart},
-          {type: 'uint32', data: phEnd});
+          {type: DataType.uint32, data: kh}, {type: DataType.uint32, data: sh}, {type: DataType.uint32, data: phStart},
+          {type: DataType.uint32, data: phEnd});
 
       uniforms.push(
           {name: 'kh', type: 'u32'}, {name: 'sh', type: 'u32'}, {name: 'phStart', type: 'u32'},
           {name: 'phEnd', type: 'u32'});
     }
-    return [programUniforms, uniforms, true, pwStartEnd, phStartEnd];
+    return [programUniforms, uniforms, true, pwStartEndNotZero, phStartEndNotZero];
   } else {
     if (isChannelsLast) {
       throw new Error('Pooling with kernelShape.length > 2 is not supported for NHWC format.');
     }
     const kernelStrides = ShapeUtil.computeStrides(attributes.kernelShape);
     programUniforms.push(
-        {type: 'uint32', data: kernelStrides}, {type: 'uint32', data: attributes.pads},
-        {type: 'uint32', data: attributes.strides});
+        {type: DataType.uint32, data: kernelStrides}, {type: DataType.uint32, data: attributes.pads},
+        {type: DataType.uint32, data: attributes.strides});
     uniforms.push(
         {name: 'kernelStrides', type: 'u32', length: kernelStrides.length},
         {name: 'pads', type: 'u32', length: attributes.pads.length},
@@ -110,8 +112,8 @@ const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoo
 
 const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
     shaderHelper: ShaderHelper, x: IndicesHelper, rank: number, outputShapeRank: number, attributes: AttributeType,
-    op1: string, op2: string, start: number, uniforms: UniformsArrayType, hasPads: boolean, pwStartEnd: boolean,
-    phStartEnd: boolean): string => {
+    op1: string, op2: string, start: number, uniforms: UniformsArrayType, hasPads: boolean, pwStartEndNotZero: boolean,
+    phStartEndNotZero: boolean): string => {
   const isChannelsLast = attributes.format === 'NHWC';
   const dataType = x.type.value;
   const output = outputVariable('output', x.type.tensor, outputShapeRank);
@@ -121,7 +123,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     let codeH = '';
     let codeHEnd = '';
     const dimIdxW = rank - (isChannelsLast ? 2 : 1);
-    if (pwStartEnd === true) {
+    if (pwStartEndNotZero) {
       codeW = `
                 for (var i: u32 = 0u; i < uniforms.kw; i++) {
                   xIndices[${dimIdxW}] = indices[${dimIdxW}] * uniforms.sw - uniforms.pwStart + i;
@@ -144,7 +146,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
 
     if (attributes.kernelShape.length === 2) {
       const dimIdxH = rank - (isChannelsLast ? 3 : 2);
-      if (phStartEnd === true) {
+      if (phStartEndNotZero) {
         codeH = `
                 for (var j: u32 = 0u; j < uniforms.kh; j++) {
                   xIndices[${dimIdxH}] = indices[${dimIdxH}] * uniforms.sh - uniforms.phStart + j;
@@ -258,6 +260,15 @@ export interface PoolCommonAttributes extends FormatAttributes {
   readonly pads: readonly number[];
 }
 
+const createShaderKeyFromAttributes = (attributes: PoolCommonAttributes): string =>
+    (`${attributes.format};${attributes.ceilMode};${attributes.autoPad};${attributes.kernelShape.length}`);
+
+const createAveragePoolShaderKeyFromAttributes = (attributes: AveragePoolAttributes): string =>
+    (`${createShaderKeyFromAttributes(attributes)};${attributes.countIncludePad}`);
+
+const createMaxPoolShaderKeyFromAttributes = (attributes: MaxPoolAttributes): string =>
+    (`${createShaderKeyFromAttributes(attributes)};${attributes.storageOrder};${attributes.dilations}`);
+
 const parsePoolCommonAttributes = (attributes: Record<string, unknown>): PoolCommonAttributes => ({
   format: attributes.format as FormatAttributes['format'],
   autoPad: ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.auto_pad as number],
@@ -285,17 +296,14 @@ const createAveragePoolProgramInfo =
       } else {
         op2 += `value /= ${dataType}(i32(uniforms.kernelSize) - pad);`;
       }
-      const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
+      const [programUniforms, uniforms, hasPads, pwStartEndNotZero, phStartEndNotZero] =
           getUniformAndPadInfo(outputShape, adjustedAttributes);
-      programUniforms.push(...createTensorShapeVariables(input.dims));
-      programUniforms.push(...createTensorShapeVariables(outputShape));
+      programUniforms.push(...createTensorShapeVariables(input.dims, outputShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       return {
         name,
-        shaderCache: {
-          hint: attributes.cacheKey + hasPads + pwStartEnd + phStartEnd + adjustedAttributes.countIncludePad,
-          inputDependencies
-        },
+        shaderCache:
+            {hint: `${attributes.cacheKey};${hasPads};${pwStartEndNotZero};${phStartEndNotZero}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: input.dataType}],
           dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
@@ -303,7 +311,7 @@ const createAveragePoolProgramInfo =
         }),
         getShaderSource: shaderHelper => generatePoolingCode(
             shaderHelper, x, input.dims.length, outputShape.length, adjustedAttributes, op1, op2, 0.0, uniforms,
-            hasPads, pwStartEnd, phStartEnd),
+            hasPads, pwStartEndNotZero, phStartEndNotZero),
       };
     };
 
@@ -315,8 +323,8 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
   if (attr.ceilMode !== 0) {
     throw new Error('using ceil() in shape computation is not yet supported for AveragePool');
   }
-
-  return createAttributeWithCacheKey({countIncludePad, ...attr});
+  const averagePoolAttributes = {countIncludePad, ...attr, cacheKey: ''};
+  return {...averagePoolAttributes, cacheKey: createAveragePoolShaderKeyFromAttributes(averagePoolAttributes)};
 };
 
 export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
@@ -332,8 +340,7 @@ const globalPoolAttributes = {
   strides: [],
   pads: [],
   storageOrder: 0,
-  dilations: [],
-  cacheKey: ''
+  dilations: []
 };
 
 export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unknown>): AveragePoolAttributes => {
@@ -361,13 +368,13 @@ const createMaxPoolProgramInfo =
       const op2 = '';
       const x = inputVariable('x', input.dataType, input.dims.length);
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
-      const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
+      const [programUniforms, uniforms, hasPads, pwStartEndNotZero, phStartEndNotZero] =
           getUniformAndPadInfo(outputShape, adjustedAttributes);
-      programUniforms.push(...createTensorShapeVariables(input.dims));
-      programUniforms.push(...createTensorShapeVariables(outputShape));
+      programUniforms.push(...createTensorShapeVariables(input.dims, outputShape));
       return {
         name,
-        shaderCache: {hint: attributes.cacheKey + hasPads, inputDependencies},
+        shaderCache:
+            {hint: `${attributes.cacheKey};${hasPads};${pwStartEndNotZero};${phStartEndNotZero}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: input.dataType}],
           dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
@@ -375,7 +382,7 @@ const createMaxPoolProgramInfo =
         }),
         getShaderSource: shaderHelper => generatePoolingCode(
             shaderHelper, x, input.dims.length, outputShape.length, adjustedAttributes, op1, op2, -1e5, uniforms,
-            hasPads, pwStartEnd, phStartEnd),
+            hasPads, pwStartEndNotZero, phStartEndNotZero),
       };
     };
 
@@ -396,8 +403,8 @@ export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): Max
   if (attr.ceilMode !== 0) {
     throw new Error('using ceil() in shape computation is not yet supported for MaxPool');
   }
-
-  return createAttributeWithCacheKey({storageOrder, dilations, ...attr});
+  const maxPoolAttributes = {storageOrder, dilations, ...attr, cacheKey: ''};
+  return {...maxPoolAttributes, cacheKey: createMaxPoolShaderKeyFromAttributes(maxPoolAttributes)};
 };
 
 export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {

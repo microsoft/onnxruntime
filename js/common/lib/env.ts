@@ -34,6 +34,13 @@ export declare namespace Env {
     simd?: boolean;
 
     /**
+     * set or get a boolean value indicating whether to enable trace.
+     *
+     * @defaultValue `false`
+     */
+    trace?: boolean;
+
+    /**
      * Set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds. A zero
      * value indicates no timeout is set.
      *
@@ -103,6 +110,7 @@ export declare namespace Env {
     kernelId: number;
     kernelType: string;
     kernelName: string;
+    programName: string;
     startTime: number;
     endTime: number;
   }

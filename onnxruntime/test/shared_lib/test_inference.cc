@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <thread>
 
+#include <absl/base/config.h>
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -40,6 +41,10 @@
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
+#endif
+
+#ifdef USE_ROCM
+#include <hip/hip_runtime.h>
 #endif
 
 // Once we use C++17 this could be replaced with std::size
@@ -402,6 +407,8 @@ TEST(CApiTest, SparseInputModel) {
 #endif  // DISABLE_CONTRIB_OPS
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+// Memory leak
+#ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
 
@@ -435,6 +442,7 @@ TEST(CApiTest, custom_op_handler) {
                        custom_op_domain, nullptr);
 #endif
 }
+#endif
 
 #ifdef USE_CUDA
 TEST(CApiTest, custom_op_set_input_memory_type) {
@@ -1264,6 +1272,49 @@ TEST(CApiTest, test_custom_op_get_const_input) {
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if defined(__ANDROID__)
+// Disable on android because custom op libraries are not copied to the emulator.
+TEST(CApiTest, DISABLED_test_custom_op_local_function) {
+#else
+TEST(CApiTest, test_custom_op_local_function) {
+#endif  // defined(__ANDROID__)
+  const auto* model_path = TSTR("testdata/custom_op_local_function/custom_ops_type_inference_fails_0.onnx");
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+
+  // input 0 (float type)
+  input_names.emplace_back("X");
+  std::vector<float> input_0_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> input_0_dims = {2, 2};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+  const char* output_name = "Y";
+
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_local_function.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_local_function.dylib");
+#else
+lib_name = ORT_TSTR("./libcustom_op_local_function.so");
+#endif
+
+  Ort::SessionOptions session_opts;
+
+  session_opts.RegisterCustomOpsLibrary(lib_name);
+
+  Ort::Session session(*ort_env, model_path, session_opts);
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+  session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+              &output_name, 1);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   // Tests a custom operator that wraps an OpenVINO MNIST model (.xml and .bin files serialized into node attributes).
@@ -1409,7 +1460,8 @@ TEST(CApiTest, test_custom_op_library) {
 #endif
 }
 
-#if defined(__ANDROID__)
+// Has memory leak
+#if defined(__ANDROID__) || defined(ABSL_HAVE_ADDRESS_SANITIZER)
 TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
 // To accomodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
@@ -1714,6 +1766,27 @@ TEST(CApiTest, get_allocator_cuda) {
 }
 #endif
 
+#ifdef USE_ROCM
+TEST(CApiTest, get_allocator_rocm) {
+  Ort::SessionOptions session_options;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
+  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+
+  Ort::MemoryInfo info_rocm("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator rocm_allocator(session, info_rocm);
+
+  auto allocator_info = rocm_allocator.GetInfo();
+  ASSERT_TRUE(info_rocm == allocator_info);
+  void* p = rocm_allocator.Alloc(1024);
+  ASSERT_NE(p, nullptr);
+  rocm_allocator.Free(p);
+
+  auto mem_allocation = rocm_allocator.GetAllocation(1024);
+  ASSERT_NE(nullptr, mem_allocation.get());
+  ASSERT_EQ(1024U, mem_allocation.size());
+}
+#endif
+
 TEST(CApiTest, io_binding) {
   Ort::SessionOptions session_options;
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
@@ -1889,7 +1962,7 @@ TEST(CApiTest, io_binding_cuda) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT)
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
 TEST(CApiTest, basic_cuda_graph) {
   const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
@@ -1907,7 +1980,7 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_trt_options.get()) == nullptr);
-#else
+#elif defined(USE_CUDA)
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
@@ -1920,34 +1993,55 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_cuda_options.get()) == nullptr);
+#elif defined(USE_ROCM)
+  // Enable hip graph in rocm provider option.
+  OrtROCMProviderOptions* rocm_options = nullptr;
+  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
+  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
+      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
+  std::vector<const char*> keys{"enable_hip_graph"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
+
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_rocm_options.get()) == nullptr);
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
-  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#if defined(USE_ROCM)
+// local hipify
+#define cudaMemcpy hipMemcpy
+#define cudaMemcpyHostToDevice hipMemcpyHostToDevice
+#define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
+  Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#else
+  Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#endif
 
-  Ort::Allocator cuda_allocator(session, info_cuda);
-  auto allocator_info = cuda_allocator.GetInfo();
-  ASSERT_TRUE(info_cuda == allocator_info);
+  Ort::Allocator allocator(session, info_mem);
+  auto allocator_info = allocator.GetInfo();
+  ASSERT_TRUE(info_mem == allocator_info);
 
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  auto input_data = cuda_allocator.GetAllocation(x_values.size() * sizeof(float));
+  auto input_data = allocator.GetAllocation(x_values.size() * sizeof(float));
 
   ASSERT_NE(input_data.get(), nullptr);
-  cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_mem, reinterpret_cast<float*>(input_data.get()), x_values.size(),
                                                 x_shape.data(), x_shape.size());
 
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  auto output_data = cuda_allocator.GetAllocation(expected_y.size() * sizeof(float));
+  auto output_data = allocator.GetAllocation(expected_y.size() * sizeof(float));
 
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_mem, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
   // Create IoBinding for inputs and outputs.
@@ -1960,31 +2054,37 @@ TEST(CApiTest, basic_cuda_graph) {
 
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
-  cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
-  cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
-  cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
   binding.SynchronizeInputs();
 
   session.Run(Ort::RunOptions(), binding);
-  cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   expected_y = {10.0f, 40.0f, 90.0f, 160.0f, 250.0f, 360.0f};
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Clean up
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
+#if defined(USE_ROCM)
+#undef cudaMemcpy
+#undef cudaMemcpyHostToDevice
+#undef cudaMemcpyDeviceToHost
+#endif
 }
 
-#ifndef REDUCED_OPS_BUILD
 // The following test uses some ops not supported in the reduced ops build
+#ifndef REDUCED_OPS_BUILD
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, cuda_graph_with_shape_nodes) {
   const auto& api = Ort::GetApi();
 
@@ -2005,10 +2105,34 @@ TEST(CApiTest, cuda_graph_with_shape_nodes) {
   // Successful loading of the ONNX model with shape nodes with cuda graph feature enabled
   Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
 }
+#endif  // defined(USE_CUDA) || defined(USE_TENSORRT)
 
-#endif
+#if defined(USE_ROCM)
+TEST(CApiTest, hip_graph_with_shape_nodes) {
+  const auto& api = Ort::GetApi();
 
-#endif
+  // Enable hip graph in rocm provider option.
+  OrtROCMProviderOptions* rocm_options = nullptr;
+  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
+  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
+      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
+  std::vector<const char*> keys{"enable_hip_graph"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
+
+  Ort::SessionOptions session_options;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_rocm_options.get()) == nullptr);
+
+  // Successful loading of the ONNX model with shape nodes with hip graph feature enabled
+  Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
+}
+#endif  // defined(USE_ROCM)
+
+#endif  // REDUCED_OPS_BUILD
+
+#endif  // defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};

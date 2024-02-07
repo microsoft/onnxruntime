@@ -53,7 +53,7 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: false
-    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
     WASMTemplate: linux-wasm-ci.yml
@@ -62,4 +62,4 @@ stages:
     RunWebGpuTestsForReleaseBuild: true
     WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
     WebCpuPoolName: 'onnxruntime-Win-CPU-2022-web'
-    WithCache: true
+    WithCache: false

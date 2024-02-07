@@ -32,7 +32,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.17.0.231124_win
+  default: qnn-v2.18.0.240101_win
 
 jobs:
 - job: 'build'
@@ -76,7 +76,7 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "win-qnn | $(BuildConfig)"
-      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --compile_no_warning_as_error --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
+      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --compile_no_warning_as_error --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel --use_binskim_compliant_compile_flags'
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: $(buildArch)
       Platform: 'x64'
@@ -88,11 +88,11 @@ jobs:
     displayName: 'Run unit tests'
 
   - script: |
-      .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+      .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run ONNX Tests'
 
   - script: |
-      .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
+      .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run float32 model tests'

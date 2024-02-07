@@ -50,7 +50,9 @@ Abstract:
 #include <arm_neon.h>
 #endif
 #if defined(__x86_64__) || defined(__i386__)
+#if !defined(signature_VORTEX_ebx) && !defined(signature_NEXGEN_ebx) && !defined(signature_AMD_ebx)//workaround for Bug 96238 - [i386] cpuid.h header needs include guards
 #include <cpuid.h>
+#endif
 #if defined(__GNUC__) && __GNUC__ >= 12
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // GCC 12 warns about uninitialized variables in immintrin.h.
@@ -191,6 +193,8 @@ class MLASCPUIDInfo
 
     bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
 
+    bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
+
    private:
     MLASCPUIDInfo();
 
@@ -198,6 +202,7 @@ class MLASCPUIDInfo
     bool has_fp16_{false};
     bool has_arm_neon_i8mm_{false};
     bool has_arm_sve_i8mm_{false};
+    bool has_arm_neon_bf16_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
@@ -354,6 +359,20 @@ size_t
     );
 
 #else
+
+#if defined(__aarch64__) && defined(__linux__)
+typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
+    const float* A,
+    const bfloat16_t* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    const float* Bias
+);
+#endif
 
 typedef
 size_t
@@ -725,6 +744,10 @@ extern "C" {
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
+#if defined(__aarch64__) && defined(__linux__)
+    MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
+    MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
+#endif
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
 #endif
@@ -853,6 +876,10 @@ extern "C" {
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
+
+#if defined(__aarch64__) && defined(__linux__)
+#define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
+#endif
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.

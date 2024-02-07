@@ -37,7 +37,8 @@ Status DecoderQkvToContext(
     T* workspace_buffer,
     T* output,
     T* new_key_cache,
-    T* new_value_cache) {
+    T* new_value_cache,
+    bool use_tf32) {
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int BN = batch_size * num_heads;
   const int BHN = BN * head_size;
@@ -128,14 +129,14 @@ Status DecoderQkvToContext(
         kv_sequence_length, sequence_length, head_size,
         &alpha, key_cache, head_size, strideA,
         q, head_size, strideB,
-        &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, device_prop));
+        &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, device_prop, use_tf32));
   } else {
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
         cublas, CUBLAS_OP_T, CUBLAS_OP_N,
         kv_sequence_length, sequence_length, head_size,
         &alpha, k, head_size, strideA,
         q, head_size, strideB,
-        &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, device_prop));
+        &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, device_prop, use_tf32));
   }
 
   constexpr bool is_unidirectional = false;
@@ -163,14 +164,14 @@ Status DecoderQkvToContext(
         head_size, sequence_length, kv_sequence_length,
         &one, value_cache, head_size, strideA,
         scratch2, kv_sequence_length, temp_matrix_size,
-        &zero, scratch3, head_size, strideB, BN, device_prop));
+        &zero, scratch3, head_size, strideB, BN, device_prop, use_tf32));
   } else {
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N,
         head_size, sequence_length, kv_sequence_length,
         &one, v, head_size, strideA,
         scratch2, kv_sequence_length, temp_matrix_size,
-        &zero, scratch3, head_size, strideB, BN, device_prop));
+        &zero, scratch3, head_size, strideB, BN, device_prop, use_tf32));
   }
 
   // scratch3 is BxNxSxH, transpose to output SxBxNxH
@@ -180,6 +181,7 @@ Status DecoderQkvToContext(
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& device_prop,
+    bool use_tf32,
     Stream* stream,
     cublasHandle_t& cublas,
     const size_t element_size,
@@ -228,7 +230,8 @@ Status LaunchDecoderAttentionKernel(
         reinterpret_cast<half*>(workspace_buffer),
         reinterpret_cast<half*>(output),
         reinterpret_cast<half*>(new_key_cache),
-        reinterpret_cast<half*>(new_value_cache));
+        reinterpret_cast<half*>(new_value_cache),
+        use_tf32);
   } else {
     return DecoderQkvToContext(
         device_prop,
@@ -254,7 +257,8 @@ Status LaunchDecoderAttentionKernel(
         reinterpret_cast<float*>(workspace_buffer),
         reinterpret_cast<float*>(output),
         reinterpret_cast<float*>(new_key_cache),
-        reinterpret_cast<float*>(new_value_cache));
+        reinterpret_cast<float*>(new_value_cache),
+        use_tf32);
   }
 }
 

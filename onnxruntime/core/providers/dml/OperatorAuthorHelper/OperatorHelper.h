@@ -120,9 +120,53 @@ double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p);
 void ReadScalarTensorData(const MLOperatorTensor& tensor, /*out*/ void* data, size_t dataByteSize);
 int64_t ReadScalarTensorCastToInt64(const MLOperatorTensor& tensor);
 double ReadScalarTensorCastToFloat64(const MLOperatorTensor& tensor);
-
-void ReadCpuLocalTensorIntoInt32(const MLOperatorTensor& tensor, std::vector<int32_t>& result);
 void ReadCpuLocalTensorIntoFloat32(const MLOperatorTensor& tensor, std::vector<float>& result);
+
+template<typename T = int32_t>
+void ReadCpuLocalTensorIntoInt32(
+    const MLOperatorTensor& tensor,
+    std::vector<T>& result
+    )
+{
+    result.clear();
+    ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
+
+    const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+    const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+
+    switch (tensor.GetTensorDataType())
+    {
+    case MLOperatorTensorDataType::Int32:
+        {
+            result.resize(elementCount);
+            const int32_t* data = tensor.GetData<int32_t>();
+            std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<T>(v); });
+        }
+        break;
+
+    case MLOperatorTensorDataType::Int64:
+        {
+            const int64_t* data = tensor.GetData<int64_t>();
+            result.reserve(elementCount);
+
+            // Use clamped cast rather than static_cast/narrow_cast,
+            // because it's not uncommon for a model to specify a
+            // 64-bit INTMAX constant as a sentinel value to mean
+            // the largest possible value (even though the actual
+            // dimension values come nowhere close to that, far
+            // less than 32-bit INTMAX).
+            for (auto d : gsl::make_span(data, data + elementCount))
+            {
+                result.push_back(clamp_cast<T>(d));
+            }
+        }
+        break;
+
+    default:
+        ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
+        break;
+    }
+}
 
 class EdgeShapes
 {
@@ -160,6 +204,7 @@ struct KernelArgs
     bool autoPad = false;
     bool autoPadSameUpper = false;
     bool useCeilingOutputShape = false;
+    bool channelsLast = false;
     uint32_t spatialDimensionCount = 0;
 
     KernelArgs(uint32_t spatialDimensionCount) : spatialDimensionCount(spatialDimensionCount)
@@ -188,6 +233,7 @@ struct KernelArgs
     KernelArgs(KernelArgs const& kernelArgs, uint32_t minimumDimensionCount)
     :   autoPad(kernelArgs.autoPad),
         autoPadSameUpper(kernelArgs.autoPadSameUpper),
+        channelsLast(kernelArgs.channelsLast),
         spatialDimensionCount(std::max(kernelArgs.spatialDimensionCount, minimumDimensionCount))
     {
         ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount);
@@ -211,7 +257,9 @@ std::vector<DimensionType> InitializeKernelOutputDimsTranspose(
     gsl::span<const DimensionType> inputDimensions,
     const KernelArgs& args);
 
-KernelArgs InitializeGlobalKernel(gsl::span<const DimensionType> inputDimensions);
+KernelArgs InitializeGlobalKernel(
+        const MLOperatorAttributes& kernelInfo,
+        gsl::span<const DimensionType> inputDimensions);
 
 KernelArgs InitializeKernel(
     const MLOperatorAttributes& kernelInfo,
@@ -864,7 +912,7 @@ protected:
     int m_hiddenSize = 0;
 };
 
-class ConcatHelper
+class ConcatHelperBase
 {
 public:
     void Initialize(
@@ -875,15 +923,31 @@ public:
     // Info_t is used to obtain attributes which will be used for calculating the output shape later.
     // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template <typename Info_t, typename Shape_t>
-    ConcatHelper(const Info_t& info, const Shape_t& shape)
+    ConcatHelperBase(const Info_t& info, const Shape_t& shape, uint32_t firstInputIndex)
     {
-        Initialize(info, shape.GetInputTensorShape(0));
+        Initialize(info, shape.GetInputTensorShape(firstInputIndex));
     }
 
-    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo, uint32_t firstInputIndex, uint32_t step) const;
 
 protected:
     int m_axis;
+};
+
+class ConcatHelper: public ConcatHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    ConcatHelper(const Info_t& info, const Shape_t& shape) : ConcatHelperBase(info, shape, 0) {}
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
+class QLinearConcatHelper: public ConcatHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    QLinearConcatHelper(const Info_t& info, const Shape_t& shape) : ConcatHelperBase(info, shape, 2) {}
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
 class CropHelper
@@ -1043,7 +1107,7 @@ public:
         bool useGlobalPooling
     )
     :   m_kernel(useGlobalPooling
-            ? InitializeGlobalKernel(shape.GetInputTensorShape(0))
+            ? InitializeGlobalKernel(info, shape.GetInputTensorShape(0))
             : InitializeKernel(info, static_cast<uint32_t>(shape.GetInputTensorShape(0).size()), gsl::span<uint32_t>()))
     {
         if (!useGlobalPooling)
@@ -1145,6 +1209,24 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class QLinearAveragePoolingHelper : public PoolingHelperBase
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    QLinearAveragePoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, false) {}
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+};
+
+class QLinearGlobalAveragePoolingHelper : public PoolingHelperBase
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    QLinearGlobalAveragePoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, true) {}
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+};
+
 class SqueezeHelper
 {
 public:
@@ -1167,6 +1249,34 @@ public:
 protected:
     std::vector<int> m_axes;
 };
+
+class Col2ImHelper
+{
+public:
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation);
+
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    Col2ImHelper(const Info_t& info, const Shape_t& shape)
+    {
+        Initialize(KernelInformationAdapter(info), ShapeInformationAdapter(shape));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+    std::vector<uint32_t> m_dilations;
+    std::vector<uint32_t> m_pads;
+    std::vector<uint32_t> m_strides;
+    std::vector<uint32_t> m_imageShape;
+    std::vector<uint32_t> m_blockShape;
+    std::vector<uint32_t> m_inputShape;
+    std::vector<uint32_t> m_outputShape;
+};
+
 
 class UnsqueezeHelper
 {
@@ -1474,6 +1584,8 @@ using ShapeInferenceHelper_MaxUnpool = UnpoolingHelper;
 using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
+using ShapeInferenceHelper_QLinearAveragePool = QLinearAveragePoolingHelper;
+using ShapeInferenceHelper_QLinearGlobalAveragePool = QLinearGlobalAveragePoolingHelper;
 using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
 using ShapeInferenceHelper_RoiAlign16 = VersionedOpsetHelper<RoiAlignHelper, 16>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;
@@ -1512,6 +1624,7 @@ using ShapeInferenceHelper_Split13 = VersionedOpsetHelper<SplitHelper, 13>;
 using ShapeInferenceHelper_Split18 = VersionedOpsetHelper<SplitHelper, 18>;
 using ShapeInferenceHelper_Transpose = TransposeHelper;
 using ShapeInferenceHelper_Concat = ConcatHelper;
+using ShapeInferenceHelper_QLinearConcat = QLinearConcatHelper;
 using ShapeInferenceHelper_Slice7 = VersionedOpsetHelper<SliceHelper, 7>;
 using ShapeInferenceHelper_Slice10 = VersionedOpsetHelper<SliceHelper, 10>;
 using ShapeInferenceHelper_Slice11 = VersionedOpsetHelper<SliceHelper, 11>; // Note 11 and 10 are identical - no functional change.
@@ -1520,6 +1633,7 @@ using ShapeInferenceHelper_Pad7 = VersionedOpsetHelper<PaddingHelper, 7>;
 using ShapeInferenceHelper_Pad11 = VersionedOpsetHelper<PaddingHelper, 11>;
 using ShapeInferenceHelper_Pad13 = VersionedOpsetHelper<PaddingHelper, 13>;
 using ShapeInferenceHelper_Pad18 = VersionedOpsetHelper<PaddingHelper, 18>;
+using ShapeInferenceHelper_Pad19 = VersionedOpsetHelper<PaddingHelper, 19>;
 
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1531,16 +1645,20 @@ using ShapeInferenceHelper_Unsqueeze11 = VersionedOpsetHelper<UnsqueezeHelper, 1
 using ShapeInferenceHelper_Unsqueeze13 = VersionedOpsetHelper<UnsqueezeHelper, 13>;
 using ShapeInferenceHelper_EyeLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Trilu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Col2Im = Col2ImHelper;
 
 using ShapeInferenceHelper_Expand = ExpandHelper;
 using ShapeInferenceHelper_Reshape7 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape13 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape14 = ReshapeHelper;
+using ShapeInferenceHelper_Reshape19 = ReshapeHelper;
 using ShapeInferenceHelper_ConstantOfShape = ConstantOfShapeHelper;
 using ShapeInferenceHelper_Tile = TileHelper;
 using ShapeInferenceHelper_Resize10 = VersionedOpsetHelper<ResizeHelper, 10>;
 using ShapeInferenceHelper_Resize11 = VersionedOpsetHelper<ResizeHelper, 11>;
 using ShapeInferenceHelper_Resize13 = VersionedOpsetHelper<ResizeHelper, 13>;
+using ShapeInferenceHelper_Resize18 = VersionedOpsetHelper<ResizeHelper, 18>;
+using ShapeInferenceHelper_Resize19 = VersionedOpsetHelper<ResizeHelper, 19>;
 using ShapeInferenceHelper_OneHot = OneHotHelper;
 
 using ShapeInferenceHelper_Sqrt = GetOutputShapeAsInputShapeHelper;
@@ -1655,6 +1773,7 @@ using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity16 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Identity19 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
@@ -1680,6 +1799,7 @@ using ShapeInferenceHelper_CumSum14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CastLike19 = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_DmlFusedConv = ConvHelper;
 using ShapeInferenceHelper_DmlFusedConvTranspose = ConvTransposeHelper;

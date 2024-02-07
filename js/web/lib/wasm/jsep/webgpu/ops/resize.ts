@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -37,9 +38,12 @@ const validateScales = (scales: number[], attributes: ResizeAttributes): void =>
   // Check scales dims based on mode: LINEAR, CUBIC
   if (scales.length > 0) {
     if (attributes.mode === 'linear') {
-      if (!(scales.length === 2 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
-            (scales.length === 4 && scales[0] === 1 && scales[3] === 1))) {
-        throw new Error('Resize requires scales input size to be 2 or 4 for linear mode');
+      if (!(scales.length === 2 || scales.length === 3 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
+            (scales.length === 4 && scales[0] === 1 && scales[3] === 1) ||
+            (scales.length === 5 && scales[0] === 1 && scales[1] === 1))) {
+        throw new Error(
+            `For linear mode, Resize requires scales to be 2D, 3D, 4D with either two outermost or one innermost and
+            one outermost scale values equal to 1, or 5D with two outermost scale values equal to 1`);
       }
     } else if (attributes.mode === 'cubic') {
       if (!(scales.length === 2 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
@@ -67,7 +71,6 @@ const validateInputs =
       const rank = inputs[0].dims.length;
       if (roiInputIndex > 0 && inputs.length > roiInputIndex && inputs[roiInputIndex].dims.length > 0) {
         inputs[roiInputIndex].getFloat32Array().forEach((value) => roi.push(value));
-
       } else if (attributes.coordinateTransformMode === 'tf_crop_and_resize') {
         throw new Error('Resize requires RoI input to be specified when coordinateTransformMode is tfCropAndResize');
       }
@@ -107,41 +110,48 @@ const validateInputs =
 
 const getOriginalCoordinateFromResizedCoordinate =
     (coordinateTransferMode: CoordinateTransformMode, dType: string): string =>
-        `fn getOriginalCoordinateFromResizedCoordinate(xResized: ${dType}, xScale: ${dType}, lengthResized: ${dType},
-     lengthOriginal: ${dType}, roiStart: ${dType}, roiEnd: ${dType}) -> ${dType} { ` +
+        `fn getOriginalCoordinateFromResizedCoordinate(xResized: u32, xScale: f32, lengthResized: u32,
+     lengthOriginal: u32, roiStart: f32, roiEnd: f32) -> ${dType} { ` +
     (() => {
           switch (coordinateTransferMode) {
             case 'asymmetric':
-              return 'return xResized / xScale;';
+              return `return ${dType}(xResized) / ${dType}(xScale);`;
             case 'pytorch_half_pixel':
-              return 'if (lengthResized > 1) { \
-                    return (xResized + 0.5) / xScale - 0.5; \
-                  } else { \
-                    return 0.0; \
-                  }';
+              return `if (lengthResized > 1) {
+                    return (${dType}(xResized) + 0.5) / ${dType}(xScale) - 0.5;
+                  } else {
+                    return 0.0;
+                  }`;
             case 'tf_half_pixel_for_nn':
-              return 'return (xResized + 0.5) / xScale;';
+              return `return (${dType}(xResized) + 0.5) / ${dType}(xScale);`;
             case 'align_corners':
-              return 'if (lengthResized == 1) { \
-                    return 0.0; \
-                  } else { \
-                    return xResized * (lengthOriginal - 1) / (lengthResized - 1); \
-                  }';
+              return `if (lengthResized == 1) {
+                    return 0.0;
+                  } else {
+                    // The whole part and the fractional part are calculated separately due to inaccuracy of floating
+                    // point division. As an example, f32(21) / f32(7) may evaluate to 2.99... instead of 3, causing an
+                    // offset-by-one error later in floor().
+                    let whole = ${dType}(xResized * (lengthOriginal - 1) / (lengthResized - 1));
+                    let fract =
+                        ${dType}(xResized * (lengthOriginal - 1) % (lengthResized - 1)) / ${dType}(lengthResized - 1);
+                    return whole + fract;
+                  }`;
             case 'tf_crop_and_resize':
-              return `if (lengthResized > 1) { \
-                    return roiStart * (lengthOriginal - 1) + \
-                          (xResized * (roiEnd - roiStart) * (lengthOriginal - 1)) / (lengthResized - 1); \
-                  } else { \
-                    return 0.5 * (roiStart + roiEnd) * ${dType}(lengthOriginal - 1); \
+              return `if (lengthResized > 1) {
+                    return ${dType}(roiStart) * ${dType}(lengthOriginal - 1) +
+                        (${dType}(xResized) * ${dType}(roiEnd - roiStart) * ${dType}(lengthOriginal - 1)) /
+                        ${dType}(lengthResized - 1);
+                  } else {
+                    return 0.5 * ${dType}(roiStart + roiEnd) * ${dType}(lengthOriginal - 1);
                   }`;
             case 'half_pixel_symmetric':
-              return [
-                'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
-                'const center = lengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
-                'return offset + ((xResized + 0.5) / xScale) - 0.5;'
-              ].join('\n');
+              return `const outputWidth = ${dType}xScale * ${dType}(lengthResized);
+                  const adjustment = ${dType}(lengthResized) / outputWidth;
+                  const center = ${dType}(lengthOriginal) / 2;
+                  const offset = center * (1 - adjustment);
+                  return offset + ((${dType}(xResized) + 0.5) / ${dType}(xScale)) - 0.5;`;
             case 'half_pixel':
-              return 'return ((xResized + 0.5) / xScale) - 0.5;';
+              return `return ((${dType}(xResized) + 0.5) / ${dType}(xScale)) - 0.5;`;
             default:
               throw new Error(`Coordinate transform mode ${coordinateTransferMode} is not supported`);
           }
@@ -219,7 +229,7 @@ const initOutputShape =
           return outputShape;
         };
 
-const adjustOutputShape = (inputShape: readonly number[], scales: number[], attributes: ResizeAttributes): number[] => {
+const adjustOutputShape = (inputShape: readonly number[], scales: number[], attributes: ResizeAttributes) => {
   const scaleInPolicy = (() => {
     switch (attributes.keepAspectRatioPolicy) {
       case 'not_larger':
@@ -251,15 +261,15 @@ const calculateOriginalIndicesFromOutputIndices =
         output.type.value}, ${outputShape.length}> {
       var original_indices: array<${output.type.value}, ${outputShape.length}>;
       for (var i:u32 = 0; i < ${outputShape.length}; i++) {
-        var output_index = ${output.type.value}(${output.indicesGet('output_indices', 'i')});
+        var output_index = ${output.indicesGet('output_indices', 'i')};
         var scale = ${getElementAt('uniforms.scales', 'i', scalesLength)};
         var roi_low = ${getElementAt('uniforms.roi', 'i', roiLength)};
         var roi_hi = ${getElementAt('uniforms.roi', `i + ${inputShape.length}`, roiLength)};
         if (scale == 1.0) {
-          original_indices[i] = output_index;
+          original_indices[i] = ${output.type.value}(output_index);
         } else {
-          var input_shape_i = ${output.type.value}(${getElementAt('uniforms.input_shape', 'i', inputShape.length)});
-          var output_shape_i = ${output.type.value}(${getElementAt('uniforms.output_shape', 'i', outputShape.length)});
+          var input_shape_i = ${getElementAt('uniforms.input_shape', 'i', inputShape.length)};
+          var output_shape_i = ${getElementAt('uniforms.output_shape', 'i', outputShape.length)};
           original_indices[i] = getOriginalCoordinateFromResizedCoordinate(output_index, scale, output_shape_i,
                                                                            input_shape_i, roi_low, roi_hi);
         }
@@ -273,23 +283,23 @@ const calculateInputIndicesFromOutputIndices =
     fn calculateInputIndicesFromOutputIndices(output_indices: ${output.type.indices}) -> ${input.type.indices} {
       var input_indices: ${input.type.indices};
       for (var i:u32 = 0; i < ${outputShape.length}; i++) {
-        var output_index = ${output.type.value}(${output.indicesGet('output_indices', 'i')});
+        var output_index = ${output.indicesGet('output_indices', 'i')};
         var input_index: u32;
         var scale = ${getElementAt('uniforms.scales', 'i', scalesLength)};
         if (scale == 1.0) {
-          input_index = u32(output_index);
+          input_index = output_index;
         } else {
           var roi_low = ${getElementAt('uniforms.roi', 'i', roiLength)};
           var roi_hi = ${getElementAt('uniforms.roi', `i + ${inputShape.length}`, roiLength)};
-          var input_shape_i = ${output.type.value}(${getElementAt('uniforms.input_shape', 'i', inputShape.length)});
-          var output_shape_i = ${output.type.value}(${getElementAt('uniforms.output_shape', 'i', outputShape.length)});
+          var input_shape_i = ${getElementAt('uniforms.input_shape', 'i', inputShape.length)};
+          var output_shape_i = ${getElementAt('uniforms.output_shape', 'i', outputShape.length)};
           var original_idx = getOriginalCoordinateFromResizedCoordinate(output_index, scale, output_shape_i,
                                                                         input_shape_i, roi_low, roi_hi);
-          if (!${useExtrapolation} || (original_idx >= 0 && original_idx < input_shape_i)) {
+          if (!${useExtrapolation} || (original_idx >= 0 && original_idx < ${output.type.value}(input_shape_i))) {
             if (original_idx < 0) {
               input_index = 0;
-            } else if (original_idx > (input_shape_i - 1)) {
-              input_index = u32(input_shape_i) - 1;
+            } else if (original_idx > ${output.type.value}(input_shape_i - 1)) {
+              input_index = input_shape_i - 1;
             } else {
               input_index = u32(getNearestPixelFromOriginal(original_idx, scale < 1));
             }
@@ -312,21 +322,27 @@ const checkInputIndices = (input: IndicesHelper, inputShape: readonly number[]):
       return true;
     }`;
 
+const setChannelAndBatchIndices =
+    (input: IndicesHelper, channelIdx: number, batchIdx: number, spacialDims: number): string =>
+        input.rank > spacialDims ? `
+    ${input.indicesSet('input_indices', channelIdx, 'channel')};
+    ${input.indicesSet('input_indices', batchIdx, 'batch')};
+` :
+                                   '';
+
 const bilinearInterpolation =
-    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], scales: readonly number[],
-     useExtrapolation: boolean, extrapolationValue: number): string => {
+    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], useExtrapolation: boolean,
+     extrapolationValue: number): string => {
+      const isNchw = true;
       const [batchIdx, heightIdx, widthIdx, channelIdx] =
-          inputShape.length === 2 ? [-1, 0, 1, -1] : (scales[1] === 1.0 ? [0, 2, 3, 1] : [0, 1, 2, 3]);
+          inputShape.length === 2 ? [-1, 0, 1, -1] : (isNchw ? [0, 2, 3, 1] : [0, 1, 2, 3]);
       const dType = input.type.value;
       return `
     fn getInputValue(batch: u32, channel: u32, row: u32, col: u32) -> ${dType} {
       var input_indices: ${input.type.indices};
       ${input.indicesSet('input_indices', heightIdx, `max(0, min(row, ${inputShape[heightIdx]} - 1))`)};
       ${input.indicesSet('input_indices', widthIdx, `max(0, min(col, ${inputShape[widthIdx]} - 1))`)};
-      if (${inputShape.length} > 2) {
-        ${input.indicesSet('input_indices', channelIdx, 'channel')};
-        ${input.indicesSet('input_indices', batchIdx, 'batch')};
-      };
+      ${setChannelAndBatchIndices(input, channelIdx, batchIdx, 2)}
       return ${input.getByIndices('input_indices')};
     }
 
@@ -334,30 +350,36 @@ const bilinearInterpolation =
       var originalIndices = calculateOriginalIndicesFromOutputIndices(output_indices);
       var row:${dType} = originalIndices[${heightIdx}];
       var col:${dType} = originalIndices[${widthIdx}];
-      if (${useExtrapolation} && (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > ${
-          inputShape[widthIdx]} - 1)) {
+      ${
+          useExtrapolation ?
+              `if (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > (${inputShape[widthIdx]} - 1)) {
         return ${extrapolationValue};
-      }
+      }` :
+              ''};
       row = max(0, min(row, ${inputShape[heightIdx]} - 1));
       col = max(0, min(col, ${inputShape[widthIdx]} - 1));
       var row1: u32 = u32(row);
       var col1: u32 = u32(col);
       var row2: u32 = u32(row + 1);
       var col2: u32 = u32(col + 1);
-      var channel: u32 = 0;
-      var batch: u32 = 0;
-      if (${inputShape.length > 2}) {
-        channel = u32(originalIndices[${channelIdx}]);
-        batch = u32(originalIndices[${batchIdx}]);
-      }
+      var channel: u32 = ${inputShape.length > 2 ? `u32(originalIndices[${channelIdx}])` : '0'};
+      var batch: u32 =  ${inputShape.length > 2 ? `u32(originalIndices[${batchIdx}])` : '0'};
       var x11: ${dType} = getInputValue(batch, channel, row1, col1);
       var x12: ${dType} = getInputValue(batch, channel, row1, col2);
       var x21: ${dType} = getInputValue(batch, channel, row2, col1);
       var x22: ${dType} = getInputValue(batch, channel, row2, col2);
-      var dx1: ${dType} = row - ${dType}(row1);
-      var dx2: ${dType} = ${dType}(row2) - row;
-      var dy1 = col - ${dType}(col1);
-      var dy2 = ${dType}(col2) - col;
+      var dx1: ${dType} = abs(row - ${dType}(row1));
+      var dx2: ${dType} = abs(${dType}(row2) - row);
+      var dy1: ${dType} = abs(col - ${dType}(col1));
+      var dy2: ${dType} = abs(${dType}(col2) - col);
+      if (row1 == row2) {
+        dx1 = 0.5;
+        dx2 = 0.5;
+      }
+      if (col1 == col2) {
+        dy1 = 0.5;
+        dy2 = 0.5;
+      }
       return (x11 * dx2 * dy2 + x12 * dx2 * dy1 + x21 * dx1 * dy2 + x22 * dx1 * dy1);
     }`;
     };
@@ -366,7 +388,9 @@ const bicubicInterpolation =
     (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[],
      scales: readonly number[], roi: readonly number[], cubicCoeffA: number, useExtrapolation: boolean,
      extrapolationValue: number, excludeOutside: boolean): string => {
-      const [heightIdx, widthIdx] = inputShape.length === 2 ? [0, 1] : (scales[1] === 1.0) ? [2, 3] : [1, 2];
+      const is2D = inputShape.length === 2;
+      const isNchw = true;
+      const [heightIdx, widthIdx] = is2D ? [0, 1] : isNchw ? [2, 3] : [1, 2];
       const dType = input.type.value;
       const createCubicInterpolationFunction = (idx: number): string => {
         const direction = idx === heightIdx ? 'row' : 'col';
@@ -374,8 +398,8 @@ const bicubicInterpolation =
       fn ${direction}CubicInterpolation(input_indices: ${input.type.indices}, output_indices: ${
             output.type.indices}) -> ${dType} {
         var output_index = ${output.indicesGet('output_indices', idx)};
-        var originalIdx: ${dType} = getOriginalCoordinateFromResizedCoordinate(${dType}(output_index), ${scales[idx]},
-        ${dType}(${outputShape[idx]}), ${dType}(${inputShape[idx]}), ${roi[idx]}, ${roi[idx]} + ${inputShape.length});
+        var originalIdx: ${dType} = getOriginalCoordinateFromResizedCoordinate(output_index, ${scales[idx]},
+        ${outputShape[idx]}, ${inputShape[idx]}, ${roi[idx]}, ${roi[idx]} + ${inputShape.length});
         var fractOriginalIdx: ${dType} = originalIdx - floor(originalIdx);
         var coefs = getCubicInterpolationCoefs(fractOriginalIdx);
 
@@ -386,16 +410,18 @@ const bicubicInterpolation =
         for (var i: i32 = -1; i < 3; i++) {
           var ${direction}: ${dType} = originalIdx + ${dType}(i);
           if (${direction} < 0 || ${direction} >= ${inputShape[idx]}) {
-            if (${excludeOutside}) {
-              coefs[i + 1] = 0.0;
-              continue;
-            } else if (${useExtrapolation}) {
-              return ${extrapolationValue};
-            } else {
-              ${direction} = max(0, min(${direction}, ${inputShape[idx]} - 1));
-            }
+            ${(() => {
+          if (excludeOutside) {
+            return `coefs[i + 1] = 0.0;
+                        continue;`;
+          } else if (useExtrapolation) {
+            return `return ${extrapolationValue};`;
+          } else {
+            return `${direction} = max(0, min(${direction}, ${inputShape[idx]} - 1));`;
           }
-          var input_indices_copy: ${input.type.indices} = input_indices;
+        })()};
+          }
+        var input_indices_copy: ${input.type.indices} = input_indices;
           ${input.indicesSet('input_indices_copy', idx, `u32(${direction})`)};
           data[i + 1] = ${
             idx === heightIdx ? input.getByIndices('input_indices_copy') :
@@ -435,6 +461,78 @@ const bicubicInterpolation =
     `;
     };
 
+const trilinearInterpolation =
+    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], useExtrapolation: boolean,
+     extrapolationValue: number): string => {
+      const isNchw = true;
+      const [batchIdx, depthIdx, heightIdx, widthIdx, channelIdx] =
+          inputShape.length === 3 ? [-1, 0, 1, 2, -1] : (isNchw ? [0, 2, 3, 4, 1] : [0, 1, 2, 3, 4]);
+      const dType = input.type.value;
+      return `
+    fn getInputValue(batch: u32, channel: u32, depth:u32, height: u32, width: u32) -> ${dType} {
+      var input_indices: ${input.type.indices};
+      ${input.indicesSet('input_indices', depthIdx, `max(0, min(depth, ${inputShape[depthIdx]} - 1))`)};
+      ${input.indicesSet('input_indices', heightIdx, `max(0, min(height, ${inputShape[heightIdx]} - 1))`)};
+      ${input.indicesSet('input_indices', widthIdx, `max(0, min(width, ${inputShape[widthIdx]} - 1))`)};
+      ${setChannelAndBatchIndices(input, channelIdx, batchIdx, 3)}
+      return ${input.getByIndices('input_indices')};
+    }
+
+    fn trilinearInterpolation(output_indices: ${output.type.indices}) -> ${dType} {
+      var originalIndices = calculateOriginalIndicesFromOutputIndices(output_indices);
+      var depth:${dType} = originalIndices[${depthIdx}];
+      var height:${dType} = originalIndices[${heightIdx}];
+      var width:${dType} = originalIndices[${widthIdx}];
+      ${
+          useExtrapolation ? `if (depth < 0 || depth > (${inputShape[depthIdx]} - 1) || height < 0 || height > (${
+                                 inputShape[heightIdx]} - 1) || width < 0 || (width > ${inputShape[widthIdx]} - 1)) {
+      return ${extrapolationValue};
+        }` :
+                             ''};
+
+    depth = max(0, min(depth, ${inputShape[depthIdx]} - 1));
+      height = max(0, min(height, ${inputShape[heightIdx]} - 1));
+      width = max(0, min(width, ${inputShape[widthIdx]} - 1));
+      var depth1: u32 = u32(depth);
+      var height1: u32 = u32(height);
+      var width1: u32 = u32(width);
+      var depth2: u32 = u32(depth + 1);
+      var height2: u32 = u32(height + 1);
+      var width2: u32 = u32(width + 1);
+      var channel: u32 = ${inputShape.length > 3 ? `u32(originalIndices[${channelIdx}])` : '0'};
+      var batch: u32 =  ${inputShape.length > 3 ? `u32(originalIndices[${batchIdx}])` : '0'};
+
+      var x111: ${dType} = getInputValue(batch, channel, depth1, height1, width1);
+      var x112: ${dType} = getInputValue(batch, channel, depth1, height1, width2);
+      var x121: ${dType} = getInputValue(batch, channel, depth1, height2, width1);
+      var x122: ${dType} = getInputValue(batch, channel, depth1, height2, width2);
+      var x211: ${dType} = getInputValue(batch, channel, depth2, height1, width1);
+      var x212: ${dType} = getInputValue(batch, channel, depth2, height1, width2);
+      var x221: ${dType} = getInputValue(batch, channel, depth2, height2, width1);
+      var x222: ${dType} = getInputValue(batch, channel, depth2, height2, width2);
+      var dx1: ${dType} = abs(depth - ${dType}(depth1));
+      var dx2: ${dType} = abs(${dType}(depth2) - depth);
+      var dy1: ${dType} = abs(height - ${dType}(height1));
+      var dy2: ${dType} = abs(${dType}(height2) - height);
+      var dz1: ${dType} = abs(width - ${dType}(width1));
+      var dz2: ${dType} = abs(${dType}(width2) - width);
+      if (depth1 == depth2) {
+        dx1 = 0.5;
+        dx2 = 0.5;
+      }
+      if (height1 == height2) {
+        dy1 = 0.5;
+        dy2 = 0.5;
+      }
+      if (width1 == width2) {
+        dz1 = 0.5;
+        dz2 = 0.5;
+      }
+      return (x111 * dx2 * dy2 * dz2 + x112 * dx2 * dy2 * dz1 + x121 * dx2 * dy1 *dz2 + x122 * dx2 * dy1 * dz1 +
+              x211 * dx1 * dy2 * dz2 + x212 * dx1 * dy2 * dz1 + x221 * dx1 * dy1 *dz2 + x222 * dx1 * dy1 * dz1);
+    }`;
+    };
+
 const createResizeProgramInfo =
     (inputTensor: TensorView, attributes: ResizeAttributes, opsetVersion: number, scalesInput: readonly number[],
      sizes: readonly number[], roiInput: readonly number[]): ProgramInfo => {
@@ -454,6 +552,7 @@ const createResizeProgramInfo =
       const outputSize = ShapeUtil.size(outputShape);
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
+      const extrapolationValue = attributes.extrapolationValue;
       const dataType = input.type.value;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${noScale ? '' : `
@@ -471,16 +570,28 @@ const createResizeProgramInfo =
           case 'linear':
             return `
               ${calculateOriginalIndicesFromOutputIndices(output, inputShape, outputShape, scales.length, roi.length)};
-              ${
-                bilinearInterpolation(
-                    input, output, inputShape, scales, useExtrapolation, attributes.extrapolationValue)};
-              `;
+              ${(() => {
+              if (inputShape.length === 2 || inputShape.length === 4) {
+                return `${bilinearInterpolation(input, output, inputShape, useExtrapolation, extrapolationValue)}`;
+              } else if (inputShape.length === 3 || inputShape.length === 5) {
+                return `${trilinearInterpolation(input, output, inputShape, useExtrapolation, extrapolationValue)}`;
+              } else {
+                throw Error('Linear mode only supports input dims 2, 3, 4 and 5 are supported in linear mode.');
+              }
+            })()};
+            `;
           case 'cubic':
             return `
-            ${
-                bicubicInterpolation(
-                    input, output, inputShape, outputShape, scales, roi, attributes.cubicCoeffA, useExtrapolation,
-                    attributes.extrapolationValue, attributes.excludeOutside)};
+            ${(() => {
+              if (inputShape.length === 2 || inputShape.length === 4) {
+                return `${
+                    bicubicInterpolation(
+                        input, output, inputShape, outputShape, scales, roi, attributes.cubicCoeffA, useExtrapolation,
+                        attributes.extrapolationValue, attributes.excludeOutside)}`;
+              } else {
+                throw Error('Cubic mode only supports input dims 2 and 4 are supported in linear mode.');
+              }
+            })()};
             `;
           default:
             throw Error('Invalid resize mode');
@@ -507,21 +618,23 @@ const createResizeProgramInfo =
                   output[global_idx] = ${attributes.extrapolationValue};
                 }`;
           case 'linear':
-            return 'output[global_idx] = bilinearInterpolation(output_indices);';
+            return `output[global_idx] = ${
+                (inputShape.length === 2 || inputShape.length === 4) ? 'bilinearInterpolation' :
+                                                                       'trilinearInterpolation'}(output_indices);`;
           case 'cubic':
             return 'output[global_idx] = bicubicInterpolation(output_indices);';
           default:
             throw Error(`Unsupported resize mode: ${attributes.mode}`);
         }
       })()};
-        `}
+`}
       }`;
 
       return {
         name: 'Resize',
         shaderCache: {
           hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
-              sizes.length > 0 ? sizes : ''}|${roi.length > 0 ? roi : ''}|${noScale}`,
+              sizes.length > 0 ? sizes : ''}|${roi.length > 0 ? roi : ''}|${noScale}|${inputShape}`,
           inputDependencies: ['rank']
         },
         getShaderSource,
@@ -529,11 +642,8 @@ const createResizeProgramInfo =
           outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
           programUniforms: [
-            {type: 'uint32', data: outputSize},
-            {type: 'float32', data: scales},
-            {type: 'float32', data: roi},
-            ...createTensorShapeVariables(inputShape),
-            ...createTensorShapeVariables(outputShape),
+            {type: DataType.uint32, data: outputSize}, {type: DataType.float, data: scales},
+            {type: DataType.float, data: roi}, ...createTensorShapeVariables(inputShape, outputShape)
           ]
         })
       };
@@ -550,7 +660,14 @@ export const resize = (context: ComputeContext, attributes: ResizeAttributes): v
   const scales: number[] = [];
   const sizes: number[] = [];
   const roi: number[] = [];
+
+  // Note that scales in resize are always f32. roi can be f32 or f16.
+  // TODO: Currently this code does not support f16 for roi when passed as optional input.
+
   const opsetVersion = getOpsetVersionFromCustomDataBuffer(context);
+  if (attributes.antialias !== 0) {
+    throw Error('Only default value (0) for Antialias attribute is supported');
+  }
   validateInputs(context.inputs, attributes, opsetVersion, scales, sizes, roi);
   context.compute(
       createResizeProgramInfo(context.inputs[0], attributes, opsetVersion, scales, sizes, roi), {inputs: [0]});

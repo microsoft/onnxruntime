@@ -25,12 +25,14 @@ bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logg
   return true;
 }
 
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
-                   float& min, float& max, const logging::Logger& logger) {
+namespace {
+bool GetClipMinMaxImpl(std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)> get_const_initializer,
+                       const Node& node, float& min, float& max, const logging::Logger& logger) {
   const auto& node_name = node.Name();
   int32_t input_type;
-  if (!GetType(*node.InputDefs()[0], input_type, logger))
+  if (!GetType(*node.InputDefs()[0], input_type, logger)) {
     return false;
+  }
 
   min = std::numeric_limits<float>::lowest();
   max = std::numeric_limits<float>::max();
@@ -41,48 +43,72 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
     min = helper.Get("min", std::numeric_limits<float>::lowest());
     max = helper.Get("max", std::numeric_limits<float>::max());
   } else {
-    if (node.InputDefs().size() > 1) {
-      // we have input min
-      const auto& min_name = node.InputDefs()[1]->Name();
-      if (!Contains(initializers, min_name)) {
-        LOGS(logger, VERBOSE) << "Input min of Clip must be known";
+    auto get_value =
+        [&](const ONNX_NAMESPACE::TensorProto* initializer, std::string_view type, float& value) -> bool {
+      if (!initializer) {
+        LOGS(logger, VERBOSE) << type << " input of Clip must be a constant initializer";
         return false;
       }
-      Initializer unpacked_tensor_min(*initializers.at(min_name));
+
+      Initializer unpacked_tensor_min(*initializer);
       switch (input_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-          min = unpacked_tensor_min.DataAsSpan<float>()[0];
+          value = unpacked_tensor_min.DataAsSpan<float>()[0];
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-          min = (unpacked_tensor_min.DataAsSpan<MLFloat16>()[0]).ToFloat();
+          value = unpacked_tensor_min.DataAsSpan<MLFloat16>()[0].ToFloat();
           break;
         default:
-          LOGS(logger, VERBOSE) << "GetClipMinMax() only support Clip node with float inputs for now. "
-                                << "The node [" << node_name << "] has input 0 type: " << input_type;
+          LOGS(logger, VERBOSE) << "GetClipMinMax() only supports float and float16 as min and max inputs for now."
+                                << " The node [" << node_name << "] has input type: " << input_type;
           return false;
       }
 
-      if (node.InputDefs().size() > 2) {
-        // we have input max
-        const auto& max_name = node.InputDefs()[2]->Name();
-        if (!Contains(initializers, max_name)) {
-          LOGS(logger, VERBOSE) << "Input max of Clip must be known";
-          return false;
-        }
-        Initializer unpacked_tensor_max(*initializers.at(max_name));
-        switch (input_type) {
-          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-            max = unpacked_tensor_max.DataAsSpan<float>()[0];
-            break;
-          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-            max = (unpacked_tensor_max.DataAsSpan<MLFloat16>()[0]).ToFloat();
-            break;
-        }
+      return true;
+    };
+
+    // min and max are both optional. could have neither, one or both.
+    if (node.InputDefs().size() > 1 && node.InputDefs()[1]->Exists()) {
+      // we have input min
+      const auto& min_name = node.InputDefs()[1]->Name();
+      const auto* min_value = get_const_initializer(min_name);
+      if (!get_value(min_value, "Min", min)) {
+        return false;
+      }
+    }
+
+    if (node.InputDefs().size() > 2 && node.InputDefs()[2]->Exists()) {
+      // we have input max
+      const auto& max_name = node.InputDefs()[2]->Name();
+      const auto* max_value = get_const_initializer(max_name);
+      if (!get_value(max_value, "Max", max)) {
+        return false;
       }
     }
   }
 
   return true;
+}
+}  // namespace
+
+bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node, float& min, float& max,
+                   const logging::Logger& logger) {
+  return GetClipMinMaxImpl(
+      [&graph_viewer](const std::string& name) -> const ONNX_NAMESPACE::TensorProto* {
+        return graph_viewer.GetConstantInitializer(name);
+      },
+      node, min, max, logger);
+}
+
+// deprecated version that is not able to check if the initializer is constant
+bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max,
+                   const logging::Logger& logger) {
+  return GetClipMinMaxImpl(
+      [&initializers](const std::string& name) -> const ONNX_NAMESPACE::TensorProto* {
+        auto entry = initializers.find(name);
+        return entry == initializers.end() ? nullptr : entry->second;
+      },
+      node, min, max, logger);
 }
 
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)

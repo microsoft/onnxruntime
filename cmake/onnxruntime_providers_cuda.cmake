@@ -1,10 +1,25 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
-  )
+
+  if (onnxruntime_CUDA_MINIMAL)
+    file(GLOB onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.cc"
+    )
+    # Remove pch files
+    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/integer_gemm.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/triton_kernel.h"
+    )
+  else()
+    file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+    )
+  endif()
   # Remove pch files
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
@@ -16,11 +31,16 @@
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
-  )
 
+
+  if (onnxruntime_CUDA_MINIMAL)
+    set(onnxruntime_providers_cuda_shared_srcs "")
+  else()
+    file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
+    )
+  endif()
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
@@ -156,10 +176,15 @@
     endif()
 
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
-    if(onnxruntime_CUDNN_HOME)
-      target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-      target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+    if(onnxruntime_CUDA_MINIMAL)
+      target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
+      target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+    else()
+      target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+      if(onnxruntime_CUDNN_HOME)
+          target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+          target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+      endif()
     endif()
 
     if (onnxruntime_USE_TRITON_KERNEL)
