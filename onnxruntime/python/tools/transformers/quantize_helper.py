@@ -69,6 +69,7 @@ class QuantizeHelper:
             onnx_model_path,
             quantized_model_path,
             use_external_data_format=use_external_data_format,
+            extra_options={"DefaultTensorType": onnx.TensorProto.FLOAT},
         )
         logger.info(f"quantized model saved to:{quantized_model_path}")
         # TODO: inlcude external data in total model size.
