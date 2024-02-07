@@ -518,9 +518,9 @@ class FusionBartAttention(FusionAttention):
         # 5) Decoder cross attention with past with three_root_inputs=True and qk_nodes=qk_nodes_1
         encoder_attention = one_root_input and qk_nodes == qk_nodes_1
         decoder_attention = one_root_input and qk_nodes in (qk_nodes_2, qk_nodes_2_openai)
-        decoder_attention_with_past = encoder_attention and past_k and past_v
-        if model_impl_openai is True:
-            decoder_attention_with_past = decoder_attention and past_k and past_v
+        decoder_attention_with_past = (
+            (encoder_attention if not model_impl_openai else decoder_attention) and past_k and past_v
+        )
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
 
