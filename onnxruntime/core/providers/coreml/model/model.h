@@ -62,10 +62,7 @@ class Model {
 
   // Input and output names in the onnx model's order
   const std::vector<std::string>& GetOnnxInputs() const { return onnx_inputs_; }
-  void SetOnnxInputs(std::vector<std::string>&& inputs) { onnx_inputs_ = std::move(inputs); }
-
   const std::vector<std::string>& GetOnnxOutputs() const { return onnx_outputs_; }
-  void SetOnnxOutputs(std::vector<std::string>&& outputs) { onnx_outputs_ = std::move(outputs); }
 
   const OnnxTensorInfo* TryGetInputOutputInfo(const std::string& name) const {
     const auto info_it = input_output_info_.find(name);
