@@ -56,6 +56,18 @@ namespace OperatorHelper
         }
     }
 
+    template <typename T>
+    void ExpandToAxes(/*inout*/ std::vector<T>& originalValues, gsl::span<const int32_t> axes, std::vector<T> expanded)
+    {
+        assert(originalValues.size() == axes.size());
+        // Fill in roi and scales/sizes
+        for (size_t i = 0; i < axes.size(); i++)
+        {
+            expanded[axes[i]] = originalValues[i];
+        }
+        originalValues = std::move(expanded);
+    }
+
     float CastFloat16ToFloat32(uint16_t input)
     {
         // Promote float16m10e5s1 to float32m23e8s1.
@@ -143,50 +155,6 @@ namespace OperatorHelper
         };
     }
     #pragma warning(pop)
-
-    void ReadCpuLocalTensorIntoInt32(
-        const MLOperatorTensor& tensor,
-        std::vector<int32_t>& result
-        )
-    {
-        result.clear();
-        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
-
-        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
-        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
-
-        switch (tensor.GetTensorDataType())
-        {
-        case MLOperatorTensorDataType::Int32:
-            {
-                const int32_t* data = tensor.GetData<int32_t>();
-                result.assign(data, data + elementCount);
-            }
-            break;
-
-        case MLOperatorTensorDataType::Int64:
-            {
-                const int64_t* data = tensor.GetData<int64_t>();
-                result.reserve(elementCount);
-
-                // Use clamped cast rather than static_cast/narrow_cast,
-                // because it's not uncommon for a model to specify a
-                // 64-bit INTMAX constant as a sentinel value to mean
-                // the largest possible value (even though the actual
-                // dimension values come nowhere close to that, far
-                // less than 32-bit INTMAX).
-                for (auto d : gsl::make_span(data, data + elementCount))
-                {
-                    result.push_back(clamp_cast<int32_t>(d));
-                }
-            }
-            break;
-
-        default:
-            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
-            break;
-        }
-    }
 
     void ReadCpuLocalTensorIntoFloat32(
         const MLOperatorTensor& tensor,
@@ -2461,7 +2429,8 @@ namespace OperatorHelper
     {
         auto& attributes = kernelInformation.GetAttributes();
         m_inputDimensions = shapeInformation.GetInputTensorShape(0);
-        std::vector<int32_t> outputSizes;
+        std::vector<uint32_t> outputSizes;
+        std::vector<int32_t> axes;
 
         if (opsetVersion >= 11)
         {
@@ -2478,7 +2447,38 @@ namespace OperatorHelper
             if (kernelInformation.IsInputValid(3))
             {
                 MLOperatorTensor outputSizesTensor = kernelInformation.GetConstantInputTensor(3);
-                ReadCpuLocalTensorIntoInt32(outputSizesTensor, /*out*/ outputSizes);
+                ReadCpuLocalTensorIntoInt32<uint32_t>(outputSizesTensor, /*out*/ outputSizes);
+            }
+
+            axes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Axes);
+            // Handle possible axes input
+            if (opsetVersion >= 18 && !axes.empty())
+            {
+                uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_inputDimensions.size());
+                HandleEmptyAxes(/*inout*/ axes, m_inputDimensions, false);
+                HandleNegativeAxes(/*inout*/ axes, dimCount);
+
+                // Taken from https://github.com/onnx/onnx/blob/3d69db8fd16873d68e7033479467f9478562a12d/onnx/reference/ops/op_resize.py#L303
+                if (!m_scales.empty())
+                {
+                    std::vector<float> defaultScales(dimCount, 1.0f);
+                    ExpandToAxes(/*inout*/ m_scales, axes, defaultScales);
+                }
+                if (!outputSizes.empty())
+                {
+                    ExpandToAxes(/*inout*/ outputSizes, axes, m_inputDimensions);
+                }
+                if (!m_regionOfInterest.empty())
+                {
+                    std::vector<float> defaultRois(dimCount, 0.0f);
+                    defaultRois.resize(dimCount * 2, 1.0f);
+                    size_t numAxes = axes.size();
+                    for (size_t i = 0; i < axes.size(); i++)
+                    {
+                        defaultRois[axes[i]] = m_regionOfInterest[i];
+                        defaultRois[axes[i + dimCount]] = m_regionOfInterest[i + numAxes];
+                    }
+                }
             }
         }
         else if (opsetVersion >= 9)

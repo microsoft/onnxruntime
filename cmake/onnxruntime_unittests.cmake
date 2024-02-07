@@ -111,7 +111,9 @@ function(AddTest)
     target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-    target_compile_options(${_UT_TARGET} PRIVATE "-Wno-error=uninitialized")
+    if (${HAS_NOERROR})
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=uninitialized>")
+    endif()
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
@@ -587,7 +589,6 @@ set(ONNXRUNTIME_TEST_LIBS
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_JS}
-    ${PROVIDERS_VITISAI}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}

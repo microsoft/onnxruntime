@@ -79,31 +79,36 @@ class ModelBuilder {
   std::unique_ptr<COREML_SPEC::MILSpec::Operation> CreateOperation(const Node& node, std::string_view op_type,
                                                                    std::string_view suffix = "");
 
-  void AddTensorValueAsOperationInput(COREML_SPEC::MILSpec::Operation& op,
-                                      std::string_view input_name,
-                                      COREML_SPEC::MILSpec::Value&& input_value);
-
   //
   // Helpers for adding attributes from ONNX nodes as inputs to an ML Program Operation
   //
 
-  // Add an `int` attribute as an Operation input. Converts to int32_t as that is what CoreML uses.
-  void AddOnnxAttributeAsOperationInput(COREML_SPEC::MILSpec::Operation& op,
-                                        std::string_view input_name,
-                                        const int64_t attr_value);
+  /// <summary>
+  /// Add a value as a 'const' operation, generating a unique name for the value from op_type and value_type.
+  /// Use for values that were not initializers in the original ONNX model. e.g. attributes from ONNX nodes.
+  /// Add existing initializers using AddConstant with the TensorProto.
+  ///
+  /// e.g. adding the bias input of Gemm would have op_type='gemm' and value_type='bias'.
+  /// </summary>
+  /// <typeparam name="T">Value type.</typeparam>
+  /// <param name="op_type">Typically MILSpec::Operation.type().</param>
+  /// <param name="value_type">Typically the input name of the operation that will consume the value.</param>
+  /// <param name="value">Value to add.</param>
+  /// <param name="shape">Optional shape for the value.
+  /// If T is a primitive type `shape` is ignored and the value is treated as a scalar.
+  /// For a container type, if `shape` is not provided the shape is inferred to be 1-D of {value.size()}.
+  /// </param>
+  /// <returns>Unique name generated for value.</returns>
+  template <typename T>
+  std::string AddConstant(const std::string& op_type, std::string_view value_type, const T& value,
+                          std::optional<const gsl::span<const int64_t>> shape = std::nullopt);
 
-  // Add an `ints` attribute as an Operation input. Converts to int32_t as that is what CoreML uses.
-  void AddOnnxAttributeAsOperationInput(COREML_SPEC::MILSpec::Operation& op,
-                                        std::string_view input_name,
-                                        const std::vector<int64_t>& attr_value);
-
-  // Add a `string` attribute as an Operation input.
-  void AddOnnxAttributeAsOperationInput(COREML_SPEC::MILSpec::Operation& op,
-                                        std::string_view input_name,
-                                        const std::string& attr_value);
-
-  // add a constant operation for an initializer
-  void AddConstantOperation(std::string_view name, const ONNX_NAMESPACE::TensorProto& initializer);
+  /// <summary>
+  /// Add an existing a constant ONNX initializer to the ML Program as a 'const' operation
+  /// </summary>
+  /// <param name="name">Initializer name</param>
+  /// <param name="initializer">Initializer data</param>
+  void AddConstant(std::string_view name, const ONNX_NAMESPACE::TensorProto& initializer);
 
   // add the operation to the main function
   void AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation> operation);
@@ -126,10 +131,9 @@ class ModelBuilder {
 
  private:
 #if defined(COREML_ENABLE_MLPROGRAM)
-  // when generating an mlpackage, should a weight be written to the external file or added directly
-  bool UseWeightFile(const onnx::TensorProto& weight);
-  uint64_t AddWeightToFile(const onnx::TensorProto& weight);
   void AddConstantOperation(std::string_view name, COREML_SPEC::MILSpec::Value&& initializer);
+  std::string AddTensorValueAsConstantOperation(const std::string& op_type, std::string_view value_type,
+                                                COREML_SPEC::MILSpec::Value&& input_value);
 #endif
 
   // Convert the ONNX model in graph_viewer_ to a CoreML::Specification::Model and serialize to disk.

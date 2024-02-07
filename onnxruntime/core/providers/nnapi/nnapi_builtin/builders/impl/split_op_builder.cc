@@ -35,7 +35,7 @@ class SplitOpBuilder : public BaseOpBuilder {
   // Operator support related
 
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   // Split opset 13- uses "split" as attribute. Currently it's not supported.
@@ -85,7 +85,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 // Operator support related
 
-bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool SplitOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                        const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
@@ -98,13 +98,13 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   const auto split_dims_at_axis = input_shape[SafeInt<uint32_t>(HandleNegativeAxis(axis, input_shape.size()))];
   if (input_defs.size() > 1 && input_defs[1].node_arg.Exists()) {
     // if optional input `split` is provided
-    auto split_initializer_it = initializers.find(input_defs[1].node_arg.Name());
-    if (split_initializer_it == initializers.end()) {
-      LOGS_DEFAULT(VERBOSE) << "Optional input 'split' must be initializer if provided.";
+    const auto* splits = graph_viewer.GetConstantInitializer(input_defs[1].node_arg.Name());
+    if (!splits) {
+      LOGS_DEFAULT(VERBOSE) << "Optional input 'split' must be a constant initializer if provided.";
       return false;
     }
-    const auto& splits_tensor = *split_initializer_it->second;
-    Initializer unpacked_tensor(splits_tensor);
+
+    Initializer unpacked_tensor(*splits);
     auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
     uint32_t sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), SafeInt<uint32_t>(0));
     if (sum_of_splits != split_dims_at_axis) {
@@ -119,6 +119,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     auto it = std::adjacent_find(splits_span.begin(), splits_span.end(), [](const auto& a, const auto& b) {
       return a != b;
     });
+
     if (it != splits_span.end()) {
       LOGS_DEFAULT(VERBOSE) << "NNAPI only supports the case that number of splits evenly divides split axis size";
       return false;

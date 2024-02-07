@@ -91,6 +91,7 @@ using HashValue = uint64_t;
 using NodeIndex = size_t;
 // We can't just reinterpret_cast this one, since it's an unordered_map of object BY VALUE (can't do anything by value on the real types)
 // using NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_Copyable>;
+using ModelMetaData = std::unordered_map<std::string, std::string>;
 
 using InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
 
@@ -201,6 +202,8 @@ struct ProviderHost {
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) = 0;
+  virtual Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                                       /*out*/ std::vector<uint8_t>& unpacked_tensor) = 0;
 
   virtual uint16_t math__floatToHalf(float f) = 0;
   virtual float math__halfToFloat(uint16_t h) = 0;
@@ -261,12 +264,32 @@ struct ProviderHost {
   virtual void logging__Capture__operator_delete(logging::Capture* p) noexcept = 0;
   virtual std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept = 0;
 
+  // Env
+  virtual Env& Env__Default() = 0;
+
   // Utils::DataTypeUtils
   virtual const std::string* Utils__DataTypeUtils__ToType(const ONNX_NAMESPACE::TypeProto& type_proto) = 0;
 
   // int64s
   virtual int int64s__size(const ONNX_NAMESPACE::int64s* p) = 0;
   virtual const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) = 0;
+  virtual void int64s__Reserve(ONNX_NAMESPACE::int64s* p, int size) = 0;
+  virtual const int64_t* int64s__data(const ONNX_NAMESPACE::int64s* p) = 0;
+
+  // float32s
+  virtual void float32s__Reserve(ONNX_NAMESPACE::float32s* p, int size) = 0;
+  virtual const float* float32s__data(const ONNX_NAMESPACE::float32s* p) = 0;
+  virtual int float32s__size(const ONNX_NAMESPACE::float32s* p) = 0;
+
+  // StringStringEntryProto
+  virtual std::string* StringStringEntryProto__mutable_key(ONNX_NAMESPACE::StringStringEntryProto* p) = 0;
+  virtual std::string* StringStringEntryProto__mutable_value(ONNX_NAMESPACE::StringStringEntryProto* p) = 0;
+
+  // StringStringEntryProtos
+  virtual void StringStringEntryProtos__Clear(ONNX_NAMESPACE::StringStringEntryProtos* p) = 0;
+  virtual ONNX_NAMESPACE::StringStringEntryProto* StringStringEntryProtos__Add(ONNX_NAMESPACE::StringStringEntryProtos* p) = 0;
+  virtual int StringStringEntryProtos__size(ONNX_NAMESPACE::StringStringEntryProtos* p) = 0;
+  virtual ONNX_NAMESPACE::StringStringEntryProto& StringStringEntryProtos__at(ONNX_NAMESPACE::StringStringEntryProtos* p, int index) = 0;
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
   // TypeProto_Optional
@@ -283,6 +306,7 @@ struct ProviderHost {
   virtual const ONNX_NAMESPACE::TensorShapeProto& TypeProto_Tensor__shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
   virtual ONNX_NAMESPACE::TensorShapeProto* TypeProto_Tensor__mutable_shape(ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
   virtual int32_t TypeProto_Tensor__elem_type(const ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
+  virtual void TypeProto_Tensor__set_elem_type(ONNX_NAMESPACE::TypeProto_Tensor* p, int32_t value) = 0;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // TypeProto_SparseTensor
@@ -327,9 +351,17 @@ struct ProviderHost {
   virtual float AttributeProto__floats(const ONNX_NAMESPACE::AttributeProto* p, int i) = 0;
   virtual const ::std::string& AttributeProto__strings(const ONNX_NAMESPACE::AttributeProto* p, int i) = 0;
   virtual const ONNX_NAMESPACE::int64s& AttributeProto__ints(const ONNX_NAMESPACE::AttributeProto* p) = 0;
+  virtual const ONNX_NAMESPACE::float32s& AttributeProto__floats(const ONNX_NAMESPACE::AttributeProto* p) = 0;
+  virtual ONNX_NAMESPACE::int64s* AttributeProto__mutable_ints(ONNX_NAMESPACE::AttributeProto* p) = 0;
+  virtual ONNX_NAMESPACE::float32s* AttributeProto__mutable_floats(ONNX_NAMESPACE::AttributeProto* p) = 0;
+  virtual void AttributeProto__add_ints(ONNX_NAMESPACE::AttributeProto* p, int64_t size) = 0;
+  virtual void AttributeProto__add_floats(ONNX_NAMESPACE::AttributeProto* p, float size) = 0;
+  virtual void AttributeProto__add_strings(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& size) = 0;
   virtual int64_t AttributeProto__i(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual float AttributeProto__f(const ONNX_NAMESPACE::AttributeProto* p) = 0;
+  virtual const ONNX_NAMESPACE::TensorProto& AttributeProto__t(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) = 0;
+  virtual void AttributeProto__set_f(ONNX_NAMESPACE::AttributeProto* p, const float& value) = 0;
   virtual void AttributeProto__set_i(ONNX_NAMESPACE::AttributeProto* p, int64_t value) = 0;
   virtual const ::std::string& AttributeProto__s(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual void AttributeProto__set_name(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) = 0;
@@ -352,6 +384,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::ValueInfoProtos* GraphProto__mutable_value_info(ONNX_NAMESPACE::GraphProto* p) = 0;
   virtual ONNX_NAMESPACE::TensorProtos* GraphProto__mutable_initializer(ONNX_NAMESPACE::GraphProto* p) = 0;
   virtual ONNX_NAMESPACE::NodeProto* GraphProto__add_node(ONNX_NAMESPACE::GraphProto* p) = 0;
+  virtual std::string* GraphProto__mutable_name(ONNX_NAMESPACE::GraphProto* p) = 0;
   virtual ONNX_NAMESPACE::NodeProto* GraphProto__mutable_node(ONNX_NAMESPACE::GraphProto* p, int index) = 0;
 
   // ModelProto
@@ -367,6 +400,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::GraphProto* ModelProto__mutable_graph(ONNX_NAMESPACE::ModelProto* p) = 0;
 
   virtual void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) = 0;
+  virtual ONNX_NAMESPACE::StringStringEntryProtos* ModelProto__mutable_metadata_props(ONNX_NAMESPACE::ModelProto* p) = 0;
 
   // NodeProto
   virtual std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() = 0;
@@ -381,19 +415,33 @@ struct ProviderHost {
   virtual void TensorProto__operator_delete(ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual void TensorProto__operator_assign(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto& v) = 0;
   virtual bool TensorProto__has_name(const ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__set_name(ONNX_NAMESPACE::TensorProto* p, const ::std::string& name) = 0;
+  virtual const ::std::string& TensorProto__name(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual int TensorProto__dims_size(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual const ONNX_NAMESPACE::int64s& TensorProto__dims(const ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__add_dims(ONNX_NAMESPACE::TensorProto* p, int64_t value) = 0;
   virtual bool TensorProto__has_data_location(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual int TensorProto__data_location(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual bool TensorProto__has_raw_data(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual std::string* TensorProto__mutable_raw_data(ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual int32_t TensorProto__data_type(const ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__set_data_type(ONNX_NAMESPACE::TensorProto* p, int32_t type) = 0;
   virtual void TensorProto__CopyFrom(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto* other) = 0;
+  virtual ONNX_NAMESPACE::StringStringEntryProtos* TensorProto__mutable_external_data(ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__clear_float_data(ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__clear_int32_data(ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__clear_string_data(ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__clear_int64_data(ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__clear_double_data(ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__clear_uint64_data(ONNX_NAMESPACE::TensorProto* p) = 0;
 
   virtual bool TensorProto_DataType_IsValid(int value) = 0;
 
   // TensorProtos
   virtual ONNX_NAMESPACE::TensorProto* TensorProtos__Add(ONNX_NAMESPACE::TensorProtos* p) = 0;
+  virtual int TensorProtos__size(ONNX_NAMESPACE::TensorProtos* p) = 0;
+  virtual ONNX_NAMESPACE::TensorProto& TensorProtos__at(ONNX_NAMESPACE::TensorProtos* p, int index) = 0;
 
   // TensorShapeProto_Dimension
   virtual int TensorShapeProto_Dimension__value_case(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
@@ -403,6 +451,8 @@ struct ProviderHost {
   virtual bool TensorShapeProto_Dimension__has_dim_value(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
   virtual bool TensorShapeProto_Dimension__has_dim_param(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
   virtual void TensorShapeProto_Dimension__clear_dim_value(ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
+  virtual const std::string& TensorShapeProto_Dimension__denotation(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) const = 0;
+  virtual void TensorShapeProto_Dimension__set_denotation(ONNX_NAMESPACE::TensorShapeProto_Dimension* p, const std::string& value) = 0;
 
   // TensorShapeProto_Dimensions
   virtual std::unique_ptr<TensorShapeProto_Dimension_Iterator> TensorShapeProto_Dimensions__begin(const ONNX_NAMESPACE::TensorShapeProto_Dimensions* p) = 0;
@@ -425,6 +475,8 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::ValueInfoProto* ValueInfoProtos__Add(ONNX_NAMESPACE::ValueInfoProtos* p) = 0;
 
   virtual const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) = 0;
+
+  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
 
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
@@ -651,6 +703,7 @@ struct ProviderHost {
   virtual void Node__ToProto(const Node* p, ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) = 0;
 
   virtual const NodeAttributes& Node__GetAttributes(const Node* p) noexcept = 0;
+  virtual void Node__AddAttribute(Node* p, const ::std::string& attr_name, const ONNX_NAMESPACE::GraphProto& value) = 0;
   virtual size_t Node__GetInputEdgesCount(const Node* p) noexcept = 0;
   virtual size_t Node__GetOutputEdgesCount(const Node* p) noexcept = 0;
 
@@ -660,10 +713,13 @@ struct ProviderHost {
   virtual std::unique_ptr<Node__NodeIterator> Node__OutputNodesBegin(const Node* p) noexcept = 0;
   virtual std::unique_ptr<Node__NodeIterator> Node__OutputNodesEnd(const Node* p) noexcept = 0;
 
+  virtual std::unique_ptr<Node__EdgeIterator> Node__InputEdgesBegin(const Node* p) noexcept = 0;
+  virtual std::unique_ptr<Node__EdgeIterator> Node__InputEdgesEnd(const Node* p) noexcept = 0;
   virtual std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesBegin(const Node* p) noexcept = 0;
   virtual std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesEnd(const Node* p) noexcept = 0;
 
   virtual void Node__ForEachDef(const Node* p, std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs) = 0;
+  virtual int Node__NodeType(const Node* p) const noexcept = 0;
   virtual const std::unordered_map<std::string, gsl::not_null<Graph*>>& Node__GetAttributeNameToMutableSubgraphMap(Node* p) = 0;
   virtual std::unordered_map<std::string, gsl::not_null<const Graph*>> Node__GetAttributeNameToSubgraphMap(const Node* p) const = 0;
 
@@ -674,6 +730,7 @@ struct ProviderHost {
   virtual const ONNX_NAMESPACE::NodeArgInfo& NodeArg__ToProto(const NodeArg* p) noexcept = 0;
   virtual bool NodeArg__Exists(const NodeArg* p) const noexcept = 0;
   virtual const ONNX_NAMESPACE::TypeProto* NodeArg__TypeAsProto(const NodeArg* p) noexcept = 0;
+  virtual Status NodeArg__OverrideTypesHelper(NodeArg* p, const ONNX_NAMESPACE::TypeProto& input_type, int32_t input_tensor_elem_type, int32_t current_tensor_elem_type, bool override_types) = 0;
 
   // NodeAttributes
   virtual std::unique_ptr<NodeAttributes> NodeAttributes__construct() = 0;
@@ -691,12 +748,18 @@ struct ProviderHost {
   virtual std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__find(const NodeAttributes* p, const std::string& key) = 0;
   virtual void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) = 0;
   virtual void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) = 0;
+  virtual void NodeAttributes__insert_or_assign(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) = 0;
   virtual void NodeAttributes__reserve(NodeAttributes* p, size_t size) = 0;
 
   // Model
+  virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto,
+                                                  const PathString& model_path, const logging::Logger& logger) = 0;
   virtual void Model__operator_delete(Model* p) = 0;
   virtual Graph& Model__MainGraph(Model* p) = 0;
   virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) = 0;
+  virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::string& external_file_name, const PathString& file_path, size_t initializer_size_threshold) = 0;
+  virtual const ModelMetaData& Model__MetaData(const Model* p) const noexcept = 0;
+  virtual Status Model__Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) = 0;
 
   // Graph
   virtual std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) = 0;
@@ -714,6 +777,7 @@ struct ProviderHost {
   virtual void Graph__SetOutputs(Graph* p, gsl::span<const NodeArg* const> outputs) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept = 0;
+  virtual std::vector<const Node*> Graph__Nodes(const Graph* p) = 0;
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
 
   virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
@@ -723,6 +787,26 @@ struct ProviderHost {
   virtual const Path& Graph__ModelPath(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;
+  virtual const Node* Graph__GetProducerNode(const Graph* p, const std::string& node_arg_name) const = 0;
+  virtual const Model& Graph__GetModel(const Graph* p) = 0;
+  virtual void Graph__ReverseDFSFrom(const Graph* p, gsl::span<const Node* const> from,
+                                     const std::function<void(const Node*)>& enter,
+                                     const std::function<void(const Node*)>& leave,
+                                     const std::function<bool(const Node*, const Node*)>& comp,
+                                     const std::function<bool(const Node* from, const Node* to)>& stop) const = 0;
+  virtual Graph& Graph__SetGraphResolveNeeded(Graph* p) = 0;
+  virtual void Graph__RemoveInitializedTensor(Graph* p, const std::string& tensor_name) = 0;
+
+  virtual std::vector<const Node*> Graph__GetConsumerNodes(const Graph* p, const std::string& node_arg_name) const = 0;
+  virtual void Graph__AddEdge(Graph* p, NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index,
+                              int dst_arg_index) = 0;
+  virtual void Graph__RemoveEdge(Graph* p, NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index,
+                                 int dst_arg_index) = 0;
+  virtual void Graph__RemoveNode(Graph* p, NodeIndex index) = 0;
+  virtual Node& Graph__FuseSubGraph(Graph* p, const IndexedSubGraph& sub_graph, const std::string& fused_node_name) = 0;
+  virtual void Graph__UpdateProducerNode(Graph* p, const std::string& node_arg_name, NodeIndex node_index) = 0;
+  virtual const ONNX_NAMESPACE::TensorProto* Graph__GetConstantInitializer(const Graph* p, const std::string& name, bool check_outer_scope) const = 0;
+  virtual const InitializedTensorSet& Graph__GetAllInitializedTensors(const Graph* p) = 0;
   virtual int Graph__MaxNodeIndex(const Graph* p) const noexcept = 0;
   virtual Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept = 0;
   virtual const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const = 0;
@@ -757,11 +841,14 @@ struct ProviderHost {
   virtual const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept = 0;
 
   virtual void GraphViewer__ToProto(const GraphViewer* p, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) noexcept = 0;
+  virtual const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const = 0;
 
   // Path
   virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
   virtual const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept = 0;
   virtual bool Path__IsEmpty(const Path* p) noexcept = 0;
+  virtual std::unique_ptr<Path> Path__construct() = 0;
+  virtual void Path__operator_delete(ONNX_NAMESPACE::Path* p) = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;

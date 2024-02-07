@@ -130,7 +130,7 @@ const conv2dCommonSnippet =
           isChannelsLast ? typeSnippet(innerElementSizeX, dataType) : typeSnippet(innerElementSizeW, dataType);
       const bType =
           isChannelsLast ? typeSnippet(innerElementSizeW, dataType) : typeSnippet(innerElementSizeX, dataType);
-      const applyActivation = getActivationSnippet(attributes, resType);
+      const applyActivation = getActivationSnippet(attributes, resType, dataType);
       const userCode = `
     fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${aType} {
       ${isChannelsLast ? sampleX : sampleW}
@@ -195,8 +195,7 @@ export const createConv2DMatMulProgramInfo =
         {type: DataType.int32, data: attributes.strides}, {type: DataType.int32, data: attributes.dilations}
       ];
       appendActivationUniformsData(attributes, programUniforms);
-      programUniforms.push(
-          ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
+      programUniforms.push(...createTensorShapeVariables(inputs[0].dims, inputs[1].dims));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));

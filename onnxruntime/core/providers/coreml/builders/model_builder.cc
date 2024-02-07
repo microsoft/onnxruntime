@@ -16,8 +16,9 @@
 #include "core/providers/coreml/shape_utils.h"
 
 #if defined(COREML_ENABLE_MLPROGRAM)
-#include "core/providers/coreml/coremltools/modelpackage/src/ModelPackage.hpp"
-#include "core/providers/coreml/coremltools/mlmodel/src/MILBlob/Blob/StorageWriter.hpp"
+// includes from coremltools-src in _deps
+#include "modelpackage/src/ModelPackage.hpp"
+#include "mlmodel/src/MILBlob/Blob/StorageWriter.hpp"
 using MILBlob::Blob::StorageWriter;
 #endif
 
@@ -376,7 +377,18 @@ void CreateEmptyFile(const std::string& filename) {
   std::ofstream file(filename, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(file.is_open(), "Failed to open file ", filename);
 }
+
 #endif  // defined(COREML_ENABLE_MLPROGRAM)
+
+std::string GetModelOutputPath(bool create_ml_program_) {
+  // path is used to create the ML Package directory for ML Program, and for the model directly otherwise.
+  auto path = util::GetTemporaryFilePath();
+  if (!create_ml_program_) {
+    path += ".model.mlmodel";
+  }
+
+  return path;
+}
 }  // namespace
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
@@ -386,7 +398,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
       coreml_version_(coreml_version),
       coreml_flags_(coreml_flags),
       create_ml_program_((coreml_flags_ & COREML_FLAG_CREATE_MLPROGRAM) != 0),
-      model_output_path_(util::GetTemporaryFilePath()),
+      model_output_path_(GetModelOutputPath(create_ml_program_)),
       coreml_model_(std::make_unique<CoreML::Specification::Model>()) {
   if (create_ml_program_) {
 #if defined(COREML_ENABLE_MLPROGRAM)
@@ -398,22 +410,14 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
     *main.mutable_opset() = coreml_opset;
     mlprogram_main_ = &(*main.mutable_block_specializations())[coreml_opset];
 
-    // Create the ML Package. Path must not exist so ModelPackage ctor can create the package manifest.
-    // On device we expect the output path to be a unique temporary path name.
-    auto& env = Env::Default();
-    if (env.FolderExists(model_output_path_)) {
-      LOGS(logger, WARNING) << "CoreML package path " << model_output_path_
-                            << " unexpectedly exists. Removing to create new package.";
-      ORT_THROW_IF_ERROR(env.DeleteFolder(ToPathString(model_output_path_)));
-    }
-
+    // create the ModelPackage. this creates the output directory.
     mlpackage_ = std::make_unique<MPL::ModelPackage>(model_output_path_, /* create */ true);
 
     // ModelPackage::addItem does a copy of the file. Due to this we 'add' an empty file first,
     // and do the actual writes to the file created in the package.
     // We can't use ModelPackage::createFile as we have to add a directory for the weights.
     std::string tmp_dir = model_output_path_ + "/tmp";
-    ORT_THROW_IF_ERROR(env.CreateFolder(ToPathString(tmp_dir)));
+    ORT_THROW_IF_ERROR(Env::Default().CreateFolder(ToPathString(tmp_dir)));
     CreateEmptyFile(tmp_dir + "/weight.bin");
 
     std::string weights_id = mlpackage_->addItem(tmp_dir, "weights", "com.microsoft.OnnxRuntime",
@@ -468,7 +472,7 @@ std::unique_ptr<COREML_SPEC::MILSpec::Operation> ModelBuilder::CreateOperation(c
   return op;
 }
 
-void ModelBuilder::AddConstantOperation(std::string_view name, const ONNX_NAMESPACE::TensorProto& initializer) {
+void ModelBuilder::AddConstant(std::string_view name, const ONNX_NAMESPACE::TensorProto& initializer) {
   MILSpec::Value coreml_tensor = OnnxTensorToCoreMLTensor(initializer, *weights_file_writer_);
   AddConstantOperation(name, std::move(coreml_tensor));
 }
@@ -492,34 +496,83 @@ void ModelBuilder::AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation>
   mlprogram_main_->mutable_operations()->AddAllocated(operation.release());
 }
 
-void ModelBuilder::AddTensorValueAsOperationInput(MILSpec::Operation& op,
-                                                  std::string_view input_name,
-                                                  MILSpec::Value&& input_value) {
-  auto input_value_name = GetUniqueName(input_name);
-  AddConstantOperation(input_value_name, std::move(input_value));
-  AddOperationInput(op, input_name, input_value_name);
+std::string ModelBuilder::AddTensorValueAsConstantOperation(const std::string& op_type, std::string_view value_type,
+                                                            MILSpec::Value&& input_value) {
+  auto unique_value_name = GetUniqueName(MakeString(op_type, "_", value_type));
+  AddConstantOperation(unique_value_name, std::move(input_value));
+  return unique_value_name;
 }
 
-void ModelBuilder::AddOnnxAttributeAsOperationInput(MILSpec::Operation& op,
-                                                    std::string_view input_name,
-                                                    const std::vector<int64_t>& attr_value) {
-  auto input_value = CreateTensorValue<int64_t, int32_t>(attr_value);  // CoreML uses int32
-  AddTensorValueAsOperationInput(op, input_name, std::move(input_value));
+template <typename T>
+std::string ModelBuilder::AddConstant(const std::string& op_type, std::string_view value_type, const T& value,
+                                      std::optional<const gsl::span<const int64_t>> shape) {
+  // add specialization below
+  static_assert(false_for_T<T>, "Missing specialization for value type");
+  return "";  // unreachable
 }
 
-void ModelBuilder::AddOnnxAttributeAsOperationInput(MILSpec::Operation& op,
-                                                    std::string_view input_name,
-                                                    const int64_t attr_value) {
-  auto input_value = CreateScalarTensorValue(narrow<int32_t>(attr_value));  // CoreML uses int32
-  AddTensorValueAsOperationInput(op, input_name, std::move(input_value));
+//
+// Scalars. Optional `shape` param is ignored.
+//
+template <>
+std::string ModelBuilder::AddConstant(const std::string& op_type, std::string_view value_type,
+                                      const int64_t& value,
+                                      std::optional<const gsl::span<const int64_t>> /*shape*/) {
+  auto input_value = CreateScalarTensorValue(narrow<int32_t>(value));  // CoreML uses int32
+  return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
-void ModelBuilder::AddOnnxAttributeAsOperationInput(MILSpec::Operation& op,
-                                                    std::string_view input_name,
-                                                    const std::string& attr_value) {
-  auto input_value = CreateScalarTensorValue<std::string>(attr_value);
-  AddTensorValueAsOperationInput(op, input_name, std::move(input_value));
+template <>
+std::string ModelBuilder::AddConstant(const std::string& op_type, std::string_view value_type,
+                                      const float& value,
+                                      std::optional<const gsl::span<const int64_t>> /*shape*/) {
+  auto input_value = CreateScalarTensorValue(value);
+  return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
+
+template <>
+std::string ModelBuilder::AddConstant(const std::string& op_type, std::string_view value_type,
+                                      const std::string_view& value,
+                                      std::optional<const gsl::span<const int64_t>> /*shape*/) {
+  auto input_value = CreateScalarTensorValue<std::string>(std::string(value));
+  return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
+}
+
+template <>
+std::string ModelBuilder::AddConstant(const std::string& op_type, std::string_view value_type,
+                                      const std::string& value,
+                                      std::optional<const gsl::span<const int64_t>> /*shape*/) {
+  auto input_value = CreateScalarTensorValue<std::string>(value);
+  return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
+}
+
+template <>
+std::string ModelBuilder::AddConstant(const std::string& op_type, std::string_view value_type,
+                                      const bool& value,
+                                      std::optional<const gsl::span<const int64_t>> /*shape*/) {
+  auto input_value = CreateScalarTensorValue<bool>(value);
+  return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
+}
+
+//
+// Collections
+//
+template <>
+std::string ModelBuilder::AddConstant(const std::string& op_type, std::string_view value_type,
+                                      const std::vector<float>& value,
+                                      std::optional<const gsl::span<const int64_t>> shape) {
+  auto input_value = CreateTensorValue<float>(value, shape);
+  return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
+}
+
+template <>
+std::string ModelBuilder::AddConstant(const std::string& op_type, std::string_view value_type,
+                                      const std::vector<int64_t>& value,
+                                      std::optional<const gsl::span<const int64_t>> shape) {
+  auto input_value = CreateTensorValue<int64_t, int32_t>(value, shape);  // CoreML uses int32
+  return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
+}
+
 #endif  // defined(COREML_ENABLE_MLPROGRAM)
 
 /*
@@ -560,7 +613,7 @@ Status ModelBuilder::RegisterInitializers() {
 
     if (create_ml_program_) {
 #if defined(COREML_ENABLE_MLPROGRAM)
-      AddConstantOperation(name, tensor);
+      AddConstant(name, tensor);
 #endif
     } else {
       std::unique_ptr<NeuralNetworkLayer> layer = std::make_unique<NeuralNetworkLayer>();
@@ -764,9 +817,9 @@ Status ModelBuilder::SaveModel() {
   }
 #endif
 
-  LOGS(logger_, INFO) << "Writing CoreML Model to " << output_path;
-
+  // scope this so the stream is closed and flushed by the ofstream dtor
   {
+    LOGS(logger_, INFO) << "Writing CoreML Model to " << output_path;
     std::ofstream stream(output_path, std::ofstream::out | std::ofstream::binary);
     ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&stream), "Saving the CoreML model failed. Path=", output_path);
   }

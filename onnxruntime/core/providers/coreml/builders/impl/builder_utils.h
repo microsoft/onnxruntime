@@ -49,7 +49,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 // MLProgram utils
 //
 
-// helper for static_assert at end of is_same tests
+// helper for static_assert where the value needs to be dependent on a template parameter
 template <typename>
 constexpr bool false_for_T = false;
 
@@ -95,9 +95,6 @@ COREML_SPEC::MILSpec::DataType DataTypeToMILSpec() {
 // Use int for the arg so the caller can pass TensorProto.data_type() value and do the cast to enum internally
 COREML_SPEC::MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type);
 
-// convert int64_t ONNX shape to int32_t CoreML shape
-std::vector<int32_t> GetCoreMLShape(const gsl::span<const int64_t> dims);
-
 /// <summary>
 /// Create a CoreML MILSpec::TensorValue for the given input data.
 /// </summary>
@@ -108,7 +105,7 @@ std::vector<int32_t> GetCoreMLShape(const gsl::span<const int64_t> dims);
 /// <returns>TensorValue containing data.</returns>
 template <typename T1, typename T2 = T1>
 COREML_SPEC::MILSpec::Value CreateTensorValue(const gsl::span<const T1> data,
-                                              std::optional<const gsl::span<const int32_t>> shape = std::nullopt);
+                                              std::optional<const gsl::span<const int64_t>> shape = std::nullopt);
 
 template <typename T>
 COREML_SPEC::MILSpec::Value CreateScalarTensorValue(const T& data);
@@ -128,7 +125,7 @@ void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
                        std::string_view input_name, std::string_view value_name);
 
 /// <summary>
-/// Add an output to a MILSpec::Operation.
+/// Add an output to a MILSpec::Operation. Name, data type and shape are used from the NodeArg.
 /// </summary>
 /// <param name="op">Operation to update.</param>
 /// <param name="output">NodeArg with details of output to add.</param>

@@ -11,7 +11,6 @@
 #include "core/providers/shared/utils/utils.h"
 
 using namespace CoreML::Specification;
-using namespace CoreML::Specification::MILSpec;
 
 namespace onnxruntime {
 namespace coreml {
@@ -55,6 +54,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
+    using namespace CoreML::Specification::MILSpec;
+
     // https://github.com/apple/coremltools/blob/7.1/coremltools/converters/mil/mil/ops/defs/iOS15/conv.py
 
     std::unique_ptr<Operation> conv_op = model_builder.CreateOperation(node, "conv");
@@ -73,23 +74,26 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
     // we know this input has a valid shape due to the check in IsOpSupportedImpl. ignore N and C dims.
     const auto num_spatial_dims = input_defs[1]->Shape()->dim_size() - 2;
+    const auto& op_type = conv_op->type();
 
     if (strides) {
-      model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "strides", *strides);
+      AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", *strides));
     } else {
       // spec says optional. testing suggests otherwise for at least the iOS15 target (CoreML5)
-      model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "strides", std::vector<int64_t>(num_spatial_dims, 1));
+      static const auto default_value = std::vector<int64_t>(num_spatial_dims, 1);
+      AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", default_value));
     }
 
     if (dilations) {
-      model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "dilations", *dilations);
+      AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", *dilations));
     } else {
       // spec says optional. testing suggests otherwise for at least the iOS15 target (CoreML5)
-      model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "dilations", std::vector<int64_t>(num_spatial_dims, 1));
+      static const auto default_value = std::vector<int64_t>(num_spatial_dims, 1);
+      AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", default_value));
     }
 
     if (groups) {
-      model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "groups", *groups);
+      AddOperationInput(*conv_op, "groups", model_builder.AddConstant(op_type, "groups", *groups));
     }
 
     AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -108,7 +112,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         // use `pads` attribute.
         auto onnx_pads = helper.GetInt64s("pads");  // 'pads' must be provided if auto_pad is NOTSET
         if (onnx_pads) {
-          model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad_type", "custom");
+          AddOperationInput(*conv_op, "pad_type",
+                            model_builder.AddConstant(op_type, "pad_type", std::string_view("custom")));
+
           // need to re-order from x1_start, x2_start..., x1_end, x2_end... to
           // x1_start, x1_end, x2_start, x2_end,...
           size_t num_pads = onnx_pads->size();
@@ -122,7 +128,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
               reordered_pads[cur_dim * 2 + 1] = (*onnx_pads)[i];
             }
           }
-          model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad", reordered_pads);
+
+          AddOperationInput(*conv_op, "pad", model_builder.AddConstant(op_type, "pad", reordered_pads));
+
           break;
         }
 
@@ -131,18 +139,22 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         [[fallthrough]];
       }
       case AutoPadType::VALID:
-        model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad_type", "valid");
+        AddOperationInput(*conv_op, "pad_type",
+                          model_builder.AddConstant(op_type, "pad_type", std::string_view("valid")));
+
         break;
       case AutoPadType::SAME_UPPER:
       case AutoPadType::SAME_LOWER: {
         const auto pad_type = (auto_pad_type == AutoPadType::SAME_UPPER ? "same" : "same_lower");
-        model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad_type", pad_type);
+        AddOperationInput(*conv_op, "pad_type",
+                          model_builder.AddConstant(op_type, "pad_type", std::string_view(pad_type)));
 
         // despite what the spec says, a 'pad' input seems to be required.
         // https://github.com/apple/coremltools/issues/2127
         // provide the default value. passing in an empty vector also works. TBD what's better.
         std::vector<int64_t> ignored_pads(num_spatial_dims * 2, 0);
-        model_builder.AddOnnxAttributeAsOperationInput(*conv_op, "pad", ignored_pads);
+        AddOperationInput(*conv_op, "pad", model_builder.AddConstant(op_type, "pad", ignored_pads));
+
         break;
       }
     }
@@ -317,9 +329,24 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     return false;
   }
 
+  NodeAttrHelper helper(node);
+
+#if defined(COREML_ENABLE_MLPROGRAM)
+  // spec says same_lower is supported in CoreML 5. it lies. CoreML 6 is required otherwise you get
+  //   `Unexpected value for parameter pad_type[0] "same_lower" not in ("custom", "same", "valid").`
+  // We _could_ manually calculate the pads, but not implementing that until we have a real use case to justify
+  //  the effort as it's not clear how common usage of same_lower is.
+  if (input_params.create_mlprogram && input_params.coreml_version < 6) {
+    if (StringToAutoPadType(helper.Get("auto_pad", "NOTSET")) == AutoPadType::SAME_LOWER) {
+      LOGS(logger, VERBOSE) << "Pad type of SAME_LOWER  [" << name << "] is not supported until CoreML 6."
+                            << "Available version is CoreML " << input_params.coreml_version;
+      return false;
+    }
+  }
+#endif
+
   // there's no equivalent to allow a manual kernel shape in CoreML.
   // it's OK if a specified kernel_shape matches kH and kW dims of the weight input.
-  NodeAttrHelper helper(node);
   auto kernel_shape = helper.GetInt64s("kernel_shape");
   if (kernel_shape) {
     bool valid = true;

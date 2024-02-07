@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/framework/compute_capability.h"
-#include "core/graph/graph_viewer.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "vaip/custom_op.h"
 namespace vaip {
 using namespace ::onnxruntime;
