@@ -1132,7 +1132,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       SafeInt<int> output_dim_size(1);
       for (size_t i = 0; i < shape.size(); ++i) {
         if (shape[i] == 0) {
-          output_dim_size = 1;
+          output_dim_size = 0;
           break;
         } else {
           output_dim_size *= shape[i];
@@ -1150,7 +1150,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       SafeInt<int> output_dim_size(1);
       for (size_t i = 0; i < shape.size(); ++i) {
         if (shape[i] == 0) {
-          output_dim_size = 1;
+          output_dim_size = 0;
           break;
         } else {
           output_dim_size *= shape[i];
