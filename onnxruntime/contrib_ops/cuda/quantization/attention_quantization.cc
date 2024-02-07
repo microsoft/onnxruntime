@@ -106,6 +106,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_tensor = context->Input<Tensor>(8);
 
   AttentionParameters parameters;
+  parameters.use_tf32 = UseTF32();
+
   ORT_RETURN_IF_ERROR(CheckInputs(input,
                                   weights,
                                   bias,

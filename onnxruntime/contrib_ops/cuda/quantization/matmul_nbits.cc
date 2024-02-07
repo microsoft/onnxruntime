@@ -135,7 +135,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           &zero,
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           helper.Ldc(),
-          GetDeviceProp()));
+          GetDeviceProp(),
+          UseTF32()));
     }
   }
 
