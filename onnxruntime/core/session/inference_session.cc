@@ -243,7 +243,9 @@ Status GetMinimalBuildOptimizationHandling(
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
+#ifdef _WIN32
 OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+#endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -359,10 +361,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
+
+#ifdef _WIN32
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
   active_sessions_[global_session_id_++] = this;
 
-#ifdef _WIN32
   // Register callback for ETW capture state (rundown)
   WindowsTelemetry::RegisterInternalCallback(
       [this](
@@ -654,7 +657,9 @@ InferenceSession::~InferenceSession() {
   }
 
   // Unregister the session
+#ifdef _WIN32
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+#endif
   active_sessions_.erase(global_session_id_);
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT

@@ -122,7 +122,9 @@ class InferenceSession {
 
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
   static std::map<uint32_t, InferenceSession*> active_sessions_;
+#ifdef _WIN32
   static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+#endif
 
  public:
 #if !defined(ORT_MINIMAL_BUILD)
