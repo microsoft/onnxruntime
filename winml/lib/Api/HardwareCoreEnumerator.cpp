@@ -89,10 +89,17 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
     int regs_leaf7[4];
   __cpuid(regs_leaf0, 0);
   __cpuid(regs_leaf7, 0x7);
-  bool bIsIntel_and_IsHybrid = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) && (kVendorID_Intel[2] == regs_leaf0[3]) && ( regs_leaf7[3] & (1 << 15));
 
-  if (bIsIntel_and_IsHybrid) {
+  auto isIntel =
+    (kVendorID_Intel[0] == regs_leaf0[1]) &&
+    (kVendorID_Intel[1] == regs_leaf0[2]) &&
+    (kVendorID_Intel[2] == regs_leaf0[3]);
+
+  auto isHybrid = (regs_leaf7[3] & (1 << 15));
+
+  if (isIntel && isHybrid) {
     // We want to use the number of physical cores, but exclude soc cores
+    // On Intel Hybrid processors, numSocCores == cores.Num2CacheCores
     return cores.PhysicalCores - cores.Num2CacheCores;
   }
 
