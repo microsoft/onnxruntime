@@ -24,7 +24,6 @@ namespace onnxruntime {
 namespace coreml {
 
 class IOpBuilder;
-class Model;
 
 class ModelBuilder {
  private:
