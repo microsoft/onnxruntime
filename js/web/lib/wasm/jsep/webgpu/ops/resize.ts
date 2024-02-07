@@ -642,11 +642,8 @@ const createResizeProgramInfo =
           outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
           programUniforms: [
-            {type: DataType.uint32, data: outputSize},
-            {type: DataType.float, data: scales},
-            {type: DataType.float, data: roi},
-            ...createTensorShapeVariables(inputShape),
-            ...createTensorShapeVariables(outputShape),
+            {type: DataType.uint32, data: outputSize}, {type: DataType.float, data: scales},
+            {type: DataType.float, data: roi}, ...createTensorShapeVariables(inputShape, outputShape)
           ]
         })
       };
