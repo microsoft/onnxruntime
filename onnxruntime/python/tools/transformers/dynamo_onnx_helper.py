@@ -100,4 +100,5 @@ class DynamoOnnxHelper:
         Removes the LM head layer in the model.
         """
         logging.info("Removing LM head layer...")
+        # bugbug: need to copy the right vi over
         self.remove_function("Linear_lm_head", 2, 0)
