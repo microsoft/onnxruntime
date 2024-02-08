@@ -334,6 +334,7 @@ class FusionBartAttention(FusionAttention):
             ["Mul", "Transpose", "Reshape", "Add", "MatMul"],
             [0, 0, 0, 0, 1],
         )
+        reshape_q_2 = None
         if q_nodes is not None:
             reshape_q_2, transpose_q, reshape_q_1, mul_q, add_q, matmul_q = q_nodes
         elif q_nodes_openai is not None:
