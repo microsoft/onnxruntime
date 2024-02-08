@@ -21,10 +21,7 @@ from onnxruntime.capi._pybind_state import (
     register_torch_autograd_function,
 )
 from onnxruntime.training import ortmodule
-from onnxruntime.training.utils import (
-    pytorch_scalar_type_to_pytorch_dtype,
-    pytorch_type_to_onnx_dtype,
-)
+from onnxruntime.training.utils import pytorch_scalar_type_to_pytorch_dtype, pytorch_type_to_onnx_dtype
 
 from ._custom_op_symbolic_registry import wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
@@ -299,9 +296,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 input_float_tuples.extend(list(arg))
                 continue
 
-            from onnxruntime.training.utils.hooks._statistics_subscriber import (
-                _InspectActivation,
-            )
+            from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation
 
             is_inspect_activation = func_full_qual_name == get_fully_qualified_class_name(_InspectActivation)
             if is_inspect_activation and isinstance(arg, str):

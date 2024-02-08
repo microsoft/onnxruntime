@@ -906,7 +906,7 @@ class OnnxModel:
         num_nodes_removed = 0
         for node in self.model.graph.node:
             first_output = get_first_output(node)
-            kept_node = output_to_node[first_output] if first_output in output_to_node else None
+            kept_node = output_to_node.get(first_output)
 
             # Need double check the node since fused node might reuse output name of some nodes to be removed.
             # It is slow to compare whole node, so we compare op_type first to avoid comparing node in most cases.

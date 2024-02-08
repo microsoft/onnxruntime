@@ -103,18 +103,12 @@ class QDQQuantizer(ONNXQuantizer):
 
         # The default behavior is that multiple nodes can share a QDQ pair as their inputs.
         # In TRT, QDQ pair can`t be shared between nodes, so it will create dedicated QDQ pairs for each node.
-        self.dedicated_qdq_pair = (
-            False if "DedicatedQDQPair" not in extra_options else extra_options["DedicatedQDQPair"]
-        )
+        self.dedicated_qdq_pair = extra_options.get("DedicatedQDQPair", False)
         if self.dedicated_qdq_pair:
             self.tensor_to_its_receiving_nodes = {}
 
         # Let user set channel axis for specific op type and it's effective only when per channel quantization is supported and per_channel is True.
-        self.qdq_op_type_per_channel_support_to_axis = (
-            {}
-            if "QDQOpTypePerChannelSupportToAxis" not in extra_options
-            else extra_options["QDQOpTypePerChannelSupportToAxis"]
-        )
+        self.qdq_op_type_per_channel_support_to_axis = extra_options.get("QDQOpTypePerChannelSupportToAxis", {})
 
         self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else None
 
