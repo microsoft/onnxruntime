@@ -40,9 +40,11 @@ static void CalculateMatMulIntegerToFloat(const int64_t M, const int64_t N, cons
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
         float A_dequantized = has_zp ?
-            (A_data[m * K + k] - A_zero_point[0]) * A_scale[0] : A_data[m * K + k] * A_scale[0];
+                              (static_cast<int>(A_data[m * K + k]) - static_cast<int>(A_zero_point[0])) * A_scale[0] :
+                              A_data[m * K + k] * A_scale[0];
         float B_dequantized = has_zp ?
-            (B_data[k * N + n] - B_zero_point[n]) * B_scale[n] : B_data[k * N + n] * B_scale[n];
+                              (static_cast<int>(B_data[k * N + n]) - static_cast<int>(B_zero_point[n])) * B_scale[n] :
+                              B_data[k * N + n] * B_scale[n];
 
         sum += A_dequantized * B_dequantized;
       }
@@ -258,8 +260,8 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_U8U8) {
   std::vector<MLFloat16> B_scale = ToFloat16({2.0f});
   test.AddInput<uint8_t>("A", {M, K}, A_data);
   test.AddInput<uint8_t>("B", {K, N}, B_data);
-  std::vector<uint8_t> A_zero_point = {3};
-  std::vector<uint8_t> B_zero_point = {5};
+  std::vector<uint8_t> A_zero_point = {1};
+  std::vector<uint8_t> B_zero_point = {1};
 
   test.AddInput<MLFloat16>("a_scale", {1}, A_scale);
   test.AddInput<MLFloat16>("b_scale", {1}, B_scale);
@@ -363,7 +365,7 @@ TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_S8U8) {
   test.AddInput<int8_t>("A", {M, K}, A_data);
   test.AddInput<uint8_t>("B", {K, N}, B_data);
   std::vector<int8_t> A_zero_point = {-1};
-  std::vector<uint8_t> B_zero_point = {3};
+  std::vector<uint8_t> B_zero_point = {1};
   std::vector<MLFloat16> Bias = ToFloat16({11.0f, -17.0f, 1.0f, -3.0f, 12.0f});
 
   test.AddInput<MLFloat16>("a_scale", {1}, A_scale);
