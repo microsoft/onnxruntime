@@ -1320,8 +1320,21 @@ Graph::Graph(const Model& owning_model,
     }
   }
 
+  CheckerContext ctx;
+  ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
+  ctx.set_opset_imports(DomainToVersionMap());
+  ctx.set_schema_registry(schema_registry_.get());
+  ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
+
+  LexicalScopeContext lsc;
+
   for (const auto& node_proto : graph_proto_->node()) {
-    AddNode(node_proto, name_to_type_map);
+    auto& node = AddNode(node_proto, name_to_type_map);
+    ORT_TRY {
+      checker::check_node(node_proto, ctx, lsc);
+      SetOpSchemaFromRegistryForNode(node);
+    }
+    ORT_CATCH(const std::exception& ex) {}
   }
 
   if (is_loaded_from_model_file_) {
