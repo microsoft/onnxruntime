@@ -63,6 +63,10 @@ class ORTModule(torch.nn.Module):
             logger=self._logger,
         )
 
+        # Check if module is dispatched to multiple devices
+        if _utils.is_model_dispatched(module):
+            raise ValueError("Model is dispatched to multiple devices, use ParallelORTModule to wrap your model.")
+
         try:
             # Read ORTModule module initialization status
             if ortmodule._FALLBACK_INIT_EXCEPTION:
@@ -331,3 +335,80 @@ class ORTModule(torch.nn.Module):
 
         # Re-bind users custom methods to ORTModule
         _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, self.module, self._logger)
+
+
+class ParallelORTModule(torch.nn.Module):
+    """A wrapper enabling parallel training with ORTModule.
+
+    ParallelORTModule serves as a wrapper for enabling parallel training using ORTModule. It encapsulates subgraphs
+    residing on individual devices, facilitating the utilization of ORTModule computation across multiple devices.
+
+    Note:
+        Use ParallelORTModule only when the model layers are distributed across multiple GPUs.
+
+    Args:
+        module (torch.nn.Module): The user's PyTorch module.
+        debug_options (:obj:`DebugOptions`, optional): Debugging options for the ParallelORTModule.
+
+    Raises:
+        ValueError: If the provided module is not distributed across multiple devices.
+    """
+
+    def __init__(self, module: torch.nn.Module, debug_options: Optional[DebugOptions] = None):
+
+        # Check if module is dispatched to multiple devices
+        if not _utils.is_model_dispatched(module):
+            raise ValueError("Model is not dispatched to multiple devices, use ORTModule to wrap your model.")
+
+        self._is_initialized = False
+
+        if not debug_options:
+            debug_options = DebugOptions()
+
+        self._logger = configure_ortmodule_logger(debug_options.logging.log_level)
+
+        # Fallback settings
+        self._fallback_manager = _FallbackManager(
+            pytorch_module=module,
+            policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
+            retry=ortmodule.ORTMODULE_FALLBACK_RETRY,
+            logger=self._logger,
+        )
+
+        super().__init__()
+
+        self._torch_module = module
+
+        # Get device map of the distributed leafs
+        device_map = _utils.get_module_leafs_device_map(module)
+
+        # Create a list to store the modules to be modified
+        modules_to_modify = []
+
+        # Iterate over all modules and store the ones to be modified in the list
+        for name, layer in module.named_modules():
+            if name in device_map:
+                modules_to_modify.append((name, layer))
+
+        # Modify the modules after the iteration
+        for name, layer in modules_to_modify:
+            setattr(module, name, ORTModule(layer, debug_options))
+
+        self.device_map = device_map
+
+        self._is_initialized = True
+
+    def forward(self, *inputs, **kwargs):
+        return self._torch_module(*inputs, **kwargs)
+
+    def __getattr__(self, name: str):
+        if "_is_initialized" in self.__dict__ and self.__dict__["_is_initialized"] is True:
+            return getattr(self._torch_module, name)
+        else:
+            return super().__getattr__(name)
+
+    def __setattr__(self, name: str, value) -> None:
+        if "_is_initialized" in self.__dict__ and self.__dict__["_is_initialized"] is True:
+            setattr(self._torch_module, name, value)
+        else:
+            self.__dict__[name] = value

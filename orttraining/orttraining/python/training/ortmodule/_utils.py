@@ -359,7 +359,15 @@ def patch_torch_module_ort_forward_method(torch_module_ort):
     # Bind the forward method.
     torch_module_ort.forward = _forward.__get__(torch_module_ort)
     # Copy the forward signature from the PyTorch module.
-    functools.update_wrapper(torch_module_ort.forward.__func__, torch_module_ort._original_module.forward.__func__)
+
+    # If the model was dispatched, it might have a hook attached, we need to copy the signature from the _old_forward
+
+    if hasattr(torch_module_ort._original_module, "_old_forward"):
+        functools.update_wrapper(
+            torch_module_ort.forward.__func__, torch_module_ort._original_module._old_forward.__func__
+        )
+    else:
+        functools.update_wrapper(torch_module_ort.forward.__func__, torch_module_ort._original_module.forward.__func__)
 
 
 def patch_ortmodule_forward_method(ortmodule):
@@ -463,62 +471,52 @@ def get_world_size() -> int:
     return 1
 
 
-def get_device_map(model: torch.nn.Module) -> Dict[str, str]:
-    """
-    This function creates a dictionary mapping from layer names to devices.
-    It iterates over all children of the given model, and for each child, it tries to get its device.
-    If the child has parameters, its device is the device of its first parameter.
-    If the child does not have parameters (like a ReLU layer), it is not included in the map.
-
-    Args:
-        model (nn.Module): The model for which to create the device map.
-
-    Returns:
-        Dict[str, str]: A dictionary where the keys are layer names and the values are device names.
-    """
-    device_map = {}
-
-    for name, layer in model.named_children():
-        device = None
-        try:
-            device = next(layer.parameters()).device
-        except StopIteration:
-            # Model doesn't have a device set to any of the model parameters
-            pass
-
-        # If the device is set, add it to the device map, this to ignore the layers that don't have any parameters.
-        if device:
-            device_map[name] = str(device)
-
-    return device_map
+def get_module_leafs_device_map(module: torch.nn.Module, parent_name: str = "", leaf_modules_dict: dict = {}):
+    for name, child in module.named_children():
+        full_name = f"{parent_name}.{name}" if parent_name else name  # Construct the full name including parent names
+        if len(list(child.children())) == 0:  # Check if the current child has no children
+            if list(child.parameters()):
+                leaf_modules_dict[full_name] = str(next(child.parameters()).device)
+        else:
+            get_module_leafs_device_map(
+                child, full_name, leaf_modules_dict
+            )  # Recursively call _get_leaf_modules for nested children
+    return leaf_modules_dict
 
 
 def is_model_dispatched(model: torch.nn.Module) -> bool:
     """
-    This function checks if at least two children of a model live on different GPUs.
-    It iterates over all children of the given model, and for each child, it tries to get its device.
-    If the child has parameters, its device is the device of its first parameter.
-    If the child does not have parameters (like a ReLU layer), it is ignored.
-    Once it finds at least two children that live on different devices, it returns True.
+    This function checks if at least two modules of a model or its submodules live on different GPUs.
+    It iterates over all modules and submodules of the given model recursively,
+    and for each module, it tries to get its device.
+    If the module has parameters, its device is the device of its first parameter.
+    If the module does not have parameters (like a ReLU layer), it is ignored.
+    Once it finds at least two modules that live on different devices, it returns True.
 
     Args:
         model (nn.Module): The model to check.
 
     Returns:
-        bool: True if at least two children live on different devices, False otherwise.
+        bool: True if at least two modules or submodules live on different devices, False otherwise.
     """
     devices = set()
 
-    for _, layer in model.named_children():
-        try:
-            device = next(layer.parameters()).device
-        except StopIteration:
-            # Model doesn't have a device set to any of the model parameters
-            continue
+    def check_module(module):
+        nonlocal devices
+        for sub_module in module.children():
+            if isinstance(sub_module, torch.nn.Module):
+                try:
+                    device = next(sub_module.parameters()).device
+                except StopIteration:
+                    # Module doesn't have a device set to any of the module parameters
+                    continue
 
-        devices.add(str(device))
+                devices.add(str(device))
 
-        if len(devices) > 1:
-            return True
+                if len(devices) > 1:
+                    return True
 
-    return False
+                if check_module(sub_module):
+                    return True
+
+    return check_module(model)

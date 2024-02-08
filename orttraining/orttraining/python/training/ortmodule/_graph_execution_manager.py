@@ -41,7 +41,7 @@ from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp
 
 
 class _RunStateInfo:
-    def __init__(self, state, output_info: List[Tuple[torch.Size, torch.device, torch.dtype]]):
+    def __init__(self, state, output_info: List[Tuple[torch.Size, torch.device, torch.dtype]], input_info: List[Tuple[torch.Size, torch.device, torch.dtype]] = None):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.
         :param output_info: Output info.
@@ -49,6 +49,9 @@ class _RunStateInfo:
         self.state = state
         self.output_info = output_info
 
+        # Only used in ParallelORTModule cases, where we need to store the input_info for each forward call
+        # so we can move inputs back to the correct device on backward
+        self.input_info = input_info
 
 class GraphExecutionManager(GraphExecutionInterface):
     def __init__(

@@ -92,7 +92,10 @@ class TrainingManager(GraphExecutionManager):
         )
 
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
-        run_info = _RunStateInfo(state, output_info)
+
+        # Save input info that contains previous device index
+        input_info = [(inputs[0].shape, inputs[0].device, inputs[0].dtype)]
+        run_info = _RunStateInfo(state, output_info, input_info)
         # Return user outputs and forward run information
         return user_outputs, run_info
 
