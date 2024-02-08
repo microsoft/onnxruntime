@@ -57,7 +57,7 @@ def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
     if args.use_tensorrt_oss_parser:
         command.extend([
             "--build-arg",
-            "PARSER=--use_tensorrt_oss_parser",
+            "PARSER_CONFIG=--use_tensorrt_oss_parser",
             ])
     return command
 
