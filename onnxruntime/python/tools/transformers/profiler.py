@@ -393,7 +393,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
                     total_fence_time += item["dur"]
                 continue
 
-            provider = item["args"]["provider"] if "provider" in item["args"] else ""
+            provider = item["args"].get("provider", "")
             if provider in provider_counter:
                 provider_counter[provider] += 1
             else:

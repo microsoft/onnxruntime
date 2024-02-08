@@ -21,7 +21,10 @@ from onnxruntime.capi._pybind_state import (
     register_torch_autograd_function,
 )
 from onnxruntime.training import ortmodule
-from onnxruntime.training.utils import pytorch_scalar_type_to_pytorch_dtype, pytorch_type_to_onnx_dtype
+from onnxruntime.training.utils import (
+    pytorch_scalar_type_to_pytorch_dtype,
+    pytorch_type_to_onnx_dtype,
+)
 
 from ._custom_op_symbolic_registry import wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
@@ -296,7 +299,9 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 input_float_tuples.extend(list(arg))
                 continue
 
-            from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation
+            from onnxruntime.training.utils.hooks._statistics_subscriber import (
+                _InspectActivation,
+            )
 
             is_inspect_activation = func_full_qual_name == get_fully_qualified_class_name(_InspectActivation)
             if is_inspect_activation and isinstance(arg, str):
@@ -376,8 +381,7 @@ _export = wrap_custom_export_function(_export_pt_1_10)
 
 def post_process_enabling_autograd_function(exported_model: ModelProto) -> ModelProto:
     # Loop all PythonOp, append "_ctx" as the first output.
-    index = 0
-    for node in exported_model.graph.node:
+    for index, node in enumerate(exported_model.graph.node):
         op_name_prefix = node.op_type
         if node.domain == "com.microsoft" and node.op_type == "PythonOp":
             output_names = list(node.output)
@@ -391,7 +395,6 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
                     break
 
             node.name = f"{op_name_prefix}_id_{index}"
-        index += 1
 
     return exported_model
 

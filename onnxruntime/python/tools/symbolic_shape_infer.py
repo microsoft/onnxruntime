@@ -350,7 +350,7 @@ class SymbolicShapeInference:
                 return None
         if all([d == dims[0] for d in dims]):
             return dims[0]
-        merged = [self.suggested_merge_[d] if d in self.suggested_merge_ else d for d in dims]
+        merged = [self.suggested_merge_.get(d, d) for d in dims]
         if all([d == merged[0] for d in merged]):
             assert merged[0] in self.symbolic_dims_
             return merged[0]
@@ -824,17 +824,21 @@ class SymbolicShapeInference:
     def _infer_symbolic_compute_ops(self, node):
         funcs = {
             "Add": lambda l: l[0] + l[1],  # noqa: E741
-            "Div": lambda l: int(l[0] // l[1])  # noqa: E741
-            if isinstance(l[0] // l[1], float)
-            else l[0] // l[1],  # integer div in sympy
+            "Div": lambda l: (
+                int(l[0] // l[1]) if isinstance(l[0] // l[1], float) else l[0] // l[1]
+            ),  # integer div in sympy
             "Equal": lambda l: l[0] == l[1],  # noqa: E741
             "Floor": lambda l: sympy.floor(l[0]),  # noqa: E741
-            "Max": lambda l: l[1]  # noqa: E741
-            if is_literal(l[0]) and int(l[0]) < -self.int_max_
-            else (l[0] if is_literal(l[1]) and int(l[1]) < -self.int_max_ else sympy.Max(l[0], l[1])),
-            "Min": lambda l: l[1]  # noqa: E741
-            if is_literal(l[0]) and int(l[0]) > self.int_max_
-            else (l[0] if is_literal(l[1]) and int(l[1]) > self.int_max_ else sympy.Min(l[0], l[1])),
+            "Max": lambda l: (
+                l[1]
+                if is_literal(l[0]) and int(l[0]) < -self.int_max_
+                else (l[0] if is_literal(l[1]) and int(l[1]) < -self.int_max_ else sympy.Max(l[0], l[1]))
+            ),
+            "Min": lambda l: (
+                l[1]
+                if is_literal(l[0]) and int(l[0]) > self.int_max_
+                else (l[0] if is_literal(l[1]) and int(l[1]) > self.int_max_ else sympy.Min(l[0], l[1]))
+            ),
             "Mul": lambda l: int(l[0] * l[1]) if isinstance(l[0] * l[1], float) else l[0] * l[1],  # noqa: E741
             "Sub": lambda l: l[0] - l[1],  # noqa: E741
             "Where": lambda l: l[1] if l[0] else l[2],  # noqa: E741
@@ -1476,9 +1480,11 @@ class SymbolicShapeInference:
                         output_dtype,
                         [
                             N if N is not None else str(self._new_symbolic_dim_from_output(node, i, 0)),
-                            as_scalar(group)
-                            if group is not None
-                            else str(self._new_symbolic_dim_from_output(node, i, 1)),
+                            (
+                                as_scalar(group)
+                                if group is not None
+                                else str(self._new_symbolic_dim_from_output(node, i, 1))
+                            ),
                         ],
                     )
                 )

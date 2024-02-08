@@ -22,11 +22,9 @@ def format_version_range(v):
 
 
 def format_type_constraints(tc):
-    counter = 0
     tcstr = ""
     firsttcitem = True
     for tcitem in tc:
-        counter += 1
         if firsttcitem:
             firsttcitem = False
         else:
@@ -145,9 +143,8 @@ def main(output_path: pathlib.Path, provider_filter: [str]):
                         else:
                             fout.write("|||")
                         fout.write(format_version_range(version_range) + "|")
-                        tnameindex = 0
-                        for tname, tcset in sorted(typemap.items()):
-                            tnameindex += 1
+                        for i, (tname, tcset) in enumerate(sorted(typemap.items())):
+                            tnameindex = i + 1
                             tclist = []
                             for tc in sorted(tcset):
                                 tclist.append(tc)

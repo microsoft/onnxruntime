@@ -838,11 +838,9 @@ class OnnxModel:
 
     @staticmethod
     def input_index(node_output, child_node):
-        index = 0
-        for input in child_node.input:
+        for index, input in enumerate(child_node.input):
             if input == node_output:
                 return index
-            index += 1
         return -1
 
     def remove_unused_constant(self):
