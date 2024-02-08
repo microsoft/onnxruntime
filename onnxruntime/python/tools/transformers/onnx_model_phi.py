@@ -673,7 +673,7 @@ class FissionTransformerBlockPhi(Fission):
         i_key_cache = self.get_io_by_name(node, "past_key")
         i_value_cache = self.get_io_by_name(node, "past_value")
 
-        o_hidden_states = node.output[3]
+        o_hidden_states = node.output[-1]
         o_key_cache = self.get_io_by_name(node, "present_key")
         o_value_cache = self.get_io_by_name(node, "present_value")
 
@@ -771,6 +771,7 @@ class FissionTransformerBlockPhi(Fission):
             subgraph_nodes.extend(self.gemm(["ln_out", attn_q_weight, attn_q_bias], ["query"], "Q_"))
             subgraph_nodes.extend(self.gemm(["ln_out", attn_k_weight, attn_k_bias], ["key"], "K_"))
             subgraph_nodes.extend(self.gemm(["ln_out", attn_v_weight, attn_v_bias], ["value"], "V_"))
+            # vllm engine requires full position ids as the input
             pos_ids_name = "position_ids" if self.attn_op_type == AttentionOpType.PagedAttention else "step"
             subgraph_nodes.extend(self.rotary(["query", pos_ids_name, cos_cache, sin_cache], ["query_rot"], "Q_"))
             subgraph_nodes.extend(self.rotary(["key", pos_ids_name, cos_cache, sin_cache], ["key_rot"], "K_"))
