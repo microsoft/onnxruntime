@@ -79,10 +79,11 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
 
   std::vector<WType> B_data;
 
-  std::vector<WType> tmp_B_data = random.Uniform<WType>(B_dims,
-                                                        std::numeric_limits<WType>::lowest(),
-                                                        std::numeric_limits<WType>::max());
-
+  std::vector<WType> tmp_B_data;
+  tmp_B_data = random.Uniform<WType>(B_dims,
+                                     (constexpr(std::is_same_v<WType, int8_t>)) ?
+                                     std::numeric_limits<int8_t>::lowest()/2 : std::numeric_limits<uint8_t>::lowest(),
+                                     std::numeric_limits<WType>::max() / 2);
   std::transform(tmp_B_data.begin(), tmp_B_data.end(), std::back_inserter(B_data), [](int32_t v) -> WType {
     return static_cast<WType>(v);
   });
@@ -139,7 +140,8 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
   // Only DML EP supports these data type combinations for now
   if ((constexpr(std::is_same_v<OType, MLFloat16>)) ||
       (constexpr(std::is_same_v<OType, float>) &&
-       !constexpr(std::is_same_v<WType, IType>))) {
+       constexpr(std::is_same_v<IType, int8_t>) &&
+       constexpr(std::is_same_v<WType, uint8_t>))) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultDmlExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -211,7 +213,23 @@ TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_U8X8) {
   RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, true, true>();
 }
 
-// DML EP supports Float16 output type and A Matrix and B Matric of different data types for Float32 output
+TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_U8S8) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, true, false>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8S8) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, false, true>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_NoBias_test_U8S8) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, false, false>();
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_U8S8) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, true, true>();
+}
+
+// DML EP supports Float16 output type and Signed A Matrix and Unsigned B Matric for Float32 output
 #if defined(USE_DML)
 
 TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8U8) {
@@ -228,22 +246,6 @@ TEST(MatMulIntegerToFloat, NoZeroPoint_NoBias_test_S8U8) {
 
 TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_S8U8) {
   RunMatMulIntegerToFloatTest<int8_t, int8_t, float, true, true>();
-}
-
-TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_U8S8) {
-  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, true, false>();
-}
-
-TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8S8) {
-  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, false, true>();
-}
-
-TEST(MatMulIntegerToFloat, NoZeroPoint_NoBias_test_U8S8) {
-  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, false, false>();
-}
-
-TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_U8S8) {
-  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, true, true>();
 }
 
 TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_U8U8) {
