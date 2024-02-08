@@ -1340,9 +1340,8 @@ class ONNXQuantizer:
             scale_init = find_by_name(quantized_value.scale_name, self.model.initializer())
 
             # In case we are working with subgraphs, the graph `producer_name` is set to `"onnx-quantizer"` in the `quantize_subgraph` method. In this case, the scale initializer may be on the top level graph, so the check below can not be done.
-            if (
-                self.model.model.producer_name != "onnx-quantizer"
-                or (self.model.model.producer_name == "onnx-quantizer" and scale_init is not None)
+            if self.model.model.producer_name != "onnx-quantizer" or (
+                self.model.model.producer_name == "onnx-quantizer" and scale_init is not None
             ):
                 # axis is not specified so scale_init must be a scalar.
                 assert onnx.numpy_helper.to_array(scale_init).size == 1

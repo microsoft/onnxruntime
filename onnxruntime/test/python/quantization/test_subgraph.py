@@ -4,27 +4,39 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import unittest
-
-import tempfile
 import os
+import tempfile
+import unittest
 import urllib.request
-from onnxruntime.quantization import quantize_dynamic
+
 import onnx
+
+from onnxruntime.quantization import quantize_dynamic
+
 
 class TestDynamicQuantizationSubgraph(unittest.TestCase):
     def test_dynamic_quantization_subgraph(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             onnx_path = os.path.join(tmpdir, "decoder_model_merged.onnx")
             quantized_onnx_path = os.path.join(tmpdir, "decoder_model_merged_quantized.onnx")
-            urllib.request.urlretrieve("https://huggingface.co/fxmarty/t5-tiny-onnx-testing/resolve/main/decoder_model_merged.onnx", onnx_path)
+            urllib.request.urlretrieve(
+                "https://huggingface.co/fxmarty/t5-tiny-onnx-testing/resolve/main/decoder_model_merged.onnx", onnx_path
+            )
 
             quantize_dynamic(
                 model_input=onnx_path,
                 model_output=quantized_onnx_path,
                 per_channel=True,
-                op_types_to_quantize=["Conv", "MatMul", "Attention", "LSTM", "Gather", "Transpose", "EmbedLayerNormalization"],
-                extra_options={"EnableSubgraph": True}
+                op_types_to_quantize=[
+                    "Conv",
+                    "MatMul",
+                    "Attention",
+                    "LSTM",
+                    "Gather",
+                    "Transpose",
+                    "EmbedLayerNormalization",
+                ],
+                extra_options={"EnableSubgraph": True},
             )
             model = onnx.load(quantized_onnx_path)
 
@@ -50,4 +62,3 @@ class TestDynamicQuantizationSubgraph(unittest.TestCase):
                     if attr.type == onnx.AttributeProto.GRAPH:
                         for initializer in attr.g.initializer:
                             self.assertTrue("shared.weight" not in initializer.name)
-
