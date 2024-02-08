@@ -1825,36 +1825,39 @@ struct PQ {
     comparator_(comp)
   {}
 
-  void push_back(const Node* node) {
-    list_.push_back(node);
-    for (int i = 0; i < log(list_.size()); i++) {
-      comparator_(node, list_.front());
-    }
+  void push(const Node* node) {
+    list_.insert
+        (
+           std::upper_bound( list_.begin(), list_.end(), node, comparator_),
+           node
+        );
   }
   bool empty() { return list_.empty();}
-  const Node* front(){ return list_.front(); }
-  void pop_front(){ list_.pop_front(); }
+  const Node* top(){ return list_.front(); }
+  void pop(){ list_.pop_front(); }
 };
 
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
   InlinedVector<size_t> in_degree(MaxNodeIndex(), 0);
-  //std::priority_queue<const Node*, std::list<const Node*>, decltype(comp)> to_visit(comp);
-  PQ to_visit(comp);
   InlinedVector<NodeIndex> topo_order;
+  PQ to_visit(comp);
+
+  auto number_of_nodes = NumberOfNodes();
+  topo_order.reserve(number_of_nodes);
 
   for (auto& node : Nodes()) {
     size_t input_edge_count = node.GetInputEdgesCount();
     in_degree[node.Index()] = input_edge_count;
     if (input_edge_count == 0) {
-      to_visit.push_back(&node);
+      to_visit.push(&node);
     }
   }
 
   while (!to_visit.empty()) {
-    const Node* current = to_visit.front();
-    to_visit.pop_front();
+    const Node* current = to_visit.top();
+    to_visit.pop();
 
     if (!current) continue;
 
@@ -1867,13 +1870,13 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
       node_in_degree--;
 
       if (node_in_degree == 0) {
-        to_visit.push_back(&*node_it);
+        to_visit.push(&*node_it);
       }
     }
     topo_order.push_back(current->Index());
   }
 
-  if (NumberOfNodes() != static_cast<int>(topo_order.size())) {
+  if (number_of_nodes != static_cast<int>(topo_order.size())) {
     ORT_THROW("Some nodes are not included in the topological sort, graph have a cycle.");
   }
 }

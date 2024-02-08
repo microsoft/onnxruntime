@@ -248,14 +248,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<EnsureUniqueDQForNodeUnit>());
       }
 
-      // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
-      // shouldn't affect the end result - just easier to debug any issue if it's last.
-      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
-
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
       const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
       transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
 
+      // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
+      // shouldn't affect the end result - just easier to debug any issue if it's last.
+      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
     } break;
 
     case TransformerLevel::Level2: {

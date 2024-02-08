@@ -26,8 +26,6 @@ typedef struct IDMLDevice IDMLDevice;
 
 #include "onnxruntime_c_api.h"
 
-#define ENABLE_NPU_ADAPTER_ENUMERATION
-
 #ifdef __cplusplus
 extern "C" {
 #endif
