@@ -283,8 +283,10 @@ int WindowsEnv::GetNumPhysicalCpuCores() const {
   if (bIsIntel && regs[0] >= 7) {
     // Query Structured Extended Feature Flags Enumeration Leaf
     __cpuid(regs, 0x7);
+    // The bit 15 of EDX indicates if the processor is identified as a hybrid part.
     bool ishybrid = regs[3] & (1 << 15);
     if (ishybrid) {
+      // NOTE: even if ishybrid is true, it doesn't mean the processor must have P-cores/E-cores.
       // On Intel CPUs we assume the HardwareCoreEnumerator::DefaultIntraOpNumThreads function would never fail.
       // NOTE: due to resource restrictions, we cannot test this branch in our CI build pipelines.
       return std::max(static_cast<uint32_t>(1), HardwareCoreEnumerator::DefaultIntraOpNumThreads());
