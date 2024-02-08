@@ -47,7 +47,7 @@ class GRU_Helper:  # noqa: N801
             if "initial_h" in params
             else np.zeros((num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
         )
-        LBR = params["linear_before_reset"] if "linear_before_reset" in params else 0  # noqa: N806, SIM401
+        LBR = params.get("linear_before_reset", 0)  # noqa: N806
         self.direction = params.get("direction", "forward")
 
         if num_directions == 1:
