@@ -69,11 +69,14 @@
   "exports": {
     ".": {
       "node": "./dist/ort.node.min.js",
+      "types": "./types.d.ts",
       "default": {
         "import": "./dist/esm/ort.min.js",
         "require": "./dist/cjs/ort.min.js",
+        "types": "./types.d.ts",
         "default": {
           "development": "./dist/ort.js",
+          "types": "./types.d.ts",
           "default": "./dist/ort.min.js"
         }
       }
@@ -81,34 +84,41 @@
     "./experimental": {
       "import": "./dist/esm/ort.all.min.js",
       "require": "./dist/cjs/ort.all.min.js",
+      "types": "./types.d.ts",
       "default": {
         "development": "./dist/ort.all.js",
+        "types": "./types.d.ts",
         "default": "./dist/ort.all.min.js"
       }
     },
     "./wasm": {
       "import": "./dist/esm/ort.wasm.min.js",
       "require": "./dist/cjs/ort.wasm.min.js",
+      "types": "./types.d.ts",
       "default": "./dist/ort.wasm.min.js"
     },
     "./wasm-core": {
       "import": "./dist/esm/ort.wasm-core.min.js",
       "require": "./dist/cjs/ort.wasm-core.min.js",
+      "types": "./types.d.ts",
       "default": "./dist/ort.wasm-core.min.js"
     },
     "./webgl": {
       "import": "./dist/esm/ort.webgl.min.js",
       "require": "./dist/cjs/ort.webgl.min.js",
+      "types": "./types.d.ts",
       "default": "./dist/ort.webgl.min.js"
     },
     "./webgpu": {
       "import": "./dist/esm/ort.webgpu.min.js",
       "require": "./dist/cjs/ort.webgpu.min.js",
+      "types": "./types.d.ts",
       "default": "./dist/ort.webgpu.min.js"
     },
     "./training": {
       "import": "./dist/esm/ort.training.wasm.min.js",
       "require": "./dist/cjs/ort.training.wasm.min.js",
+      "types": "./types.d.ts",
       "default": "./dist/ort.training.wasm.min.js"
     }
   },
