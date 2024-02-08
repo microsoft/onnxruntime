@@ -55,10 +55,12 @@ def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
         f"ONNXRUNTIME_BRANCH={args.branch}",
     ]
     if args.use_tensorrt_oss_parser:
-        command.extend([
-            "--build-arg",
-            "PARSER_CONFIG=--use_tensorrt_oss_parser",
-            ])
+        command.extend(
+            [
+                "--build-arg",
+                "PARSER_CONFIG=--use_tensorrt_oss_parser",
+            ]
+        )
     return command
 
 

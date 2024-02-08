@@ -64,20 +64,20 @@ def main():
         subprocess.run(["git", "checkout", args.branch], check=True)
         subprocess.run(["git", "pull", "origin", args.branch], check=True)
         command = [
-                "./build.sh",
-                "--config",
-                "Release",
-                "--use_tensorrt",
-                "--tensorrt_home",
-                args.tensorrt_home,
-                "--cuda_home",
-                args.cuda_home,
-                "--cudnn",
-                "/usr/lib/x86_64-linux-gnu",
-                "--build_wheel",
-                "--skip_tests",
-                "--parallel",
-            ]
+            "./build.sh",
+            "--config",
+            "Release",
+            "--use_tensorrt",
+            "--tensorrt_home",
+            args.tensorrt_home,
+            "--cuda_home",
+            args.cuda_home,
+            "--cudnn",
+            "/usr/lib/x86_64-linux-gnu",
+            "--build_wheel",
+            "--skip_tests",
+            "--parallel",
+        ]
         if args.use_tensorrt_oss_parser:
             command.append("--use_tensorrt_oss_parser")
         subprocess.run(command, check=True)
