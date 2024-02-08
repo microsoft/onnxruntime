@@ -389,7 +389,7 @@ class ONNXQuantizer:
     def quantize_model(self):
         if self.has_QDQ_nodes():
             logging.warning(
-                "Please check if the model is already quantized."
+                "Please check if the model is already quantized. "
                 "Note you don't need to quantize a QAT model. OnnxRuntime support to run QAT model directly."
             )
 
@@ -448,7 +448,11 @@ class ONNXQuantizer:
 
     def _get_default_tensor_type(self, tensor_name):
         if "DefaultTensorType" in self.extra_options:
-            logging.info(f"get_tensor_type returns DefaultTensorType for tensor name %r, use %d", tensor_name, self.extra_options["DefaultTensorType"])
+            logging.info(
+                "get_tensor_type returns DefaultTensorType for tensor name %r, use %d",
+                tensor_name,
+                self.extra_options["DefaultTensorType"],
+            )
             return self.extra_options["DefaultTensorType"]
         raise RuntimeError(
             f"Unable to find data type for weight_name={tensor_name!r}. "

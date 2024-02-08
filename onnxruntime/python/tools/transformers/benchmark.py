@@ -39,7 +39,6 @@
 
     It is recommended to use run_benchmark.sh to launch benchmark.
 """
-
 import argparse
 import logging
 import os
