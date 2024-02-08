@@ -138,6 +138,9 @@ class ConvertPhi2ToONNX:
             # We keep last three layers of Attention as float32 or bfloat16 to avoid overflow.
             node_block_list = (
                 [
+                    "GroupQueryAttention_29",
+                    "GroupQueryAttention_30",
+                    "GroupQueryAttention_31",
                     "Attention_29",
                     "Attention_30",
                     "Attention_31",
