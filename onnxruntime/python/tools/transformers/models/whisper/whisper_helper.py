@@ -100,8 +100,12 @@ class WhisperHelper:
             checkpoint_file = _download(_MODELS[model_name], cache_dir, in_memory)
             alignment_heads = _ALIGNMENT_HEADS[model_name]
 
-        with io.BytesIO(checkpoint_file) if in_memory else open(checkpoint_file, "rb") as fp:
-            checkpoint = torch.load(fp, map_location=device)
+        if in_memory:
+            with io.BytesIO(checkpoint_file) as fp:
+                checkpoint = torch.load(fp, map_location=device)
+        else:
+            with open(checkpoint_file, "rb") as fp:
+                checkpoint = torch.load(fp, map_location=device)
         del checkpoint_file
 
         dims = ModelDimensions(**checkpoint["dims"])
