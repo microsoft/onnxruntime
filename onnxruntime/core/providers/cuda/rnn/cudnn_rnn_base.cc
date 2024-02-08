@@ -28,7 +28,6 @@ Status CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
   std::array<int, 3> matDims;
   std::array<int, 3> strideA;
   cudnnDataType_t dt;
-  cudnnTensorFormat_t tf;
   T* mem_offset;
 
   CudnnTensor tensor_desc_matrix, tensor_desc_bias;
@@ -68,15 +67,15 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
   CudnnFilterDescriptor filter_desc;
   for (int layer = 0; layer < RNN_NUM_LAYERS * num_directions_; ++layer) {
     for (size_t idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, W_lin_layer_id_[idx], W_data, w_offset, true, cuda_stream);
+      ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, W_lin_layer_id_[idx], W_data, w_offset, true, cuda_stream));
       if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, W_lin_layer_id_[idx], B_data, bias_offset, false, cuda_stream);
+        ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, W_lin_layer_id_[idx], B_data, bias_offset, false, cuda_stream));
       }
     }
     for (size_t idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, R_lin_layer_id_[idx], R_data, r_offset, true, cuda_stream);
+      ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, R_lin_layer_id_[idx], R_data, r_offset, true, cuda_stream));
       if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, R_lin_layer_id_[idx], B_data, bias_offset, false, cuda_stream);
+        ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, R_lin_layer_id_[idx], B_data, bias_offset, false, cuda_stream));
       }
     }
   }
