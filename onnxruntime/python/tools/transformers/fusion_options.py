@@ -24,6 +24,7 @@ class AttentionOpType(Enum):
     Attention = "Attention"
     MultiHeadAttention = "MultiHeadAttention"
     GroupQueryAttention = "GroupQueryAttention"
+    PagedAttention = "PagedAttention"
 
     def __str__(self):
         return self.value
