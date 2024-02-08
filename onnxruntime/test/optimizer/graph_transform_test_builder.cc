@@ -159,9 +159,9 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
     if (pre_graph_checker) {
       ORT_RETURN_IF_ERROR(pre_graph_checker(graph));
     }
-#if SAVE_TEST_GRAPH
+
     ORT_RETURN_IF_ERROR(Model::Save(model, "model_original.onnx"));
-#endif
+
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
     if (post_graph_checker) {
       ORT_RETURN_IF_ERROR(post_graph_checker(graph));

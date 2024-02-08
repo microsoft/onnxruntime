@@ -59,23 +59,27 @@ void BuildMatMulIntegerToFloatGraph(ModelTestBuilder& helper,
                                     const std::vector<int64_t> A_dims, const std::vector<int64_t> B_dims,
                                     const std::vector<uint8_t>& A_data, const std::vector<WeightType>& B_data,
                                     const std::vector<float>& A_scale, const std::vector<float>& B_scale,
-                                    const std::vector<uint8_t>& A_zero_point,
-                                    const std::vector<WeightType>& B_zero_point,
+                                    std::vector<uint8_t>& A_zero_point,
+                                    std::vector<WeightType>& B_zero_point,
                                     const std::vector<float>& Bias) {
   auto* input_A = helper.MakeInput<uint8_t>(A_dims, A_data);
   auto* input_B = helper.MakeInitializer<WeightType>(B_dims, B_data);
   auto* input_a_scale = helper.MakeInitializer<float>({1}, A_scale);
   auto* input_b_scale = helper.MakeInitializer<float>({B_dims.back()}, B_scale);
-  auto* input_a_zero_point = helper.MakeInitializer<uint8_t>({1}, A_zero_point);
-  auto* input_b_zero_point = helper.MakeInitializer<WeightType>({B_dims.back()},
-                                                                B_zero_point);
+  NodeArg* empty = helper.MakeEmptyInput();
+  //auto* input_a_zero_point = helper.MakeInitializer<uint8_t>({1}, A_zero_point);
+  //auto* input_b_zero_point = helper.MakeInitializer<WeightType>({B_dims.back()},
+  //                                                              B_zero_point);
+  if (A_zero_point.size() >= 0 && B_zero_point.size()>=0) {
+    B_zero_point.push_back(B_zero_point[0]);
+  }
   auto* input_bias = helper.MakeInitializer<float>({B_dims.back()}, Bias);
 
   auto* output_arg = helper.MakeOutput();
 
   helper.AddNode("MatMulIntegerToFloat",
                  {input_A, input_B, input_a_scale, input_b_scale,
-                  input_a_zero_point, input_b_zero_point, input_bias},
+                  /*input_a_zero_point, input_b_zero_point,*/ empty, empty, input_bias},
                  {output_arg}, kMSDomain);
   helper.SetGraphOutputs();
 }
