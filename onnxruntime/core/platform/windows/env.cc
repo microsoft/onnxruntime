@@ -251,7 +251,8 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
   Sleep(static_cast<DWORD>(micros) / 1000);
 }
 
-#if defined(_M_X64) && !defined(_M_ARM64EC)
+// EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID)
 static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
 #endif
 int WindowsEnv::DefaultNumCores() {
