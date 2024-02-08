@@ -1005,7 +1005,6 @@ Status LaunchLongformerAttentionKernel(
     bool disable_compact_memory,
     bool use_merged_qkv_weights,
     bool use_half4) {
-  CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size,
                                                                     batch_size,
                                                                     num_heads,

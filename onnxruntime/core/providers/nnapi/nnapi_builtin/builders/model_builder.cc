@@ -100,7 +100,7 @@ void ModelBuilder::PreprocessActivations() {
       activation_node_units_.emplace(node_unit.get(), ANEURALNETWORKS_FUSED_RELU);
     } else if (op_type == "Clip") {  // Relu1 or Relu6
       float min, max;
-      if (!GetClipMinMax(GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger()))
+      if (!GetClipMinMax(graph_viewer_, node, min, max, logging::LoggingManager::DefaultLogger()))
         continue;
 
       if (min == -1.0f && max == 1.0f) {
@@ -151,7 +151,7 @@ void ModelBuilder::GetAllQuantizedOpInputs() {
 }
 
 static Status GetInputDataType(
-    const InitializedTensorSet& initializers,
+    const GraphViewer& graph_viewer,
     const std::unordered_map<std::string, std::vector<const NodeUnit*>>& all_quantized_op_inputs,
     const std::string& name, int32_t data_type, const Shape& shape,
     OperandType& operand_type) {
@@ -177,7 +177,7 @@ static Status GetInputDataType(
       // TODO, verify the scale and zero point match if there are multiple op using same input
       const auto* node_unit = all_quantized_op_inputs.at(name)[0];
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
+          graph_viewer, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
@@ -226,9 +226,8 @@ Status ModelBuilder::RegisterInitializers() {
     }
 
     OperandType operand_type(Type::TENSOR_FLOAT32, shape);
-    ORT_RETURN_IF_ERROR(
-        GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_,
-                         name, tensor.data_type(), shape, operand_type));
+    ORT_RETURN_IF_ERROR(GetInputDataType(graph_viewer_, all_quantized_op_inputs_, name, tensor.data_type(), shape,
+                                         operand_type));
     shaper_.AddShape(name, operand_type.dimensions);
 
     uint32_t index = 0;
@@ -304,7 +303,7 @@ Status ModelBuilder::RegisterModelInputs() {
                              "The input of graph doesn't have elem_type: ", input_name);
     } else {
       ORT_RETURN_IF_ERROR(
-          GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_,
+          GetInputDataType(graph_viewer_, all_quantized_op_inputs_,
                            input_name, type_proto->tensor_type().elem_type(), shape, operand_type));
     }
 

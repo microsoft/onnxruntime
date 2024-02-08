@@ -13,6 +13,7 @@ import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose'
 import {cumsum, parseCumSumAttributes} from './ops/cumsum';
 import {einsum, parseEinsumAttributes} from './ops/einsum';
 import {expand} from './ops/expand';
+import {fastGelu} from './ops/fast-gelu';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
 import {gemm, parseGemmAttributes} from './ops/gemm';
@@ -72,6 +73,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Erf', [unaryOps.erf]],
   ['Exp', [unaryOps.exp]],
   ['Expand', [expand]],
+  ['FastGelu', [fastGelu]],
   ['Floor', [unaryOps.floor]],
   ['FusedConv', [conv, parseConvAttributes]],
   ['Gather', [gather, parseGatherAttributes]],
