@@ -15,7 +15,9 @@ from torch.nn.parameter import Parameter
 
 import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory  # noqa: F401
+from onnxruntime.training.ortmodule._graph_execution_manager_factory import (
+    GraphExecutionManagerFactory,  # noqa: F401
+)
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -125,8 +127,6 @@ if __name__ == "__main__":
     try:
         mp.spawn(test_Distributed_ReduceWithMarkDirtyModel, nprocs=size, args=(size,))
     except Exception:
-        import sys  # noqa: F811
-
         sys.stdout.flush()
         sys.stderr.flush()
         raise

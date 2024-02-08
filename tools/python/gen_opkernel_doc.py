@@ -98,7 +98,7 @@ def main(output_path: pathlib.Path, provider_filter: [str]):
                     paramstr += f"*out* {outp.name}:**{outp.typeStr}**"
 
             paramstr += ""
-            paramset = paramdict.get(fullname, None)
+            paramset = paramdict.get(fullname)
             if paramset is None:
                 paramdict[fullname] = set()
 
