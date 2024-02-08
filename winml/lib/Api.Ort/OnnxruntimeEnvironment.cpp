@@ -164,7 +164,9 @@ static void __stdcall WinmlOrtLoggingCallback(
       );
   }
 
-  printf((std::string(message) + "\r\n").c_str());
+  if (debug_output_) {
+    OutputDebugStringA((std::string(message) + "\r\n").c_str());
+  }
 }
 
 static void __stdcall WinmlOrtProfileEventCallback(const OrtProfilerEventRecord* profiler_record) noexcept {

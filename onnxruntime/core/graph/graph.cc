@@ -1818,24 +1818,43 @@ void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
   }
 }
 
+struct PQ {
+  std::list<const Node*> list_;
+  const std::function<bool(const Node*, const Node*)>& comparator_ = nullptr;
+  PQ(const std::function<bool(const Node*, const Node*)>& comp) :
+    comparator_(comp)
+  {}
+
+  void push_back(const Node* node) {
+    list_.push_back(node);
+    for (int i = 0; i < log(list_.size()); i++) {
+      comparator_(node, list_.front());
+    }
+  }
+  bool empty() { return list_.empty();}
+  const Node* front(){ return list_.front(); }
+  void pop_front(){ list_.pop_front(); }
+};
+
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
-  std::unordered_map<NodeIndex, size_t> in_degree;
-  std::priority_queue<const Node*, std::vector<const Node*>, decltype(comp)> to_visit(comp);
-  std::vector<NodeIndex> topo_order;
+  InlinedVector<size_t> in_degree(MaxNodeIndex(), 0);
+  //std::priority_queue<const Node*, std::list<const Node*>, decltype(comp)> to_visit(comp);
+  PQ to_visit(comp);
+  InlinedVector<NodeIndex> topo_order;
 
   for (auto& node : Nodes()) {
     size_t input_edge_count = node.GetInputEdgesCount();
-    in_degree.insert({node.Index(), input_edge_count});
+    in_degree[node.Index()] = input_edge_count;
     if (input_edge_count == 0) {
-      to_visit.push(&node);
+      to_visit.push_back(&node);
     }
   }
 
   while (!to_visit.empty()) {
-    const Node* current = to_visit.top();
-    to_visit.pop();
+    const Node* current = to_visit.front();
+    to_visit.pop_front();
 
     if (!current) continue;
 
@@ -1844,10 +1863,11 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
     }
 
     for (auto node_it = current->OutputNodesBegin(); node_it != current->OutputNodesEnd(); ++node_it) {
-      in_degree[node_it->Index()]--;
+      auto& node_in_degree = in_degree[node_it->Index()];
+      node_in_degree--;
 
-      if (in_degree[node_it->Index()] == 0) {
-        to_visit.push(&*node_it);
+      if (node_in_degree == 0) {
+        to_visit.push_back(&*node_it);
       }
     }
     topo_order.push_back(current->Index());
