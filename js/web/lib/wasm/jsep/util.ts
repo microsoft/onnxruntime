@@ -114,10 +114,8 @@ export class ShapeUtil {
       size /= dims[i];
       i--;
     }
-    if (i > 0) {
-      for (let j = i - 1; j >= 0; j--) {
-        newDims[j] = dims[j];
-      }
+    for (i--; i >= 0; i--) {
+      newDims[i] = dims[i];
     }
     return newDims;
   }
