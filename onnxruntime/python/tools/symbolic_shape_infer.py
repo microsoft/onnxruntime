@@ -213,6 +213,7 @@ class SymbolicShapeInference:
             "NhwcConv": self._infer_NhwcConv,
             "PackedAttention": self._infer_PackedAttention,
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
+            "PagedAttention": self._infer_PagedAttention,
             "PythonOp": self._infer_PythonOp,
             "QuantizeLinear": self._infer_QuantizeLinear,
             "QuickGelu": self._infer_FastGelu,
@@ -470,6 +471,7 @@ class SymbolicShapeInference:
             "SkipLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "PackedAttention",
+            "PagedAttention",
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
@@ -2410,6 +2412,9 @@ class SymbolicShapeInference:
             self._propagate_shape_and_type(node, 0, 3)
 
     def _infer_GroupNorm(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_PagedAttention(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 
     def _infer_GroupQueryAttention(self, node):  # noqa: N802
