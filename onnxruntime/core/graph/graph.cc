@@ -1818,22 +1818,22 @@ void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
   }
 }
 
-struct PQ {
-  std::list<const Node*> list_;
-  const std::function<bool(const Node*, const Node*)>& comparator_ = nullptr;
-  PQ(const std::function<bool(const Node*, const Node*)>& comp) :
-    comparator_(comp)
-  {}
+template <typename T>
+struct VisitorPriorityQueue {
+  using ComparatorType = std::function<bool(T, T)>;
+  std::list<T> list_;
+  const ComparatorType comparator_ = nullptr;
+  VisitorPriorityQueue(const ComparatorType& comp) : comparator_(comp) {}
 
-  void push(const Node* node) {
+  void push(T node) {
     list_.insert
         (
-           std::upper_bound( list_.begin(), list_.end(), node, comparator_),
+           std::upper_bound(list_.begin(), list_.end(), node, comparator_),
            node
         );
   }
-  bool empty() { return list_.empty();}
-  const Node* top(){ return list_.front(); }
+  bool empty() { return list_.empty(); }
+  T top(){ return list_.front(); }
   void pop(){ list_.pop_front(); }
 };
 
@@ -1842,7 +1842,7 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
   InlinedVector<size_t> in_degree(MaxNodeIndex(), 0);
   InlinedVector<NodeIndex> topo_order;
-  PQ to_visit(comp);
+  VisitorPriorityQueue<const Node*> to_visit(comp);
 
   auto number_of_nodes = NumberOfNodes();
   topo_order.reserve(number_of_nodes);
@@ -1879,6 +1879,10 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
   if (number_of_nodes != static_cast<int>(topo_order.size())) {
     ORT_THROW("Some nodes are not included in the topological sort, graph have a cycle.");
   }
+
+  // for (auto i : topo_order) {
+  //   printf("%d\n", static_cast<int>(i));
+  // }
 }
 
 GSL_SUPPRESS(es.84)  // noisy warning about ignoring return value from insert(...)
@@ -2866,7 +2870,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
 
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
-  name_to_initial_tensor_[tensor.name()] = tensor_added;
+  name_to_initial_tensor_.emplace(tensor.name(), tensor_added);
   SetGraphResolveNeeded();
   if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
     // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
