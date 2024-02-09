@@ -129,4 +129,4 @@ from .graph_optimizers import *  # noqa: E402, F403
 from .options import DebugOptions, LogLevel  # noqa: E402, F401
 
 # ORTModule must be loaded only after all validation passes
-from .ortmodule import ORTModule  # noqa: E402, F401
+from .ortmodule import ORTModule, ParallelORTModule  # noqa: E402, F401

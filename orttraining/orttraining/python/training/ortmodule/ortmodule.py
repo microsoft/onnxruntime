@@ -389,10 +389,17 @@ class ParallelORTModule(torch.nn.Module):
             raise ValueError("The provided module does not have a device map. Please provide a device map.")
 
         # Loop over the device_map to get the submodules that live in the same device
-        for name, _ in hf_device_map.items():
+        for name, device in hf_device_map.items():
             layer = module.get_submodule(name)
+
+            # Append the device index to the beginning of the onnx graph prefix to distinguish between graphs.
+            new_onnx_prefix = str(device).replace(":", "_") + "_" + debug_options.onnx_prefix
+
+            parallel_debug_options = DebugOptions(
+                debug_options.log_level, debug_options.save_onnx, new_onnx_prefix, debug_options.save_path
+            )
             # Wrap the submodules that live in the same Device in ORTModule
-            setattr(module, name, ORTModule(layer, debug_options))
+            setattr(module, name, ORTModule(layer, parallel_debug_options))
 
         self._is_initialized = True
 
