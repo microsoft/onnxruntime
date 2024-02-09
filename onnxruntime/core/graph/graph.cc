@@ -1826,15 +1826,13 @@ struct VisitorPriorityQueue {
   VisitorPriorityQueue(const ComparatorType& comp) : comparator_(comp) {}
 
   void push(T node) {
-    list_.insert
-        (
-           std::upper_bound(list_.begin(), list_.end(), node, comparator_),
-           node
-        );
+    list_.insert(
+        std::upper_bound(list_.begin(), list_.end(), node, comparator_),
+        node);
   }
   bool empty() { return list_.empty(); }
-  T top(){ return list_.back(); }
-  void pop(){ list_.pop_back(); }
+  T top() { return list_.back(); }
+  void pop() { list_.pop_back(); }
 };
 
 #if !defined(ORT_MINIMAL_BUILD)

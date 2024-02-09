@@ -66,8 +66,7 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
   if (op_type == "Add" ||
       op_type == "Sub" ||
       op_type == "Mul" ||
-      op_type == "Div")
-  {
+      op_type == "Div") {
     int32_t data_type = initializer->data_type();
     Initializer add_init(*initializer, graph.ModelPath());
 
