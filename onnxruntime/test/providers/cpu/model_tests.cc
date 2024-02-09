@@ -308,6 +308,7 @@ TEST_P(ModelTest, Run) {
           if (ort_st != nullptr) {
             OrtErrorCode error_code = OrtApis::GetErrorCode(ort_st);
             if (error_code == ORT_NOT_IMPLEMENTED) {
+              OrtApis::ReleaseStatus(ort_st);
               for (char* p : output_names) {
                 default_allocator->Free(p);
               }
@@ -316,7 +317,6 @@ TEST_P(ModelTest, Run) {
               }
             }
             FAIL() << OrtApis::GetErrorMessage(ort_st);
-            OrtApis::ReleaseStatus(ort_st);
           }
         }
 
