@@ -6428,7 +6428,7 @@ def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_sea
     reason="This test fail because bert forward loss is nan in updated transformers lib, disable for now."
 )
 def test_bert_result_with_layerwise_recompute():
-    original_val = os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ else None
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
     # Create PyTorch model with dropout disabled.
     pt_model = _get_bert_for_sequence_classification_model(
         "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0

@@ -255,6 +255,30 @@ class Fission(Fusion):
         )
         return [node]
 
+    def paged_attn(
+        self,
+        inputs: List[str],
+        outputs: List[str],
+        prefix: str = "",
+        num_heads=32,
+        head_size=80,
+        scale=0.11180339753627777,
+    ):
+        assert len(inputs) == 6
+        assert len(outputs) == 1
+        node = helper.make_node(
+            "PagedAttention",
+            inputs=inputs,
+            outputs=outputs,
+            name=prefix + "PagedAttention",
+            domain="vllm.ort.ext",
+            num_heads=num_heads,
+            num_kv_heads=num_heads,
+            head_size=head_size,
+            scale=scale,
+        )
+        return [node]
+
 
 class Phi2PreProcessor(DynamoOnnxHelper):
     def __init__(self, model: ModelProto, num_heads: int, hidden_size: int):
@@ -288,32 +312,46 @@ class Phi2PreProcessor(DynamoOnnxHelper):
 
     def process_graph_io(self, attn_op_type: AttentionOpType):
         self.use_attn = attn_op_type == AttentionOpType.Attention
+        self.use_vllm = attn_op_type == AttentionOpType.PagedAttention
         graph = self.model.graph
         new_inputs = []
         for vi in graph.input:
             if "input_ids" in vi.name:
                 vi_iid = helper.make_tensor_value_info(
                     vi.name,
-                    elem_type=TensorProto.INT32,
+                    elem_type=TensorProto.INT32 if not self.use_vllm else TensorProto.INT64,
                     shape=["batch_size", "seq_len"],
                 )
-                vi_pid = helper.make_tensor_value_info(
+                vi_step = helper.make_tensor_value_info(
                     "step",
                     elem_type=TensorProto.INT64,
                     shape=[1],
+                )
+                vi_pid = helper.make_tensor_value_info(
+                    "position_ids",
+                    elem_type=TensorProto.INT64,
+                    shape=["batch_size", "seq_len"],
                 )
                 vi_mask = helper.make_tensor_value_info(
                     "attention_mask",
                     elem_type=TensorProto.INT32,
                     shape=["batch_size", "seq_len"],
                 )
-                new_inputs.extend([vi_iid, vi_pid, vi_mask])
-            if not self.use_attn:
-                if "past_key" in vi.name or "past_value" in vi.name:
+                vi_meta = helper.make_tensor_value_info(
+                    "input_metadata",
+                    elem_type=TensorProto.INT64,
+                    shape=[1],
+                )
+                new_inputs.extend([vi_iid, vi_step, vi_mask]) if not self.use_vllm else new_inputs.extend(
+                    [vi_iid, vi_pid, vi_meta]
+                )
+            if self.use_attn:
+                if "past_key" in vi.name:
                     vi_cache = helper.make_tensor_value_info(
-                        vi.name,
+                        vi.name.replace("past_key", "past"),
                         elem_type=vi.type.tensor_type.elem_type,
                         shape=[
+                            2,
                             "batch_size",
                             self.num_attention_heads,
                             "past_seq_len",
@@ -321,13 +359,32 @@ class Phi2PreProcessor(DynamoOnnxHelper):
                         ],
                     )
                     new_inputs.extend([vi_cache])
-            else:
+            elif self.use_vllm:
                 if "past_key" in vi.name:
                     vi_cache = helper.make_tensor_value_info(
-                        vi.name.replace("past_key", "past"),
+                        vi.name,
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=["num_blocks", "num_heads", "head_size_x", "block_size", "block_x"],
+                    )
+                    new_inputs.extend([vi_cache])
+                if "past_value" in vi.name:
+                    vi_cache = helper.make_tensor_value_info(
+                        vi.name,
                         elem_type=vi.type.tensor_type.elem_type,
                         shape=[
-                            2,
+                            "num_blocks",
+                            "num_heads",
+                            "head_size",
+                            "block_size",
+                        ],
+                    )
+                    new_inputs.extend([vi_cache])
+            else:
+                if "past_key" in vi.name or "past_value" in vi.name:
+                    vi_cache = helper.make_tensor_value_info(
+                        vi.name,
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=[
                             "batch_size",
                             self.num_attention_heads,
                             "past_seq_len",
@@ -344,19 +401,7 @@ class Phi2PreProcessor(DynamoOnnxHelper):
             if i == 0:
                 new_outputs.extend([vi])
             else:
-                if not self.use_attn:
-                    vi_cache = helper.make_tensor_value_info(
-                        vi.name,
-                        elem_type=vi.type.tensor_type.elem_type,
-                        shape=[
-                            "batch_size",
-                            self.num_attention_heads,
-                            "total_seq_len",
-                            self.hidden_size // self.num_attention_heads,
-                        ],
-                    )
-                    new_outputs.extend([vi_cache])
-                else:
+                if self.use_attn:
                     if "present_key" in vi.name:
                         vi_cache = helper.make_tensor_value_info(
                             vi.name.replace("present_key", "present"),
@@ -370,6 +415,20 @@ class Phi2PreProcessor(DynamoOnnxHelper):
                             ],
                         )
                         new_outputs.extend([vi_cache])
+                elif self.use_vllm:
+                    pass
+                else:
+                    vi_cache = helper.make_tensor_value_info(
+                        vi.name,
+                        elem_type=vi.type.tensor_type.elem_type,
+                        shape=[
+                            "batch_size",
+                            self.num_attention_heads,
+                            "total_seq_len",
+                            self.hidden_size // self.num_attention_heads,
+                        ],
+                    )
+                    new_outputs.extend([vi_cache])
 
         graph.ClearField("output")
         graph.output.extend(new_outputs)
@@ -385,6 +444,8 @@ class Phi2PreProcessor(DynamoOnnxHelper):
         self.update_edges(self.phi2_edge_dict)
         self.simplify_phi2_op_type()
         self.remove_dropout_layer()
+        if attn_op_type == AttentionOpType.PagedAttention:
+            self.remove_lm_head_layer()
         self.process_graph_io(attn_op_type)
 
 
@@ -694,7 +755,9 @@ class FissionTransformerBlockPhi(Fission):
         layer_known_edges_names.extend(
             [attn_out_weight, attn_out_bias, mlp_fc1_weight, mlp_fc1_bias, mlp_fc2_weight, mlp_fc2_bias]
         )
-        layer_known_edges_names.extend(["attention_mask", "step", "seqlens_k", "total_sequence_length"])
+        layer_known_edges_names.extend(
+            ["attention_mask", "step", "seqlens_k", "total_sequence_length", "input_metadata", "position_ids"]
+        )
 
         subgraph_nodes = []
         subgraph_nodes.extend(self.layernorm([i_hidden_states, ln_weight, ln_bias], ["ln_out"]))
@@ -708,8 +771,9 @@ class FissionTransformerBlockPhi(Fission):
             subgraph_nodes.extend(self.gemm(["ln_out", attn_q_weight, attn_q_bias], ["query"], "Q_"))
             subgraph_nodes.extend(self.gemm(["ln_out", attn_k_weight, attn_k_bias], ["key"], "K_"))
             subgraph_nodes.extend(self.gemm(["ln_out", attn_v_weight, attn_v_bias], ["value"], "V_"))
-            subgraph_nodes.extend(self.rotary(["query", "step", cos_cache, sin_cache], ["query_rot"], "Q_"))
-            subgraph_nodes.extend(self.rotary(["key", "step", cos_cache, sin_cache], ["key_rot"], "K_"))
+            pos_ids_name = "position_ids" if self.attn_op_type == AttentionOpType.PagedAttention else "step"
+            subgraph_nodes.extend(self.rotary(["query", pos_ids_name, cos_cache, sin_cache], ["query_rot"], "Q_"))
+            subgraph_nodes.extend(self.rotary(["key", pos_ids_name, cos_cache, sin_cache], ["key_rot"], "K_"))
             if self.attn_op_type == AttentionOpType.MultiHeadAttention:
                 subgraph_nodes.extend(
                     self.mha(
@@ -740,6 +804,13 @@ class FissionTransformerBlockPhi(Fission):
                     self.model.add_initializer(
                         numpy_helper.from_array(np.array([1], dtype="int64"), name="one"), self.this_graph_name
                     )
+            elif self.attn_op_type == AttentionOpType.PagedAttention:
+                subgraph_nodes.extend(
+                    self.paged_attn(
+                        ["query_rot", "key_rot", "value", i_key_cache, i_value_cache, "input_metadata"],
+                        ["attn_out"],
+                    )
+                )
         else:
             past_name = f"past_{layer_id}"
             present_name = f"present_{layer_id}"
@@ -798,6 +869,7 @@ class PhiOnnxModel(OnnxModel):
             "Attention",
             "MultiHeadAttention",
             "GroupQueryAttention",
+            "PagedAttention",
             "Gelu",
             "BiasGelu",
             "FastGelu",
@@ -821,7 +893,12 @@ class PhiOnnxModel(OnnxModel):
         def op_count(op_name: str):
             return fused_op_count.get(op_name) or 0
 
-        attention = op_count("Attention") + op_count("MultiHeadAttention") + op_count("GroupQueryAttention")
+        attention = (
+            op_count("Attention")
+            + op_count("MultiHeadAttention")
+            + op_count("GroupQueryAttention")
+            + op_count("PagedAttention")
+        )
         gelu = op_count("Gelu") + op_count("BiasGelu") + op_count("FastGelu")
         layer_norm = op_count("LayerNormalization") + op_count("SkipLayerNormalization")
 

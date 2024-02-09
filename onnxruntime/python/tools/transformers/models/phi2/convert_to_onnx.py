@@ -136,14 +136,18 @@ class ConvertPhi2ToONNX:
             self.precision == Precision.FLOAT16 or self.precision == Precision.INT4
         ) and self.attn_op_type != AttentionOpType.MultiHeadAttention:
             # We keep last three layers of Attention as float32 or bfloat16 to avoid overflow.
-            node_block_list = [
-                "GroupQueryAttention_29",
-                "GroupQueryAttention_30",
-                "GroupQueryAttention_31",
-                "Attention_29",
-                "Attention_30",
-                "Attention_31",
-            ]
+            node_block_list = (
+                [
+                    "GroupQueryAttention_29",
+                    "GroupQueryAttention_30",
+                    "GroupQueryAttention_31",
+                    "Attention_29",
+                    "Attention_30",
+                    "Attention_31",
+                ]
+                if self.attn_op_type != AttentionOpType.PagedAttention
+                else []
+            )  # TODO: temp setting for paged attention
             logging.info("Converting onnx model to float16/bfloat16...")
             optimizer.convert_float_to_float16(
                 keep_io_types=False,
@@ -218,6 +222,20 @@ def parse_arguments():
         required=False,
         action="store_true",
         help="Generate int4 ONNX model for Nvidia GPUs with CUDA architecture SM=80~89",
+    )
+
+    parser.add_argument(
+        "--fp16_vllm",
+        required=False,
+        action="store_true",
+        help="Generate fp16 ONNX model for ORT VLLM",
+    )
+
+    parser.add_argument(
+        "--int4_vllm",
+        required=False,
+        action="store_true",
+        help="Generate int4 ONNX model for ORT VLLM",
     )
 
     parser.add_argument(
@@ -336,6 +354,16 @@ def main():
             Precision.INT4,
             os.path.join(output_dir, "phi2_decoder_int4_gpu_sm8x.onnx"),
         ),
+        "fp16_vllm": (
+            AttentionOpType.PagedAttention,
+            Precision.FLOAT16,
+            os.path.join(output_dir, "phi2_decoder_fp16_vllm.onnx"),
+        ),
+        "int4_vllm": (
+            AttentionOpType.PagedAttention,
+            Precision.INT4,
+            os.path.join(output_dir, "phi2_decoder_int4_vllm.onnx"),
+        ),
     }
 
     if not args.skip_export:
@@ -403,6 +431,22 @@ def main():
                 )
             )
 
+        if args.fp16_vllm:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx,
+                    args=(converter, original_onnx_path, *model_type_to_args["fp16_vllm"]),
+                )
+            )
+
+        if args.int4_vllm:
+            processes.append(
+                Process(
+                    target=run_optimize_phi2_onnx,
+                    args=(converter, original_onnx_path, *model_type_to_args["int4_vllm"]),
+                )
+            )
+
         [p.start() for p in processes]
         [p.join() for p in processes]
 
@@ -450,8 +494,8 @@ def main():
                 device_id=args.device_id,
                 packed_kv=True,
             )
-        if args.fp32_cpu or args.int4_cpu:
-            raise NotImplementedError("CPU inference example is not implemented yet.")
+        if args.fp32_cpu or args.int4_cpu or args.fp16_vllm or args.int4_vllm:
+            raise NotImplementedError("CPU/vllm inference example is not implemented yet.")
 
 
 if __name__ == "__main__":
