@@ -430,6 +430,54 @@ class OnnxModel:
 
         return None
 
+    def match_child_path(
+        self,
+        node,
+        child_op_types,
+        child_output_index=None,
+        return_indice=None,
+        exclude=[],  # noqa: B006
+    ):
+        """
+        Find a sequence of input edges based on constraints on parent op_type and index.
+        When input_index is None, we will find the first parent node based on constraints,
+        and return_indice will be appended the corresponding input index.
+
+        Args:
+            node (str): current node name.
+            child_op_types (str): constraint of child node op_type of each input edge.
+            child_output_index (list): constraint of input index of each input edge. None means no constraint.
+            return_indice (list): a list to append the input index
+                                  When there is no constraint on input index of an edge.
+
+        Returns:
+            children: a list of matched children node.
+        """
+        if child_output_index is not None:
+            assert len(child_output_index) == len(child_op_types)
+
+        current_node = node
+        matched_children = []
+        for i, op_type in enumerate(child_op_types):
+            matched_child = None
+            node_children = self.get_children(current_node)
+            for child_i, child in enumerate(node_children):
+                if child.op_type == op_type and child not in exclude:
+                    if child_output_index is not None and child_output_index[i] != child_i:
+                        logger.debug(
+                            f"Failed to match index={i} child_output_index={child_output_index[i]} op_type={op_type}",
+                            stack_info=True,
+                        )
+                        return None
+                    matched_child = child
+            if matched_child is None:
+                logger.debug(f"Failed to match child op_type={op_type}", stack_info=True)
+                return None
+
+            matched_children.append(matched_child)
+            current_node = matched_child
+        return matched_children
+
     def find_first_parent_by_type(self, node, parent_type, output_name_to_node=None, recursive=True):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
