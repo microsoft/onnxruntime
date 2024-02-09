@@ -1833,8 +1833,8 @@ struct VisitorPriorityQueue {
         );
   }
   bool empty() { return list_.empty(); }
-  T top(){ return list_.front(); }
-  void pop(){ list_.pop_front(); }
+  T top(){ return list_.back(); }
+  void pop(){ list_.pop_back(); }
 };
 
 #if !defined(ORT_MINIMAL_BUILD)
