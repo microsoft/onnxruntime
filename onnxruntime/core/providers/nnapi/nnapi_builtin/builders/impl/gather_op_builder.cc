@@ -167,7 +167,7 @@ bool GatherOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const N
 
   if (indices_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     if (!graph_viewer.GetConstantInitializer(indices_name)) {
-      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known.";
+      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be a constant initializer.";
       return false;
     }
   }

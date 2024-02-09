@@ -67,7 +67,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   int32_t num_outputs;
   if (node_unit.SinceVersion() >= 18) {
-    num_outputs = SafeInt<int32_t>(*helper.GetInt64("num_outputs"));
+    num_outputs = SafeInt<int32_t>(*helper.GetInt("num_outputs"));
   } else {
     num_outputs = SafeInt<int32_t>(node_unit.Outputs().size());
   }
@@ -127,7 +127,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const No
   } else {
     uint32_t num_outputs;
     if (node_unit.SinceVersion() >= 18) {
-      auto num_outputs_attr = helper.GetInt64("num_outputs");
+      auto num_outputs_attr = helper.GetInt("num_outputs");
       if (!num_outputs_attr.has_value()) {
         LOGS_DEFAULT(VERBOSE) << "No 'num_outputs' provided. For split 18+, num_outputs is a required attribute.";
         return false;

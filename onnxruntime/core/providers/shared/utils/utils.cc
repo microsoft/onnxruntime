@@ -25,8 +25,9 @@ bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logg
   return true;
 }
 
-bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node,
-                   float& min, float& max, const logging::Logger& logger) {
+namespace {
+bool GetClipMinMaxImpl(std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)> get_const_initializer,
+                       const Node& node, float& min, float& max, const logging::Logger& logger) {
   const auto& node_name = node.Name();
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type, logger)) {
@@ -70,7 +71,7 @@ bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node,
     if (node.InputDefs().size() > 1 && node.InputDefs()[1]->Exists()) {
       // we have input min
       const auto& min_name = node.InputDefs()[1]->Name();
-      const auto* min_value = graph_viewer.GetConstantInitializer(min_name);
+      const auto* min_value = get_const_initializer(min_name);
       if (!get_value(min_value, "Min", min)) {
         return false;
       }
@@ -79,7 +80,7 @@ bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node,
     if (node.InputDefs().size() > 2 && node.InputDefs()[2]->Exists()) {
       // we have input max
       const auto& max_name = node.InputDefs()[2]->Name();
-      const auto* max_value = graph_viewer.GetConstantInitializer(max_name);
+      const auto* max_value = get_const_initializer(max_name);
       if (!get_value(max_value, "Max", max)) {
         return false;
       }
@@ -87,6 +88,27 @@ bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node,
   }
 
   return true;
+}
+}  // namespace
+
+bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node, float& min, float& max,
+                   const logging::Logger& logger) {
+  return GetClipMinMaxImpl(
+      [&graph_viewer](const std::string& name) -> const ONNX_NAMESPACE::TensorProto* {
+        return graph_viewer.GetConstantInitializer(name);
+      },
+      node, min, max, logger);
+}
+
+// deprecated version that is not able to check if the initializer is constant
+bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max,
+                   const logging::Logger& logger) {
+  return GetClipMinMaxImpl(
+      [&initializers](const std::string& name) -> const ONNX_NAMESPACE::TensorProto* {
+        auto entry = initializers.find(name);
+        return entry == initializers.end() ? nullptr : entry->second;
+      },
+      node, min, max, logger);
 }
 
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
@@ -96,134 +118,84 @@ NodeAttrHelper::NodeAttrHelper(const NodeUnit& node_unit)
     : node_attributes_(node_unit.GetNode().GetAttributes()) {}
 
 float NodeAttrHelper::Get(const std::string& key, float def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return entry->second.f();
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  return node_attributes_.at(key).f();
 }
 
 int32_t NodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return narrow<int32_t>(entry->second.i());
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  return SafeInt<int32_t>(node_attributes_.at(key).i());
 }
 
 uint32_t NodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return narrow<uint32_t>(entry->second.i());
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  return SafeInt<uint32_t>(node_attributes_.at(key).i());
 }
 
 int64_t NodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return entry->second.i();
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  return node_attributes_.at(key).i();
 }
 
 const std::string& NodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return entry->second.s();
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  return node_attributes_.at(key).s();
 }
 
 std::vector<int32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& attr = entry->second;
-    std::vector<int32_t> v;
-    v.reserve(static_cast<size_t>(attr.ints_size()));
-    std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
-                   [](int64_t val) -> int32_t { return narrow<int32_t>(val); });
-    return v;
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  const auto& attr(node_attributes_.at(key));
+  std::vector<int32_t> v;
+  v.reserve(static_cast<size_t>(attr.ints_size()));
+  std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
+                 [](int64_t val) -> int32_t { return SafeInt<int32_t>(val); });
+  return v;
 }
 
 std::vector<uint32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& attr = entry->second;
-    std::vector<uint32_t> v;
-    v.reserve(static_cast<size_t>(attr.ints_size()));
-    std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
-                   [](int64_t val) -> uint32_t { return narrow<uint32_t>(val); });
-    return v;
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  const auto& attr(node_attributes_.at(key));
+  std::vector<uint32_t> v;
+  v.reserve(static_cast<size_t>(attr.ints_size()));
+  std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
+                 [](int64_t val) -> uint32_t { return SafeInt<uint32_t>(val); });
+  return v;
 }
 
 std::vector<int64_t> NodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = entry->second.ints();
-    return std::vector<int64_t>{values.cbegin(), values.cend()};
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  const auto& source(node_attributes_.at(key).ints());
+  return std::vector<int64_t>{source.cbegin(), source.cend()};
 }
 
 std::vector<float> NodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = entry->second.floats();
-    return std::vector<float>{values.cbegin(), values.cend()};
-  }
+  if (!HasAttr(key))
+    return def_val;
 
-  return def_val;
+  const auto& source(node_attributes_.at(key).floats());
+  return std::vector<float>{source.cbegin(), source.cend()};
 }
 
-std::optional<float> NodeAttrHelper::GetFloat(const std::string& key) const {
-  std::optional<float> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    result = entry->second.f();
-  }
-
-  return result;
-}
-
-std::optional<int64_t> NodeAttrHelper::GetInt64(const std::string& key) const {
-  std::optional<int64_t> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    result = entry->second.i();
-  }
-
-  return result;
-}
-
-std::optional<std::vector<float>> NodeAttrHelper::GetFloats(const std::string& key) const {
-  std::optional<std::vector<float>> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = entry->second.floats();
-    result = std::vector<float>(values.begin(), values.end());
-  }
-
-  return result;
-}
-
-std::optional<std::vector<int64_t>> NodeAttrHelper::GetInt64s(const std::string& key) const {
-  std::optional<std::vector<int64_t>> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = entry->second.ints();
-    result = std::vector<int64_t>(values.begin(), values.end());
-  }
-
-  return result;
-}
-
-std::optional<std::string> NodeAttrHelper::GetString(const std::string& key) const {
-  std::optional<std::string> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    result = entry->second.s();
-  }
-
-  return result;
+std::optional<int64_t> NodeAttrHelper::GetInt(const std::string& key) const {
+  if (!HasAttr(key))
+    return std::nullopt;
+  return node_attributes_.at(key).i();
 }
 
 bool NodeAttrHelper::HasAttr(const std::string& key) const {

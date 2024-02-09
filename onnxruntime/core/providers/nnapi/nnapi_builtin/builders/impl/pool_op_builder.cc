@@ -42,7 +42,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                     const OpSupportCheckParams& params) const override;
-  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const override;
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
