@@ -19,6 +19,7 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/platform/env.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
@@ -286,6 +287,14 @@ NS_ASSUME_NONNULL_BEGIN
     }
     compiled_model_path_ = nil;
   }
+
+#if !defined(NDEBUG)
+  std::string path_override = Env::Default().GetEnvironmentVar("ORT_COREML_EP_MODEL_DIR");
+  if (!path_override.empty()) {
+    // don't cleanup
+    coreml_model_path_ = nil;
+  }
+#endif
 
   if (coreml_model_path_ != nil) {
     error = nil;
