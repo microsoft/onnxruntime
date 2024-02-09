@@ -28,12 +28,16 @@ class IOpBuilder;
 class ModelBuilder {
  private:
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-               int32_t coreml_version, uint32_t coreml_flags);
+               int32_t coreml_version, uint32_t coreml_flags,
+               std::vector<std::string>&& onnx_input_names,
+               std::vector<std::string>&& onnx_output_names);
 
  public:
   // Create the CoreML model, serialize to disk, load and compile using the CoreML API and return in `model`
   static Status Build(const GraphViewer& graph_viewer, const logging::Logger& logger,
                       int32_t coreml_version, uint32_t coreml_flags,
+                      std::vector<std::string>&& onnx_input_names,
+                      std::vector<std::string>&& onnx_output_names,
                       std::unique_ptr<Model>& model);
 
   ~ModelBuilder();
@@ -99,15 +103,8 @@ class ModelBuilder {
   /// </param>
   /// <returns>Unique name generated for value.</returns>
   template <typename T>
-  std::string AddConstant(const std::string& op_type, std::string_view value_type, const T& value,
-                          std::optional<const gsl::span<const int64_t>> shape = std::nullopt);
-
-  /// <summary>
-  /// Add an existing a constant ONNX initializer to the ML Program as a 'const' operation
-  /// </summary>
-  /// <param name="name">Initializer name</param>
-  /// <param name="initializer">Initializer data</param>
-  void AddConstant(std::string_view name, const ONNX_NAMESPACE::TensorProto& initializer);
+  const std::string& AddConstant(const std::string& op_type, std::string_view value_type, const T& value,
+                                 std::optional<const gsl::span<const int64_t>> shape = std::nullopt);
 
   // add the operation to the main function
   void AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation> operation);
@@ -128,11 +125,19 @@ class ModelBuilder {
   std::string GetUniqueName(std::string_view base_name);
   std::string GetUniqueName(const Node& node, std::string_view suffix);
 
+  const logging::Logger& Logger() const { return logger_; }
+
  private:
 #if defined(COREML_ENABLE_MLPROGRAM)
-  void AddConstantOperation(std::string_view name, COREML_SPEC::MILSpec::Value&& initializer);
-  std::string AddTensorValueAsConstantOperation(const std::string& op_type, std::string_view value_type,
-                                                COREML_SPEC::MILSpec::Value&& input_value);
+  // apply the CoreML naming rules and fix any invalid names.
+  const std::string& GetSafeName(const std::string& name);
+  // sanitize all the names in the ML Model
+  void SanitizeNames();
+
+  // add Value as a const operation. return value name in case sanitization changed it
+  const std::string& AddConstantOperation(const std::string& name, COREML_SPEC::MILSpec::Value&& initializer);
+  const std::string& AddTensorValueAsConstantOperation(const std::string& op_type, std::string_view value_type,
+                                                       COREML_SPEC::MILSpec::Value&& input_value);
 #endif
 
   // Convert the ONNX model in graph_viewer_ to a CoreML::Specification::Model and serialize to disk.
@@ -165,6 +170,9 @@ class ModelBuilder {
   const bool create_ml_program_;         // ML Program (CoreML5, iOS 15+, macOS 12+) or NeuralNetwork (old)
   const std::string model_output_path_;  // create_ml_program_ ? dir for mlpackage : filename for mlmodel
 
+  std::vector<std::string> onnx_input_names_;
+  std::vector<std::string> onnx_output_names_;
+
   std::unique_ptr<CoreML::Specification::Model> coreml_model_;
   std::unordered_set<std::string> scalar_outputs_;
   std::unordered_set<std::string> int64_outputs_;
@@ -180,9 +188,19 @@ class ModelBuilder {
   // mlprogram_main_ is the main block of the CoreML ML Program.
   // It is set in CreateModel to the CoreML Model.mlprogram.functions['main'].block_specializations['CoreML<ver>']
   // entry we create.
-  COREML_SPEC::MILSpec::Block* mlprogram_main_{nullptr};
+  COREML_SPEC::MILSpec::Function* mlprogram_main_fn_{nullptr};  // Function that contains a Block with the operations
+  COREML_SPEC::MILSpec::Block* mlprogram_main_block_{nullptr};  // Block that all the operations are added to
   std::unique_ptr<MPL::ModelPackage> mlpackage_;
   std::unique_ptr<MILBlob::Blob::StorageWriter> weights_file_writer_;
+
+  // Values must start with [a-zA-A_]
+  // Additionally they can't be in a list of reserved words.
+  // If we need to sanitize an initializer name we do so during PreprocessInitializers and apply the change during
+  // RegisterInitializers.
+  // We also check inputs in AddOperation and apply the change there.
+  // This means an op builder author doesn't need to be aware of the renaming.
+  // https://github.com/apple/coremltools/blob/8b37641f243b1a3e81452feea311c6e30dcc9287/coremltools/converters/mil/mil/passes/defs/preprocess.py#L146-L149
+  std::unordered_map<std::string, std::string> values_to_rename_;
 #endif
 };
 

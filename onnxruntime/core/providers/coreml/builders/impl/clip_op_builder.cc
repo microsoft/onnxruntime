@@ -23,13 +23,26 @@ class ClipOpBuilder : public BaseOpBuilder {
 };
 
 void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  bool skip = true;
+
   if (model_builder.CreateMLProgram()) {
-    // we add the initializers as 'const' operations via ModelBuilder::RegisterInitializers
-    return;
+    float min, max;
+    ORT_IGNORE_RETURN_VALUE(GetClipMinMax(model_builder.GetGraphViewer(), node, min, max, model_builder.Logger()));
+
+    bool has_min = min != std::numeric_limits<float>::lowest();
+    bool has_max = max != std::numeric_limits<float>::max();
+    if (has_min && has_max && min == 0.f && max == 6.f) {
+      // relu6 - skip both
+    } else if (has_min && min == 0.f && !has_max) {
+      // relu - skip both
+    } else {
+      // clip - we will use both
+      skip = false;
+    }
   }
 
   // Both min and max values will be injected into the layer, no need to add to the model
-  if (node.SinceVersion() >= 11) {
+  if (skip && node.SinceVersion() >= 11) {
     if (node.InputDefs().size() > 1)
       model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 
@@ -75,10 +88,22 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       } else {
         // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_unary.clip
         op = model_builder.CreateOperation(node, "clip");
+
         Operation& clip_op = *op;
         AddOperationInput(clip_op, "x", input_name);
-        AddOperationInput(clip_op, "alpha", model_builder.AddConstant(clip_op.type(), "min", min));
-        AddOperationInput(clip_op, "beta", model_builder.AddConstant(clip_op.type(), "max", max));
+
+        // if min and max were attributes we need to add initializers. otherwise we use the existing ones
+        const bool min_max_attribs = node.SinceVersion() < 11;
+        const std::string& min_name = min_max_attribs ? model_builder.AddConstant(clip_op.type(), "min", min)
+                                                      : node.InputDefs()[1]->Name();
+
+        AddOperationInput(clip_op, "alpha", min_name);
+
+        if (has_max) {
+          const std::string& max_name = min_max_attribs ? model_builder.AddConstant(clip_op.type(), "max", max)
+                                                        : node.InputDefs()[2]->Name();
+          AddOperationInput(clip_op, "beta", max_name);
+        }
       }
     }
 

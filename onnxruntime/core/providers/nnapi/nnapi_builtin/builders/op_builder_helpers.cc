@@ -1284,7 +1284,7 @@ bool HasRequiredScaleAndZeroPoint(const GraphViewer& graph_viewer,
 
   if (zp != required_zp) {
     LOGS_DEFAULT(VERBOSE) << op_desc << "] zero point can only be [" << required_zp << "], actual zero point: "
-                          << zp;
+                          << scale;
     return false;
   }
 

@@ -30,11 +30,8 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
-  if (model_builder.CreateMLProgram()) {
-    // we add the initializers as 'const' operations via ModelBuilder::RegisterInitializers
-    return;
-  }
-
+  // Skip the second input which is the new shape as we always have to create a new version as the CoreML rules
+  // are different from ONNX.
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 

@@ -21,16 +21,11 @@ class Node;
 class NodeArg;
 class NodeUnit;
 
-// Get the min/max of a Clip operator. Reads values from attributes for opset < 11 and inputs after that.
-// For opset 11+, if min/max are not constant initializers, will return false.
-// For now we only support getting float min/max.
+// Get the min/max of a Clip operator.
+// If min/max are not known initializer tensors, will return false
+// For now we only support getting float min/max,
+// since in most cases, Clip(0,6)[Relu6] will be fused by quantization tool
 bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node,
-                   float& min, float& max, const logging::Logger& logger);
-
-/// <deprecated>GraphViewer GetConstantInitializer/IsConstantInitializer should be used to ensure the initializer is
-/// constant. Low risk for Clip min/max but in general the infrastructure to check if an operator is supported needs
-/// to be updated to not use InitializedTensorSet which may contain non-constant initializers.</deprecated>
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
                    float& min, float& max, const logging::Logger& logger);
 
 // Get the type of the given NodeArg

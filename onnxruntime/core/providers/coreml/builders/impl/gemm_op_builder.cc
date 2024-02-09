@@ -45,7 +45,9 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
       if (input_defs.size() > 2) {
         // ONNX spec requires B to be 2D and we required it to be a constant initializer so reading N this way is safe
-        int64_t N = input_defs[1]->Shape()->dim().at(1).dim_value();
+        // B is {K, N] by default. or {N, K} if transB is true
+        int N_dim = transB ? 0 : 1;
+        int64_t N = input_defs[1]->Shape()->dim().at(N_dim).dim_value();
 
         const auto& bias_name = input_defs[2]->Name();
         const auto& bias = *model_builder.GetConstantInitializer(bias_name);
