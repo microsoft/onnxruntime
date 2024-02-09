@@ -96,7 +96,7 @@ class BeamSearch : public IControlFlowKernel {
   const void* cuda_device_prop_ = nullptr;
   int cuda_device_arch_ = 0;
 
- private:
+ protected:
   // Device specific functions
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
@@ -172,6 +172,10 @@ class BeamSearch : public IControlFlowKernel {
   GenerationDeviceHelper::FinalizeDecoderCrossQKFunc finalize_decoder_cross_qk_func_;
 };
 
+class WhisperBeamSearch : public BeamSearch {
+  public:
+    WhisperBeamSearch(const OpKernelInfo& info) : BeamSearch(info) {};
+};
 }  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

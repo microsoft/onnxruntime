@@ -11,14 +11,19 @@ class SessionState;
 namespace contrib {
 namespace cuda {
 
-class BeamSearch final : public onnxruntime::contrib::transformers::BeamSearch {
+class BeamSearch : public onnxruntime::contrib::transformers::BeamSearch {
  public:
   BeamSearch(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
 
- private:
+ protected:
   Status ComputeInternal(OpKernelContext* context) const;
+};
+
+class WhisperBeamSearch : public onnxruntime::contrib::cuda::BeamSearch {
+ public:
+  WhisperBeamSearch(const OpKernelInfo& info) : BeamSearch(info) {};
 };
 
 }  // namespace cuda

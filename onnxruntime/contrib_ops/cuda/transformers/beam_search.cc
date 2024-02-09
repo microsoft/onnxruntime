@@ -33,6 +33,28 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<MLFloat16>()}),
     BeamSearch);
 
+ONNX_OPERATOR_KERNEL_EX(
+    WhisperBeamSearch,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)    // 'input_ids' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 1)    // 'max_length' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 2)    // 'min_length' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 3)    // 'num_beams' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 4)    // 'num_return_sequences' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 5)    // 'length_penalty' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 6)    // 'repetition_penalty' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 9)    // 'attention_mask' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 10)   // 'decoder_input_ids' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 11)   // 'logits_processor' needs to be on CPU
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)  // 'sequences' output on CPU
+        .OutputMemoryType(OrtMemTypeCPUOutput, 1)  // 'sequences_scores' output on CPU
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>()}),
+    WhisperBeamSearch);
+
 transformers::CudaTensorConsoleDumper g_cuda_dumper;
 
 BeamSearch::BeamSearch(const OpKernelInfo& info)

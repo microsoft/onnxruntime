@@ -8,6 +8,7 @@ class LongformerAttentionBase;
 class AttentionBase;
 namespace transformers {
 class BeamSearch;
+class WhisperBeamSearch;
 class GreedySearch;
 class Sampling;
 }  // namespace transformers
