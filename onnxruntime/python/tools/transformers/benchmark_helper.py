@@ -341,11 +341,7 @@ def inference_ort_with_io_binding(
     # Bind inputs to device
     for name in ort_inputs:
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
-        input_type = (
-            IO_BINDING_DATA_TYPE_MAP[str(ort_inputs[name].dtype)]
-            if str(ort_inputs[name].dtype) in IO_BINDING_DATA_TYPE_MAP
-            else data_type
-        )
+        input_type = IO_BINDING_DATA_TYPE_MAP.get(str(ort_inputs[name].dtype), data_type)
         io_binding.bind_input(
             name,
             np_input.device.type,

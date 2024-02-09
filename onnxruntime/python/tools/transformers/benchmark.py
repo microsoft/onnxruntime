@@ -344,9 +344,7 @@ def run_pytorch(
         else:
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-            max_input_size = (
-                tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-            )
+            max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
 
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
@@ -498,9 +496,7 @@ def run_tensorflow(
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = (
-            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-        )
+        max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
 
         for batch_size in batch_sizes:
             if batch_size <= 0:
