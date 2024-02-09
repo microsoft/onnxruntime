@@ -166,6 +166,13 @@ struct ProviderHostCPU {
                                                         const std::string& attribute_name,
                                                         const SessionState& subgraph_session_state) = 0;
 
+  virtual void WhisperBeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) = 0;
+  virtual Status WhisperBeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) = 0;
+  virtual Status WhisperBeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p,
+                                                        const SessionState& session_state,
+                                                        const std::string& attribute_name,
+                                                        const SessionState& subgraph_session_state) = 0;
+
   // GreedySearch
   virtual void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) = 0;
   virtual Status GreedySearch__Compute(const contrib::transformers::GreedySearch* p, OpKernelContext* ctx) = 0;

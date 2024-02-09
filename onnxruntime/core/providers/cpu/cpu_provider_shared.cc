@@ -235,6 +235,20 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                                             subgraph_session_state);
   }
 
+  void WhisperBeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::BeamSearch::Init(info);
+  }
+  Status WhisperBeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) override {
+    return p->contrib::transformers::BeamSearch::Compute(ctx);
+  }
+
+  Status WhisperBeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state,
+                                                const std::string& attribute_name,
+                                                const SessionState& subgraph_session_state) override {
+    return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name,
+                                                                            subgraph_session_state);
+  }
+
   void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override {
     p->contrib::transformers::GreedySearch::Init(info);
   }

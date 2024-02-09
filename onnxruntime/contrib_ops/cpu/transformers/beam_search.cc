@@ -54,7 +54,20 @@ namespace contrib {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       transformers::BeamSearch);
 
+#define REGISTER_WHISPER_KERNEL_TYPED(T)                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      WhisperBeamSearch,                                          \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      transformers::BeamSearch);
+
 REGISTER_KERNEL_TYPED(float)
+
+REGISTER_WHISPER_KERNEL_TYPED(float)
 
 namespace transformers {
 

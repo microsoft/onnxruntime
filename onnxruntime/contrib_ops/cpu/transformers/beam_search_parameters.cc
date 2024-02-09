@@ -28,6 +28,7 @@ void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   no_speech_token = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_speech_token", -1LL));
 }
 
+
 void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(context != nullptr);
   const Tensor* input_ids = context->Input<Tensor>(0);
