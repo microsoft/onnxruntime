@@ -32,7 +32,7 @@ class AttentionOpType(Enum):
     # Override __eq__ to return string comparison
     def __hash__(self):
         return hash(self.value)
- 
+
     def __eq__(self, other):
         return other.value == self.value
 
