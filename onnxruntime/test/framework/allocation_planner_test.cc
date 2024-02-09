@@ -341,7 +341,9 @@ class PlannerTest : public ::testing::Test {
           MockStreamHandleRegsitry(),
 #endif
           /* {{kCpuExecutionProvider, 1}}, {},*/
-          ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
+          ORT_TSTR(""),
+          DefaultLoggingManager().DefaultLogger(),
+          plan_);
 
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
       // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
