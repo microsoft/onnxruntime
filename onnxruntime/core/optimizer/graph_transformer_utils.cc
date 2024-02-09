@@ -85,8 +85,6 @@
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#define UNREFERENCED_PARAMETER(P)          (P)
-
 namespace onnxruntime::optimizer_utils {
 
 static void FilterTransformers(InlinedVector<std::unique_ptr<GraphTransformer>>& transformers,
