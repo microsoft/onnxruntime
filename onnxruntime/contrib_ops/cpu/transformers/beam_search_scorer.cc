@@ -58,11 +58,12 @@ bool BeamHypotheses::IsDone(float best_sum_logprobs, int current_length) const {
   return beams_.back().score >= current_score;
 }
 
+template <typename T>
 void BeamHypotheses::Output(
     int top_k,
     int max_length,
     gsl::span<int32_t>& sequences,       // buffer filled with pad token ID, shape (num_return_sequences, max_length)
-    gsl::span<float>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
+    gsl::span<T>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
 {
   // Copy the top_k beams into the sequences
   ORT_ENFORCE(top_k <= beams_used_);
@@ -75,7 +76,7 @@ void BeamHypotheses::Output(
     gsl::copy(item.hypothesis, target);
 
     if (!sequences_scores.empty())
-      sequences_scores[index] = item.score;
+      sequences_scores[index] = (T)item.score;
   }
 }
 
@@ -192,6 +193,38 @@ void BeamSearchScorer::Process(ISequences& sequences,
   }
 }
 
+template <typename T>
+void BeamSearchScorer::OutputSequenceScores(ISequences& sequences,
+                                gsl::span<const float>& final_beam_scores,
+                                Tensor* output_sequences,
+                                Tensor* output_sequence_scores, 
+                                gsl::span<int32_t> output){
+  ORT_ENFORCE(output_sequences != nullptr);
+
+  // Score of each sequence, with shape (batch_size * num_return_sequences).
+  //gsl::span<T> sequence_scores;
+  gsl::span<T> sequence_scores = output_sequence_scores->MutableDataAsSpan<T>();
+  gsl::span<T> batch_sequence_score;
+
+  // Select the best hypotheses according to number of sequences to return.
+  for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
+    BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
+
+    const size_t num_return_sequences = num_beam_hyps_to_keep_;
+    auto batch_output = output.subspan(batch_index * num_return_sequences * max_length_,
+                                       num_return_sequences * max_length_);
+
+    if (output_sequence_scores) {
+      batch_sequence_score = sequence_scores.subspan(batch_index * num_return_sequences, num_return_sequences);
+    }
+
+    beam_hyp.Output<T>(
+        num_return_sequences,
+        max_length_,
+        batch_output,
+        batch_sequence_score);
+  }
+}
 void BeamSearchScorer::Finalize(ISequences& sequences,
                                 gsl::span<const float>& final_beam_scores,
                                 Tensor* output_sequences,
@@ -219,32 +252,11 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
   // Fill output sequences with pad token ID so that we do not need append it later.
   std::fill_n(output.data(), output.size(), pad_token_id_);
 
-  // Score of each sequence, with shape (batch_size * num_return_sequences).
-  gsl::span<float> sequence_scores;
-  if (output_sequence_scores) {
-    sequence_scores = output_sequence_scores->MutableDataAsSpan<float>();
-  }
-
-  // Span is empty when output_sequence_scores is NULL.
-  gsl::span<float> batch_sequence_score;
-
-  // Select the best hypotheses according to number of sequences to return.
-  for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
-    BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
-
-    const size_t num_return_sequences = num_beam_hyps_to_keep_;
-    auto batch_output = output.subspan(batch_index * num_return_sequences * max_length_,
-                                       num_return_sequences * max_length_);
-
-    if (output_sequence_scores) {
-      batch_sequence_score = sequence_scores.subspan(batch_index * num_return_sequences, num_return_sequences);
-    }
-
-    beam_hyp.Output(
-        num_return_sequences,
-        max_length_,
-        batch_output,
-        batch_sequence_score);
+  if (output_sequence_scores == nullptr || output_sequence_scores->IsDataType<float>()) {
+    OutputSequenceScores<float>(sequences, final_beam_scores, output_sequences, output_sequence_scores, output);
+  } else {
+    ORT_ENFORCE(output_sequence_scores->IsDataType<MLFloat16>());
+    OutputSequenceScores<MLFloat16>(sequences, final_beam_scores, output_sequences, output_sequence_scores, output);
   }
 }
 

@@ -470,6 +470,20 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                final_beam_scores,
                                output_sequences,
                                output_sequences_scores);
+  /*
+  if (output_sequences_scores == nullptr || output_sequences_scores->IsDataType<float>()) {
+    this->beam_scorer_->Finalize<float>(cpu_state.sequences,
+                               final_beam_scores,
+                               output_sequences,
+                               output_sequences_scores);
+  } else {
+    ORT_ENFORCE(output_sequences_scores->IsDataType<MLFloat16>());
+    this->beam_scorer_->Finalize<MLFloat16>(cpu_state.sequences,
+                               final_beam_scores,
+                               output_sequences,
+                               output_sequences_scores);
+  }
+  */
 
   // Output per token scores
   if (output_scores != nullptr) {

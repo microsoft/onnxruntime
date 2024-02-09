@@ -36,10 +36,11 @@ struct BeamHypotheses {
   bool IsDone(float best_sum_logprobs, int current_length) const;
 
   // Output results
+  template <typename T>
   void Output(int top_k,                            // number of sequences to return
               int max_length,                       // max sequence length
               gsl::span<int32_t>& sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
-              gsl::span<float>& sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
+              gsl::span<T>& sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 
  private:
   float length_penalty_;
@@ -63,6 +64,12 @@ class BeamSearchScorer : public IBeamScorer {
                 Tensor* output_sequences,
                 Tensor* output_sequence_scores) override;
 
+  template <typename T>
+  void OutputSequenceScores(ISequences& sequences,
+                            gsl::span<const float>& final_beam_scores,
+                            Tensor* output_sequences,
+                            Tensor* output_sequence_scores,
+                            gsl::span<int32_t> output);
   bool IsDone() const;
 
   gsl::span<float>& GetNextScores() { return next_beam_scores_; }
