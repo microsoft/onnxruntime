@@ -196,12 +196,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
   AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
 
-  UNREFERENCED_PARAMETER(disable_quant_qdq);
-  UNREFERENCED_PARAMETER(cpu_ep);
-  UNREFERENCED_PARAMETER(dml_ep);
-  UNREFERENCED_PARAMETER(session_options);
-  UNREFERENCED_PARAMETER(cpu_execution_provider);
-
   switch (level) {
     case TransformerLevel::Level1: {
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)

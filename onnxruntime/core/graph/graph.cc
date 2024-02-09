@@ -1879,10 +1879,6 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
   if (number_of_nodes != static_cast<int>(topo_order.size())) {
     ORT_THROW("Some nodes are not included in the topological sort, graph have a cycle.");
   }
-
-  // for (auto i : topo_order) {
-  //   printf("%d\n", static_cast<int>(i));
-  // }
 }
 
 GSL_SUPPRESS(es.84)  // noisy warning about ignoring return value from insert(...)
