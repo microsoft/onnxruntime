@@ -104,7 +104,7 @@ void EnsureQuantizedTensorParam(const float scale, const T zero_point) {
   float_data[0] = scale;
   Tensor scale_tensor(DataTypeImpl::GetType<float>(),
                       shape,
-                      data,
+                      float_data,
                       alloc->Info(),
                       /*offset=*/0);
 
@@ -114,7 +114,7 @@ void EnsureQuantizedTensorParam(const float scale, const T zero_point) {
   typed_data[0] = zero_point;
   Tensor zero_point_tensor(DataTypeImpl::GetType<T>(),
                            shape,
-                           T_data,
+                           typed_data,
                            alloc->Info(),
                            /*offset=*/0);
 
