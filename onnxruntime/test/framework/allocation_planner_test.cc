@@ -327,10 +327,21 @@ class PlannerTest : public ::testing::Test {
 
     if (invoke_createPlan_explicityly) {
       onnxruntime::GraphViewer graph_viewer{graph_};
-      status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
-                                             kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                             MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
-                                             ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
+      status = SequentialPlanner::CreatePlan(
+          nullptr,
+          graph_viewer,
+          outer_scope_node_args,
+          execution_providers_,
+          kernel_create_info_map,
+          {},
+          {},
+          state_->GetOrtValueNameIdxMap(),
+          test_context,
+#ifdef ORT_ENABLE_STREAM
+          MockStreamHandleRegsitry(),
+#endif
+          /* {{kCpuExecutionProvider, 1}}, {},*/
+          ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
 
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
       // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
