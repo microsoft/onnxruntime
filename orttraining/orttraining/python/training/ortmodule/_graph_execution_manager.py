@@ -41,7 +41,12 @@ from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp
 
 
 class _RunStateInfo:
-    def __init__(self, state, output_info: List[Tuple[torch.Size, torch.device, torch.dtype]], input_info: List[Tuple[torch.Size, torch.device, torch.dtype]] = None):
+    def __init__(
+        self,
+        state,
+        output_info: List[Tuple[torch.Size, torch.device, torch.dtype]],
+        input_info: Tuple[torch.device, int] = None,
+    ):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.
         :param output_info: Output info.
@@ -52,6 +57,7 @@ class _RunStateInfo:
         # Only used in ParallelORTModule cases, where we need to store the input_info for each forward call
         # so we can move inputs back to the correct device on backward
         self.input_info = input_info
+
 
 class GraphExecutionManager(GraphExecutionInterface):
     def __init__(
@@ -413,9 +419,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                     # From some PyTorch version, autograd_inlining is a valid argument.
                     # We allow it to be True if custom autograd function is disabled (where autograd.Function
                     # anyway is not supported in ONNX until it can be inlined).
-                    required_export_kwargs[
-                        "autograd_inlining"
-                    ] = not self._runtime_options.enable_custom_autograd_function
+                    required_export_kwargs["autograd_inlining"] = (
+                        not self._runtime_options.enable_custom_autograd_function
+                    )
 
                 invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
 

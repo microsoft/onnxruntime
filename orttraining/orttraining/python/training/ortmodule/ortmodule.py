@@ -379,22 +379,20 @@ class ParallelORTModule(torch.nn.Module):
 
         self._torch_module = module
 
-        # Get device map of the distributed leafs
-        device_map = _utils.get_module_leafs_device_map(module)
+        # Get device map of the distributed layers (hf_device_map)
+        # Assuming that the model was distributed using HuggingFace's device_map="auto" or using accelerate's model_dispatcher
+        # (https://github.com/huggingface/accelerate/blob/06b138d84537ffb2d1d404f2f198a0446e8d7ec3/src/accelerate/utils/modeling.py#L1022)
 
-        # Create a list to store the modules to be modified
-        modules_to_modify = []
+        if hasattr(module, "hf_device_map"):
+            hf_device_map = module.hf_device_map
+        else:
+            raise ValueError("The provided module does not have a device map. Please provide a device map.")
 
-        # Iterate over all modules and store the ones to be modified in the list
-        for name, layer in module.named_modules():
-            if name in device_map:
-                modules_to_modify.append((name, layer))
-
-        # Modify the modules after the iteration
-        for name, layer in modules_to_modify:
+        # Loop over the device_map to get the submodules that live in the same device
+        for name, _ in hf_device_map.items():
+            layer = module.get_submodule(name)
+            # Wrap the submodules that live in the same Device in ORTModule
             setattr(module, name, ORTModule(layer, debug_options))
-
-        self.device_map = device_map
 
         self._is_initialized = True
 

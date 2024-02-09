@@ -471,19 +471,6 @@ def get_world_size() -> int:
     return 1
 
 
-def get_module_leafs_device_map(module: torch.nn.Module, parent_name: str = "", leaf_modules_dict: dict = {}):
-    for name, child in module.named_children():
-        full_name = f"{parent_name}.{name}" if parent_name else name  # Construct the full name including parent names
-        if len(list(child.children())) == 0:  # Check if the current child has no children
-            if list(child.parameters()):
-                leaf_modules_dict[full_name] = str(next(child.parameters()).device)
-        else:
-            get_module_leafs_device_map(
-                child, full_name, leaf_modules_dict
-            )  # Recursively call _get_leaf_modules for nested children
-    return leaf_modules_dict
-
-
 def is_model_dispatched(model: torch.nn.Module) -> bool:
     """
     This function checks if at least two modules of a model or its submodules live on different GPUs.

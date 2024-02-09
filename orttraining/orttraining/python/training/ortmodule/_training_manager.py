@@ -93,8 +93,21 @@ class TrainingManager(GraphExecutionManager):
 
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
 
-        # Save input info that contains previous device index
-        input_info = [(inputs[0].shape, inputs[0].device, inputs[0].dtype)]
+        # During the forward pass, input data is transferred across devices as it progresses through the network.
+        # Initially, the input data resides on the device where it was received. As the forward pass proceeds through each layer,
+        # the input data is moved to the next device as necessary to perform computations. We maintain awareness of the original device of the input data,
+        # enabling us to return it to its original device during the backward pass for gradient computation and parameter updates.
+        input_info = None
+        input_data_index = None
+
+        for i, tensor in enumerate(inputs):
+            if hasattr(tensor, "grad_fn"):
+                input_data_index = i
+                break  # Stop the loop once the tensor with grad_fn is found
+
+        if input_data_index is not None:
+            input_info = (inputs[input_data_index].device, input_data_index)
+
         run_info = _RunStateInfo(state, output_info, input_info)
         # Return user outputs and forward run information
         return user_outputs, run_info
@@ -210,7 +223,24 @@ class TrainingManager(GraphExecutionManager):
 
                 self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_BACKWARD)
 
-                return tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
+                updated_transferred_backward_outputs = tuple(
+                    transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map
+                )
+
+                prev_device, input_data_index = ctx.run_info.input_info
+                prev_device_str = "cuda:" + str(prev_device.index)
+
+                # In case of ORT Parallel Training, the input data should be sent to the previous device to be used in the backward pass.
+                if input_data_index is not None:
+                    # Apply to() only to the element at input_data_index
+                    if updated_transferred_backward_outputs[input_data_index] != None:
+                        modified_transferred_backward_outputs = list(updated_transferred_backward_outputs)
+                        modified_transferred_backward_outputs[input_data_index] = updated_transferred_backward_outputs[
+                            input_data_index
+                        ].to(prev_device_str)
+                        updated_transferred_backward_outputs = tuple(modified_transferred_backward_outputs)
+
+                return updated_transferred_backward_outputs
 
         return _ORTModuleFunction
 
