@@ -84,15 +84,13 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
   auto cores = GetNumberOPhysicalAndEngineeringCores();
 
-  const int kVendorID_Intel[3] = { 0x756e6547, 0x6c65746e, 0x49656e69 }; // "GenuntelineI"
-    int regs_leaf0[4];
-    int regs_leaf7[4];
+  const int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
+  int regs_leaf0[4];
+  int regs_leaf7[4];
   __cpuid(regs_leaf0, 0);
   __cpuid(regs_leaf7, 0x7);
 
-  auto isIntel =
-    (kVendorID_Intel[0] == regs_leaf0[1]) &&
-    (kVendorID_Intel[1] == regs_leaf0[2]) &&
+  auto isIntel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) &&
     (kVendorID_Intel[2] == regs_leaf0[3]);
 
   auto isHybrid = (regs_leaf7[3] & (1 << 15));
