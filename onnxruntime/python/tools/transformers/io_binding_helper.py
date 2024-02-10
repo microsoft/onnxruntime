@@ -346,7 +346,7 @@ class DmlSession:
                     continue
 
                 numpy_dtype = self.io_name_to_numpy_type[name]
-                self.output_tensors[name] = onnxruntime.OrtValue.ortvalue_from_shape_and_type(shape, numpy_dtype)
+                self.output_tensors[name] = OrtValue.ortvalue_from_shape_and_type(shape, numpy_dtype)
                 self.io_binding.bind_ortvalue_output(name, self.output_tensors[name])
 
     def infer(self, feed_dict: Dict[str, OrtValue]):
