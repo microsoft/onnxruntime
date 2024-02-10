@@ -6,6 +6,7 @@ import numpy
 import torch
 
 from onnxruntime import InferenceSession
+from onnxruntime import OrtValue
 
 logger = logging.getLogger(__name__)
 
@@ -315,4 +316,52 @@ class CudaSession:
             "device_id": device_id,
             "arena_extend_strategy": "kSameAsRequested",
             "enable_cuda_graph": enable_cuda_graph,
+        }
+
+class DmlSession:
+    """Inference Session with IO Binding for ONNX Runtime DML"""
+
+    def __init__(self, ort_session: InferenceSession):
+        self.ort_session = ort_session
+        self.input_names = [input.name for input in self.ort_session.get_inputs()]
+        self.output_names = [output.name for output in self.ort_session.get_outputs()]
+        self.io_name_to_numpy_type = TypeHelper.get_io_numpy_type_map(self.ort_session)
+        self.io_binding = self.ort_session.io_binding()
+
+        self.input_tensors = OrderedDict()
+        self.output_tensors = OrderedDict()
+
+    def __del__(self):
+        del self.input_tensors
+        del self.output_tensors
+        del self.io_binding
+        del self.ort_session
+
+    def allocate_buffers(self, shape_dict: Dict[str, Union[Tuple[int], List[int]]]):
+        """Allocate tensors for I/O Binding"""
+        for name, shape in shape_dict.items():
+            if name in self.output_names:
+                # Reuse allocated buffer when the shape is same
+                if name in self.output_tensors and tuple(self.output_tensors[name].shape) == tuple(shape):
+                    continue
+
+                numpy_dtype = self.io_name_to_numpy_type[name]
+                self.output_tensors[name] = onnxruntime.OrtValue.ortvalue_from_shape_and_type(shape, numpy_dtype)
+                self.io_binding.bind_ortvalue_output(name, self.output_tensors[name])
+
+    def infer(self, feed_dict: Dict[str, OrtValue]):
+        """Bind input tensors and run inference"""
+        for name, tensor in feed_dict.items():
+            assert isinstance(tensor, OrtValue)
+            if name in self.input_names:
+                self.io_binding.bind_ortvalue_input(name, tensor)
+
+        self.ort_session.run_with_iobinding(self.io_binding)
+
+        return self.output_tensors
+
+    @staticmethod
+    def get_dml_provider_options(device_id: int) -> Dict[str, Any]:
+        return {
+            "device_id": device_id,
         }

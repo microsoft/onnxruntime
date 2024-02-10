@@ -29,7 +29,6 @@ import controlnet_aux
 import cv2
 import numpy as np
 import torch
-from cuda import cudart
 from diffusion_models import PipelineInfo
 from engine_builder import EngineType, get_engine_paths, get_engine_type
 from PIL import Image
@@ -68,7 +67,7 @@ def set_default_arguments(args):
 
 
 def parse_arguments(is_xl: bool, parser):
-    engines = ["ORT_CUDA", "ORT_TRT", "TRT", "TORCH"]
+    engines = ["ORT_CUDA", "ORT_TRT", "ORT_DML", "TRT", "TORCH"]
 
     parser.add_argument(
         "-e",
@@ -357,8 +356,10 @@ def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
         except PackageNotFoundError:
             continue
     metadata["packages"] = packages
-    metadata["device"] = torch.cuda.get_device_name()
-    metadata["torch.version.cuda"] = torch.version.cuda
+
+    if args.engine != "ORT_DML":
+        metadata["device"] = torch.cuda.get_device_name()
+        metadata["torch.version.cuda"] = torch.version.cuda
 
     return metadata
 
@@ -441,6 +442,7 @@ def initialize_pipeline(
         use_cuda_graph=use_cuda_graph,
         framework_model_dir=framework_model_dir,
         engine_type=engine_type,
+        device="cpu" if engine_type == EngineType.ORT_DML else "cuda",
     )
 
     import_engine_dir = None
@@ -465,6 +467,18 @@ def initialize_pipeline(
             tmp_dir=os.path.join(work_dir or ".", engine_type.name, pipeline_info.short_name(), "tmp"),
             device_id=torch.cuda.current_device(),
             import_engine_dir=import_engine_dir,
+        )
+    elif engine_type == EngineType.ORT_DML:
+        pipeline.backend.build_engines(
+            engine_dir=engine_dir,
+            framework_model_dir=framework_model_dir,
+            onnx_dir=onnx_dir,
+            tmp_dir=os.path.join(work_dir or ".", engine_type.name, pipeline_info.short_name(), "tmp"),
+            device_id=0,
+            import_engine_dir=import_engine_dir,
+            height=opt_image_height,
+            width=opt_image_width,
+            batch_size=opt_batch_size,
         )
     elif engine_type == EngineType.ORT_TRT:
         pipeline.backend.build_engines(
@@ -583,6 +597,7 @@ def load_pipelines(args, batch_size=None):
         refiner = initialize_pipeline(**params)
 
     if engine_type == EngineType.TRT:
+        from cuda import cudart
         max_device_memory = max(base.backend.max_device_memory(), (refiner or base).backend.max_device_memory())
         _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
         base.backend.activate_engines(shared_device_memory)

@@ -79,12 +79,17 @@ class OrtStableDiffusionOptimizer:
         optimize_by_fusion=True,
         final_target_float16=True,
         tmp_dir=None,
+        custom_fusion_options=None,
+        force_fp16_inputs=None,
     ):
         """Optimize onnx model using ONNX Runtime transformers optimizer"""
         logger.info(f"Optimize {input_fp32_onnx_path}...")
 
         if optimize_by_fusion:
             fusion_options = FusionOptions(self.model_type)
+
+            if custom_fusion_options is not None:
+                fusion_options.__dict__.update(custom_fusion_options)
 
             # It is allowed float16=False and final_target_float16=True, for using fp32 as intermediate optimization step.
             # For rare fp32 use case, we can disable packed kv/qkv since there is no fp32 TRT fused attention kernel.
@@ -128,6 +133,7 @@ class OrtStableDiffusionOptimizer:
             m.convert_float_to_float16(
                 keep_io_types=keep_io_types,
                 op_block_list=fp32_op_list,
+                force_fp16_inputs=force_fp16_inputs,
             )
 
         m.get_operator_statistics()

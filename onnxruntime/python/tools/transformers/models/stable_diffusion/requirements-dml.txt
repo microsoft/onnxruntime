@@ -1,0 +1,4 @@
+-r requirements.txt
+
+onnxruntime-directml==1.16.3
+py3nvml

@@ -14,14 +14,16 @@ from diffusion_models import CLIP, VAE, CLIPWithProj, PipelineInfo, UNet, UNetXL
 class EngineType(Enum):
     ORT_CUDA = 0  # ONNX Runtime CUDA Execution Provider
     ORT_TRT = 1  # ONNX Runtime TensorRT Execution Provider
-    TRT = 2  # TensorRT
-    TORCH = 3  # PyTorch
+    ORT_DML = 2 # ONNX Runtime DirectML Execution Provider
+    TRT = 3  # TensorRT
+    TORCH = 4  # PyTorch
 
 
 def get_engine_type(name: str) -> EngineType:
     name_to_type = {
         "ORT_CUDA": EngineType.ORT_CUDA,
         "ORT_TRT": EngineType.ORT_TRT,
+        "ORT_DML": EngineType.ORT_DML,
         "TRT": EngineType.TRT,
         "TORCH": EngineType.TORCH,
     }
@@ -55,7 +57,7 @@ class EngineBuilder:
         self.max_batch_size = max_batch_size
         self.use_cuda_graph = use_cuda_graph
         self.device = torch.device(device)
-        self.torch_device = torch.device(device, torch.cuda.current_device())
+        self.torch_device = self.device if device == "cpu" else torch.device(device, torch.cuda.current_device())
         self.stages = pipeline_info.stages()
 
         self.vae_torch_fallback = self.pipeline_info.vae_torch_fallback() and self.engine_type != EngineType.TORCH

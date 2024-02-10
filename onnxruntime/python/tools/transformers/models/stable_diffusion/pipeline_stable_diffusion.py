@@ -27,15 +27,12 @@ import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-import nvtx
 import torch
-from cuda import cudart
 from diffusion_models import PipelineInfo, get_tokenizer
 from diffusion_schedulers import DDIMScheduler, EulerAncestralDiscreteScheduler, LCMScheduler, UniPCMultistepScheduler
 from engine_builder import EngineType
 from engine_builder_ort_cuda import OrtCudaEngineBuilder
-from engine_builder_ort_trt import OrtTensorrtEngineBuilder
-from engine_builder_tensorrt import TensorrtEngineBuilder
+from engine_builder_ort_dml import OrtDmlEngineBuilder
 from engine_builder_torch import TorchEngineBuilder
 from PIL import Image
 
@@ -99,7 +96,10 @@ class StableDiffusionPipeline:
                 pathlib.Path(directory).mkdir(parents=True)
 
         self.device = device
-        self.torch_device = torch.device(device, torch.cuda.current_device())
+        if device == "cpu":
+            self.torch_device = torch.device(device)
+        else:
+            self.torch_device = torch.device(device, torch.cuda.current_device())
         self.verbose = verbose
         self.nvtx_profile = nvtx_profile
 
@@ -108,7 +108,7 @@ class StableDiffusionPipeline:
         self.tokenizer = None
         self.tokenizer2 = None
 
-        self.generator = torch.Generator(device="cuda")
+        self.generator = torch.Generator(device=device)
         self.actual_steps = None
 
         self.current_scheduler = None
@@ -117,13 +117,17 @@ class StableDiffusionPipeline:
         # backend engine
         self.engine_type = engine_type
         if engine_type == EngineType.TRT:
+            from engine_builder_tensorrt import TensorrtEngineBuilder
             self.backend = TensorrtEngineBuilder(pipeline_info, max_batch_size, device, use_cuda_graph)
         elif engine_type == EngineType.ORT_TRT:
+            from engine_builder_ort_trt import OrtTensorrtEngineBuilder
             self.backend = OrtTensorrtEngineBuilder(pipeline_info, max_batch_size, device, use_cuda_graph)
         elif engine_type == EngineType.ORT_CUDA:
             self.backend = OrtCudaEngineBuilder(pipeline_info, max_batch_size, device, use_cuda_graph)
         elif engine_type == EngineType.TORCH:
             self.backend = TorchEngineBuilder(pipeline_info, max_batch_size, device, use_cuda_graph)
+        elif engine_type == EngineType.ORT_DML:
+            self.backend = OrtDmlEngineBuilder(pipeline_info, max_batch_size, device)
         else:
             raise RuntimeError(f"Backend engine type {engine_type.name} is not supported")
 
@@ -142,12 +146,14 @@ class StableDiffusionPipeline:
                 vae_scale_factor=8, do_convert_rgb=True, do_normalize=False
             )
 
-        # Create CUDA events
-        self.events = {}
-        for stage in ["clip", "denoise", "vae", "vae_encoder", "pil"]:
-            for marker in ["start", "stop"]:
-                self.events[stage + "-" + marker] = cudart.cudaEventCreate()[1]
-        self.markers = {}
+        if device != "cpu":
+            # Create CUDA events
+            from cuda import cudart
+            self.events = {}
+            for stage in ["clip", "denoise", "vae", "vae_encoder", "pil"]:
+                for marker in ["start", "stop"]:
+                    self.events[stage + "-" + marker] = cudart.cudaEventCreate()[1]
+            self.markers = {}
 
     def is_backend_tensorrt(self):
         return self.engine_type == EngineType.TRT
@@ -198,8 +204,10 @@ class StableDiffusionPipeline:
         return self.generator.initial_seed()
 
     def teardown(self):
-        for e in self.events.values():
-            cudart.cudaEventDestroy(e)
+        if self.device != "cpu":
+            from cuda import cudart
+            for e in self.events.values():
+                cudart.cudaEventDestroy(e)
 
         if self.backend:
             self.backend.teardown()
@@ -271,17 +279,21 @@ class StableDiffusionPipeline:
         return add_time_ids, add_neg_time_ids
 
     def start_profile(self, name, color="blue"):
+        from cuda import cudart
         if self.nvtx_profile:
+            import nvtx
             self.markers[name] = nvtx.start_range(message=name, color=color)
         event_name = name + "-start"
         if event_name in self.events:
             cudart.cudaEventRecord(self.events[event_name], 0)
 
     def stop_profile(self, name):
+        from cuda import cudart
         event_name = name + "-stop"
         if event_name in self.events:
             cudart.cudaEventRecord(self.events[event_name], 0)
         if self.nvtx_profile:
+            import nvtx
             nvtx.end_range(self.markers[name])
 
     def preprocess_images(self, batch_size, images=()):
@@ -344,7 +356,8 @@ class StableDiffusionPipeline:
         if tokenizer is None:
             tokenizer = self.tokenizer
 
-        self.start_profile("clip", color="green")
+        if self.device != "cpu":
+            self.start_profile("clip", color="green")
 
         def tokenize(prompt, output_hidden_states):
             text_input_ids = (
@@ -398,7 +411,8 @@ class StableDiffusionPipeline:
             if output_hidden_states:
                 hidden_states = torch.cat([uncond_hidden_states, hidden_states])
 
-        self.stop_profile("clip")
+        if self.device != "cpu":
+            self.stop_profile("clip")
 
         if pooled_outputs:
             # For text encoder in sdxl base
@@ -423,7 +437,8 @@ class StableDiffusionPipeline:
     ):
         do_classifier_free_guidance = guidance > 1.0
 
-        self.start_profile("denoise", color="blue")
+        if self.device != "cpu":
+            self.start_profile("denoise", color="blue")
 
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
@@ -438,6 +453,7 @@ class StableDiffusionPipeline:
 
             # Predict the noise residual
             if self.nvtx_profile:
+                import nvtx
                 nvtx_unet = nvtx.start_range(message="unet", color="blue")
 
             params = {
@@ -452,6 +468,7 @@ class StableDiffusionPipeline:
             noise_pred = self.run_engine(denoiser, params)["latent"]
 
             if self.nvtx_profile:
+                import nvtx
                 nvtx.end_range(nvtx_unet)
 
             # perform guidance
@@ -469,7 +486,8 @@ class StableDiffusionPipeline:
         # The actual number of steps. It might be different from denoising_steps.
         self.actual_steps = len(timesteps)
 
-        self.stop_profile("denoise")
+        if self.device != "cpu":
+            self.stop_profile("denoise")
         return latents
 
     def encode_image(self, image):
@@ -480,56 +498,67 @@ class StableDiffusionPipeline:
         return init_latents
 
     def decode_latent(self, latents):
-        self.start_profile("vae", color="red")
+        if self.device != "cpu":
+            self.start_profile("vae", color="red")
         images = self.backend.vae_decode(latents)
-        self.stop_profile("vae")
+
+        if self.device != "cpu":
+            self.stop_profile("vae")
         return images
 
     def print_summary(self, tic, toc, batch_size, vae_enc=False, pil=False) -> Dict[str, Any]:
         throughput = batch_size / (toc - tic)
-        latency_clip = cudart.cudaEventElapsedTime(self.events["clip-start"], self.events["clip-stop"])[1]
-        latency_unet = cudart.cudaEventElapsedTime(self.events["denoise-start"], self.events["denoise-stop"])[1]
-        latency_vae = cudart.cudaEventElapsedTime(self.events["vae-start"], self.events["vae-stop"])[1]
-        latency_vae_encoder = (
-            cudart.cudaEventElapsedTime(self.events["vae_encoder-start"], self.events["vae_encoder-stop"])[1]
-            if vae_enc
-            else None
-        )
-        latency_pil = cudart.cudaEventElapsedTime(self.events["pil-start"], self.events["pil-stop"])[1] if pil else None
 
         latency = (toc - tic) * 1000.0
 
         print("|----------------|--------------|")
         print("| {:^14} | {:^12} |".format("Module", "Latency"))
         print("|----------------|--------------|")
-        if vae_enc:
-            print("| {:^14} | {:>9.2f} ms |".format("VAE-Enc", latency_vae_encoder))
-        print("| {:^14} | {:>9.2f} ms |".format("CLIP", latency_clip))
-        print(
-            "| {:^14} | {:>9.2f} ms |".format(
-                "UNet" + ("+CNet" if self.pipeline_info.controlnet else "") + " x " + str(self.actual_steps),
-                latency_unet,
+
+        perf_data = {}
+
+        if self.device != "cpu":
+            from cuda import cudart
+            latency_clip = cudart.cudaEventElapsedTime(self.events["clip-start"], self.events["clip-stop"])[1]
+            latency_unet = cudart.cudaEventElapsedTime(self.events["denoise-start"], self.events["denoise-stop"])[1]
+            latency_vae = cudart.cudaEventElapsedTime(self.events["vae-start"], self.events["vae-stop"])[1]
+            latency_vae_encoder = (
+                cudart.cudaEventElapsedTime(self.events["vae_encoder-start"], self.events["vae_encoder-stop"])[1]
+                if vae_enc
+                else None
             )
-        )
-        print("| {:^14} | {:>9.2f} ms |".format("VAE-Dec", latency_vae))
+            latency_pil = cudart.cudaEventElapsedTime(self.events["pil-start"], self.events["pil-stop"])[1] if pil else None
+
+            if vae_enc:
+                print("| {:^14} | {:>9.2f} ms |".format("VAE-Enc", latency_vae_encoder))
+            print("| {:^14} | {:>9.2f} ms |".format("CLIP", latency_clip))
+            print(
+                "| {:^14} | {:>9.2f} ms |".format(
+                    "UNet" + ("+CNet" if self.pipeline_info.controlnet else "") + " x " + str(self.actual_steps),
+                    latency_unet,
+                )
+            )
+            print("| {:^14} | {:>9.2f} ms |".format("VAE-Dec", latency_vae))
+            if pil:
+                print("| {:^14} | {:>9.2f} ms |".format("PIL", latency_pil))
+
+            perf_data["latency_clip"] = latency_clip
+            perf_data["latency_unet"] = latency_unet
+            perf_data["latency_vae"] = latency_vae
+            perf_data["latency_pil"] = latency_pil
+
+            if vae_enc:
+                perf_data["latency_vae_encoder"] = latency_vae_encoder
+
         pipeline = "Refiner" if self.pipeline_info.is_xl_refiner() else "Pipeline"
-        if pil:
-            print("| {:^14} | {:>9.2f} ms |".format("PIL", latency_pil))
         print("|----------------|--------------|")
         print(f"| {pipeline:^14} | {latency:>9.2f} ms |")
         print("|----------------|--------------|")
         print(f"Throughput: {throughput:.2f} image/s")
 
-        perf_data = {
-            "latency_clip": latency_clip,
-            "latency_unet": latency_unet,
-            "latency_vae": latency_vae,
-            "latency_pil": latency_pil,
-            "latency": latency,
-            "throughput": throughput,
-        }
-        if vae_enc:
-            perf_data["latency_vae_encoder"] = latency_vae_encoder
+        perf_data["latency"] = latency,
+        perf_data["throughput"] = throughput,
+
         return perf_data
 
     @staticmethod
@@ -591,7 +620,8 @@ class StableDiffusionPipeline:
         output_type="pil",
     ):
         if show_latency:
-            torch.cuda.synchronize()
+            if self.device != "cpu":
+                torch.cuda.synchronize()
             start_time = time.perf_counter()
 
         assert len(prompt) == len(negative_prompt)
@@ -725,13 +755,16 @@ class StableDiffusionPipeline:
             else:
                 images = self.decode_latent(latents / self.vae_scaling_factor)
                 if output_type == "pil":
-                    self.start_profile("pil", color="green")
+                    if self.device != "cpu":
+                        self.start_profile("pil", color="green")
                     images = self.pt_to_pil(images)
-                    self.stop_profile("pil")
+                    if self.device != "cpu":
+                        self.stop_profile("pil")
 
         perf_data = None
         if show_latency:
-            torch.cuda.synchronize()
+            if self.device != "cpu":
+                torch.cuda.synchronize()
             end_time = time.perf_counter()
             perf_data = self.print_summary(
                 start_time, end_time, batch_size, vae_enc=self.pipeline_info.is_xl_refiner(), pil=(output_type == "pil")

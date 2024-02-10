@@ -21,7 +21,6 @@
 # --------------------------------------------------------------------------
 
 import coloredlogs
-from cuda import cudart
 from demo_utils import (
     add_controlnet_arguments,
     arg_parser,
@@ -74,9 +73,11 @@ if __name__ == "__main__":
 
     print("[I] Running StableDiffusion pipeline")
     if args.nvtx_profile:
+        from cuda import cudart
         cudart.cudaProfilerStart()
     images, perf_data = run_inference(warmup=False)
     if args.nvtx_profile:
+        from cuda import cudart
         cudart.cudaProfilerStop()
 
     metadata = get_metadata(args, False)

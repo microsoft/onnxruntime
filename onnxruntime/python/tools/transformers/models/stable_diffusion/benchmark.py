@@ -29,6 +29,7 @@ PROVIDERS = {
     "rocm": "ROCMExecutionProvider",
     "migraphx": "MIGraphXExecutionProvider",
     "tensorrt": "TensorrtExecutionProvider",
+    "dml": "DmlExecutionProvider",
 }
 
 
@@ -55,7 +56,7 @@ def measure_gpu_memory(monitor_type, func, start_memory=None):
     return measure_memory(is_gpu=True, func=func, monitor_type=monitor_type, start_memory=start_memory)
 
 
-def get_ort_pipeline(model_name: str, directory: str, provider, disable_safety_checker: bool):
+def get_ort_pipeline(model_name: str, directory: str, provider, disable_safety_checker: bool, height: int, width: int, batch_size: int):
     from diffusers import DDIMScheduler, OnnxStableDiffusionPipeline
 
     import onnxruntime
@@ -63,6 +64,13 @@ def get_ort_pipeline(model_name: str, directory: str, provider, disable_safety_c
     if directory is not None:
         assert os.path.exists(directory)
         session_options = onnxruntime.SessionOptions()
+        session_options.add_free_dimension_override_by_name("unet_sample_batch", batch_size * 2)
+        session_options.add_free_dimension_override_by_name("unet_sample_channels", 4)
+        session_options.add_free_dimension_override_by_name("unet_sample_height", height // 8)
+        session_options.add_free_dimension_override_by_name("unet_sample_width", width // 8)
+        session_options.add_free_dimension_override_by_name("unet_time_batch", 1)
+        session_options.add_free_dimension_override_by_name("unet_hidden_batch", batch_size * 2)
+        session_options.add_free_dimension_override_by_name("unet_hidden_sequence", 77)
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
             directory,
             provider=provider,
@@ -271,7 +279,7 @@ def run_ort(
         provider_and_options = (provider, {"tunable_op_enable": 1, "tunable_op_tuning_enable": 1})
 
     load_start = time.time()
-    pipe = get_ort_pipeline(model_name, directory, provider_and_options, disable_safety_checker)
+    pipe = get_ort_pipeline(model_name, directory, provider_and_options, disable_safety_checker, height, width, batch_size)
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 

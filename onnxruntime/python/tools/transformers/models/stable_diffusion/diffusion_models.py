@@ -27,12 +27,10 @@ import tempfile
 from typing import Dict, List, Optional
 
 import onnx
-import onnx_graphsurgeon as gs
 import torch
 from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from onnx import GraphProto, ModelProto, shape_inference
 from ort_optimizer import OrtStableDiffusionOptimizer
-from polygraphy.backend.onnx.loader import fold_constants
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from onnxruntime.transformers.onnx_model import OnnxModel
@@ -42,12 +40,14 @@ logger = logging.getLogger(__name__)
 
 class TrtOptimizer:
     def __init__(self, onnx_graph):
+        import onnx_graphsurgeon as gs
         self.graph = gs.import_onnx(onnx_graph)
 
     def cleanup(self):
         self.graph.cleanup().toposort()
 
     def get_optimized_onnx_graph(self):
+        import onnx_graphsurgeon as gs
         return gs.export_onnx(self.graph)
 
     def select_outputs(self, keep, names=None):
@@ -57,10 +57,13 @@ class TrtOptimizer:
                 self.graph.outputs[i].name = name
 
     def fold_constants(self):
+        import onnx_graphsurgeon as gs
+        from polygraphy.backend.onnx.loader import fold_constants
         onnx_graph = fold_constants(gs.export_onnx(self.graph), allow_onnxruntime_shape_inference=True)
         self.graph = gs.import_onnx(onnx_graph)
 
     def infer_shapes(self):
+        import onnx_graphsurgeon as gs
         onnx_graph = gs.export_onnx(self.graph)
         if onnx_graph.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF:
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -434,6 +437,8 @@ class BaseModel:
         optimize_by_ort=True,
         optimize_by_fusion=True,
         tmp_dir=None,
+        custom_fusion_options=None,
+        force_fp16_inputs=None,
     ):
         optimizer = self.get_ort_optimizer()
         optimizer.optimize(
@@ -445,6 +450,8 @@ class BaseModel:
             optimize_by_ort=optimize_by_ort,
             optimize_by_fusion=optimize_by_fusion,
             tmp_dir=tmp_dir,
+            custom_fusion_options=custom_fusion_options,
+            force_fp16_inputs=force_fp16_inputs,
         )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
@@ -613,6 +620,8 @@ class CLIP(BaseModel):
         optimize_by_ort=True,
         optimize_by_fusion=True,
         tmp_dir=None,
+        custom_fusion_options=None,
+        force_fp16_inputs=None,
     ):
         optimizer = self.get_ort_optimizer()
 
@@ -627,6 +636,8 @@ class CLIP(BaseModel):
                 optimize_by_ort=optimize_by_ort,
                 optimize_by_fusion=optimize_by_fusion,
                 tmp_dir=tmp_dir,
+                custom_fusion_options=custom_fusion_options,
+                force_fp16_inputs=force_fp16_inputs,
             )
         elif optimize_by_fusion:
             with tempfile.TemporaryDirectory() as tmp_dir:
@@ -646,6 +657,8 @@ class CLIP(BaseModel):
                     optimize_by_ort=optimize_by_ort,
                     optimize_by_fusion=optimize_by_fusion,
                     tmp_dir=tmp_dir,
+                    custom_fusion_options=custom_fusion_options,
+                    force_fp16_inputs=force_fp16_inputs,
                 )
         else:  # input is optimized model, there is no need to add hidden states.
             optimizer.optimize(
@@ -658,6 +671,8 @@ class CLIP(BaseModel):
                 optimize_by_ort=optimize_by_ort,
                 optimize_by_fusion=optimize_by_fusion,
                 tmp_dir=tmp_dir,
+                custom_fusion_options=custom_fusion_options,
+                force_fp16_inputs=force_fp16_inputs,
             )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
