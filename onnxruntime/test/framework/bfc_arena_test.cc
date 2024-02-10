@@ -337,6 +337,7 @@ struct StreamMock : public Stream {
   Status CleanUpOnRunEnd() override { return Status::OK(); }
 };
 
+#ifdef ORT_ENABLE_STREAM
 TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, false);
   CheckStats(&a, 0, 0, 0, 0);
@@ -413,6 +414,7 @@ TEST(StreamAwareArenaTest, TestSecureTheChunk) {
   EXPECT_TRUE(waitFunctionInvoked) << "wait function should be invoked";
   a.Free(p2);
 }
+#endif
 
 TEST(BFCArenaTest, TestExtendStrategy) {
   int64_t extend_delta_bytes = 0;
