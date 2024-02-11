@@ -421,7 +421,8 @@ export class WebGpuBackend {
       const tensorView = (isTemporary || isPersistent) ?
           createIntermediateOutput(outputs[i].dataType, outputs[i].dims) :
           createKernelOutput(validatedOutputIndices[i], outputs[i].dataType, outputs[i].dims);
-      const gpuData = this.gpuDataManager.get(tensorView.data);
+      const gpuData = this.gpuDataManager.get(tensorView.data) ? this.gpuDataManager.get(tensorView.data) :
+                                                                 this.gpuDataManager.create(4);
       if (!gpuData) {
         throw new Error(`no GPU data for output: ${tensorView.data}`);
       }
@@ -664,7 +665,8 @@ export class WebGpuBackend {
     }
   }
   getBuffer(gpuDataId: number): GPUBuffer {
-    const gpuData = this.gpuDataManager.get(gpuDataId);
+    const gpuData =
+        this.gpuDataManager.get(gpuDataId) ? this.gpuDataManager.get(gpuDataId) : this.gpuDataManager.create(4);
     if (!gpuData) {
       throw new Error(`no GPU data for buffer: ${gpuDataId}`);
     }

@@ -64,18 +64,17 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
   return codeLines.join('\n');
 };
 
-const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): ProgramInfo => {
+const createConcatProgramInfo = (originInputs: readonly TensorView[], axis: number): ProgramInfo => {
+  const inputs = originInputs.filter((input, _) => ShapeUtil.size(input.dims) > 0);
   // find a none zero tensor to determine the output shape
-  let referenceSize = 0;
   let referenceIndex = 0;
   for (let j = 0; j < inputs.length; j++) {
     const size = ShapeUtil.size(inputs[j].dims);
-    if (size > referenceSize) {
-      referenceSize = size;
+    if (size > 0) {
       referenceIndex = j;
+      break;
     }
   }
-
   const inputShape = inputs[referenceIndex].dims.slice();
   if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
     throw new Error('axis specified for concat doesn\'t match input dimensionality');
@@ -152,7 +151,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 
   return {
     name: 'Concat',
-    shaderCache: {hint: `${axis}`, inputDependencies},
+    shaderCache: {hint: `${axis}`, inputDependencies: Array(originInputs.length).fill('rank')},
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
