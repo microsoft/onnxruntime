@@ -159,21 +159,30 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TimestampLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TimestampLogitsProcessor(int eos_token_id,
-                           int transcribe_token_id,
-                           int translate_token_id,
+  TimestampLogitsProcessor(int eos_token_id,                  // <|endoftext|>
+                           int sot_token_id,                  // <|startoftranscript|>
+                           int translate_token_id,            // <|translate|>
+                           int transcribe_token_id,           // <|transcribe|>
+                           int solm_token_id,                 // <|startoflm|>
+                           int not_token_id,                  // <|notimestamps|>
+                           int beg_token_id,                  // <|0.00|>
                            int max_initial_timestamp_index)
       : eos_token_id_(eos_token_id),
-        transcribe_token_id_(transcribe_token_id),
+        sot_token_id_(sot_token_id),
         translate_token_id_(translate_token_id),
+        transcribe_token_id_(transcribe_token_id),
+        solm_token_id_(solm_token_id),
+        not_token_id_(not_token_id),
+        beg_token_id_(beg_token_id),
         max_initial_timestamp_index_(max_initial_timestamp_index) {}
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override {
-    const int beg_token_id_ = eos_token_id_ + 107;   // <|0.00|>
-    const int not_token_id_ = eos_token_id_ + 106;   // <|notimestamps|>
-    const int solm_token_id_ = eos_token_id_ + 103;  // <|startoflm|>
-    const int sot_token_id_ = eos_token_id_ + 1;     // <|startoftranscript|>
+    // TODO: convert below token ids to attrs in WhisperBeamSearch because they differ in whisper-tiny vs whisper-large-v3
+    // const int beg_token_id_ = eos_token_id_ + 107;   // <|0.00|>
+    // const int not_token_id_ = eos_token_id_ + 106;   // <|notimestamps|>
+    // const int solm_token_id_ = eos_token_id_ + 103;  // <|startoflm|>
+    // const int sot_token_id_ = eos_token_id_ + 1;     // <|startoftranscript|>
 
     const int batch_beam_size = next_token_scores.batch_beam_size;
     const int vocab_size = next_token_scores.vocab_size;
@@ -285,8 +294,12 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
 
  private:
   int eos_token_id_;
-  int transcribe_token_id_;
+  int sot_token_id_;
   int translate_token_id_;
+  int transcribe_token_id_;
+  int solm_token_id_;
+  int not_token_id_;
+  int beg_token_id_;
   int max_initial_timestamp_index_;
 };
 
@@ -348,9 +361,14 @@ class LogitsProcessorList : public ILogitsProcessorList {
     // Add timestamp processor for whisper model
     if (parameters.model_type == IGenerationParameters::kModelTypeWhisper && parameters.logits_processor == IGenerationParameters::kLogitsProcessorTypeWhisper) {
       constexpr int max_initial_timestamp_index = 50;
+      // Token ids are passed below in the order that they appear in the tokenizer
       timestamp_processor_ = std::make_unique<TimestampLogitsProcessor<float>>(parameters.eos_token_id,
-                                                                               parameters.transcribe_token_id,
+                                                                               parameters.decoder_start_token_id,
                                                                                parameters.translate_token_id,
+                                                                               parameters.transcribe_token_id,
+                                                                               parameters.start_of_lm_token_id,
+                                                                               parameters.no_timestamps_token_id,
+                                                                               parameters.beginning_timestamp_token_id,
                                                                                max_initial_timestamp_index);
       processor_list_.push_back(timestamp_processor_.get());
     }

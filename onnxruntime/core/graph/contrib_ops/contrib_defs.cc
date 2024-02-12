@@ -1188,9 +1188,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WhisperBeamSearch, 1,
                                 .SetDoc("Beam Search for whisper model, especiall with cross_qk features etc.")
                                 .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
                                 .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
-                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
-                                .Attr("transcribe_token_id", "The id of the transcribe task", AttributeProto::INT)
+                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts (i.e. the start of transcription token id)", AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("translate_token_id", "The id of the translate task", AttributeProto::INT)
+                                .Attr("transcribe_token_id", "The id of the transcribe task", AttributeProto::INT)
+                                .Attr("start_of_lm_token_id", "The id of the token that indicates LM starts", AttributeProto::INT)
+                                .Attr("no_speech_token_id",
+                                      "The token in whisper model that marks all sequence empty. With this model, whisper could output no_speech_prob after. Default -1.",
+                                      AttributeProto::INT, OPTIONAL_VALUE)
+                                .Attr("no_timestamps_token_id", "The id of the token that indicates no timestamps", AttributeProto::INT)
+                                .Attr("beginning_timestamp_token_id", "The id of the first timestamp", AttributeProto::INT)
                                 .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "Must be 2 for whisper", AttributeProto::INT, static_cast<int64_t>(2))
@@ -1205,9 +1211,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WhisperBeamSearch, 1,
                                       "If not provided, it will be inferred from the decoder subgraph's output shape",
                                       AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("decoder_output_cross_qk", "If nozero, decoder subgraph contains output Q*K from cross attentions. Default 0.", AttributeProto::INT, OPTIONAL_VALUE)
-                                .Attr("no_speech_token",
-                                      "The token in whisper model that marks all sequence empty. With this model, whisper could output no_speech_prob after. Default -1.",
-                                      AttributeProto::INT, OPTIONAL_VALUE)
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation in the encoder subgraph. Shape is (batch_size, sequence_length)", "F")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
@@ -1248,7 +1251,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WhisperBeamSearch, 1,
                                         "If cross_qk_layer_head is given, shape is [B, R, cross_qk_layer_head.shape[0], T, F]",
                                         "V", OpSchema::Optional)
                                 .Output(4, "non_speech_probs",
-                                        "For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token."
+                                        "For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token_id."
                                         "Currently we treat the last token's logits is what we need, in future extra graph logic may be add to the encoder/context-decoder subgraph."
                                         "The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]",
                                         "T", OpSchema::Optional)

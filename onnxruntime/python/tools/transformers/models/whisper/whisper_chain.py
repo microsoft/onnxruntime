@@ -139,14 +139,17 @@ def chain_model(args):
     beam_search_attrs = [
         helper.make_attribute("eos_token_id", config.eos_token_id),
         helper.make_attribute("pad_token_id", config.pad_token_id),
-        helper.make_attribute("decoder_start_token_id", config.decoder_start_token_id),
-        helper.make_attribute("transcribe_token_id", tokenizer.convert_tokens_to_ids(['<|transcribe|>'])[0]),
+        helper.make_attribute("decoder_start_token_id", config.decoder_start_token_id), # same as tokenizer.convert_tokens_to_ids(['<|startoftranscript|>'])[0]
         helper.make_attribute("translate_token_id", tokenizer.convert_tokens_to_ids(['<|translate|>'])[0]),
+        helper.make_attribute("transcribe_token_id", tokenizer.convert_tokens_to_ids(['<|transcribe|>'])[0]),
+        helper.make_attribute("start_of_lm_token_id", tokenizer.convert_tokens_to_ids(['<|startoflm|>'])[0]),
+        helper.make_attribute("no_speech_token_id", tokenizer.convert_tokens_to_ids(['<|nospeech|>'])[0]) if args.output_no_speech_probs else "",
+        helper.make_attribute("no_timestamps_token_id", tokenizer.convert_tokens_to_ids(['<|notimestamps|>'])[0]),
+        helper.make_attribute("beginning_timestamp_token_id", tokenizer.convert_tokens_to_ids(['<|0.00|>'])[0]),
         helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         helper.make_attribute("early_stopping", True),
         helper.make_attribute("model_type", 2),
         helper.make_attribute("decoder_output_cross_qk", 1) if args.collect_cross_qk else "",
-        helper.make_attribute("no_speech_token", tokenizer.convert_tokens_to_ids(['<|nospeech|>'])[0]) if args.output_no_speech_probs else "",
     ]
     node = helper.make_node(
         "WhisperBeamSearch",
