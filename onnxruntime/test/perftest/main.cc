@@ -43,6 +43,12 @@ int real_main(int argc, char* argv[]) {
   }
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
+
+  // Exit if user enabled -n option so that they can just the optimized model or EP context model
+  if (test_config.run_config.exit_after_session_creation) {
+    return 0;
+  }
+
   auto status = perf_runner.Run();
   if (!status.IsOK()) {
     printf("Run failed:%s\n", status.ErrorMessage().c_str());
