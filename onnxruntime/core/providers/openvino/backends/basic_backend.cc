@@ -70,7 +70,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #else
-      if (!subgraph_context_.has_dynamic_input_shape && dev_prec != "CPU_FP16") {
+      if (!subgraph_context_.has_dynamic_input_shape &&
+          global_context_.onnx_model_path_name != "" &&
+          dev_prec != "CPU_FP16") {
         exe_network_ = global_context_.ie_core.LoadNetwork(global_context_.onnx_model_path_name,
                                                            hw_target,
                                                            device_config,
