@@ -128,7 +128,7 @@ namespace perftest {
       "\t\t The number of affinities must be equal to intra_op_num_threads - 1\n\n"
       "\t-D [Disable thread spinning]: disable spinning entirely for thread owned by onnxruntime intra-op thread pool.\n"
       "\t-Z [Force thread to stop spinning between runs]: disallow thread from spinning during runs to reduce cpu usage.\n"
-      "\t-n [Exit after session creation]: allow user to dump optimized model or EP context cache model.\n"
+      "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
