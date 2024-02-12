@@ -76,7 +76,7 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "win-qnn | $(BuildConfig)"
-      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --compile_no_warning_as_error --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
+      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --compile_no_warning_as_error --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel --use_binskim_compliant_compile_flags'
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: $(buildArch)
       Platform: 'x64'

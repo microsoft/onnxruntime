@@ -37,9 +37,7 @@ typedef enum {
 
     CompMostAccurate = CompUndef,
     CompLeastAccurate = CompInt8,
-} MLAS_SQNBIT_COMPUTE_TYPE;
-
-using MLAS_SQNBIT_GEMM_COMPUTE_TYPE = MLAS_SQNBIT_COMPUTE_TYPE;  // TODO consolidate these
+} MLAS_SQNBIT_GEMM_COMPUTE_TYPE;
 
 /**
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
@@ -102,18 +100,12 @@ MlasSQNBitGemmBatch(
 /**
  * @brief Determines whether a float32/quantized n-bit int GEMM implementation is available on the current platform.
  *
- * @param[in]   M               row size of matrix A and C
- * @param[in]   N               column size of matrix B and C
- * @param[in]   K               column size of matrix A and row size of matrix B
  * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen          number of quantized values per block
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 bool MLASCALL
 MlasIsSQNBitGemmAvailable(
-    size_t M,
-    size_t N,
-    size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
@@ -153,13 +145,15 @@ MlasSQNBitGemmBatchWorkspaceSize(
  * @param[in]   K               column size of matrix A and row size of matrix B
  * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 size_t MLASCALL
 MlasSQNBitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
-    size_t BlkLen
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
 /**
@@ -169,6 +163,7 @@ MlasSQNBitGemmPackQuantBDataSize(
  * @param[in]   K                   column size of matrix A and row size of matrix B
  * @param[in]   BlkBitWidth         quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen              number of quantized values per block
+ * @param[in]   ComputeType         GEMM compute type (e.g., multiplying float or int8 values)
  * @param[in]   QuantBData          quantized B data
  * @param[out]  PackedQuantBData    packed quantized B data
  * @param[in]   ThreadPool          optional thread pool to use
@@ -179,6 +174,7 @@ MlasSQNBitGemmPackQuantBData(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const void* QuantBData,
     void* PackedQuantBData,
     MLAS_THREADPOOL* ThreadPool = nullptr

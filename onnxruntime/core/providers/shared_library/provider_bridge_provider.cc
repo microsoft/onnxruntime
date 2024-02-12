@@ -329,10 +329,6 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
-  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
-}
-
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
@@ -496,6 +492,10 @@ template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                             /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
+}
 
 }  // namespace utils
 

@@ -86,11 +86,9 @@ class Fusion:
 
     @staticmethod
     def input_index(node_output: str, child_node: onnx.NodeProto) -> int:
-        index = 0
-        for input_name in child_node.input:
+        for index, input_name in enumerate(child_node.input):
             if input_name == node_output:
                 return index
-            index += 1
         return -1
 
     @staticmethod

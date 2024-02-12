@@ -25,8 +25,8 @@ const createInstanceNormProgramInfo =
       const inputShape = [xShape[0], xShape[1], normPackedSize];
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'type', 'type'];
       const programUniforms: ProgramUniform[] =
-          [{type: 'uint32', data: normSize}, {type: 'uint32', data: normPackedSize}];
-      programUniforms.push(...createTensorShapeVariables(inputShape), ...createTensorShapeVariables(inputShape));
+          [{type: DataType.uint32, data: normSize}, {type: DataType.uint32, data: normPackedSize}];
+      programUniforms.push(...createTensorShapeVariables(inputShape, inputShape));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const x = inputVariable('x', inputs[0].dataType, inputShape.length, components);
@@ -132,8 +132,9 @@ const computeMean =
 
       const meanInputDependencies: ProgramInputTensorInfoDependency[] = ['type'];
       const meanProgramUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: wgSize}, {type: 'uint32', data: h}, {type: 'uint32', data: Math.floor(c / components)},
-        {type: 'uint32', data: Math.floor(h * c / components)}
+        {type: DataType.uint32, data: wgSize}, {type: DataType.uint32, data: h},
+        {type: DataType.uint32, data: Math.floor(c / components)},
+        {type: DataType.uint32, data: Math.floor(h * c / components)}
       ];
 
       const getMeanShaderSource = (shaderHelper: ShaderHelper) => {
@@ -182,8 +183,9 @@ const computeMean =
           {inputs: [input], outputs: [-1]})[0];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: unitsOfWork}, {type: 'uint32', data: h},
-        {type: 'uint32', data: Math.floor(c / components)}, {type: 'uint32', data: Math.floor(WG * c / components)}
+        {type: DataType.uint32, data: unitsOfWork}, {type: DataType.uint32, data: h},
+        {type: DataType.uint32, data: Math.floor(c / components)},
+        {type: DataType.uint32, data: Math.floor(WG * c / components)}
       ];
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type', 'type'];
       const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -246,7 +248,7 @@ const createInstanceNormNHWCProgramInfo =
       const components = getMaxComponents(C);
       const outputSize = ShapeUtil.size(outputShape) / components;
       const programUniforms: ProgramUniform[] =
-          [{type: 'uint32', data: H}, {type: 'uint32', data: Math.floor(C / components)}];
+          [{type: DataType.uint32, data: H}, {type: DataType.uint32, data: Math.floor(C / components)}];
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
       // first compute mean
       const channelScaleShift = computeMean(context, inputs[0], inputs[1], inputs[2], N, H, C, attributes.epsilon);

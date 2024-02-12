@@ -16,8 +16,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUTLASS
-
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <math.h>
@@ -900,5 +898,3 @@ template void finalize_moe_routing_kernelLauncher(const half*, half*, const half
                                                   cudaStream_t);
 
 }  // namespace ort_fastertransformer
-
-#endif

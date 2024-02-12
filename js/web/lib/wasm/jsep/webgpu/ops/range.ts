@@ -3,7 +3,7 @@
 
 import {env} from 'onnxruntime-common';
 
-import {DataType, tensorDataTypeEnumToString} from '../../../wasm-common';
+import {DataType} from '../../../wasm-common';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createTensorShapeVariables, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from './common';
@@ -22,9 +22,8 @@ const createRangeProgramInfo = (start: number, limit: number, delta: number, dat
   const numElements = Math.abs(Math.ceil((limit - start) / delta));
   const outputShape: number[] = [numElements];
   const outputSize = numElements;
-  const tensorDataType = tensorDataTypeEnumToString(dataType) as ProgramUniform['type'];
   const programUniforms: ProgramUniform[] = [
-    {type: 'uint32', data: outputSize}, {type: tensorDataType, data: start}, {type: tensorDataType, data: delta},
+    {type: DataType.uint32, data: outputSize}, {type: dataType, data: start}, {type: dataType, data: delta},
     ...createTensorShapeVariables(outputShape)
   ];
 
