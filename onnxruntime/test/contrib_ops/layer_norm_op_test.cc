@@ -77,6 +77,7 @@ TEST(LayerNormTest, LayerNorm) {
 }
 
 TEST(LayerNormTest, LayerNorm_BFloat16Input) {
+// prevents test from running on non-BF16-supporting hardware
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
