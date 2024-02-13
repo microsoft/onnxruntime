@@ -50,7 +50,9 @@
 			link: 'blogs/accelerating-llama-2',
 			image: LlamaImage,
 			imgalt: 'LLaMA-2 e2e throughput'
-		},
+		}
+	];
+	let blogs = [
 		{
 			title: 'Run PyTorch models on the edge',
 			date: 'October 12th, 2023',
@@ -60,9 +62,7 @@
 			image:
 				'https://onnxruntime.ai/_app/immutable/assets/pytorch-on-the-edge-with-ort.cdaa9c84.png',
 				imgalt: 'Run PyTorch models on the edge'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title: 'Accelerating over 130,000 Hugging Face models with ONNX Runtime',
 			date: 'October 4th, 2023',
