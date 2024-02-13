@@ -18,16 +18,25 @@ struct CUDAGraph {
 
   void SetStream(cudaStream_t stream);
   void CaptureBegin();
+  void CaptureBegin(int cuda_graph_annotation_id);
   void CaptureEnd();
   Status Replay();
+  Status Replay(int cuda_graph_annotation_id);
   void Reset();
 
  private:
+  void CaptureBeginImpl(cudaStream_t stream);
+
   cudaGraph_t graph_ = NULL;
   cudaGraphExec_t graph_exec_ = NULL;
 
   bool has_graph_ = false;
   bool has_graph_exec_ = false;
+
+  cudaGraph_t additional_graph_ = NULL;
+  std::unordered_map<int, cudaGraphExec_t> graph_exec_map_;
+  std::optional<int> cuda_graph_annotation_id_;
+  bool has_additional_graph_ = false;
 
   cudaStream_t stream_ = nullptr;  // Does not own the stream
 };
