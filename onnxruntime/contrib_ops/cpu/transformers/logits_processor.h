@@ -178,19 +178,6 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override {
-    // TODO: convert below token ids to attrs in WhisperBeamSearch because they differ in whisper-tiny vs whisper-large-v3
-    // const int beg_token_id_ = eos_token_id_ + 107;   // <|0.00|>
-    // const int not_token_id_ = eos_token_id_ + 106;   // <|notimestamps|>
-    // const int solm_token_id_ = eos_token_id_ + 103;  // <|startoflm|>
-    // const int sot_token_id_ = eos_token_id_ + 1;     // <|startoftranscript|>
-
-    std::cout << "<|endoftext|> - " << eos_token_id_ << std::endl;
-    std::cout << "<|startoftranscript|> - " << sot_token_id_ << std::endl;
-    std::cout << "<|translate|> - " << translate_token_id_ << std::endl;
-    std::cout << "<|transcribe|> - " << transcribe_token_id_ << std::endl;
-    std::cout << "<|startoflm|> - " << solm_token_id_ << std::endl;
-    std::cout << "<|notimestamps|> - " << not_token_id_ << std::endl;
-    std::cout << "<|0.00|> - " << beg_token_id_ << std::endl;
 
     const int batch_beam_size = next_token_scores.batch_beam_size;
     const int vocab_size = next_token_scores.vocab_size;
