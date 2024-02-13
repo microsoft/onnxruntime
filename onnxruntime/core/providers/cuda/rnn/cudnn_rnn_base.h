@@ -12,7 +12,6 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 
-
 namespace onnxruntime {
 namespace cuda {
 
@@ -41,8 +40,7 @@ class CudnnRNN {
     }
   }
 
-
-    Status Set(const cudnnHandle_t& cudnnHandle, int64_t input_size, int64_t hidden_size, int64_t proj_size, int num_layers,
+  Status Set(const cudnnHandle_t& cudnnHandle, int64_t input_size, int64_t hidden_size, int64_t proj_size, int num_layers,
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
              cudnnRNNMode_t rnn_mode, bool has_bias, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
     if (!cudnn_rnn_desc_)
@@ -59,7 +57,7 @@ class CudnnRNN {
                                                    dataType == CUDNN_DATA_HALF ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH,
                                                    gsl::narrow_cast<int>(input_size),
                                                    gsl::narrow_cast<int>(hidden_size),
-                                                   gsl::narrow_cast<int>(proj_size), // projected size
+                                                   gsl::narrow_cast<int>(proj_size),  // projected size
                                                    num_layers,
                                                    cudnn_dropout_desc,
                                                    // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
@@ -135,25 +133,25 @@ class CudnnRnnBase : public CudaKernel {
                                cudaStream_t cuda_stream) const;
 
   Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
-                           size_t& target_w_data_size_in_bytes, 
+                           size_t& target_w_data_size_in_bytes,
                            IAllocatorUniquePtr<void>& target_w_data,
                            CudnnFilterDescriptor& target_w_desc,
                            CudnnRNN& rnn_desc,
                            onnxruntime::Stream* ort_stream) const;
 
   Status SetWeightBias(const cudnnHandle_t handle,
-                     const cudnnRNNDescriptor_t rnn_desc,
-                     const int pseudo_layer,
-                     const cudnnTensorDescriptor_t x_desc,
-                     const cudnnFilterDescriptor_t w_desc,
-                     const cudnnFilterDescriptor_t filter_desc,
-                     size_t w_data_size,
-                     const void* w_data,
-                     const int lin_layer_id,
-                     const T* pos,
-                     int& offset,
-                     bool is_matrix,
-                     cudaStream_t cuda_stream) const;
+                       const cudnnRNNDescriptor_t rnn_desc,
+                       const int pseudo_layer,
+                       const cudnnTensorDescriptor_t x_desc,
+                       const cudnnFilterDescriptor_t w_desc,
+                       const cudnnFilterDescriptor_t filter_desc,
+                       size_t w_data_size,
+                       const void* w_data,
+                       const int lin_layer_id,
+                       const T* pos,
+                       int& offset,
+                       bool is_matrix,
+                       cudaStream_t cuda_stream) const;
 
   void SetZeroSequences(const int64_t zero_seq_index_cache_size,
                         const std::vector<int32_t> zero_seq_index_cache,
@@ -197,4 +195,4 @@ class CudnnRnnBase : public CudaKernel {
 }  // namespace cuda
 }  // namespace onnxruntime
 
-#endif // CUDNN_MAJOR
+#endif  // CUDNN_MAJOR
