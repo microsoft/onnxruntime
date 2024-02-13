@@ -170,7 +170,7 @@ namespace DmlGraphFusionHelper
             inputsUsed[it->second] = true;
         }
 
-#ifdef DML_ENABLE_SERIALIZATION
+#if  defined(DML_ENABLE_SERIALIZATION) || defined(DML_ENABLE_SERIALIZATION_DEBUG)
         const std::wstring modelName = GetModelName(graph.ModelPath());
 #endif // DML_ENABLE_SERIALIZATION
 
@@ -217,7 +217,7 @@ namespace DmlGraphFusionHelper
 
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
                 tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
-#ifdef DML_ENABLE_SERIALIZATION				  
+#if defined(DML_ENABLE_SERIALIZATION) || defined(DML_ENABLE_SERIALIZATION_DEBUG)
                 WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
 #endif // DML_ENABLE_SERIALIZATION
 
@@ -381,7 +381,7 @@ namespace DmlGraphFusionHelper
             //      Use Case: When the caller is ORT (DML EP) or DmlEngine.
             //
             // 2. If serializedGraphInputIndexToMainGraphInputIndex is null:
-            //      then assign the sequential graph input index, because the owns the creationg of dml bindings
+            //      then assign the sequential graph input index, because it owns the creation of dml bindings
             //      directly.
             edge->GraphInputIndex = serializedGraphInputIndexToSubgraphInputIndex == nullptr ?
                 graphDesc.InputEdges[i].GraphInputIndex :
@@ -591,7 +591,7 @@ namespace DmlGraphFusionHelper
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex)
     {
-#ifdef DML_ENABLE_SERIALIZATION
+#if defined(DML_ENABLE_SERIALIZATION) || defined(DML_ENABLE_SERIALIZATION_DEBUG)
         const std::wstring modelName = GetModelName(graph.ModelPath());
         auto buffer = SerializeDmlGraph(graphDesc);
 
