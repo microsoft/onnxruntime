@@ -113,14 +113,10 @@ class ONNXQuantizer:
             "ForceQuantizeNoInputCheck" in self.extra_options and self.extra_options["ForceQuantizeNoInputCheck"]
         )
         self.q_matmul_const_b_only = "MatMulConstBOnly" in self.extra_options and self.extra_options["MatMulConstBOnly"]
-        self.is_weight_symmetric = (
-            weight_qType in (QuantType.QInt8, QuantType.QInt16, QuantType.QFLOAT8E4M3FN)
-            if "WeightSymmetric" not in self.extra_options
-            else self.extra_options["WeightSymmetric"]
+        self.is_weight_symmetric = self.extra_options.get(
+            "WeightSymmetric", weight_qType in (QuantType.QInt8, QuantType.QInt16, QuantType.QFLOAT8E4M3FN)
         )
-        self.is_activation_symmetric = (
-            False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
-        )
+        self.is_activation_symmetric = self.extra_options.get("ActivationSymmetric", False)
         self.min_real_range = self.extra_options.get("MinimumRealRange")
 
         self.activation_qType = getattr(activation_qType, "tensor_type", activation_qType)
