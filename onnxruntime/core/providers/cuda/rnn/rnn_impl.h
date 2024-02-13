@@ -10,7 +10,8 @@ namespace cuda {
 
 template <typename T>
 void ReverseBySequence(cudaStream_t stream,
-                       const int32_t seq_length,
+                       const int32_t max_seq_length,
+                       const int32_t* seq_lengths,
                        const int32_t batch_size,
                        const int32_t input_or_hidden_size,
                        const T* data,

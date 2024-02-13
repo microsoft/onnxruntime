@@ -33,7 +33,7 @@ class RNN final : public CudnnRnnBase<T> {
     // ONNX B layout is Wb, Rb, mapping to RNNLinLayerMatrixParams
     // the linLayerID is 0, 1, we can reuse it from W_lin_layer_id & R_lin_layer_id
 
-    //ORT_THROW_IF_ERROR(CudnnRnnBase<T>::CacheCudnnRnnWeights(info));
+    ORT_THROW_IF_ERROR(CudnnRnnBase<T>::CacheCudnnRnnWeights(info));
   }
 };
 
