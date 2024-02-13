@@ -358,7 +358,7 @@ class InferenceSession(Session):
     def __init__(
         self,
         path_or_bytes: str | bytes | os.PathLike,
-        sess_options: Sequence[onnxruntime.SessionOptions] | None = None,
+        sess_options: onnxruntime.SessionOptions | None = None,
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
@@ -413,7 +413,7 @@ class InferenceSession(Session):
             self._read_config_from_model = os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
 
         # internal parameters that we don't expect to be used in general so aren't documented
-        disabled_optimizers = kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None
+        disabled_optimizers = kwargs.get("disabled_optimizers")
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)

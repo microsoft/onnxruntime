@@ -269,7 +269,7 @@ export const createConvTranspose2DProgramInfo =
         {type: DataType.uint32, data: filterDims}, {type: DataType.uint32, data: dilations},
         {type: DataType.uint32, data: effectiveFilterDims}, {type: DataType.int32, data: pads},
         {type: DataType.uint32, data: inputChannelsPerGroup}, {type: DataType.uint32, data: outputChannelsPerGroup},
-        ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims)
+        ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims)
       ];
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));

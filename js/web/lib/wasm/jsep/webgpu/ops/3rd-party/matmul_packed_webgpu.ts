@@ -453,9 +453,7 @@ export const createMatmulProgramInfo =
         {type: DataType.int32, data: dimInner}
       ];
       appendActivationUniformsData(activationAttributes, programUniforms);
-      programUniforms.push(
-          ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShapeTemp),
-          ...createTensorShapeVariables(bShapeTemp));
+      programUniforms.push(...createTensorShapeVariables(outerDims, aShapeTemp, bShapeTemp));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
 
       const hasBias = inputs.length > 2;
@@ -481,7 +479,8 @@ export const createMatmulProgramInfo =
         const uniforms: UniformsArrayType =
             [{name: 'dim_a_outer', type: 'i32'}, {name: 'dim_b_outer', type: 'i32'}, {name: 'dim_inner', type: 'i32'}];
         appendActivationUniforms(activationAttributes, uniforms);
-        const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
+        const baseType = tensorTypeToWsglStorageType(output.type.tensor);
+        const applyActivation = getActivationSnippet(activationAttributes, output.type.value, baseType);
         const declareFunctions = matMulReadWriteFnSource(
             components, hasBias, applyActivation, [batchDims, A, B, output], [outerDimsA, outerDimsB, outerDims],
             isChannelsLast);

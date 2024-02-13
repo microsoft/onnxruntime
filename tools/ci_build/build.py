@@ -2536,11 +2536,15 @@ def main():
     if args.build_nuget and cross_compiling:
         raise BuildError("Currently nuget package creation is not supported while cross-compiling")
 
-    if args.enable_pybind and args.disable_rtti:
-        raise BuildError("Python bindings use typeid so you can't disable RTTI")
+    if args.enable_pybind:
+        if args.disable_rtti:
+            raise BuildError("Python bindings use typeid so you can't disable RTTI")
 
-    if args.enable_pybind and args.disable_exceptions:
-        raise BuildError("Python bindings require exceptions to be enabled.")
+        if args.disable_exceptions:
+            raise BuildError("Python bindings require exceptions to be enabled.")
+
+        if args.minimal_build is not None:
+            raise BuildError("Python bindings are not supported in a minimal build.")
 
     if args.nnapi_min_api:
         if not args.use_nnapi:

@@ -92,8 +92,13 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
-# enable stream for all the non-minimal build
-if (NOT onnxruntime_MINIMAL_BUILD)
+# Enable stream for all the non-minimal build, except for DML. There's currently a bug
+# in the allocation planner when reusing buffers and more than one streams are used that
+# make it possible (although rarely) to reach a reference count of 0 for a buffer that is
+# still being used. Since DML doesn't benefit from multiple streams, disabling it is the
+# safest option for now.
+# https://github.com/microsoft/onnxruntime/issues/19480
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_USE_DML)
   add_compile_definitions(ORT_ENABLE_STREAM)
 endif()
 

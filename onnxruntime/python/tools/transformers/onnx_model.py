@@ -82,6 +82,10 @@ class OnnxModel:
                     output_name_to_node[output_name] = node
         return output_name_to_node
 
+    def functions(self):
+        all_functions = [list(self.model.functions)]
+        return all_functions
+
     def nodes(self):
         all_nodes = []
         for graph in self.graphs():
@@ -426,6 +430,54 @@ class OnnxModel:
 
         return None
 
+    def match_child_path(
+        self,
+        node,
+        child_op_types,
+        child_output_index=None,
+        return_indice=None,
+        exclude=[],  # noqa: B006
+    ):
+        """
+        Find a sequence of input edges based on constraints on parent op_type and index.
+        When input_index is None, we will find the first parent node based on constraints,
+        and return_indice will be appended the corresponding input index.
+
+        Args:
+            node (str): current node name.
+            child_op_types (str): constraint of child node op_type of each input edge.
+            child_output_index (list): constraint of input index of each input edge. None means no constraint.
+            return_indice (list): a list to append the input index
+                                  When there is no constraint on input index of an edge.
+
+        Returns:
+            children: a list of matched children node.
+        """
+        if child_output_index is not None:
+            assert len(child_output_index) == len(child_op_types)
+
+        current_node = node
+        matched_children = []
+        for i, op_type in enumerate(child_op_types):
+            matched_child = None
+            node_children = self.get_children(current_node)
+            for child_i, child in enumerate(node_children):
+                if child.op_type == op_type and child not in exclude:
+                    if child_output_index is not None and child_output_index[i] != child_i:
+                        logger.debug(
+                            f"Failed to match index={i} child_output_index={child_output_index[i]} op_type={op_type}",
+                            stack_info=True,
+                        )
+                        return None
+                    matched_child = child
+            if matched_child is None:
+                logger.debug(f"Failed to match child op_type={op_type}", stack_info=True)
+                return None
+
+            matched_children.append(matched_child)
+            current_node = matched_child
+        return matched_children
+
     def find_first_parent_by_type(self, node, parent_type, output_name_to_node=None, recursive=True):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -733,6 +785,7 @@ class OnnxModel:
                     "node_block_list",
                     "force_fp16_initializers",
                     "force_fp16_inputs",
+                    "use_bfloat16_as_blocked_nodes_dtype",
                 ]
                 if key in kwargs
             }
@@ -833,11 +886,9 @@ class OnnxModel:
 
     @staticmethod
     def input_index(node_output, child_node):
-        index = 0
-        for input in child_node.input:
+        for index, input in enumerate(child_node.input):
             if input == node_output:
                 return index
-            index += 1
         return -1
 
     def remove_unused_constant(self):
@@ -903,7 +954,7 @@ class OnnxModel:
         num_nodes_removed = 0
         for node in self.model.graph.node:
             first_output = get_first_output(node)
-            kept_node = output_to_node[first_output] if first_output in output_to_node else None
+            kept_node = output_to_node.get(first_output)
 
             # Need double check the node since fused node might reuse output name of some nodes to be removed.
             # It is slow to compare whole node, so we compare op_type first to avoid comparing node in most cases.
