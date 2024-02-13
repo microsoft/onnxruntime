@@ -822,7 +822,7 @@ def upsample_bicubic2d(g, input, output_size, align_corners, scale_factors):
         overload_name_s="vec",
     )
 
- 
+
 @register_symbolic("layer_norm")
 @parse_args("v", "is", "v", "v", "f", "none")
 def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
@@ -839,10 +839,9 @@ def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
         bias,
         epsilon_f=eps,
         axis_i=axis,
-        outputs=3, # force all 3 outputs to be exported in training mode
+        outputs=3,  # force all 3 outputs to be exported in training mode
         operator_s="layer_norm",
         overload_name_s="vec",
     )
 
     return res
-  
