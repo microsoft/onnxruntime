@@ -19,12 +19,13 @@
 //
 // modified to fit the needs of the project
 
+import {DataType} from '../../../../wasm-common';
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
-import {getActivationSnippet} from '../fuse-utils';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet} from '../fuse-utils';
 
 import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
@@ -197,16 +198,13 @@ export const createConv2DTransposeMatMulProgramInfo =
       ];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner},
-        {type: 'int32', data: attributes.strides}, {type: 'int32', data: attributes.dilations},
-        {type: 'int32', data: filterDims}, {type: 'int32', data: pads}
+        {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
+        {type: DataType.int32, data: dimInner}, {type: DataType.int32, data: attributes.strides},
+        {type: DataType.int32, data: attributes.dilations}, {type: DataType.int32, data: filterDims},
+        {type: DataType.int32, data: pads}
       ];
-      if (attributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
-      }
-      programUniforms.push(
-          ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
+      appendActivationUniformsData(attributes, programUniforms);
+      programUniforms.push(...createTensorShapeVariables(inputs[0].dims, inputs[1].dims));
 
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       if (hasBias) {
@@ -237,9 +235,7 @@ export const createConv2DTransposeMatMulProgramInfo =
           {name: 'filter_dims', type: 'i32', length: filterDims.length},
           {name: 'pads', type: 'i32', length: pads.length}
         ];
-        if (attributes.activation === 'Clip') {
-          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
-        }
+        appendActivationUniforms(attributes, uniforms);
         return `
         ${utilFunctions('uniforms.result_strides')}
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)};

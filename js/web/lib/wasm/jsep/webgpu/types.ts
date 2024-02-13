@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../wasm-common';
 import {TensorView} from '../tensor-view';
 
 import {ShaderHelper} from './ops/common';
+
+export type SessionState = 'default'|'capturing'|'replaying';
 
 export enum GpuDataType {
   default = 0,
@@ -24,7 +27,7 @@ export interface TensorInfo {
 }
 
 export interface ProgramUniform {
-  type: 'int32'|'float16'|'float32'|'uint32';
+  type: DataType;
   data: number|readonly number[];
 }
 

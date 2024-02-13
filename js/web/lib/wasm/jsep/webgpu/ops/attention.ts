@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {tensorDataTypeEnumToString} from '../../../wasm-common';
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ComputeContext, GpuDataType, ProgramUniform} from '../types';
 
@@ -241,9 +241,10 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
     WG = Math.ceil(dComp / 8);
   }
   const elementsPerWG = Math.ceil(d / components / WG);
-  const tensorDataType = tensorDataTypeEnumToString(input.dataType) as ProgramUniform['type'];
-  const programUniforms: ProgramUniform[] =
-      [{type: tensorDataType, data: 1 / d}, {type: 'uint32', data: dComp}, {type: 'uint32', data: elementsPerWG}];
+  const programUniforms: ProgramUniform[] = [
+    {type: input.dataType, data: 1 / d}, {type: DataType.uint32, data: dComp},
+    {type: DataType.uint32, data: elementsPerWG}
+  ];
   const dataType = tensorTypeToWsglStorageType(input.dataType, components);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -336,11 +337,10 @@ const computeAttentionProbs =
         y: Math.ceil(parameters.sequenceLength / TILE_SIZE),
         z: parameters.batchSize * parameters.numHeads
       };
-      const tensorDataType = tensorDataTypeEnumToString(q.dataType) as ProgramUniform['type'];
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: parameters.sequenceLength}, {type: 'uint32', data: vectorizedHeadSize},
-        {type: 'uint32', data: parameters.totalSequenceLength}, {type: 'uint32', data: parameters.kvSequenceLength},
-        {type: tensorDataType, data: alpha}
+        {type: DataType.uint32, data: parameters.sequenceLength}, {type: DataType.uint32, data: vectorizedHeadSize},
+        {type: DataType.uint32, data: parameters.totalSequenceLength},
+        {type: DataType.uint32, data: parameters.kvSequenceLength}, {type: q.dataType, data: alpha}
       ];
 
       const inputs = [q, key];
@@ -430,9 +430,9 @@ const computeVxAttentionScore =
         z: params.batchSize * params.numHeads
       };
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: params.sequenceLength}, {type: 'uint32', data: params.totalSequenceLength},
-        {type: 'uint32', data: params.vHeadSize}, {type: 'uint32', data: params.numHeads},
-        {type: 'uint32', data: params.vHiddenSize}
+        {type: DataType.uint32, data: params.sequenceLength}, {type: DataType.uint32, data: params.totalSequenceLength},
+        {type: DataType.uint32, data: params.vHeadSize}, {type: DataType.uint32, data: params.numHeads},
+        {type: DataType.uint32, data: params.vHiddenSize}
       ];
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -526,10 +526,10 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
   };
   const inputs = [context.inputs[0], context.inputs[1], context.inputs[2]];
   const programUniforms: ProgramUniform[] = [
-    {type: 'uint32', data: M}, {type: 'uint32', data: K}, {type: 'uint32', data: N},
-    {type: 'uint32', data: parameters.numHeads}, {type: 'uint32', data: parameters.headSize},
-    {type: 'uint32', data: parameters.hiddenSize},
-    {type: 'uint32', data: parameters.hiddenSize + parameters.hiddenSize + parameters.vHiddenSize}
+    {type: DataType.uint32, data: M}, {type: DataType.uint32, data: K}, {type: DataType.uint32, data: N},
+    {type: DataType.uint32, data: parameters.numHeads}, {type: DataType.uint32, data: parameters.headSize},
+    {type: DataType.uint32, data: parameters.hiddenSize},
+    {type: DataType.uint32, data: parameters.hiddenSize + parameters.hiddenSize + parameters.vHiddenSize}
   ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {

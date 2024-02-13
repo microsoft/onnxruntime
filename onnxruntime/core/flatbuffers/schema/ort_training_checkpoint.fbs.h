@@ -39,13 +39,17 @@ struct ModuleState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ModuleStateBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_REQUIRES_GRAD_PARAMS = 4,
-    VT_FROZEN_PARAMS = 6
+    VT_FROZEN_PARAMS = 6,
+    VT_IS_NOMINAL_STATE = 8
   };
   const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad_params() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_REQUIRES_GRAD_PARAMS);
   }
   const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_FROZEN_PARAMS);
+  }
+  bool is_nominal_state() const {
+    return GetField<uint8_t>(VT_IS_NOMINAL_STATE, 0) != 0;
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -55,6 +59,7 @@ struct ModuleState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_FROZEN_PARAMS) &&
            verifier.VerifyVector(frozen_params()) &&
            verifier.VerifyVectorOfTables(frozen_params()) &&
+           VerifyField<uint8_t>(verifier, VT_IS_NOMINAL_STATE) &&
            verifier.EndTable();
   }
 };
@@ -68,6 +73,9 @@ struct ModuleStateBuilder {
   }
   void add_frozen_params(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params) {
     fbb_.AddOffset(ModuleState::VT_FROZEN_PARAMS, frozen_params);
+  }
+  void add_is_nominal_state(bool is_nominal_state) {
+    fbb_.AddElement<uint8_t>(ModuleState::VT_IS_NOMINAL_STATE, static_cast<uint8_t>(is_nominal_state), 0);
   }
   explicit ModuleStateBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -84,23 +92,27 @@ struct ModuleStateBuilder {
 inline flatbuffers::Offset<ModuleState> CreateModuleState(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad_params = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params = 0,
+    bool is_nominal_state = false) {
   ModuleStateBuilder builder_(_fbb);
   builder_.add_frozen_params(frozen_params);
   builder_.add_requires_grad_params(requires_grad_params);
+  builder_.add_is_nominal_state(is_nominal_state);
   return builder_.Finish();
 }
 
 inline flatbuffers::Offset<ModuleState> CreateModuleStateDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad_params = nullptr,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params = nullptr) {
+    const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params = nullptr,
+    bool is_nominal_state = false) {
   auto requires_grad_params__ = requires_grad_params ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*requires_grad_params) : 0;
   auto frozen_params__ = frozen_params ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*frozen_params) : 0;
   return onnxruntime::fbs::CreateModuleState(
       _fbb,
       requires_grad_params__,
-      frozen_params__);
+      frozen_params__,
+      is_nominal_state);
 }
 
 struct ParameterOptimizerState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {

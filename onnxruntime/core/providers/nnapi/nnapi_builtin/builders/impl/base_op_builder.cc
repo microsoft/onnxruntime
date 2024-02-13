@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/graph_viewer.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
 
 namespace onnxruntime {
@@ -11,10 +12,11 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
   const auto is_ext_initializer =
       [&](const NodeArg& node_arg) {
         const auto& input_name(node_arg.Name());
-        if (!Contains(initializers, input_name))
+        const auto initializer = initializers.find(input_name);
+        if (initializer == initializers.end())
           return false;
 
-        const auto& tensor = *initializers.at(input_name);
+        const auto& tensor = *initializer->second;
         if (tensor.has_data_location() &&
             tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
           LOGS_DEFAULT(VERBOSE) << "Initializer [" << input_name
@@ -51,8 +53,12 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeU
       model_builder.GetEffectiveFeatureLevel(),
       model_builder.UseNCHW(),
   };
-  ORT_RETURN_IF_NOT(IsOpSupported(model_builder.GetInitializerTensors(), node_unit, params),
-                    "Unsupported operator ", node_unit.OpType());
+
+  // We checked supported in IExecutionProvider::GetCapability.
+  // Checking again in AddToModelBuilder which is called in IExecutionProvider::Compile is redundant.
+  // ORT_RETURN_IF_NOT(IsOpSupported(model_builder.GetGraphViewer(), node_unit, params),
+  //                  "Unsupported operator ", node_unit.OpType());
+
 #ifndef NDEBUG
   model_builder.SetDebugCurrentOnnxNodeIndex(node_unit.Index());
 #endif
@@ -64,7 +70,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeU
 
 // Operator support related
 
-bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool BaseOpBuilder::IsOpSupported(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                   const OpSupportCheckParams& params) const {
   int32_t required_feature_level = GetMinSupportedNNAPIFeatureLevel(node_unit, params);
   if (required_feature_level > params.android_feature_level) {
@@ -77,20 +83,20 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   if (!IsNodeUnitTypeSupported(node_unit))
     return false;
 
-  if (!HasSupportedInputOutputs(initializers, node_unit, params))
+  if (!HasSupportedInputOutputs(graph_viewer, node_unit, params))
     return false;
 
   // We do not support external initializers for now
-  if (HasExternalInitializer(initializers, node_unit))
+  if (HasExternalInitializer(graph_viewer.GetAllInitializedTensors(), node_unit))
     return false;
 
   if (!HasSupportedOpSet(node_unit))
     return false;
 
-  return IsOpSupportedImpl(initializers, node_unit, params);
+  return IsOpSupportedImpl(graph_viewer, node_unit, params);
 }
 
-bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool BaseOpBuilder::HasSupportedInputOutputs(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
   // We do not support unknown(null) input shape
   auto has_supported_shape = [](const NodeArg& node_arg, const std::string& name, const std::string& op_type) {
@@ -128,12 +134,12 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
         return false;
     }
   }
-  return HasSupportedInputOutputsImpl(initializers, node_unit, params);
+
+  return HasSupportedInputOutputsImpl(graph_viewer, node_unit, params);
 }
 
-bool BaseOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-    const OpSupportCheckParams& /* params */) const {
+bool BaseOpBuilder::HasSupportedInputOutputsImpl(const GraphViewer& /* graph_viewer */, const NodeUnit& node_unit,
+                                                 const OpSupportCheckParams& /* params */) const {
   // We only check the type of input 0 by default
   // specific op builder can override this
   const auto& input = node_unit.Inputs()[0].node_arg;

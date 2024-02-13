@@ -31,8 +31,10 @@ constexpr const char* kTunableOpEnable = "tunable_op_enable";
 constexpr const char* kTunableOpTuningEnable = "tunable_op_tuning_enable";
 constexpr const char* kTunableOpMaxTuningDurationMs = "tunable_op_max_tuning_duration_ms";
 constexpr const char* kEnableSkipLayerNormStrictMode = "enable_skip_layer_norm_strict_mode";
-constexpr const char* kPreferNCHWMode = "prefer_nhwc";
-constexpr const char* KUseEPLevelUnifiedStream = "use_ep_level_unified_stream";
+constexpr const char* kPreferNHWCMode = "prefer_nhwc";
+constexpr const char* kUseEPLevelUnifiedStream = "use_ep_level_unified_stream";
+constexpr const char* kUseTF32 = "use_tf32";
+
 }  // namespace provider_option_names
 }  // namespace cuda
 
@@ -112,8 +114,9 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kEnableCudaGraph, info.enable_cuda_graph)
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConv1dPadToNc1d, info.cudnn_conv1d_pad_to_nc1d)
           .AddAssignmentToReference(cuda::provider_option_names::kEnableSkipLayerNormStrictMode, info.enable_skip_layer_norm_strict_mode)
-          .AddAssignmentToReference(cuda::provider_option_names::kPreferNCHWMode, info.prefer_nhwc)
-          .AddAssignmentToReference(cuda::provider_option_names::KUseEPLevelUnifiedStream, info.use_ep_level_unified_stream)
+          .AddAssignmentToReference(cuda::provider_option_names::kPreferNHWCMode, info.prefer_nhwc)
+          .AddAssignmentToReference(cuda::provider_option_names::kUseEPLevelUnifiedStream, info.use_ep_level_unified_stream)
+          .AddAssignmentToReference(cuda::provider_option_names::kUseTF32, info.use_tf32)
           .AddValueParser(
               cuda::provider_option_names::kTunableOpEnable,
               [&info](const std::string& value_str) -> Status {
@@ -164,8 +167,9 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_enable)},
       {cuda::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op.max_tuning_duration_ms)},
       {cuda::provider_option_names::kEnableSkipLayerNormStrictMode, MakeStringWithClassicLocale(info.enable_skip_layer_norm_strict_mode)},
-      {cuda::provider_option_names::kPreferNCHWMode, MakeStringWithClassicLocale(info.prefer_nhwc)},
-      {cuda::provider_option_names::KUseEPLevelUnifiedStream, MakeStringWithClassicLocale(info.use_ep_level_unified_stream)},
+      {cuda::provider_option_names::kPreferNHWCMode, MakeStringWithClassicLocale(info.prefer_nhwc)},
+      {cuda::provider_option_names::kUseEPLevelUnifiedStream, MakeStringWithClassicLocale(info.use_ep_level_unified_stream)},
+      {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
   };
 
   return options;
@@ -185,8 +189,9 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op_enable)},
       {cuda::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op_tuning_enable)},
       {cuda::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op_max_tuning_duration_ms)},
-      {cuda::provider_option_names::kPreferNCHWMode, MakeStringWithClassicLocale(info.prefer_nhwc)},
-      {cuda::provider_option_names::KUseEPLevelUnifiedStream, MakeStringWithClassicLocale(info.use_ep_level_unified_stream)},
+      {cuda::provider_option_names::kPreferNHWCMode, MakeStringWithClassicLocale(info.prefer_nhwc)},
+      {cuda::provider_option_names::kUseEPLevelUnifiedStream, MakeStringWithClassicLocale(info.use_ep_level_unified_stream)},
+      {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
   };
 
   return options;

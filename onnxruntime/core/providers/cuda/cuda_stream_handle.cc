@@ -212,6 +212,9 @@ void* CudaStream::GetResource(int version, int id) const {
     case CudaResource::prefer_nhwc_t:
       return reinterpret_cast<void*>(ep_info_.prefer_nhwc);
       break;
+    case CudaResource::use_tf32_t:
+      return reinterpret_cast<void*>(ep_info_.use_tf32);
+      break;
     default:
       break;
   }

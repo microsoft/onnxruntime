@@ -193,7 +193,7 @@ def output_summary(results: List[Dict[str, Any]], csv_filename: str, metric_name
 
             if row:
                 for key in key_names:
-                    row[key] = values[key] if key in values else ""
+                    row[key] = values.get(key, "")
                 csv_writer.writerow(row)
 
         csv_file.flush()
