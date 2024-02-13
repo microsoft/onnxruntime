@@ -159,13 +159,13 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TimestampLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TimestampLogitsProcessor(int eos_token_id,                  // <|endoftext|>
-                           int sot_token_id,                  // <|startoftranscript|>
-                           int translate_token_id,            // <|translate|>
-                           int transcribe_token_id,           // <|transcribe|>
-                           int solm_token_id,                 // <|startoflm|>
-                           int not_token_id,                  // <|notimestamps|>
-                           int beg_token_id,                  // <|0.00|>
+  TimestampLogitsProcessor(int eos_token_id,         // <|endoftext|>
+                           int sot_token_id,         // <|startoftranscript|>
+                           int translate_token_id,   // <|translate|>
+                           int transcribe_token_id,  // <|transcribe|>
+                           int solm_token_id,        // <|startoflm|>
+                           int not_token_id,         // <|notimestamps|>
+                           int beg_token_id,         // <|0.00|>
                            int max_initial_timestamp_index)
       : eos_token_id_(eos_token_id),
         sot_token_id_(sot_token_id),
@@ -178,7 +178,6 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override {
-
     const int batch_beam_size = next_token_scores.batch_beam_size;
     const int vocab_size = next_token_scores.vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {

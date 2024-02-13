@@ -104,7 +104,7 @@ def chain_model(args):
             to=TensorProto.FLOAT16,
         )
         graph_nodes.extend([input_features_cast_node, len_pen_cast_node, rep_pen_cast_node])
-        
+
         if args.use_temperature:
             temp_cast_node = helper.make_node(
                 "Cast",
@@ -139,13 +139,17 @@ def chain_model(args):
     beam_search_attrs = [
         helper.make_attribute("eos_token_id", config.eos_token_id),
         helper.make_attribute("pad_token_id", config.pad_token_id),
-        helper.make_attribute("decoder_start_token_id", config.decoder_start_token_id), # same as tokenizer.convert_tokens_to_ids(['<|startoftranscript|>'])[0]
-        helper.make_attribute("translate_token_id", tokenizer.convert_tokens_to_ids(['<|translate|>'])[0]),
-        helper.make_attribute("transcribe_token_id", tokenizer.convert_tokens_to_ids(['<|transcribe|>'])[0]),
-        helper.make_attribute("start_of_lm_token_id", tokenizer.convert_tokens_to_ids(['<|startoflm|>'])[0]),
-        helper.make_attribute("no_speech_token_id", tokenizer.convert_tokens_to_ids(['<|nospeech|>'])[0]) if args.output_no_speech_probs else "",
-        helper.make_attribute("no_timestamps_token_id", tokenizer.convert_tokens_to_ids(['<|notimestamps|>'])[0]),
-        helper.make_attribute("beginning_timestamp_token_id", tokenizer.convert_tokens_to_ids(['<|0.00|>'])[0]),
+        helper.make_attribute(
+            "decoder_start_token_id", config.decoder_start_token_id
+        ),  # same as tokenizer.convert_tokens_to_ids(['<|startoftranscript|>'])[0]
+        helper.make_attribute("translate_token_id", tokenizer.convert_tokens_to_ids(["<|translate|>"])[0]),
+        helper.make_attribute("transcribe_token_id", tokenizer.convert_tokens_to_ids(["<|transcribe|>"])[0]),
+        helper.make_attribute("start_of_lm_token_id", tokenizer.convert_tokens_to_ids(["<|startoflm|>"])[0]),
+        helper.make_attribute("no_speech_token_id", tokenizer.convert_tokens_to_ids(["<|nospeech|>"])[0])
+        if args.output_no_speech_probs
+        else "",
+        helper.make_attribute("no_timestamps_token_id", tokenizer.convert_tokens_to_ids(["<|notimestamps|>"])[0]),
+        helper.make_attribute("beginning_timestamp_token_id", tokenizer.convert_tokens_to_ids(["<|0.00|>"])[0]),
         helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         helper.make_attribute("early_stopping", True),
         helper.make_attribute("model_type", 2),
@@ -178,30 +182,30 @@ def chain_model(args):
         "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
     )
     logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
-    cross_qk_layer_head = helper.make_tensor_value_info(
-        "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head", 2]
-    )
+    cross_qk_layer_head = helper.make_tensor_value_info("cross_qk_layer_head", TensorProto.INT32, ["num_layer_head", 2])
     extra_decoding_ids = helper.make_tensor_value_info(
         "extra_decoding_ids", TensorProto.INT32, ["batch_size", "extra_decoding_ids_len"]
     )
     temperature = helper.make_tensor_value_info("temperature", TensorProto.FLOAT, [1])
-    
-    graph_inputs = clean_list([
-        input_features,
-        max_length,
-        min_length,
-        num_beams,
-        num_return_sequences,
-        length_penalty,
-        repetition_penalty,
-        vocab_mask if args.use_vocab_mask else "",
-        prefix_vocab_mask if args.use_prefix_vocab_mask else "",
-        decoder_input_ids if args.use_forced_decoder_ids else "",
-        logits_processor if args.use_logits_processor else "",
-        cross_qk_layer_head if args.collect_cross_qk else "",
-        extra_decoding_ids if args.extra_decoding_ids else "",
-        temperature if args.use_temperature else "",
-    ])
+
+    graph_inputs = clean_list(
+        [
+            input_features,
+            max_length,
+            min_length,
+            num_beams,
+            num_return_sequences,
+            length_penalty,
+            repetition_penalty,
+            vocab_mask if args.use_vocab_mask else "",
+            prefix_vocab_mask if args.use_prefix_vocab_mask else "",
+            decoder_input_ids if args.use_forced_decoder_ids else "",
+            logits_processor if args.use_logits_processor else "",
+            cross_qk_layer_head if args.collect_cross_qk else "",
+            extra_decoding_ids if args.extra_decoding_ids else "",
+            temperature if args.use_temperature else "",
+        ]
+    )
 
     # Graph outputs
     sequences = helper.make_tensor_value_info(
@@ -216,13 +220,15 @@ def chain_model(args):
     )
     no_speech_probs = helper.make_tensor_value_info("no_speech_probs", TensorProto.FLOAT, ["batch_size"])
 
-    graph_outputs = clean_list([
-        sequences,
-        sequence_scores if args.output_sequence_scores else "",
-        scores if args.output_scores else "",
-        cross_qk if args.output_cross_qk or (not args.cross_qk_onnx_model and args.collect_cross_qk) else "",
-        no_speech_probs if args.output_no_speech_probs else "",
-    ])
+    graph_outputs = clean_list(
+        [
+            sequences,
+            sequence_scores if args.output_sequence_scores else "",
+            scores if args.output_scores else "",
+            cross_qk if args.output_cross_qk or (not args.cross_qk_onnx_model and args.collect_cross_qk) else "",
+            no_speech_probs if args.output_no_speech_probs else "",
+        ]
+    )
 
     # Replace MultiHeadAttention with DecoderMaskedMultiHeadAttention for CUDA EP inference
     if hasattr(args, "use_gpu") and args.use_gpu:

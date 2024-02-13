@@ -363,7 +363,7 @@ class WhisperHelper:
         ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)[0]
 
         parity = (
-            pt_transcription in expected_transcription_no_comma and ort_transcription in expected_transcription_with_comma
+            pt_transcription in expected_transcription_options and ort_transcription in expected_transcription_options
         )
         max_diff = 0
 

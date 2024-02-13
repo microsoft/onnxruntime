@@ -17,7 +17,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
 MinLengthLogitsProcessor<T>::MinLengthLogitsProcessor(int min_length, int eos_token_id)

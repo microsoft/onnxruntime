@@ -186,7 +186,7 @@ def parse_arguments(argv=None):
         help="Use prefix_vocab_mask as an extra graph input to enable specific logits processing",
     )
     optional_inputs.set_defaults(use_prefix_vocab_mask=False)
-    
+
     optional_inputs.add_argument(
         "-f",
         "--use_forced_decoder_ids",
@@ -238,7 +238,7 @@ def parse_arguments(argv=None):
     )
 
     #############################################################
-    # Optional outputs for Whisper    
+    # Optional outputs for Whisper
     # (listed below in the order that WhisperBeamSearch expects)
     #############################################################
 
@@ -281,7 +281,7 @@ def parse_arguments(argv=None):
         help="Beam search model output no speech probs which is computed from the encoder/context-decoder graph.",
     )
     optional_outputs.set_defaults(output_no_speech_probs=False)
-    
+
     ###################################
     # Quantization options for Whisper
     ###################################
