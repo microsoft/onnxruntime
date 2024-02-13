@@ -5743,12 +5743,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>beginning_timestamp_token_id</tt> : int (required)</dt>
+<dd>The id of the first timestamp</dd>
 <dt><tt>decoder</tt> : graph (required)</dt>
 <dd>Decoder subgraph to execute in a loop.</dd>
 <dt><tt>decoder_output_cross_qk</tt> : int</dt>
 <dd>If nozero, decoder subgraph contains output Q*K from cross attentions. Default 0.</dd>
 <dt><tt>decoder_start_token_id</tt> : int</dt>
-<dd>The id of the token that indicates decoding starts.</dd>
+<dd>The id of the token that indicates decoding starts (i.e. the start of transcription token id)</dd>
 <dt><tt>early_stopping</tt> : int</dt>
 <dd>early stop or not</dd>
 <dt><tt>encoder</tt> : graph</dt>
@@ -5761,10 +5763,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Must be 2 for whisper</dd>
 <dt><tt>no_repeat_ngram_size</tt> : int</dt>
 <dd>no repeat ngrams size</dd>
-<dt><tt>no_speech_token</tt> : int</dt>
+<dt><tt>no_speech_token_id</tt> : int</dt>
 <dd>The token in whisper model that marks all sequence empty. With this model, whisper could output no_speech_prob after. Default -1.</dd>
+<dt><tt>no_timestamps_token_id</tt> : int (required)</dt>
+<dd>The id of the token that indicates no timestamps</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
+<dt><tt>start_of_lm_token_id</tt> : int (required)</dt>
+<dd>The id of the token that indicates LM starts</dd>
+<dt><tt>transcribe_token_id</tt> : int (required)</dt>
+<dd>The id of the transcribe task</dd>
+<dt><tt>translate_token_id</tt> : int (required)</dt>
+<dd>The id of the translate task</dd>
 <dt><tt>vocab_size</tt> : int</dt>
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
@@ -5816,7 +5826,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>cross_qk</tt> (optional) : V</dt>
 <dd>Output the accumulated stacked Q*K in cross attentions. Let H = number of Head of cross attention, F = the frames or kv-seq-len of the cross attention input, T = real decoded token length, L = number of layers,B = batch size, R = num_return_sequences. It then should return tensor of shape [B, R, L*H, T, F].If cross_qk_layer_head is given, shape is [B, R, cross_qk_layer_head.shape[0], T, F]</dd>
 <dt><tt>non_speech_probs</tt> (optional) : T</dt>
-<dd>For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token.Currently we treat the last token's logits is what we need, in future extra graph logic may be add to the encoder/context-decoder subgraph.The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]</dd>
+<dd>For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token_id.Currently we treat the last token's logits is what we need, in future extra graph logic may be add to the encoder/context-decoder subgraph.The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]</dd>
 </dl>
 
 #### Type Constraints
