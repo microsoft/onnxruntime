@@ -376,8 +376,7 @@ _export = wrap_custom_export_function(_export_pt_1_10)
 
 def post_process_enabling_autograd_function(exported_model: ModelProto) -> ModelProto:
     # Loop all PythonOp, append "_ctx" as the first output.
-    index = 0
-    for node in exported_model.graph.node:
+    for index, node in enumerate(exported_model.graph.node):
         op_name_prefix = node.op_type
         if node.domain == "com.microsoft" and node.op_type == "PythonOp":
             output_names = list(node.output)
@@ -391,7 +390,6 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
                     break
 
             node.name = f"{op_name_prefix}_id_{index}"
-        index += 1
 
     return exported_model
 

@@ -69,11 +69,10 @@ class GemmOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
-  bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+  bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                    const OpSupportCheckParams& params) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
@@ -261,21 +260,20 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related
 
-bool GemmOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+bool GemmOpBuilder::HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                                 const OpSupportCheckParams& params) const {
   if (!IsQuantizedOp(node_unit)) {
-    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(graph_viewer, node_unit, params);
   }
 
   // QLinearMatMul/QDQGemm/QDQMatMul
   if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, ArgType::kInput))
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0, 1}, params, ArgType::kInput))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput))
     return false;
 
   return true;
@@ -295,7 +293,7 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedGemm(GetQuantizedOpType(node_unit));
 }
 
-bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool GemmOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                       const OpSupportCheckParams& params) const {
   // check batch matmul first, then fall back to checking single gemm/matmul
   {
@@ -355,8 +353,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
       return false;
     }
 
-    if (transB == 0 && !Contains(initializers, inputs[1].node_arg.Name())) {
-      LOGS_DEFAULT(VERBOSE) << "B of Gemm must be known if transB != 1";
+    if (transB == 0 && !graph_viewer.GetConstantInitializer(inputs[1].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "B of Gemm must be a constant initializer if transB != 1";
       return false;
     }
 
@@ -380,8 +378,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
     }
   } else if (op_type == "MatMul" || is_qlinear_matmul) {
     // Only support A*B B is an initializer
-    if (!Contains(initializers, inputs[1].node_arg.Name())) {
-      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
+    if (!graph_viewer.GetConstantInitializer(inputs[1].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be a constant initializer";
       return false;
     }
   } else {
@@ -389,8 +387,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
   }
 
   if (is_quant_gemm) {
-    if (inputs.size() > 2 && !Contains(initializers, inputs[2].node_arg.Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Bias of QDQ Gemm must be known";
+    if (inputs.size() > 2 && !graph_viewer.GetConstantInitializer(inputs[2].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Bias of QDQ Gemm must be a constant initializer";
       return false;
     }
   }

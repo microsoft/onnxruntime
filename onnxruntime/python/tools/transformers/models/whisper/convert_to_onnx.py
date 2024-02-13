@@ -47,6 +47,15 @@ def parse_arguments(argv=None):
     )
 
     conversion_args.add_argument(
+        "--model_impl",
+        required=False,
+        default="hf",
+        choices=["hf", "openai"],
+        type=str,
+        help="Select implementation for export of encoder and decoder subgraphs",
+    )
+
+    conversion_args.add_argument(
         "--cache_dir",
         required=False,
         type=str,
@@ -318,6 +327,7 @@ def parse_arguments(argv=None):
 
 def export_onnx_models(
     model_name_or_path,
+    model_impl,
     cache_dir,
     output_dir,
     use_gpu,
@@ -339,7 +349,7 @@ def export_onnx_models(
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
     models = WhisperHelper.load_model(
-        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, state_dict_path
+        model_name_or_path, model_impl, cache_dir, device, merge_encoder_and_decoder_init, state_dict_path
     )
     config = models["decoder"].config
 
@@ -448,6 +458,7 @@ def main(argv=None):
 
     output_paths = export_onnx_models(
         args.model_name_or_path,
+        args.model_impl,
         cache_dir,
         output_dir,
         args.use_gpu,

@@ -4,6 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import copy
 import logging
 import os
 import tempfile
@@ -19,6 +20,7 @@ from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig
 from whisper_decoder import WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderInputs
+from whisper_openai_helper import WhisperDecoderInitOpenai
 
 from onnxruntime import InferenceSession
 
@@ -34,11 +36,16 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         decoder: torch.nn.Module,
         config: WhisperConfig,
         decoder_start_token_id: Optional[int] = None,
+        model_impl: str = "hf",
+        model: torch.nn.Module = None,
     ):
         super().__init__()
         self.config = config
-        self.whisper_encoder = WhisperEncoder(encoder, config)
+        self.whisper_encoder = WhisperEncoder(encoder, config, model_impl=model_impl)
         self.whisper_decoder_init = WhisperDecoderInit(decoder, config, decoder_start_token_id)
+        if model is not None:
+            self.whisper_decoder_openai_init = WhisperDecoderInitOpenai(model, decoder)
+        self.model_impl = model_impl
 
     def forward(
         self,
@@ -47,9 +54,14 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
     ):
         encoder_hidden_states: torch.FloatTensor = self.whisper_encoder(encoder_input_ids)
         # Decoder out: (logits, past_key_values, encoder_hidden_state)
-        decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_hidden_states)
-        present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(decinit_out[1])
-        present = present_self + present_cross
+        if self.model_impl == "openai":
+            encoder_hidden_states.unsqueeze(0)
+            decinit_out, present = self.whisper_decoder_openai_init(decoder_input_ids, encoder_hidden_states)
+            return decinit_out, encoder_hidden_states, present
+        else:
+            decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_hidden_states)
+            present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(decinit_out[1])
+            present = present_self + present_cross
         return decinit_out[0], encoder_hidden_states, present
 
 
@@ -72,7 +84,6 @@ class WhisperEncoderDecoderInitInputs:
             sequence_length=3000,
             feature_size=config.num_mel_bins,
             device=device,
-            use_int32_inputs=use_int32_inputs,
         )
         decoder_input_ids = None
         if use_decoder_input_ids:
@@ -120,7 +131,9 @@ class WhisperEncoderDecoderInitHelper:
         )
         input_list = inputs.to_list()
 
-        out = model(inputs.encoder_input_ids, inputs.decoder_input_ids)
+        # TODO : Investigate whether copy of model if needed
+        cloned_model = copy.deepcopy(model).to(device)
+        out = cloned_model(inputs.encoder_input_ids, inputs.decoder_input_ids)
         present = out[2]
         present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
 

@@ -361,7 +361,8 @@ class TestBeamSearchWhisper(unittest.TestCase):
 
         # INT8 CPU
         arguments = self.base_arguments + self.int8_cpu_arguments + optional_arguments
-        self.run_export(arguments)
+        if "--model_impl" not in arguments:
+            self.run_export(arguments)
 
     @pytest.mark.slow
     def test_required_args(self):
@@ -393,6 +394,11 @@ class TestBeamSearchWhisper(unittest.TestCase):
             "--output_no_speech_probs",
         ]
         self.run_configs(cross_qk_input_args + cross_qk_output_args)
+
+    @pytest.mark.slow
+    def test_openai_impl_whisper(self):
+        optional_args = ["--model_impl", "openai", "--chain_model", "--use_whisper_beamsearch"]
+        self.run_configs(optional_args)
 
 
 if __name__ == "__main__":

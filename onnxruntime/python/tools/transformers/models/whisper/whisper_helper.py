@@ -22,9 +22,9 @@ from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncod
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from optimizer import optimize_model  # noqa: E402
+from float16 import float_to_float16_max_diff
+from onnx_model import OnnxModel
+from optimizer import optimize_model
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +74,48 @@ class WhisperHelper:
         return os.path.join(directory, model_name + ".onnx")
 
     @staticmethod
+    def load_model_openai(
+        model_name_or_path: str,
+        cache_dir: str,
+        device: torch.device,
+    ) -> torch.nn.Module:
+        """Load model given a pretrained name or path, then build models for ONNX conversion.
+
+        Args:
+            model_name_or_path (str): pretrained model name or path
+            cache_dir (str): cache directory
+            device (torch.device): device to run the model
+            merge_encoder_and_decoder_init (bool, optional): Whether merge encoder and decoder initialization into one ONNX model. Defaults to True.
+        Returns:
+            Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
+        """
+        from whisper import _ALIGNMENT_HEADS, _MODELS, _download
+        from whisper.model import ModelDimensions, Whisper
+
+        in_memory = False
+
+        model_name = model_name_or_path.split("/")[-1][8:]
+        checkpoint_file, alignment_heads = None, None
+        if model_name in _MODELS:
+            checkpoint_file = _download(_MODELS[model_name], cache_dir, in_memory)
+            alignment_heads = _ALIGNMENT_HEADS[model_name]
+
+        with open(checkpoint_file, "rb") as fp:
+            checkpoint = torch.load(fp, map_location=device)
+        del checkpoint_file
+
+        dims = ModelDimensions(**checkpoint["dims"])
+        model = Whisper(dims)
+        model.load_state_dict(checkpoint["model_state_dict"])
+
+        if alignment_heads is not None:
+            model.set_alignment_heads(alignment_heads)
+        return model.to(device)
+
+    @staticmethod
     def load_model(
         model_name_or_path: str,
+        model_impl: str,
         cache_dir: str,
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
@@ -95,18 +135,29 @@ class WhisperHelper:
         if version.parse(transformers_version) >= version.parse("4.36.0"):
             extra_kwargs["attn_implementation"] = "eager"
         model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir, **extra_kwargs)
+
+        if model_impl == "openai":
+            openai_model = WhisperHelper.load_model_openai(model_name_or_path, cache_dir, device)
+            model_encoder, model_decoder = openai_model.encoder, openai_model.decoder
+            passed_model = openai_model
+        else:
+            model_encoder, model_decoder = model, model
+            passed_model = None
+
         if state_dict_path:
             model.load_state_dict(torch.load(state_dict_path), strict=False)
 
-        decoder = WhisperDecoder(model, model.config)
+        decoder = WhisperDecoder(model_decoder, model.config, model_impl=model_impl, model=passed_model)
         decoder.eval().to(device)
 
         if merge_encoder_and_decoder_init:
             encoder_decoder_init = WhisperEncoderDecoderInit(
-                model,
-                model,
+                model_encoder,
+                model_decoder,
                 model.config,
                 decoder_start_token_id=None,
+                model_impl=model_impl,
+                model=passed_model,
             )
             return {"encoder_decoder_init": encoder_decoder_init, "decoder": decoder}
         else:
@@ -291,7 +342,7 @@ class WhisperHelper:
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
 
-        from datasets import load_dataset  # noqa: F811
+        from datasets import load_dataset
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
