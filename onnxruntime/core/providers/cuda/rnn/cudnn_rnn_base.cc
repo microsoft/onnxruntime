@@ -5,8 +5,6 @@
 #include "cudnn_rnn_base.h"
 #include "rnn_impl.h"
 
-#if (CUDNN_MAJOR >= 8)
-
 namespace onnxruntime {
 namespace cuda {
 
@@ -14,9 +12,6 @@ template <typename T>
 Status CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
                                       const cudnnRNNDescriptor_t rnn_desc,
                                       const int pseudo_layer,
-                                      const cudnnTensorDescriptor_t x_desc,
-                                      const cudnnFilterDescriptor_t w_desc,
-                                      const cudnnFilterDescriptor_t filter_desc,
                                       size_t reorganized_w_data_size,
                                       const void* reorganized_w_data,
                                       const int lin_layer_id,
@@ -53,8 +48,6 @@ Status CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
 template <typename T>
 Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
                                               const cudnnRNNDescriptor_t rnn_desc,
-                                              const cudnnTensorDescriptor_t x_desc,
-                                              const cudnnFilterDescriptor_t w_desc,
                                               size_t reorganized_w_data_size,
                                               void* reorganized_w_data,
                                               const T* W_data,
@@ -64,18 +57,17 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
   int w_offset = 0;
   int r_offset = 0;
   int bias_offset = 0;
-  CudnnFilterDescriptor filter_desc;
   for (int layer = 0; layer < RNN_NUM_LAYERS * num_directions_; ++layer) {
     for (size_t idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
-      ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, W_lin_layer_id_[idx], W_data, w_offset, true, cuda_stream));
+      ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, reorganized_w_data_size, reorganized_w_data, W_lin_layer_id_[idx], W_data, w_offset, true, cuda_stream));
       if (B_data != nullptr) {
-        ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, W_lin_layer_id_[idx], B_data, bias_offset, false, cuda_stream));
+        ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, reorganized_w_data_size, reorganized_w_data, W_lin_layer_id_[idx], B_data, bias_offset, false, cuda_stream));
       }
     }
     for (size_t idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
-      ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, R_lin_layer_id_[idx], R_data, r_offset, true, cuda_stream));
+      ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, reorganized_w_data_size, reorganized_w_data, R_lin_layer_id_[idx], R_data, r_offset, true, cuda_stream));
       if (B_data != nullptr) {
-        ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data_size, reorganized_w_data, R_lin_layer_id_[idx], B_data, bias_offset, false, cuda_stream));
+        ORT_RETURN_IF_ERROR(SetWeightBias(cudnn_handle, rnn_desc, layer, reorganized_w_data_size, reorganized_w_data, R_lin_layer_id_[idx], B_data, bias_offset, false, cuda_stream));
       }
     }
   }
@@ -105,10 +97,6 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   TensorShapeVector dims_w({w_size, 1, 1});
   ORT_RETURN_IF_ERROR(target_w_desc.Set(dims_w, CudnnTensor::GetDataType<CudaT>()));
 
-  TensorShapeVector fake_dims_x({1, input_size, 1});
-  CudnnTensor fake_x_desc;
-  ORT_RETURN_IF_ERROR(fake_x_desc.Set(fake_dims_x, CudnnTensor::GetDataType<CudaT>()));
-
   // Prepare the weight data
   reorganized_w_data_size_in_bytes = w_size * sizeof(T);
   reorganized_w_data = GetScratchBuffer<void>(reorganized_w_data_size_in_bytes, ort_stream);
@@ -129,7 +117,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
 
   auto* ort_cuda_stream = dynamic_cast<CudaStream*>(ort_stream);
   cudnnHandle_t cudnn_handle = ort_cuda_stream ? ort_cuda_stream->cudnn_handle_ : DefaultCudnnHandle();
-  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(cudnn_handle, rnn_desc, fake_x_desc, target_w_desc,
+  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(cudnn_handle, rnn_desc,
                                             reorganized_w_data_size_in_bytes, reorganized_w_data.get(), W_data, R_data, B_data, cuda_stream));
 
   return Status::OK();
@@ -151,8 +139,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   if (get_W && get_R) {
     CudnnRNN tmp_rnn_desc;
     auto proj_size = hidden_size_;
-    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(DefaultCudnnHandle(),
-                                         input_size_,
+    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(input_size_,
                                          hidden_size_,
                                          proj_size,
                                          RNN_NUM_LAYERS,
@@ -160,8 +147,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
                                          cudnn_direction_mode_,
                                          rnn_mode_,
                                          has_bias,
-                                         CudnnTensor::GetDataType<CudaT>(),
-                                         GetDeviceProp()));
+                                         CudnnTensor::GetDataType<CudaT>()));
     if (get_B) {
       ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_size_in_bytes_, w_data_cache_, w_desc_cache_, tmp_rnn_desc, nullptr));
     } else {
@@ -272,8 +258,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   bool has_bias = B != nullptr;
 
   CudnnRNN rnn_desc;
-  ORT_RETURN_IF_ERROR(rnn_desc.Set(GetCudnnHandle(ctx),
-                                   input_size,
+  ORT_RETURN_IF_ERROR(rnn_desc.Set(input_size,
                                    hidden_size_,
                                    proj_size,
                                    RNN_NUM_LAYERS,
@@ -281,8 +266,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                    cudnn_direction_mode_,
                                    rnn_mode_,
                                    has_bias,
-                                   CudnnTensor::GetDataType<CudaT>(),
-                                   GetDeviceProp()));
+                                   CudnnTensor::GetDataType<CudaT>()));
 
   // Prepare the weight data
   size_t w_data_size_in_bytes;
@@ -422,5 +406,3 @@ template class CudnnRnnBase<MLFloat16>;
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif  // CUDNN_MAJOR

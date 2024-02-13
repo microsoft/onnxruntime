@@ -7,8 +7,6 @@
 
 #include <cudnn.h>
 
-#if (CUDNN_MAJOR >= 8)
-
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 
@@ -40,9 +38,9 @@ class CudnnRNN {
     }
   }
 
-  Status Set(const cudnnHandle_t& cudnnHandle, int64_t input_size, int64_t hidden_size, int64_t proj_size, int num_layers,
+  Status Set(int64_t input_size, int64_t hidden_size, int64_t proj_size, int num_layers,
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
-             cudnnRNNMode_t rnn_mode, bool has_bias, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
+             cudnnRNNMode_t rnn_mode, bool has_bias, cudnnDataType_t dataType) {
     if (!cudnn_rnn_desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
 
@@ -123,8 +121,6 @@ class CudnnRnnBase : public CudaKernel {
  private:
   Status SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
                                const cudnnRNNDescriptor_t rnn_desc,
-                               const cudnnTensorDescriptor_t x_desc,
-                               const cudnnFilterDescriptor_t w_desc,
                                size_t w_data_size,
                                void* w_data,
                                const T* W_data,
@@ -142,9 +138,6 @@ class CudnnRnnBase : public CudaKernel {
   Status SetWeightBias(const cudnnHandle_t handle,
                        const cudnnRNNDescriptor_t rnn_desc,
                        const int pseudo_layer,
-                       const cudnnTensorDescriptor_t x_desc,
-                       const cudnnFilterDescriptor_t w_desc,
-                       const cudnnFilterDescriptor_t filter_desc,
                        size_t w_data_size,
                        const void* w_data,
                        const int lin_layer_id,
@@ -194,5 +187,3 @@ class CudnnRnnBase : public CudaKernel {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif  // CUDNN_MAJOR
