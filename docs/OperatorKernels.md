@@ -355,7 +355,7 @@ Do not modify directly.*
 |||[6, 12]|**T** = tensor(double), tensor(float)|
 |Sign|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[9, 12]|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
-|SimplifiedLayerNormalization|*in* X:**T**<br> *in* scale:**V**<br> *out* Y:**V**<br> *out* inv_std_var:**U**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float)<br/> **U** = tensor(double), tensor(float)<br/> **V** = tensor(double), tensor(float)|
+|SimplifiedLayerNormalization|*in* X:**T**<br> *in* scale:**V**<br> *out* Y:**V**<br> *out* inv_std_var:**U**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float)<br/> **U** = tensor(bfloat16), tensor(double), tensor(float)<br/> **V** = tensor(double), tensor(float)|
 |Sin|*in* input:**T**<br> *out* output:**T**|7+|**T** = tensor(double), tensor(float)|
 |Sinh|*in* input:**T**<br> *out* output:**T**|9+|**T** = tensor(float)|
 |Size|*in* data:**T**<br> *out* size:**T1**|19+|**T** = tensor(bool), tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(int64)|
