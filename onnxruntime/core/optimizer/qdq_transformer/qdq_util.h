@@ -38,6 +38,18 @@ bool IsQDQPairSupported(
     const GetConstantInitializerFn& get_const_initializer,
     const Path& model_path);
 
+// Check if a DQ -> Q sequence represents a conversion in quantization data type.
+// Example of uint8 to uint16:
+//     Dequantize (uint8 to float) -> Quantize (float to uint16)
+// Requires:
+// 1. Q/DQ doesn't have optional input.
+// 2. scale and zero-point are constant scalars.
+// 3. Q and DQ have the same scale *type* and different zero-point *types*.
+bool IsDQQConversion(
+    const Node& dq_node, const Node& q_node,
+    const GetConstantInitializerFn& get_const_initializer,
+    const Path& model_path);
+
 // Check if DQ is supported in extended level QDQ transformers. It requires:
 // 1. DQ doesn't have optional input.
 // 2. scale and zero point is constant scalar
