@@ -138,7 +138,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 
 namespace {
 void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_type,
-                       std::optional<const gsl::span<const int64_t>> shape) {
+                       std::optional<gsl::span<const int64_t>> shape) {
   tensor_type.set_datatype(data_type);
   if (shape) {
     tensor_type.set_rank(shape->size());
@@ -168,38 +168,38 @@ void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_
 }
 
 template <typename T1, typename T2 = T1>
-void CopyDataToTensorValue(MILSpec::TensorValue& tensor_value, const gsl::span<const T1> data) {
+void CopyDataToTensorValue(MILSpec::TensorValue& tensor_value, gsl::span<const T1> data) {
   // need a 'false' that is dependent on the template types to make gcc happy and give a meaningful error message.
   static_assert(false_for_T<T1> && false_for_T<T2>, "Unsupported data type");  // add specializations below as needed
 }
 
 template <>
-void CopyDataToTensorValue<float>(MILSpec::TensorValue& tensor_value, const gsl::span<const float> data) {
+void CopyDataToTensorValue<float>(MILSpec::TensorValue& tensor_value, gsl::span<const float> data) {
   tensor_value.mutable_floats()->mutable_values()->Add(data.begin(), data.end());
 }
 
 template <>
-void CopyDataToTensorValue<int32_t>(MILSpec::TensorValue& tensor_value, const gsl::span<const int32_t> data) {
+void CopyDataToTensorValue<int32_t>(MILSpec::TensorValue& tensor_value, gsl::span<const int32_t> data) {
   tensor_value.mutable_ints()->mutable_values()->Add(data.begin(), data.end());
 }
 
 template <>
-void CopyDataToTensorValue<std::string>(MILSpec::TensorValue& tensor_value, const gsl::span<const std::string> data) {
+void CopyDataToTensorValue<std::string>(MILSpec::TensorValue& tensor_value, gsl::span<const std::string> data) {
   tensor_value.mutable_strings()->mutable_values()->Add(data.begin(), data.end());
 }
 
 // copy int64_t (used by ONNX for strides/indexes/etc.) to int32_t (used by CoreML)
 template <>
-void CopyDataToTensorValue<int64_t, int32_t>(MILSpec::TensorValue& tensor_value, const gsl::span<const int64_t> data) {
+void CopyDataToTensorValue<int64_t, int32_t>(MILSpec::TensorValue& tensor_value, gsl::span<const int64_t> data) {
   auto& int32_out = *tensor_value.mutable_ints()->mutable_values();
   int32_out.Reserve(narrow<int32_t>(data.size()));
   for (const int64_t v : data) {
     int32_out.AddAlreadyReserved(narrow<int32_t>(v));
   }
-};
+}
 
 template <>
-void CopyDataToTensorValue<bool>(MILSpec::TensorValue& tensor_value, const gsl::span<const bool> data) {
+void CopyDataToTensorValue<bool>(MILSpec::TensorValue& tensor_value, gsl::span<const bool> data) {
   tensor_value.mutable_bools()->mutable_values()->Add(data.begin(), data.end());
 }
 
@@ -245,7 +245,7 @@ MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
 
 template <typename T1, typename T2>
 MILSpec::Value CreateTensorValue(const gsl::span<const T1> data,
-                                 std::optional<const gsl::span<const int64_t>> shape) {
+                                 std::optional<gsl::span<const int64_t>> shape) {
   MILSpec::Value value;
   MILSpec::TensorType& tensor_type = *value.mutable_type()->mutable_tensortype();
 
@@ -271,8 +271,8 @@ MILSpec::Value CreateScalarTensorValue(const T& data) {
 }
 
 // explicit specializations for types we handle so the implementation can be in the .cc file
-template MILSpec::Value CreateTensorValue<int64_t, int32_t>(const gsl::span<const int64_t> data,
-                                                            std::optional<const gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<int64_t, int32_t>(gsl::span<const int64_t> data,
+                                                            std::optional<gsl::span<const int64_t>> shape);
 
 template MILSpec::Value CreateScalarTensorValue(const float& data);
 template MILSpec::Value CreateScalarTensorValue(const int32_t& data);

@@ -101,11 +101,11 @@ COREML_SPEC::MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type);
 /// <typeparam name="T1">Original C++ data type</typeparam>
 /// <typeparam name="T2">CoreML C++ data type</typeparam>
 /// <param name="data">ONNX data</param>
-/// <param name="shape">ONNX data shape. Inferred if not specified.</param>
+/// <param name="shape">ONNX data shape. Inferred to be a 1D shape of `{data.size()}` if not specified.</param>
 /// <returns>TensorValue containing data.</returns>
 template <typename T1, typename T2 = T1>
-COREML_SPEC::MILSpec::Value CreateTensorValue(const gsl::span<const T1> data,
-                                              std::optional<const gsl::span<const int64_t>> shape = std::nullopt);
+COREML_SPEC::MILSpec::Value CreateTensorValue(gsl::span<const T1> data,
+                                              std::optional<gsl::span<const int64_t>> shape = std::nullopt);
 
 template <typename T>
 COREML_SPEC::MILSpec::Value CreateScalarTensorValue(const T& data);

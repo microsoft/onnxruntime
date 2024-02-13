@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "onnxruntime_config.h"
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 
@@ -12,12 +14,9 @@
 // In file included from _deps/protobuf-src/src/google/protobuf/extension_set.h:53:
 // _deps/protobuf-src/src/google/protobuf/parse_context.h:328:47:
 //     error: implicit conversion loses integer precision: 'long' to 'int' [-Werror,-Wshorten-64-to-32]
-#if defined(__has_warning)
-#if __has_warning("-Wshorten-64-to-32")
+#ifdef HAS_SHORTEN_64_TO_32
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
-#endif  // defined(__has_warning)
-
 #endif
 
 // Model.pb.h is generated in the build output directory from the CoreML protobuf files in
