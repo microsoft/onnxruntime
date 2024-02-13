@@ -809,6 +809,20 @@ def upsample_nearest2d(g, input, output_size, scale_factors):
 def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
 
+
+@register_symbolic("upsample_bicubic2d")
+def upsample_bicubic2d(g, input, output_size, align_corners, scale_factors):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        align_corners,
+        scale_factors,
+        operator_s="upsample_bicubic2d",
+        overload_name_s="vec",
+    )
+
+ 
 @register_symbolic("layer_norm")
 @parse_args("v", "is", "v", "v", "f", "none")
 def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
@@ -831,3 +845,4 @@ def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
     )
 
     return res
+  

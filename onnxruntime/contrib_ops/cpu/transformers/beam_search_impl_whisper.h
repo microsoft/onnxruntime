@@ -226,7 +226,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     cpu_state.sequences.InitDevice(beam_state.sequences_device);
     ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(beam_state.sequences_device.subspan(0, beam_state.sequences_device.size() / 2),
                                                       cpu_state.sequences_space.subspan(0, cpu_state.sequences_space.size() / 2),
-                                                      nullptr,
+                                                      this->ort_stream_,
                                                       DeviceCopyDirection::hostToDevice));
   }
 

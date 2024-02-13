@@ -49,8 +49,9 @@ const createLayerNormProgramInfo =
       const components = getMaxComponents(normSize);
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: normCount}, {type: 'float32', data: normSize},
-        {type: 'uint32', data: Math.floor(normSize / components)}, {type: 'float32', data: attributes.epsilon}
+        {type: DataType.uint32, data: normCount}, {type: DataType.float, data: normSize},
+        {type: DataType.uint32, data: Math.floor(normSize / components)},
+        {type: DataType.float, data: attributes.epsilon}
       ];
       if (bias) {
         inputDependencies.push('type');

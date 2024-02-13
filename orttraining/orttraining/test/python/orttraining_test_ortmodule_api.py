@@ -1805,6 +1805,34 @@ def test_resize_grad_correctness_bilinear_2d(interpolate_size_scale, align_corne
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
+def test_aten_upsample_bicubic():
+    class _NeuralNetUpsampleBicubic(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, input):
+            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bicubic")
+
+    device = "cuda"
+    pt_model = _NeuralNetUpsampleBicubic().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = torch.randn([2, 4, 6, 8], dtype=torch.float, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
 def test_gradient_correctness_cast_chain():
     class NeuralNetCast(torch.nn.Module):
         def __init__(self, D):
@@ -6400,7 +6428,7 @@ def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_sea
     reason="This test fail because bert forward loss is nan in updated transformers lib, disable for now."
 )
 def test_bert_result_with_layerwise_recompute():
-    original_val = os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ else None
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
     # Create PyTorch model with dropout disabled.
     pt_model = _get_bert_for_sequence_classification_model(
         "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0

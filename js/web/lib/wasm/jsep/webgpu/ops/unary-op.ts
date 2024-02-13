@@ -53,7 +53,7 @@ const createElementwiseProgramInfo =
         dispatchGroup:
             {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
         programUniforms: [
-          {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
+          {type: DataType.uint32, data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
         ],
       })
     });
@@ -178,7 +178,7 @@ export const elu = (context: ComputeContext, attributes: AlphaAttributes): void 
       attributes.cacheKey));
 };
 
-export const erfImpl = (dataType: string, varType = 'f32') => `
+export const erfImpl = (varType = 'f32') => `
 const r0: ${varType} = 0.3275911;
 const r1: ${varType} = 0.254829592;
 const r2: ${varType} = -0.284496736;
@@ -186,7 +186,7 @@ const r3: ${varType} = 1.421413741;
 const r4: ${varType} = -1.453152027;
 const r5: ${varType} = 1.061405429;
 
-fn erf_vf32(v: ${dataType}) -> ${dataType} {
+fn erf_vf32(v: vec4<${varType}>) -> vec4<${varType}> {
   let absv = abs(v);
   let x = 1.0 / (1.0 + r0 * absv);
   return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
@@ -194,8 +194,7 @@ fn erf_vf32(v: ${dataType}) -> ${dataType} {
 
 export const erf = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'Erf', a => `erf_vf32(${a})`, erfImpl(`vec4<${dataType}>`, dataType)));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, erfImpl(dataType)));
 };
 
 export const exp = (context: ComputeContext): void => {
@@ -209,8 +208,7 @@ export const floor = (context: ComputeContext): void => {
 export const gelu = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
   context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'Gelu', a => `0.5 * ${a} * (1.0 + erf_vf32(${a} * 0.7071067811865475))`,
-      erfImpl(`vec4<${dataType}>`, dataType)));
+      context.inputs[0], 'Gelu', a => `0.5 * ${a} * (1.0 + erf_vf32(${a} * 0.7071067811865475))`, erfImpl(dataType)));
 };
 
 export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes): void => {
@@ -278,10 +276,31 @@ export const tan = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfo(context.inputs[0], 'Tan', 'tan'));
 };
 
+export const tanhExpression = (a: string) => `sign(${a}) * (1 - exp(-2 * abs(${a}))) / (1 + exp(-2 * abs(${a})))`;
+
 export const tanh = (context: ComputeContext): void => {
   // TODO: revisit after https://github.com/gpuweb/gpuweb/issues/4458 is resolved
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Tanh', tanhExpression));
+};
+
+export const fastGeluImpl = (varType = 'f32') => `
+const fast_gelu_a: ${varType} = 0.5;
+const fast_gelu_b: ${varType} = 0.7978845608028654;
+const fast_gelu_c: ${varType} = 0.035677408136300125;
+
+fn tanh_v(v: vec4<${varType}>) -> vec4<${varType}> {
+  return ${tanhExpression('v')};
+}
+`;
+
+export const fastGeluExpression = (x: string) =>
+    `(fast_gelu_a + fast_gelu_a * tanh_v(${x} * (fast_gelu_c * ${x} * ${x} + fast_gelu_b))) * ${x}`;
+
+export const fastGelu = (context: ComputeContext): void => {
+  const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
   context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'Tanh', a => `sign(${a}) * (1 - exp(-2 * abs(${a}))) / (1 + exp(-2 * abs(${a})))`));
+      context.inputs[0], 'FastGelu', fastGeluExpression, fastGeluImpl(dataType), undefined,
+      context.inputs[0].dataType));
 };
 
 export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttributes): number => {

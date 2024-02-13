@@ -596,7 +596,7 @@ Status UnfusedScaledDotProductAttention(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero,
       scaled_qk, sequence_length, sequence_length * sequence_length,
-      batches, device_prop));
+      batches, device_prop, parameters.use_tf32));
 
   DUMP_TENSOR_D("PackedAttention unfused QK", scaled_qk, batch_size * num_heads, sequence_length, sequence_length);
 
@@ -624,7 +624,7 @@ Status UnfusedScaledDotProductAttention(
       v_head_size, sequence_length, sequence_length,
       &one, v, v_head_size, sequence_length * v_head_size,
       attention_score, sequence_length, sequence_length * sequence_length,
-      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
+      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
 
   // Temp_output is BxNxSxH_v, transpose and remove padding to output token_countxNxH_v
   Status result = LaunchTransposeRemovePadding(

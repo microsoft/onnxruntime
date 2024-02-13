@@ -125,7 +125,8 @@ RUN pip install \
     pytorch_lightning==1.6.0 \
     pytest-xdist \
     pytest-rerunfailures \
-    ml_dtypes==0.3.0
+    ml_dtypes==0.3.0 \
+    pytest==7.4.4
 
 # Install migraphx
 RUN apt update && apt install -y migraphx

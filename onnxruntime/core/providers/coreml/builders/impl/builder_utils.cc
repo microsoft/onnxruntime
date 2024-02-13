@@ -11,7 +11,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/optimizer/initializer.h"
 
-#include "coreml/NeuralNetwork.pb.h"
+#include "coreml_proto/NeuralNetwork.pb.h"
 
 namespace onnxruntime {
 namespace coreml {

@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
-import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, UniformsArrayType,} from './common';
-import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
+import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 
 export const createNaiveMatmulProgramInfo =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
@@ -29,17 +30,11 @@ export const createNaiveMatmulProgramInfo =
       const outputShapeInShader = [batchSize, M, N];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N},
-        {type: 'uint32', data: K}
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: M}, {type: DataType.uint32, data: N},
+        {type: DataType.uint32, data: K}
       ];
-      if (activationAttributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: 'float32', data: activationAttributes.clipMax!},
-            {type: 'float32', data: activationAttributes.clipMin!});
-      }
-      programUniforms.push(
-          ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
-          ...createTensorShapeVariables(bShape));
+      appendActivationUniformsData(activationAttributes, programUniforms);
+      programUniforms.push(...createTensorShapeVariables(outerDims, aShape, bShape));
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
       }
@@ -50,7 +45,8 @@ export const createNaiveMatmulProgramInfo =
         const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
         const b = inputVariable('b', inputs[1].dataType, bShape.length, components);
         const output = outputVariable('output', inputs[0].dataType, outputShapeInShader.length, components);
-        const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
+        const baseType = tensorTypeToWsglStorageType(output.type.tensor);
+        const applyActivation = getActivationSnippet(activationAttributes, output.type.value, baseType);
         const inputVariables = [a, b];
         let processBias = '';
         if (hasBias) {
@@ -69,9 +65,7 @@ export const createNaiveMatmulProgramInfo =
           {name: 'output_size', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'},
           {name: 'K', type: 'u32'}
         ];
-        if (activationAttributes.activation === 'Clip') {
-          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
-        }
+        appendActivationUniforms(activationAttributes, uniforms);
 
         const getIndices = (variable: IndicesHelper, broadCastDims: number[]) => {
           const rank = variable.rank;
