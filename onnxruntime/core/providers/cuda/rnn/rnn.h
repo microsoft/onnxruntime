@@ -5,8 +5,6 @@
 
 #include "cudnn_rnn_base.h"
 
-#if CUDNN_MAJOR >= 8
-
 #include "core/providers/cuda/cuda_common.h"
 #include <cudnn.h>
 
@@ -39,5 +37,3 @@ class RNN final : public CudnnRnnBase<T> {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif

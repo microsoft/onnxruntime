@@ -206,14 +206,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  auto err = cudaGetLastError();
-
-  bool sequence_lens_buffer_valid = false;
   memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, batch_size * sizeof(int32_t));
   if (reverse_) {
     ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(ctx->GetComputeStream()));
   }
-  err = cudaGetLastError();
 
   // optional outputs
   TensorShapeVector dims_Y({seq_length, num_directions_, batch_size, hidden_size_});
@@ -269,7 +265,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                    CudnnTensor::GetDataType<CudaT>()));
 
   // Prepare the weight data
-  size_t w_data_size_in_bytes;
+  size_t w_data_size_in_bytes = 0;
   IAllocatorUniquePtr<void> w_data;
   CudnnFilterDescriptor w_desc;
   if (!weight_cached_) {
