@@ -78,8 +78,6 @@ def chain_model(args):
         "no_speech_probs_beam" if args.output_no_speech_probs else "",
     ]
 
-    input_features_cast_node, len_pen_cast_node, rep_pen_cast_node, temp_cast_node = None, None, None, None
-    output_sequence_scores_cast_node, output_scores_cast_node = None, None
     graph_nodes = []
     if args.precision == Precision.FLOAT16:
         input_features_cast_node = helper.make_node(
