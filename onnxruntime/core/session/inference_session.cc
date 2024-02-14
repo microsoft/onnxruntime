@@ -2386,10 +2386,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled()) {
-    // bugbug: only for cuda ep now
-    // retrive graph id from run_options
-    int graph_id = 0;
-    cached_execution_provider_for_graph_replay_.SetGraphAnnotation(graph_id);
+    // Cuda graph annotation is only considered when enable_cuda_graph is set to true in session options
+    const std::string& graph_annotation_str =
+        run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "");
+    // If graph annotation is not provided, fall back to the one cuda graph per session behavior
+    if (!graph_annotation_str.empty()) {
+      cached_execution_provider_for_graph_replay_.SetGraphAnnotation(std::stoi(graph_annotation_str));
+    }
   }
 
   // Check if this Run() is simply going to be a CUDA Graph replay.

@@ -30,3 +30,6 @@ static const char* const kOrtRunOptionsConfigEnableMemoryArenaShrinkage = "memor
 // Per default it will be set to '0'
 // Taking CUDA EP as an example, it omit triggering cudaStreamSynchronize on the compute stream.
 static const char* const kOrtRunOptionsConfigDisableSynchronizeExecutionProviders = "disable_synchronize_execution_providers";
+
+// TODO
+static const char* const kOrtRunOptionsConfigCudaGraphAnnotation = "ep.cuda.cuda_graph_annotation";

@@ -10,9 +10,10 @@
 
 namespace onnxruntime {
 
-using CaptureId_t = unsigned long long;
 using GraphAnnotation_t = int;
 using GraphAnnotationOptional_t = optional<GraphAnnotation_t>;
+
+constexpr GraphAnnotation_t kDefaultSkipGraphCapture = -1;
 
 struct CUDAGraph {
   CUDAGraph(){};
@@ -20,7 +21,7 @@ struct CUDAGraph {
   ~CUDAGraph();
 
   void SetStream(cudaStream_t stream);
-  // bugbug: handle -1 here
+
   void CaptureBegin(GraphAnnotationOptional_t cuda_graph_annotation_id);
   void CaptureEnd();
   Status Replay(GraphAnnotationOptional_t cuda_graph_annotation_id);
@@ -29,6 +30,7 @@ struct CUDAGraph {
   void ResetAdditional();
 
   bool IsAdditionalGraphCaptured() const;
+  bool IsGraphCaptureAllowedOnRun() const;
 
  private:
   cudaGraph_t graph_ = NULL;
