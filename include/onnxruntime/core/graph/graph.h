@@ -398,11 +398,11 @@ class Node {
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
 
-  /** @returns true if the Node is a forward node, false otherwise. **/
-  bool isForwardNode() const noexcept { return is_forward_node_; }
+  /** @returns true if the Node is a forward node (inference), false (training backward pass) otherwise. **/
+  bool IsForwardNode() const noexcept { return is_forward_node_; }
 
   /* Sets the forward node status  */
-  void setForwardNode(bool is_forward_node) noexcept { is_forward_node_ = is_forward_node; }
+  void SetForwardNode(bool is_forward_node) noexcept { is_forward_node_ = is_forward_node; }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
@@ -637,7 +637,7 @@ class Node {
   int priority_ = 0;
 
   // This node is a forward node if value, otherwise it is a backward node.
-  bool is_forward_node_;
+  bool is_forward_node_ = true;
 
   // set from op_->SinceVersion() or via deserialization when OpSchema is not available
   int since_version_ = -1;

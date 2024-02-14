@@ -197,13 +197,13 @@ Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified) {
   // Set the attribute to true for all backward nodes.
   for (auto& node : graph.Nodes()) {
     if (std::find(fw_nodes.begin(), fw_nodes.end(), &node) == fw_nodes.end()) {
-      if (node.isForwardNode()) {
-        node.setForwardNode(false);
+      if (node.IsForwardNode()) {
+        node.SetForwardNode(false);
         modified = true;
       }
     } else {
-      if (!node.isForwardNode()) {
-        node.setForwardNode(true);
+      if (!node.IsForwardNode()) {
+        node.SetForwardNode(true);
         modified = true;
       }
     }

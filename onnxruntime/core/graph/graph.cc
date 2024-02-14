@@ -2018,7 +2018,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     }
   }
 
-  std::vector<TypeProto> const& InferredOutputTypes() const noexcept { return node_output_types_; }
+  const std::vector<TypeProto>& InferredOutputTypes() const noexcept { return node_output_types_; }
 
   const AttributeProto* getAttribute(const std::string& name) const override {
     auto& attribute_value_map = node_.GetAttributes();
@@ -2319,7 +2319,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
 
     const int num_formal_params = gsl::narrow_cast<int>(op.outputs().size());
     auto operand_index = std::min(i, num_formal_params - 1);
-    auto const &op_formal_parameter = op.outputs().at(operand_index);
+    const auto& op_formal_parameter = op.outputs().at(operand_index);
 
     const TypeProto& onnx_inferred_type = onnx_inferred_types[i];
     DataType existing_type = output_def->Type();

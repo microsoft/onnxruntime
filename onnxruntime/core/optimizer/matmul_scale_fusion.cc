@@ -255,7 +255,7 @@ Status ProcessNode(
 
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
 #ifdef USE_ROCM
-  matmul_scale_node.setForwardNode(node.GetForwardNode());
+  matmul_scale_node.SetForwardNode(node.GetForwardNode());
 #endif
 
   {

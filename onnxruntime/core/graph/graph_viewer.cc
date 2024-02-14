@@ -36,8 +36,8 @@ struct PriorityNodeCompare {
     }
 
     // nodes of forward pass will be output first
-    int64_t n1_is_forward = n1->isForwardNode();
-    int64_t n2_is_forward = n2->isForwardNode();
+    int64_t n1_is_forward = n1->IsForwardNode();
+    int64_t n2_is_forward = n2->IsForwardNode();
     if (n1_is_forward != n2_is_forward) {
       return n2_is_forward > n1_is_forward;
     }

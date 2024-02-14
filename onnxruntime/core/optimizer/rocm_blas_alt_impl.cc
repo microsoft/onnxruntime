@@ -26,7 +26,7 @@ Status RocmBlasAltImpl::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (is_backward_pass) {
-      node.setForwardNode(false);
+      node.SetForwardNode(false);
       modified = true;
     }
   }

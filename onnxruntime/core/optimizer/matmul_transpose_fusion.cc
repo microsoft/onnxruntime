@@ -407,7 +407,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 #ifdef USE_ROCM
     // forward the __backwardpass, if present
-    malmul_node.setForwardPass(node.getForwardPass());
+    malmul_node.SetForwardPass(node.getForwardPass());
 #endif
 
     graph_utils::FinalizeNodeFusion(graph, matmul_node, node);

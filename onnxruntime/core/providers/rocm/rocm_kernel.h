@@ -25,7 +25,7 @@ class RocmKernel : public OpKernel {
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     Status s;
-    auto is_backward_pass = !Node().isForwardNode();
+    auto is_backward_pass = !Node().IsForwardNode();
     if (is_backward_pass) {
       BackwardPassGuard guard;
       s = ComputeInternal(p_op_kernel_context);
