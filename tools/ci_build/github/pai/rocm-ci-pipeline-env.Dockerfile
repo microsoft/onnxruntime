@@ -131,7 +131,7 @@ RUN pip install \
 # Install migraphx
 RUN apt update && apt install -y migraphx
 
-ENV ORTMODULE_ONNX_OPSET_VERSION=15
+ENV ORTMODULE_ONNX_OPSET_VERSION=17
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
