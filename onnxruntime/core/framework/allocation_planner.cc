@@ -1341,9 +1341,9 @@ class PlannerImpl {
     std::vector<int> ort_value_usecount;
     ort_value_usecount.reserve(ort_value_info_.size());
 #endif
+    ORT_RETURN_IF_ERROR(ComputeReuseCount());
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       // compute use count first
-      ORT_RETURN_IF_ERROR(ComputeReuseCount());
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       if (i == 0) {
         for (auto ort_value_info : ort_value_info_) {
@@ -1352,7 +1352,7 @@ class PlannerImpl {
       }
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
-      ClearUseCount();
+//      ClearUseCount();
       freelist_.clear();  // DONOT share freelist across streams
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
