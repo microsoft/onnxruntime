@@ -204,18 +204,18 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
-  uint32_t rpc_control_latency = 0;
   auto latency_pos = provider_options_map.find(RPC_CONTROL_LANTENCY);
   if (latency_pos != provider_options_map.end()) {
-    rpc_control_latency = static_cast<uint32_t>(std::stoul(latency_pos->second));
-    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+    default_rpc_control_latency_ = static_cast<uint32_t>(std::stoul(latency_pos->second));
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << default_rpc_control_latency_;
   }
 
-  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  // default_htp_performance_mode from QNN EP option.
+  // set it once only for each thread as default so user don't need to set it for every session run
   static const std::string HTP_PERFORMANCE_MODE = "htp_performance_mode";
   auto htp_performance_mode_pos = provider_options_map.find(HTP_PERFORMANCE_MODE);
   if (htp_performance_mode_pos != provider_options_map.end()) {
-    ParseHtpPerformanceMode(htp_performance_mode_pos->second, htp_performance_mode);
+    ParseHtpPerformanceMode(htp_performance_mode_pos->second, default_htp_performance_mode_);
   }
 
   htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -730,9 +730,24 @@ const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const
 
 QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
                                                          uint32_t device_id,
-                                                         uint32_t core_id) : qnn_backend_manager_(qnn_backend_manager) {
+                                                         uint32_t core_id,
+                                                         qnn::HtpPerformanceMode default_htp_performance_mode,
+                                                         uint32_t default_rpc_control_latency)
+    : qnn_backend_manager_(qnn_backend_manager) {
   Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id, core_id, htp_power_config_id_);
   is_htp_power_config_id_valid_ = rt.IsOK();
+  // default_htp_performance_mode and default_rpc_control_latency are from QNN EP option.
+  // set it once only for each thread as default so user don't need to set it for every session run
+  if (is_htp_power_config_id_valid_) {
+    if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
+                                                                      default_htp_performance_mode));
+    }
+    if (default_rpc_control_latency > 0) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_,
+                                                                         default_rpc_control_latency));
+    }
+  }
 }
 
 QNNExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -760,7 +775,8 @@ QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContex
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
       uint32_t core_id = 0;
-      context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id);
+      context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id,
+                                                   default_htp_performance_mode_, default_rpc_control_latency_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -800,7 +816,7 @@ void QNNExecutionProvider::ReleasePerThreadContext() const {
 Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   std::string htp_perf_mode = "";
   qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
-  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPowerMode, htp_perf_mode)) {
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPerfMode, htp_perf_mode)) {
     // set power mode
     ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
   }
@@ -836,7 +852,7 @@ Status QNNExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOp
   ORT_UNUSED_PARAMETER(sync_stream);
   std::string htp_perf_mode = "";
   qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
-  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPowerModePostRun, htp_perf_mode)) {
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, htp_perf_mode)) {
     // set power mode
     ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
   }

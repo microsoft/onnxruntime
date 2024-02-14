@@ -80,11 +80,15 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
   ModelMetadefIdGenerator metadef_id_generator_;
   uint32_t device_id_ = 0;
+  qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
+  uint32_t default_rpc_control_latency_ = 0;
 
   class PerThreadContext final {
    public:
     PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
-                     uint32_t device_id, uint32_t core_id);
+                     uint32_t device_id, uint32_t core_id,
+                     qnn::HtpPerformanceMode default_htp_performance_mode,
+                     uint32_t default_rpc_control_latency);
     ~PerThreadContext();
 
     bool IsHtpPowerConfigIdValid() { return is_htp_power_config_id_valid_; }

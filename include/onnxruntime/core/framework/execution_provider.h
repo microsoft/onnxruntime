@@ -32,6 +32,7 @@ class Node;
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
+#include "core/framework/run_options.h"
 
 namespace onnxruntime {
 
@@ -184,7 +185,7 @@ class IExecutionProvider {
      Run may not be finished on device This function should be regarded as the
      point after which a new Run would start to submit commands from CPU
   */
-  virtual common::Status OnRunStart() { return Status::OK(); }
+  virtual common::Status OnRunStart(const onnxruntime::RunOptions& /*run_options*/) { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run ended
@@ -192,7 +193,7 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
+  virtual common::Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) { return Status::OK(); }
 
   /**
      Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for

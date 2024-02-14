@@ -234,8 +234,6 @@ class QnnBackendManager {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
-  //uint32_t rpc_control_latency_ = 0;
-  //HtpPerformanceMode htp_performance_mode_;
   ContextPriority context_priority_;
   std::string sdk_build_version_ = "";
 #ifdef _WIN32

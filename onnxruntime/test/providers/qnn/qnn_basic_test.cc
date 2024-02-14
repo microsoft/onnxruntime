@@ -516,9 +516,9 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 
   RunOptions run_opts;
   run_opts.run_tag = session_opts.session_logid;
-  auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPowerMode, "balanced");
+  auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, "balanced");
   ASSERT_TRUE(rt.IsOK());
-  rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPowerModePostRun, "low_power_saver");
+  rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, "low_power_saver");
   ASSERT_TRUE(rt.IsOK());
 
   InferenceSession session_obj{session_opts, GetEnvironment()};
@@ -529,6 +529,58 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 2;
+
+  for (int i = 0; i < num_threads; i++) {
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values));
+  }
+
+  for (auto& th : threads) {
+    th.join();
+  }
+}
+
+// Tests running a single session in multiple threads on the HTP backend with run option to set power config
+TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
+  std::unique_ptr<ModelAndBuilder> model;
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> shape = {1, 3, 2};
+  std::vector<std::vector<int64_t>> output_shapes = {shape};
+  std::vector<std::vector<float>> output_values = {{3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f}};
+
+  CreateModelInMemory(model,
+                      QDQBuildAdd3Tensors<uint8_t>(TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data)),
+                      "add3.qdq");
+
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  RunOptions run_opts;
+  run_opts.run_tag = session_opts.session_logid;
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+  options["htp_performance_mode"] = "burst";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
   EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
