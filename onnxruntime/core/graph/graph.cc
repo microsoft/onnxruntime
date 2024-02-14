@@ -2214,7 +2214,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     // Number of inputs corresponding to the i-th argument.
     const int arg_count = node.InputArgCount()[i];
     // The i-th formal parameter definition.
-    auto const &op_formal_parameter = op.inputs()[i];
+    const auto& op_formal_parameter = op.inputs()[i];
 
     // Check all <arg_count> actual parameters (corresponding to the k-th input)
     // match the formal parameter definition (i-th argument).
