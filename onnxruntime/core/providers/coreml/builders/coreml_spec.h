@@ -3,7 +3,8 @@
 
 #pragma once
 
-// Disable warning from protobuf code.
+#include "onnxruntime_config.h"
+
 //
 // In file included from coreml_proto/Model.pb.h:30:
 // In file included from _deps/protobuf-src/src/google/protobuf/extension_set.h:53:
@@ -12,11 +13,9 @@
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
-#if defined(__has_warning)
-#if __has_warning("-Wshorten-64-to-32")
+#ifdef HAS_SHORTEN_64_TO_32
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
-#endif  // defined(__has_warning)
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4244)

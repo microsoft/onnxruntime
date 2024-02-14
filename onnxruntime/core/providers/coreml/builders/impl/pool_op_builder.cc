@@ -63,7 +63,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // keep N and C dims, reduce the rest with keepdims=True. equivalent to the ONNX Global*Pool ops.
       std::vector<int64_t> axes{2, 3};  // we only support 4D input currently.
       AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", axes));
-      AddOperationInput(*op, "keep_dims", model_builder.AddConstant(op->type(), "keep_dims", true));
+      AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", true));
     } else {
       NodeAttrHelper helper(node);
       const int num_spatial_dims = 2;  // we only support 4D. -2 for N and C dims.
@@ -79,12 +79,12 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       const bool ceil_mode = helper.Get("ceil_mode", int64_t(0));  // convert int64_t to bool
 
       AddOperationInput(*op, "strides", model_builder.AddConstant(op->type(), "strides", strides));
-      AddOperationInput(*op, "ceil_mode", model_builder.AddConstant(op->type(), "ceil_mode", ceil_mode));
+      AddOperationInput(*op, "ceil_mode", model_builder.AddScalarConstant(op->type(), "ceil_mode", ceil_mode));
 
       if (is_avg_pool) {
         const bool count_exclude_pad = bool(helper.Get("count_include_pad", int64_t(0))) == false;
         AddOperationInput(*op, "exclude_padding_from_average",
-                          model_builder.AddConstant(op->type(), "count_exclude_pad", count_exclude_pad));
+                          model_builder.AddScalarConstant(op->type(), "count_exclude_pad", count_exclude_pad));
       }
     }
 

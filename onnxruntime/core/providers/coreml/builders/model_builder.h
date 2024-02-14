@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/span_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/providers/coreml/model/model.h"
@@ -103,8 +104,36 @@ class ModelBuilder {
   /// </param>
   /// <returns>Unique name generated for value.</returns>
   template <typename T>
-  const std::string& AddConstant(const std::string& op_type, std::string_view value_type, const T& value,
-                                 std::optional<const gsl::span<const int64_t>> shape = std::nullopt);
+  const std::string& AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
+                                 std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+    static_assert(std::is_same_v<T, float> ||
+                      std::is_same_v<T, int64_t> ||
+                      std::is_same_v<T, std::string> ||
+                      std::is_same_v<T, bool>,
+                  // add specialization in AddConstantImpl for new types if needed
+                  "AddConstant currently supports float, int64_t, std::string and bool.");
+    return AddConstantImpl(op_type, value_type, value, shape);
+  }
+
+  // helper for when calling code has a non-const vector locally, as `AsSpan` results in gsl::span<T>
+  // not gsl::span<const T> for a non-const vector.
+  // e.g. NodeAttrHelper returns std::optional<std::vector<T>>. with this helper the value from the optional can
+  // be used directly. Otherwise you need to extract the value, make it const and create a span before calling the
+  // AddConstant that takes gsl::span<const T>.
+  // Also, if you have a non-const vector from modifying the values (e.g. re-ordering pads) it can be used directly.
+  template <typename T>
+  std::string AddConstant(std::string_view op_type, std::string_view value_type, const std::vector<T>& value,
+                          std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+    return AddConstant(op_type, value_type, AsSpan(value), shape);
+  }
+
+  /// <summary>
+  /// Add a scalar value as a 'const' operation. See AddConstant for details.
+  /// </summary>
+  template <typename T>
+  const std::string& AddScalarConstant(std::string_view op_type, std::string_view value_type, const T& value) {
+    return AddConstant(op_type, value_type, AsSpan({value}), AsSpan<const int64_t>({}));
+  }
 
   // add the operation to the main function
   void AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation> operation);
@@ -134,9 +163,11 @@ class ModelBuilder {
   // sanitize all the names in the ML Model
   void SanitizeNames();
 
-  // add Value as a const operation. return value name in case sanitization changed it
+  template <typename T>
+  const std::string& AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
+                                     std::optional<gsl::span<const int64_t>> shape = std::nullopt);
   const std::string& AddConstantOperation(const std::string& name, COREML_SPEC::MILSpec::Value&& initializer);
-  const std::string& AddTensorValueAsConstantOperation(const std::string& op_type, std::string_view value_type,
+  const std::string& AddTensorValueAsConstantOperation(std::string_view op_type, std::string_view value_type,
                                                        COREML_SPEC::MILSpec::Value&& input_value);
 #endif
 

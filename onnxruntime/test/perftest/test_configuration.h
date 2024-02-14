@@ -63,6 +63,7 @@ struct RunConfig {
   std::string intra_op_thread_affinities;
   bool disable_spinning = false;
   bool disable_spinning_between_run = false;
+  bool exit_after_session_creation = false;
 };
 
 struct PerformanceTestConfig {

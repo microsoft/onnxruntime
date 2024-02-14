@@ -504,11 +504,11 @@ Model::Model(const std::string& path,
              const logging::Logger& logger,
              uint32_t coreml_flags)
     : execution_(std::make_unique<Execution>(path, logger, coreml_flags)),
-      model_input_names_(model_input_names),
-      model_output_names_(model_output_names),
-      input_output_info_(input_output_info),
-      scalar_outputs_(scalar_outputs),
-      int64_outputs_(int64_outputs) {
+      model_input_names_(std::move(model_input_names)),
+      model_output_names_(std::move(model_output_names)),
+      input_output_info_(std::move(input_output_info)),
+      scalar_outputs_(std::move(scalar_outputs)),
+      int64_outputs_(std::move(int64_outputs)) {
 }
 
 Model::~Model() {}

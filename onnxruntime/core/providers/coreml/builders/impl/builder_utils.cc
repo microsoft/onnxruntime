@@ -139,7 +139,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 
 namespace {
 void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_type,
-                       std::optional<const gsl::span<const int64_t>> shape) {
+                       std::optional<gsl::span<const int64_t>> shape) {
   tensor_type.set_datatype(data_type);
   if (shape) {
     tensor_type.set_rank(shape->size());
@@ -169,38 +169,38 @@ void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_
 }
 
 template <typename T1, typename T2 = T1>
-void CopyDataToTensorValue(MILSpec::TensorValue& tensor_value, const gsl::span<const T1> data) {
+void CopyDataToTensorValue(MILSpec::TensorValue& tensor_value, gsl::span<const T1> data) {
   // need a 'false' that is dependent on the template types to make gcc happy and give a meaningful error message.
   static_assert(false_for_T<T1> && false_for_T<T2>, "Unsupported data type");  // add specializations below as needed
 }
 
 template <>
-void CopyDataToTensorValue<float>(MILSpec::TensorValue& tensor_value, const gsl::span<const float> data) {
+void CopyDataToTensorValue<float>(MILSpec::TensorValue& tensor_value, gsl::span<const float> data) {
   tensor_value.mutable_floats()->mutable_values()->Add(data.begin(), data.end());
 }
 
 template <>
-void CopyDataToTensorValue<int32_t>(MILSpec::TensorValue& tensor_value, const gsl::span<const int32_t> data) {
+void CopyDataToTensorValue<int32_t>(MILSpec::TensorValue& tensor_value, gsl::span<const int32_t> data) {
   tensor_value.mutable_ints()->mutable_values()->Add(data.begin(), data.end());
 }
 
 template <>
-void CopyDataToTensorValue<std::string>(MILSpec::TensorValue& tensor_value, const gsl::span<const std::string> data) {
+void CopyDataToTensorValue<std::string>(MILSpec::TensorValue& tensor_value, gsl::span<const std::string> data) {
   tensor_value.mutable_strings()->mutable_values()->Add(data.begin(), data.end());
 }
 
 // copy int64_t (used by ONNX for strides/indexes/etc.) to int32_t (used by CoreML)
 template <>
-void CopyDataToTensorValue<int64_t, int32_t>(MILSpec::TensorValue& tensor_value, const gsl::span<const int64_t> data) {
+void CopyDataToTensorValue<int64_t, int32_t>(MILSpec::TensorValue& tensor_value, gsl::span<const int64_t> data) {
   auto& int32_out = *tensor_value.mutable_ints()->mutable_values();
   int32_out.Reserve(narrow<int32_t>(data.size()));
   for (const int64_t v : data) {
     int32_out.AddAlreadyReserved(narrow<int32_t>(v));
   }
-};
+}
 
 template <>
-void CopyDataToTensorValue<bool>(MILSpec::TensorValue& tensor_value, const gsl::span<const bool> data) {
+void CopyDataToTensorValue<bool>(MILSpec::TensorValue& tensor_value, gsl::span<const bool> data) {
   tensor_value.mutable_bools()->mutable_values()->Add(data.begin(), data.end());
 }
 
@@ -245,8 +245,8 @@ MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
 }
 
 template <typename T1, typename T2>
-MILSpec::Value CreateTensorValue(const gsl::span<const T1> data,
-                                 std::optional<const gsl::span<const int64_t>> shape) {
+MILSpec::Value CreateTensorValue(gsl::span<const T1> data,
+                                 std::optional<gsl::span<const int64_t>> shape) {
   MILSpec::Value value;
   MILSpec::TensorType& tensor_type = *value.mutable_type()->mutable_tensortype();
 
@@ -271,14 +271,17 @@ MILSpec::Value CreateScalarTensorValue(const T& data) {
   return CreateTensorValue<T>(data_span, shape);
 }
 
-// explicit specializations for types we handle so the implementation can be in the .cc file
-template MILSpec::Value CreateTensorValue<int64_t, int32_t>(const gsl::span<const int64_t> data,
-                                                            std::optional<const gsl::span<const int64_t>> shape);
+// explicit specializations for types we handle so the implementation can be in the .cc file.
+template MILSpec::Value CreateTensorValue<int64_t, int32_t>(gsl::span<const int64_t> data,
+                                                            std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<float>(gsl::span<const float> data,
+                                                 std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<std::string>(gsl::span<const std::string> data,
+                                                       std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<bool>(gsl::span<const bool> data,
+                                                std::optional<gsl::span<const int64_t>> shape);
 
-template MILSpec::Value CreateScalarTensorValue(const float& data);
-template MILSpec::Value CreateScalarTensorValue(const int32_t& data);
-template MILSpec::Value CreateScalarTensorValue(const std::string& data);
-template MILSpec::Value CreateScalarTensorValue(const bool& data);
+template MILSpec::Value CreateScalarTensorValue<std::string>(const std::string& data);
 
 COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& node_arg) {
   MILSpec::NamedValueType nvt;
@@ -329,7 +332,7 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
       auto onnx_pads = helper.GetInt64s("pads");  // 'pads' must be provided if auto_pad is NOTSET
       if (onnx_pads) {
         AddOperationInput(op, "pad_type",
-                          model_builder.AddConstant(op_type, "pad_type", std::string_view("custom")));
+                          model_builder.AddScalarConstant(op_type, "pad_type", std::string("custom")));
 
         // need to re-order from x1_start, x2_start..., x1_end, x2_end... to
         // x1_start, x1_end, x2_start, x2_end,...
@@ -356,14 +359,14 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
     }
     case AutoPadType::VALID:
       AddOperationInput(op, "pad_type",
-                        model_builder.AddConstant(op_type, "pad_type", std::string_view("valid")));
+                        model_builder.AddScalarConstant(op_type, "pad_type", std::string("valid")));
 
       break;
     case AutoPadType::SAME_UPPER:
     case AutoPadType::SAME_LOWER: {
       const auto pad_type = (auto_pad_type == AutoPadType::SAME_UPPER ? "same" : "same_lower");
       AddOperationInput(op, "pad_type",
-                        model_builder.AddConstant(op_type, "pad_type", std::string_view(pad_type)));
+                        model_builder.AddScalarConstant(op_type, "pad_type", std::string(pad_type)));
 
       // despite what the spec says, a 'pad' input seems to be required.
       // https://github.com/apple/coremltools/issues/2127

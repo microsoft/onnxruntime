@@ -40,7 +40,7 @@
 #define API_AVAILABLE_COREML6 API_AVAILABLE(macos(13), ios(16))
 #define API_AVAILABLE_COREML7 API_AVAILABLE(macos(14), ios(17))
 
-// @available is used in implmentation code
+// @available is used in implementation code
 // Base required OS to run CoreML Specification Version 4 (Core ML 3)
 #define HAS_COREML3_OR_LATER @available(macOS 10.15, iOS 13, *)
 #define HAS_COREML4_OR_LATER @available(macOS 11, iOS 14, *)

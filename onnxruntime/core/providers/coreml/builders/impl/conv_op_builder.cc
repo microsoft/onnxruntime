@@ -81,7 +81,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", dilations));
 
     if (groups) {
-      AddOperationInput(*conv_op, "groups", model_builder.AddConstant(op_type, "groups", *groups));
+      AddOperationInput(*conv_op, "groups", model_builder.AddScalarConstant(op_type, "groups", *groups));
     }
 
     AddPadTypeAndPads(*conv_op, model_builder, op_type, helper, num_spatial_dims);

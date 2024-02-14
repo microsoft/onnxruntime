@@ -94,13 +94,13 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
         // if min and max were attributes we need to add initializers. otherwise we use the existing ones
         const bool min_max_attribs = node.SinceVersion() < 11;
-        const std::string& min_name = min_max_attribs ? model_builder.AddConstant(clip_op.type(), "min", min)
+        const std::string& min_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "min", min)
                                                       : node.InputDefs()[1]->Name();
 
         AddOperationInput(clip_op, "alpha", min_name);
 
         if (has_max) {
-          const std::string& max_name = min_max_attribs ? model_builder.AddConstant(clip_op.type(), "max", max)
+          const std::string& max_name = min_max_attribs ? model_builder.AddScalarConstant(clip_op.type(), "max", max)
                                                         : node.InputDefs()[2]->Name();
           AddOperationInput(clip_op, "beta", max_name);
         }

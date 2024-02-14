@@ -188,7 +188,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       AddOperationInput(*matmul_op, "y", b.Name());
 
       // once again the spec lies and says transpose_y and transpose_x are optional...
-      auto false_value_name = model_builder.AddConstant(matmul_op->type(), "false", false);
+      auto false_value_name = model_builder.AddScalarConstant(matmul_op->type(), "false", false);
       AddOperationInput(*matmul_op, "transpose_x", false_value_name);
       AddOperationInput(*matmul_op, "transpose_y", false_value_name);
 
