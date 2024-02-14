@@ -18,30 +18,25 @@ void CUDAGraph::SetStream(cudaStream_t stream) {
   stream_ = stream;
 }
 
-void CUDAGraph::CaptureBeginImpl() {
+void CUDAGraph::CaptureBegin(optional<int> cuda_graph_annotation_id) {
+  if (!cuda_graph_annotation_id.has_value()) {
+    ORT_ENFORCE(!has_graph_exec_,
+                "This cuda graph has already captured a graph. "
+                "Create a new instance to capture a new graph.");
+  } else {
+    ORT_ENFORCE(graph_exec_map_.find(cuda_graph_annotation_id) != graph_exec_map_.end(),
+                "This cuda_graph_annotation_id has already captured a cuda graph. "
+                "Use another cuda_graph_annotation_id to capture a new cuda graph.");
+
+    cuda_graph_annotation_id_ = cuda_graph_annotation_id;
+  }
+
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
   // For now cuda graph can only work with a single thread. In the future, we
   // will support multiple threads. For multiple threads with multiple graphs
   // and streams, `cudaStreamCaptureModeGlobal` needs to be changed to
   // `cudaStreamCaptureModeThreadLocal`
   CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal));
-}
-
-void CUDAGraph::CaptureBegin() {
-  ORT_ENFORCE(!has_graph_exec_,
-              "This cuda graph has already captured a graph. "
-              "Create a new instance to capture a new graph.");
-
-  CaptureBeginImpl();
-}
-
-void CUDAGraph::CaptureBegin(int cuda_graph_annotation_id) {
-  ORT_ENFORCE(graph_exec_map_.find(cuda_graph_annotation_id) != graph_exec_map_.end(),
-              "This cuda_graph_annotation_id has already captured a cuda graph. "
-              "Use another cuda_graph_annotation_id to capture a new cuda graph.");
-
-  cuda_graph_annotation_id_ = cuda_graph_annotation_id;
-  CaptureBeginImpl();
 }
 
 void CUDAGraph::CaptureEnd() {
@@ -76,23 +71,24 @@ void CUDAGraph::CaptureEnd() {
   has_graph_ = false;
 }
 
-Status CUDAGraph::Replay() {
+Status CUDAGraph::Replay(optional<int> cuda_graph_annotation_id) {
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
-  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_;
-  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, stream_));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
-  return Status::OK();
-}
-
-Status CUDAGraph::Replay(int cuda_graph_annotation_id) {
-  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << \
-                        " with cuda_graph_annotation_id " << cuda_graph_annotation_id;
-  auto it = graph_exec_map_.find(cuda_graph_annotation_id);
-  if (it == graph_exec_map_.end()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDAGraph::Replay: graph_exec_map_ does not contain the cuda_graph_annotation_id");
+  if (cuda_graph_annotation_id_.has_value()) {
+    LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << \
+                          " with cuda_graph_annotation_id " << cuda_graph_annotation_id;
+    auto it = graph_exec_map_.find(cuda_graph_annotation_id);
+    if (it == graph_exec_map_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME,
+                             FAIL,
+                             "CUDAGraph::Replay: graph_exec_map_ does not contain the cuda_graph_annotation_id");
+    }
+    CUDA_RETURN_IF_ERROR(cudaGraphLaunch(it->second, stream_));
+  } else {
+    LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_;
+    CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, stream_));
   }
-  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(it->second, stream_));
+
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   return Status::OK();
 }
@@ -106,17 +102,24 @@ void CUDAGraph::Reset() {
     CUDA_CALL_THROW(cudaGraphExecDestroy(graph_exec_));
     has_graph_exec_ = false;
   }
+}
+
+void CUDAGraph::ResetAdditional() {
   if (has_additional_graph_) {
     CUDA_CALL_THROW(cudaGraphDestroy(additional_graph_));
     has_additional_graph_ = false;
   }
-  if (!graph_exec_map_.empty() {
-    
-  })
+  if (!graph_exec_map_.empty()) {
+    for (auto& it : graph_exec_map_) {
+      CUDA_CALL_THROW(cudaGraphExecDestroy(it.second));
+    }
+    graph_exec_map_.clear();
+  }
 }
 
 CUDAGraph::~CUDAGraph() {
   Reset();
+  ResetAdditional();
 }
 
 }  // namespace onnxruntime

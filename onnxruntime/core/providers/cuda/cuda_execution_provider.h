@@ -176,10 +176,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     }
 
     bool IsGraphCaptureAllowed() const;
-    void CaptureBegin();
+    void CaptureBegin(optional<int> cuda_graph_annotation_id);
     void CaptureEnd();
     bool IsGraphCaptured() const;
-    Status ReplayGraph();
+    Status ReplayGraph(optional<int> cuda_graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:

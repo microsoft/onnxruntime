@@ -194,9 +194,11 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
 
-void CUDAExecutionProvider::PerThreadContext::CaptureBegin() {
-  cuda_graph_.Reset();
-  cuda_graph_.CaptureBegin();
+void CUDAExecutionProvider::PerThreadContext::CaptureBegin(optional<int> cuda_graph_annotation_id) {
+  if (!cuda_graph_annotation_id.has_value()) {
+    cuda_graph_.Reset();
+  }
+  cuda_graph_.CaptureBegin(cuda_graph_annotation_id);
 }
 
 void CUDAExecutionProvider::PerThreadContext::CaptureEnd() {
@@ -208,9 +210,9 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured() const {
   return is_graph_captured_;
 }
 
-Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
+Status CUDAExecutionProvider::PerThreadContext::ReplayGraph(optional<int> cuda_graph_annotation_id) {
   ORT_ENFORCE(IsGraphCaptured());
-  return cuda_graph_.Replay();
+  return cuda_graph_.Replay(cuda_graph_annotation_id);
 }
 
 void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
