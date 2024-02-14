@@ -5743,7 +5743,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>beginning_timestamp_token_id</tt> : int (required)</dt>
+<dt><tt>beginning_timestamp_token_id</tt> : int</dt>
 <dd>The id of the first timestamp</dd>
 <dt><tt>decoder</tt> : graph (required)</dt>
 <dd>Decoder subgraph to execute in a loop.</dd>
@@ -5765,15 +5765,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>no repeat ngrams size</dd>
 <dt><tt>no_speech_token_id</tt> : int</dt>
 <dd>The token in whisper model that marks all sequence empty. With this model, whisper could output no_speech_prob after. Default -1.</dd>
-<dt><tt>no_timestamps_token_id</tt> : int (required)</dt>
+<dt><tt>no_timestamps_token_id</tt> : int</dt>
 <dd>The id of the token that indicates no timestamps</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
-<dt><tt>start_of_lm_token_id</tt> : int (required)</dt>
+<dt><tt>start_of_lm_token_id</tt> : int</dt>
 <dd>The id of the token that indicates LM starts</dd>
-<dt><tt>transcribe_token_id</tt> : int (required)</dt>
+<dt><tt>transcribe_token_id</tt> : int</dt>
 <dd>The id of the transcribe task</dd>
-<dt><tt>translate_token_id</tt> : int (required)</dt>
+<dt><tt>translate_token_id</tt> : int</dt>
 <dd>The id of the translate task</dd>
 <dt><tt>vocab_size</tt> : int</dt>
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
