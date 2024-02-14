@@ -32,7 +32,8 @@ class Node;
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
-#include "core/framework/run_options.h"
+
+struct OrtRunOptions;
 
 namespace onnxruntime {
 
@@ -51,6 +52,8 @@ struct NodeComputeInfo {
   ComputeFunc compute_func;
   DestroyFunctionStateFunc release_state_func;
 };
+
+using RunOptions = OrtRunOptions;
 
 enum class DataLayout {
   NCHW,

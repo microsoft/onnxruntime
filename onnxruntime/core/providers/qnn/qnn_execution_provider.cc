@@ -19,6 +19,7 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+#include "core/framework/run_options.h"
 
 namespace onnxruntime {
 
@@ -846,7 +847,6 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
 }
 
 Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& run_options) {
-  //ORT_UNUSED_PARAMETER(sync_stream);
   std::string htp_perf_mode = "";
   qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
   if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, htp_perf_mode)) {
