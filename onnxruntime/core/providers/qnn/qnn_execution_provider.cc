@@ -293,7 +293,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       soc_model);
 }
 
-
 QNNExecutionProvider::~QNNExecutionProvider() {
   // clean up thread local context caches
   {
@@ -795,7 +794,6 @@ QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContex
   return *context;
 }
 
-
 void QNNExecutionProvider::ReleasePerThreadContext() const {
   const auto& per_thread_context_cache = PerThreadContextCache();
 
@@ -844,12 +842,11 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
     }
   }
 
-
   return Status::OK();
 }
 
-Status QNNExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
-  ORT_UNUSED_PARAMETER(sync_stream);
+Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& run_options) {
+  //ORT_UNUSED_PARAMETER(sync_stream);
   std::string htp_perf_mode = "";
   qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
   if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, htp_perf_mode)) {

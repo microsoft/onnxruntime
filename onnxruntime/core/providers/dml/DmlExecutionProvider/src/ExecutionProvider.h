@@ -278,7 +278,7 @@ namespace Dml
             return Status::OK();
         }
 
-        virtual onnxruntime::Status OnRunEnd(bool /*sync_stream*/) final override
+        virtual onnxruntime::Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) final override
         {
             // Flush any pending work to the GPU, but don't block for completion, permitting it
             // to overlap other work.

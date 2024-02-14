@@ -629,11 +629,6 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
     LOGS(logger, VERBOSE) << "CreateContext succeed.";
   }
 
-  //if (htp_performance_mode_ != HtpPerformanceMode::kHtpDefault) {
-  //  ORT_RETURN_IF_ERROR(SetHtpPowerConfig());
-  //  LOGS(logger, VERBOSE) << "SetHtpPowerConfig succeed.";
-  //}
-
   LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
 
   backend_setup_completed_ = true;
@@ -802,7 +797,7 @@ Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_
                   "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
     QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
 
-  // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
+    // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
     constexpr int kNumRpcPollingPowerConfigs = 2;
     std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> rpc_power_configs(kNumRpcPollingPowerConfigs);
     QnnHtpPerfInfrastructure_PowerConfig_t& rpc_control_latency_cfg = rpc_power_configs[0];
@@ -834,7 +829,6 @@ void QnnBackendManager::Split(std::vector<std::string>& split_string,
 }
 
 Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) {
-
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -853,11 +847,6 @@ void QnnBackendManager::ReleaseResources() {
   if (!backend_setup_completed_) {
     return;
   }
-
-  //auto result = DestroyHTPPowerConfigID();
-  //if (Status::OK() != result) {
-  //  ORT_THROW("Failed to DestroyHTPPowerConfigID.");
-  //}
 
   auto result = ReleaseContext();
   if (Status::OK() != result) {
