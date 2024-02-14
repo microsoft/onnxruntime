@@ -93,8 +93,8 @@ class QnnBackendManager {
   Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                            HtpPerformanceMode htp_performance_mode);
 
-  Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_id,
-                                                 uint32_t rpc_control_latency);
+  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
+                              uint32_t rpc_control_latency);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
