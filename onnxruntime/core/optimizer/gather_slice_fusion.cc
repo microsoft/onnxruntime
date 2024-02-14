@@ -211,7 +211,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     InlinedVector<NodeArg*> split_outputs(3);
 
     InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
-    size_t gather_node_count = 0, slice_node_count = 0;
+    size_t gather_node_count = 2, slice_node_count = 0;
 
     // find the nodes to be merged
     for (auto consumer : consumers) {
@@ -260,7 +260,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         Node& gather_node = *graph.GetNode(consumer->Index());
         nodes_to_fuse.push_back(gather_node);
         NodeArg* gather_output_args = gather_node.MutableOutputDefs()[0];
-        split_outputs[++gather_node_count] = gather_output_args;
+        split_outputs[gather_node_count--] = gather_output_args;
       }
 
       // check the Slice Ops
@@ -273,13 +273,12 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         Node& slice_node = *graph.GetNode(consumer->Index());
         NodeArg* slice_output_args = slice_node.MutableOutputDefs()[0];
         nodes_to_fuse.push_back(slice_node);
-        split_outputs[slice_node_count] = slice_output_args;
-        slice_node_count++;
+        split_outputs[slice_node_count++] = slice_output_args;
       }
     }
 
     // condition check
-    if (!can_fuse || gather_node_count != 2 || slice_node_count != 1) continue;
+    if (!can_fuse || gather_node_count != 0 || slice_node_count != 1) continue;
 
     // generate the split node and merge the kernel
     ONNX_NAMESPACE::TypeProto split_output_type;
@@ -310,7 +309,8 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     split_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
 
     auto dim_value = shape->dim(static_cast<int>(split_axis)).dim_value();
-    int64_t slice_dim = static_cast<int64_t>(dim_value - gather_node_count);
+    // Optimize 2 Gather Nodes, so Slice_dim = dim_value - 2
+    int64_t slice_dim = static_cast<int64_t>(dim_value - 2);
     InlinedVector<int64_t> split_value{{slice_dim, 1, 1}};
     split_initializer_proto.set_raw_data(split_value.data(), split_value.size() * sizeof(int64_t));
     NodeArg* split_arg = &graph_utils::AddInitializer(graph, split_initializer_proto);
