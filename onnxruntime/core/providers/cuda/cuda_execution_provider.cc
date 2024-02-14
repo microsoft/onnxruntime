@@ -194,11 +194,15 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
 
-void CUDAExecutionProvider::PerThreadContext::CaptureBegin(optional<int> cuda_graph_annotation_id) {
-  if (!cuda_graph_annotation_id.has_value()) {
+void CUDAExecutionProvider::PerThreadContext::SetCudaGraphAnnotationId(GraphAnnotationOptional_t cuda_graph_annotation_id) {
+  cuda_graph_annotation_id_ = cuda_graph_annotation_id;
+}
+
+void CUDAExecutionProvider::PerThreadContext::CaptureBegin() {
+  if (!cuda_graph_annotation_id_.has_value()) {
     cuda_graph_.Reset();
   }
-  cuda_graph_.CaptureBegin(cuda_graph_annotation_id);
+  cuda_graph_.CaptureBegin(cuda_graph_annotation_id_);
 }
 
 void CUDAExecutionProvider::PerThreadContext::CaptureEnd() {
@@ -207,12 +211,12 @@ void CUDAExecutionProvider::PerThreadContext::CaptureEnd() {
 }
 
 bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured() const {
-  return is_graph_captured_;
+  return is_graph_captured_ || cuda_graph_.IsAdditionalGraphCaptured();
 }
 
-Status CUDAExecutionProvider::PerThreadContext::ReplayGraph(optional<int> cuda_graph_annotation_id) {
+Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
-  return cuda_graph_.Replay(cuda_graph_annotation_id);
+  return cuda_graph_.Replay(cuda_graph_annotation_id_);
 }
 
 void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
@@ -433,6 +437,10 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
 
 bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
   return info_.enable_cuda_graph;
+}
+
+void CUDAExecutionProvider::SetGraphAnnotation(GraphAnnotation_t cuda_graph_annotation_id) {
+  GetPerThreadContext().SetCudaGraphAnnotationId(make_optional<GraphAnnotation_t>(cuda_graph_annotation_id));
 }
 
 bool CUDAExecutionProvider::IsGraphCaptured() const {

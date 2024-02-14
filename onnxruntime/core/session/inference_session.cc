@@ -2385,6 +2385,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
+  if (cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled()) {
+    // bugbug: only for cuda ep now
+    // retrive graph id from run_options
+    int graph_id = 0;
+    cached_execution_provider_for_graph_replay_.SetGraphAnnotation(graph_id);
+  }
+
   // Check if this Run() is simply going to be a CUDA Graph replay.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "

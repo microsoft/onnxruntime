@@ -11,6 +11,8 @@
 namespace onnxruntime {
 
 using CaptureId_t = unsigned long long;
+using GraphAnnotation_t = int;
+using GraphAnnotationOptional_t = optional<GraphAnnotation_t>;
 
 struct CUDAGraph {
   CUDAGraph(){};
@@ -18,12 +20,15 @@ struct CUDAGraph {
   ~CUDAGraph();
 
   void SetStream(cudaStream_t stream);
-  void CaptureBegin(optional<int> cuda_graph_annotation_id);
+  // bugbug: handle -1 here
+  void CaptureBegin(GraphAnnotationOptional_t cuda_graph_annotation_id);
   void CaptureEnd();
-  Status Replay(optional<int> cuda_graph_annotation_id);
+  Status Replay(GraphAnnotationOptional_t cuda_graph_annotation_id);
 
   void Reset();
   void ResetAdditional();
+
+  bool IsAdditionalGraphCaptured() const;
 
  private:
   cudaGraph_t graph_ = NULL;
@@ -33,8 +38,8 @@ struct CUDAGraph {
   bool has_graph_exec_ = false;
 
   cudaGraph_t additional_graph_ = NULL;
-  std::unordered_map<int, cudaGraphExec_t> graph_exec_map_;
-  optional<int> cuda_graph_annotation_id_;
+  std::unordered_map<GraphAnnotation_t, cudaGraphExec_t> graph_exec_map_;
+  GraphAnnotationOptional_t cuda_graph_annotation_id_;
   bool has_additional_graph_ = false;
 
   cudaStream_t stream_ = nullptr;  // Does not own the stream

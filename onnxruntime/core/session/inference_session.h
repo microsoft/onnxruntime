@@ -863,6 +863,13 @@ class InferenceSession {
       cached_execution_provider_for_graph_replay_ = execution_provider;
     }
 
+    void SetGraphAnnotation(int graph_annotation_id) {
+      if (!cached_execution_provider_for_graph_replay_) {
+        ORT_THROW("Cached EP instance for graph replay is not set yet before calling SetGraphAnnotation()");
+      }
+      cached_execution_provider_for_graph_replay_->SetGraphAnnotation(graph_annotation_id);
+    }
+
     bool IsGraphCaptureEnabled() const {
       return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
     }

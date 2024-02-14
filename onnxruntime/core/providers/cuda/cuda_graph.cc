@@ -18,13 +18,13 @@ void CUDAGraph::SetStream(cudaStream_t stream) {
   stream_ = stream;
 }
 
-void CUDAGraph::CaptureBegin(optional<int> cuda_graph_annotation_id) {
+void CUDAGraph::CaptureBegin(GraphAnnotationOptional_t cuda_graph_annotation_id) {
   if (!cuda_graph_annotation_id.has_value()) {
     ORT_ENFORCE(!has_graph_exec_,
                 "This cuda graph has already captured a graph. "
                 "Create a new instance to capture a new graph.");
   } else {
-    ORT_ENFORCE(graph_exec_map_.find(cuda_graph_annotation_id) != graph_exec_map_.end(),
+    ORT_ENFORCE(graph_exec_map_.find(*cuda_graph_annotation_id) != graph_exec_map_.end(),
                 "This cuda_graph_annotation_id has already captured a cuda graph. "
                 "Use another cuda_graph_annotation_id to capture a new cuda graph.");
 
@@ -53,7 +53,7 @@ void CUDAGraph::CaptureEnd() {
     CUDA_CALL_THROW(cudaGraphDestroy(additional_graph_));
     has_additional_graph_ = false;
 
-    int cuda_graph_id = cuda_graph_annotation_id_.value();
+    GraphAnnotation_t cuda_graph_id = cuda_graph_annotation_id_.value();
     graph_exec_map_.emplace(cuda_graph_id, graph_exec);
 
     return;
@@ -71,13 +71,12 @@ void CUDAGraph::CaptureEnd() {
   has_graph_ = false;
 }
 
-Status CUDAGraph::Replay(optional<int> cuda_graph_annotation_id) {
+Status CUDAGraph::Replay(GraphAnnotationOptional_t cuda_graph_annotation_id) {
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
   if (cuda_graph_annotation_id_.has_value()) {
-    LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << \
-                          " with cuda_graph_annotation_id " << cuda_graph_annotation_id;
-    auto it = graph_exec_map_.find(cuda_graph_annotation_id);
+    LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id " << *cuda_graph_annotation_id;
+    auto it = graph_exec_map_.find(*cuda_graph_annotation_id);
     if (it == graph_exec_map_.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME,
                              FAIL,
@@ -91,6 +90,10 @@ Status CUDAGraph::Replay(optional<int> cuda_graph_annotation_id) {
 
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   return Status::OK();
+}
+
+bool CUDAGraph::IsAdditionalGraphCaptured() const {
+  return !graph_exec_map_.empty();
 }
 
 void CUDAGraph::Reset() {

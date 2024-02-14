@@ -179,6 +179,11 @@ class IExecutionProvider {
   virtual common::Status Sync() const { return Status::OK(); }
 
   /**
+     TODO
+  */
+  virtual void SetGraphAnnotation(int) {}
+
+  /**
      Called when InferenceSession::Run started
      NOTE that due to async execution in provider, the actual work of previous
      Run may not be finished on device This function should be regarded as the
