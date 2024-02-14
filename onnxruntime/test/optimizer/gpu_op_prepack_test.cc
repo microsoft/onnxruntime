@@ -49,8 +49,8 @@ void GpuPrepackTester(
   TransformerLevel baseline_level,
   TransformerLevel target_level,
   int opset_version = 12,
-  double per_sample_tolerance = 0.0,
-  double relative_per_sample_tolerance = 0.0,
+  double per_sample_tolerance = 0.001,
+  double relative_per_sample_tolerance = 0.001,
   const std::function<void(SessionOptions&)>& add_session_options = {},
   const InlinedHashSet<std::string>& disabled_optimizers = {}) {
   // Build the model for this test.
@@ -114,15 +114,15 @@ void GpuPrepackTester(
   size_t num_outputs = baseline_fetches.size();
   ASSERT_EQ(num_outputs, target_fetches.size());
 
-  // for (size_t i = 0; i < num_outputs; i++) {
-  //   std::pair<COMPARE_RESULT, std::string> ret =
-  //       CompareOrtValue(target_fetches[i],
-  //                       baseline_fetches[i],
-  //                       per_sample_tolerance,
-  //                       relative_per_sample_tolerance,
-  //                       false);
-  //   EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
-  // }
+  for (size_t i = 0; i < num_outputs; i++) {
+    std::pair<COMPARE_RESULT, std::string> ret =
+        CompareOrtValue(target_fetches[i],
+                        baseline_fetches[i],
+                        per_sample_tolerance,
+                        relative_per_sample_tolerance,
+                        false);
+    EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+  }
 }
 
 inline Status GetOrtValue(const NodeArg* arg, const Graph& graph, OrtValue& ort_value) {
@@ -225,7 +225,7 @@ void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>
     MlasBlockwiseQuantizedBufferSizes(4, block_size, columnwise_blocking, K, N,
                                       q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
-    auto* input_arg = builder.MakeInput<MLFloat16>({M, K}, MLFloat16(0.0f), MLFloat16(31.0f));
+    auto* input_arg = builder.MakeInput<MLFloat16>({M, K}, MLFloat16(-2.0f), MLFloat16(2.0f));
     auto* output_arg = builder.MakeOutput();
     auto* weight_arg = builder.MakeInitializer<uint8_t>({q_weight_shape[1], q_weight_shape[0]}, q_weights);
     auto* scale_arg = builder.MakeInitializer<MLFloat16>({static_cast<int64_t>(q_scales.size())}, q_scales);
@@ -289,7 +289,6 @@ void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>
         } else {
           ASSERT_LE(node.InputDefs().size(), 3);
         }
-        std::cout << "Prepacked weights verified." << std::endl;
       }
     }
   };
@@ -308,19 +307,49 @@ TEST(GpuOpPrepackTests, MatmulNBits) {
     GTEST_SKIP() << "Skipping tests when CUDA EP is not available";
   }
 
-  MatMulQ4Test<64, true, true>(1, 128, 64, provider);
-  MatMulQ4Test<64, false, true>(1, 128, 64, provider);
-  MatMulQ4Test<64, true, false>(1, 128, 64, provider);
-  MatMulQ4Test<64, false, false>(1, 128, 64, provider);
+  //
+  // GpuPrepackTester function implements two different verifications.
+  // First is the hook check_graph, which we use to verify the prepacked weights, scales and zero points.
+  // Second is the comparison of the outputs of the model with and without prepacking, this actually
+  // doubles as a verification of kernel correctness and prepacking correctness.
+  //
+  // We do have other sets of tests for the prepack and kernel correctness, defined in
+  // onnxruntime/test/providers/cuda/test_cases/blkq4_fp16_gemm_sm80_test.cc
+  //
+  // What we are doing here is to verify we correctly connected the prepacking logic in
+  // the graph transformer, and that the prepacked weights, scales and zero points are correctly
+  // passed to the kernel in MatMulNBits cuda op. Plus the redundant verifications allows us to
+  // locate the problem more easily.
+  //
+  // So we don't need to test all the combinations here, just a few representative ones.
+  //
 
-  // MatMulQ4Test<32, true, true>(1, 64, 64, provider);
-  // MatMulQ4Test<32, true, false>(1, 64, 64, provider);
-  // MatMulQ4Test<32, false, true>(1, 64, 64, provider);
-  // MatMulQ4Test<32, false, false>(1, 64, 64, provider);
-  // MatMulQ4Test<32, true, true>(1, 64, 128, provider);
-  // MatMulQ4Test<32, true, false>(1, 64, 128, provider);
-  // MatMulQ4Test<32, false, true>(1, 64, 128, provider);
-  // MatMulQ4Test<32, false, false>(1, 64, 128, provider);
+  std::cout << "Testing MatMulQ4Test<64, true, true>(4, 128, 64, provider)" << std::endl;
+  MatMulQ4Test<64, true, true>(4, 128, 64, provider);
+  std::cout << "Testing MatMulQ4Test<64, false, true>(4, 128, 64, provider)" << std::endl;
+  MatMulQ4Test<64, false, true>(4, 128, 64, provider);
+  std::cout << "Testing MatMulQ4Test<64, true, false>(8, 128, 64, provider)" << std::endl;
+  MatMulQ4Test<64, true, false>(8, 128, 64, provider);
+  std::cout << "Testing MatMulQ4Test<64, false, false>(8, 128, 64, provider)" << std::endl;
+  MatMulQ4Test<64, false, false>(8, 128, 64, provider);
+
+  std::cout << "Testing MatMulQ4Test<32, true, true>(16, 64, 128, provider)" << std::endl;
+  MatMulQ4Test<32, true, true>(16, 64, 128, provider);
+  std::cout << "Testing MatMulQ4Test<32, true, false>(16, 64, 128, provider)" << std::endl;
+  MatMulQ4Test<32, true, false>(16, 64, 128, provider);
+  std::cout << "Testing MatMulQ4Test<32, false, true>(16, 64, 128, provider)" << std::endl;
+  MatMulQ4Test<32, false, true>(16, 64, 128, provider);
+  std::cout << "Testing MatMulQ4Test<32, false, false>(16, 64, 128, provider)" << std::endl;
+  MatMulQ4Test<32, false, false>(16, 64, 128, provider);
+
+  std::cout << "Testing MatMulQ4Test<16, true, true>(32, 96, 128, provider)" << std::endl;
+  MatMulQ4Test<16, true, true>(32, 96, 128, provider);
+  std::cout << "Testing MatMulQ4Test<16, true, false>(32, 96, 128, provider)" << std::endl;
+  MatMulQ4Test<16, true, false>(32, 96, 128, provider);
+  std::cout << "Testing MatMulQ4Test<16, false, true>(32, 96, 128, provider)" << std::endl;
+  MatMulQ4Test<16, false, true>(32, 96, 128, provider);
+  std::cout << "Testing MatMulQ4Test<16, false, false>(32, 96, 128, provider)" << std::endl;
+  MatMulQ4Test<16, false, false>(32, 96, 128, provider);
 }
 
 #endif

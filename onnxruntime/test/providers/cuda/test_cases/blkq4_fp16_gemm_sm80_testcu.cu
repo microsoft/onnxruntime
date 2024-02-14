@@ -27,6 +27,7 @@
 #include "core/common/common.h"
 
 #include "blkq4_fp16_gemm_sm80.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
 namespace onnxruntime {
 namespace cuda{
@@ -200,6 +201,8 @@ void run_blkq4_gemm(int m, int n, int k) {
       block_size,
       4,
       column_wise_blocking>;
+  ORT_ENFORCE(PrepackT::weight_dimension_supported(k, n),
+    "Test setup problem, unsupported weight dimension: [", k, ", ", n, "]");
 
   std::vector<ElementW> packed_w(q_weight_shape.product());
   PrepackT::prepack_weights(problem_size.k(), problem_size.n(), q_weights, packed_w);
@@ -256,19 +259,15 @@ void run_blkq4_gemm(int m, int n, int k) {
   tensor_d.sync_device();
 
   // run GEMM
-  cutlass::Status status;
-  if constexpr (has_offsets){
-    status = GemmRunner::run(
-      nullptr, problem_size, tensor_a.device_ref(), ref_W,
-      ref_scales, ref_zp,
-      tensor_c.device_ref(), tensor_d.device_ref());
-  } else {
-    status = GemmRunner::run(
-      nullptr, problem_size, tensor_a.device_ref(), ref_W,
-      ref_scales,
-      tensor_c.device_ref(), tensor_d.device_ref());
-  }
-  ORT_ENFORCE(status == cutlass::Status::kSuccess, "Kernel execution failed: ", cutlassGetStatusString(status));
+  ORT_THROW_IF_ERROR(onnxruntime::contrib::cuda::blkq4_fp16_gemm_sm80_dispatch<cutlass::half_t>(
+    block_size, column_wise_blocking,
+    m, n, k,
+    nullptr,
+    tensor_a.device_data(), tensor_a.size(),
+    d_packed_w.data().get(), d_packed_w.size(),
+    d_packed_scales.data().get(), d_packed_scales.size(),
+    d_packed_zp.data().get(), d_packed_zp.size(),
+    tensor_d.device_data(), tensor_d.size()));
 
   // Running reference kernel
   using ElementInputB = ElementInputA;

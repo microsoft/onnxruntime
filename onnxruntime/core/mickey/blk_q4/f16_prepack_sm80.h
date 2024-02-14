@@ -80,6 +80,23 @@ struct BlockwiseQuantization {
     return make_Position(rows / QuantBlocking::kRow, columns / QuantBlocking::kColumn);
   }
 
+  static inline bool weight_dimension_supported(int rows, int columns) {
+    // prepacking works on a 16x16 block, so the dimensions must be multiples of 16
+    if (((rows % 16) != 0) || ((columns % 16) != 0)) {
+      return false;
+    }
+
+    // verify the dimensions are multiples of the block size
+    if (((rows % QuantBlocking::kRow) != 0) || ((columns % QuantBlocking::kColumn) != 0)) {
+      return false;
+    }
+
+    // All the above restrictions can be relaxed by adding more logic to the prepack
+    // and gemm implementation to support edge cases. But for now, these restrictions
+    // does not affect LLM weight dimensions, so we keep it simple.
+    return true;
+  }
+
   /**
    * @brief Prepack weight matrix to facilitate matrix loading, depending on MMA
    * instruction layout.
@@ -114,10 +131,10 @@ struct BlockwiseQuantization {
       const gsl::span<uint8_t const>& weights,     // <- int4 weights, column major
       const gsl::span<uint8_t>& weights_prepacked  // <- int4 prepacked weights tensor, same size buffer
   ) {
-    ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0 &&
-                    (rows % QuantBlocking::kRow) == 0 &&
-                    (columns % QuantBlocking::kColumn) == 0,
-                "Does not support odd number of rows or columns!");
+#ifndef NDEBUG
+    ORT_ENFORCE(weight_dimension_supported(rows, columns),
+                "This function must be guarded by weight_dimension_supported()!");
+#endif
     ORT_ENFORCE(weights.size() == size_t(rows * columns / 2),
                 "Weight tensor shape mismatch!");
     ORT_ENFORCE(weights_prepacked.size() == weights.size(),
@@ -175,6 +192,10 @@ struct BlockwiseQuantization {
       const gsl::span<ElementT const>& scales,     // <- quant scales, column major layout
       const gsl::span<ElementT>& scales_prepacked  // <- quant scales prepacked, same size buffer
   ) {
+#ifndef NDEBUG
+    ORT_ENFORCE(weight_dimension_supported(rows, columns),
+                "This function must be guarded by weight_dimension_supported()!");
+#endif
     auto meta_shape = get_quant_meta_shape(rows, columns);
     ORT_ENFORCE(scales.size() == size_t(meta_shape.product()),
                 "Quantization scale tensor shape mismatch!");
@@ -245,10 +266,11 @@ struct BlockwiseQuantization {
       const gsl::span<uint8_t const>& offsets,     // <- quant offsets, int4, column major layout
       const gsl::span<uint8_t>& offsets_prepacked  // <- quant offsets prepacked, double size buffer
   ) {
+#ifndef NDEBUG
+    ORT_ENFORCE(weight_dimension_supported(rows, columns),
+                "This function must be guarded by weight_dimension_supported()!");
+#endif
     auto meta_shape = get_quant_meta_shape(rows, columns);
-
-    ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0,
-                "Does not support odd number of rows or columns!");
     ORT_ENFORCE(offsets_prepacked.size() == size_t(meta_shape.product()),
                 "Wrong buffer size for prepacked quantization offsets!");
     ORT_ENFORCE(offsets.size() == size_t(((meta_shape[0] + 1) / 2) * meta_shape[1]),
@@ -346,10 +368,7 @@ template<typename ElementT, int block_size, bool col_blocking>
 inline
 bool BlkQuantGemmSm80Supported(int weight_rows, int weight_cols, int major, int minor) {
   using Base = BlockwiseQuantization<ElementT, block_size, 4, col_blocking>;
-  if (weight_cols % Base::QuantBlocking::kColumn != 0) {
-    return false;
-  }
-  if (weight_rows % Base::QuantBlocking::kRow != 0) {
+  if (!Base::weight_dimension_supported(weight_rows, weight_cols)) {
     return false;
   }
   return IsSm80WithWholeBlocks(weight_rows, weight_cols, major, minor);

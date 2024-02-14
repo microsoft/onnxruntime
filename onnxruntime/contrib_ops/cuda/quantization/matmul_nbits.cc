@@ -14,7 +14,6 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-using namespace onnxruntime::cuda;
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -23,14 +22,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->Input<Tensor>(3);
   const Tensor* reorder_idx = ctx->Input<Tensor>(4);
-
-  const auto* a_data = a->Data<T>();
-  const uint8_t* blob_data = b->Data<uint8_t>();
-  const auto* scales_data = scales->Data<T>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-
-  typedef typename ToCudaType<T>::MappedType CudaT;
 
   constexpr bool transa = false;
   constexpr bool transb = true;
@@ -42,6 +33,18 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* Y = ctx->Output(0, helper.OutputShape());
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0) return Status::OK();
+
+  if (prepack_ > 0){
+    return PrepackedGemm(
+      static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()),
+      a, b, scales, zero_points, Y);
+  }
+
+  const auto* a_data = a->Data<T>();
+  const uint8_t* blob_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<T>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
 
   bool is_4bit_done = (reorder_idx_data == nullptr) &&
                       (!zero_points || !zero_points->IsDataType<T>()) &&
