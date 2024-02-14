@@ -93,7 +93,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
 
     if (groups) {
-      AddOperationInput(*conv_op, "groups", model_builder.AddConstant(op_type, "groups", *groups));
+      AddOperationInput(*conv_op, "groups", model_builder.AddScalarConstant(op_type, "groups", *groups));
     }
 
     AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -113,7 +113,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         auto onnx_pads = helper.GetInt64s("pads");  // 'pads' must be provided if auto_pad is NOTSET
         if (onnx_pads) {
           AddOperationInput(*conv_op, "pad_type",
-                            model_builder.AddConstant(op_type, "pad_type", std::string_view("custom")));
+                            model_builder.AddScalarConstant(op_type, "pad_type", std::string("custom")));
 
           // need to re-order from x1_start, x2_start..., x1_end, x2_end... to
           // x1_start, x1_end, x2_start, x2_end,...
@@ -140,14 +140,14 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       }
       case AutoPadType::VALID:
         AddOperationInput(*conv_op, "pad_type",
-                          model_builder.AddConstant(op_type, "pad_type", std::string_view("valid")));
+                          model_builder.AddScalarConstant(op_type, "pad_type", std::string("valid")));
 
         break;
       case AutoPadType::SAME_UPPER:
       case AutoPadType::SAME_LOWER: {
         const auto pad_type = (auto_pad_type == AutoPadType::SAME_UPPER ? "same" : "same_lower");
         AddOperationInput(*conv_op, "pad_type",
-                          model_builder.AddConstant(op_type, "pad_type", std::string_view(pad_type)));
+                          model_builder.AddScalarConstant(op_type, "pad_type", std::string(pad_type)));
 
         // despite what the spec says, a 'pad' input seems to be required.
         // https://github.com/apple/coremltools/issues/2127

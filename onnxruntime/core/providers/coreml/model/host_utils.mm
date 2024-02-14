@@ -10,12 +10,7 @@ namespace coreml {
 namespace util {
 
 bool HasRequiredBaseOS() {
-  // This may look strange, but it is required "@available(macOS ....)" to safe-guard some code
-  // otherwise the compiler will spit -Wunsupported-availability-guard
-  if (HAS_COREML3_OR_LATER)
-    return true;
-  else
-    return false;
+  return CoreMLVersion() >= 3;
 }
 
 int32_t CoreMLVersion() {

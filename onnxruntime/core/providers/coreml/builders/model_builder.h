@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/span_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/providers/coreml/model/model.h"
@@ -100,8 +101,30 @@ class ModelBuilder {
   /// </param>
   /// <returns>Unique name generated for value.</returns>
   template <typename T>
-  std::string AddConstant(const std::string& op_type, std::string_view value_type, const T& value,
-                          std::optional<const gsl::span<const int64_t>> shape = std::nullopt);
+  std::string AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
+                          std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+    static_assert(std::is_same_v<T, float> ||
+                      std::is_same_v<T, int64_t> ||
+                      std::is_same_v<T, std::string> ||
+                      std::is_same_v<T, bool>,
+                  // add specialization in AddConstantImpl for new types if needed
+                  "AddConstant currently supports float, int64_t, std::string and bool.");
+    return AddConstantImpl(op_type, value_type, value, shape);
+  }
+
+  template <typename T>
+  std::string AddConstant(std::string_view op_type, std::string_view value_type, const std::vector<T>& value,
+                          std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+    return AddConstant(op_type, value_type, AsSpan(value), shape);
+  }
+
+  /// <summary>
+  /// Add a scalar value as a 'const' operation. See AddConstant for details.
+  /// </summary>
+  template <typename T>
+  std::string AddScalarConstant(std::string_view op_type, std::string_view value_type, const T& value) {
+    return AddConstant(op_type, value_type, AsSpan({value}), AsSpan<const int64_t>({}));
+  }
 
   /// <summary>
   /// Add an existing a constant ONNX initializer to the ML Program as a 'const' operation
@@ -131,8 +154,12 @@ class ModelBuilder {
 
  private:
 #if defined(COREML_ENABLE_MLPROGRAM)
+  template <typename T>
+  std::string AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
+                              std::optional<gsl::span<const int64_t>> shape = std::nullopt);
+
   void AddConstantOperation(std::string_view name, COREML_SPEC::MILSpec::Value&& initializer);
-  std::string AddTensorValueAsConstantOperation(const std::string& op_type, std::string_view value_type,
+  std::string AddTensorValueAsConstantOperation(std::string_view op_type, std::string_view value_type,
                                                 COREML_SPEC::MILSpec::Value&& input_value);
 #endif
 

@@ -493,9 +493,9 @@ Model::Model(const std::string& path,
              const logging::Logger& logger,
              uint32_t coreml_flags)
     : execution_(std::make_unique<Execution>(path, logger, coreml_flags)),
-      input_output_info_(input_output_info),
-      scalar_outputs_(scalar_outputs),
-      int64_outputs_(int64_outputs) {
+      input_output_info_(std::move(input_output_info)),
+      scalar_outputs_(std::move(scalar_outputs)),
+      int64_outputs_(std::move(int64_outputs)) {
 }
 
 Model::~Model() {}
