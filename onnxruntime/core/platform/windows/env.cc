@@ -261,15 +261,19 @@ int WindowsEnv::DefaultNumCores() {
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
 // EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
-#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
-  // The following code was added per a request from Intel. It is to reduce the total number of threads
-  // by one on Intel MTL CPUs. This is a special perf optimzation for a special kind of CPU. It is based on assumptions
-  // that:
-  // 1. All Intel CPUs should have 3 levels of cache. (However it is not true)
+//&&defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID)
+  // The following code is a temporary fix for a perf problem on Intel's Meteor Lake CPUs. The Intel compute platform has
+  // a hybrid architecture that some CPU cores runs significant slower than the others. If we distribute our compute work
+  // evenly to all CPU cores, the slowest CPU core will drag the performance down. So, instead, we reduce the total number
+  // of threads to exclude the slowest cores out.
+  // The following code is based on assumptions that:
+  // 1. All Intel hybrid CPUs should have 3 levels of cache.
   // 2. If a CPU core is only associated with two levels of cache,  it should be a low performance CPU core and should
   //    not be used.
-  // The code below is very hacky, but we expect it should not cause any crash. The worst is it might return 1 that
-  // a thread pool will not be created, which is just a perf issue that does not impact usability.
+  // Since we don't know what the next Intel hybrid CPU would be like, later on we may need to rework the following code.
+  // However, no matter what the code should not cause any crash. The worst is it might return 1 that
+  //  thread pools will not be created, which is just a perf issue and does not impact usability.
   // TODO: detect if CPUID instruction is available per instructions at https://wiki.osdev.org/CPUID#Checking_CPUID_availability
   int regs[4];
   __cpuid(regs, 0);
@@ -283,7 +287,7 @@ int WindowsEnv::GetNumPhysicalCpuCores() const {
     // The bit 15 of EDX indicates if the processor is identified as a hybrid part.
     bool ishybrid = regs[3] & (1 << 15);
     if (ishybrid) {
-      // NOTE: even if ishybrid is true, it doesn't mean the processor must have P-cores/E-cores.
+      // NOTE: even if ishybrid is true, it doesn't mean the processor must have P-cores and E-cores.
       // On Intel CPUs we assume the HardwareCoreEnumerator::DefaultIntraOpNumThreads function would never fail.
       // NOTE: due to resource restrictions, we cannot test this branch in our CI build pipelines.
       return std::max(static_cast<uint32_t>(1), HardwareCoreEnumerator::DefaultIntraOpNumThreads());
