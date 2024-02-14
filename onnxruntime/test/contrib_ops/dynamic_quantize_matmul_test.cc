@@ -24,47 +24,40 @@ namespace test {
 
 template <typename T>
 static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, const int64_t K,
-                                          const std::vector<float>& A_data, const std::vector<T>& B_data,
-                                          std::vector<float>& B_scale, std::vector<T>& B_zero_point,
-                                          const std::vector<float>& Bias, std::vector<float>& Y_data,
-                                          bool per_column, bool has_zp, bool has_bias) {
+                                           const std::vector<float>& A_data, const std::vector<T>& B_data,
+                                           std::vector<float>& B_scale, std::vector<T>& B_zero_point,
+                                           const std::vector<float>& Bias, std::vector<float>& Y_data,
+                                           bool per_column, bool has_zp, bool has_bias) {
   // DynamicQuantize Matrix A
   const uint32_t num_elements = M * K;
   std::vector<T> QuantA_data(num_elements);
   std::vector<float> A_scale;
   std::vector<T> A_zero_point;
 
-  //
   // Get max and min
-  //
-
   float min = std::numeric_limits<float>::max();
   float max = std::numeric_limits<float>::lowest();
   float qmax = static_cast<float>(std::numeric_limits<T>::max());
   float qmin = static_cast<float>(std::numeric_limits<T>::lowest());
 
-  
   for (uint32_t i = 0; i < num_elements; ++i) {
     max = std::max(A_data[i], max);
     min = std::min(A_data[i], min);
   }
 
-  //
   // Adjust the maximum and minimum to include zero
-  //
   max = std::max(max, 0.0f);
   min = std::min(min, 0.0f);
 
-  //
-  // Compute quantization values and store in tensors
-  //
   float scale = static_cast<float>(max - min) / (qmax - qmin);
   T zeroPoint = std::round(std::clamp(qmin - min / scale, qmin, qmax));
 
   A_scale.push_back(scale);
   A_zero_point.push_back(zeroPoint);
+
+  // Matrix Multiplication
   for (uint32_t i = 0; i < num_elements; ++i) {
-    QuantA_data[i] = static_cast<T>(std::round((A_data[i] / scale ) + zeroPoint));
+    QuantA_data[i] = static_cast<T>(std::round((A_data[i] / scale) + zeroPoint));
   }
   if (!per_column) {
     B_zero_point.resize(N, B_zero_point[0]);
@@ -75,11 +68,11 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
-        float A_dequantized = (static_cast<int>(QuantA_data[m * K + k]) - static_cast<int>(A_zero_point[0])) * A_scale[0];
+        float A_dequantized = (static_cast<int>(QuantA_data[m * K + k]) - static_cast<int>(A_zero_point[0]))
+                               * A_scale[0];
 
-        float B_dequantized = has_zp ?
+        float B_dequantized = has_zp ? 
                               (static_cast<int>(B_data[k * N + n]) - static_cast<int>(B_zero_point[n])) * B_scale[n] :
-            //(B_data[k * N + n] - B_zero_point[n]) * B_scale[n] :
                               B_data[k * N + n] * B_scale[n];
 
         sum += A_dequantized * B_dequantized;
@@ -92,27 +85,27 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
   }
 }
 
-
 template <typename T>
 void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
                                bool per_column = false,
                                bool has_zp = true,
-                               bool has_bias = false) {
+                               bool has_bias = false,
+                               bool empty_input = false) {
   // create rand inputs
   RandomValueGenerator random{};
 
-  int64_t M = 4;
+  int64_t M = empty_input ? 1 : 4;
   int64_t N = 128;
   int64_t K = 128;
-  std::vector<int64_t> A_dims{M, K};
+  std::vector<int64_t> A_dims{empty_input ? 0 : M, K};
   std::vector<int64_t> B_dims{K, N};
-  std::vector<int64_t> Y_dims{M, K};
+  std::vector<int64_t> Y_dims{empty_input ? 0 : M, K};
   std::vector<float> A_data = random.Uniform<float>(A_dims, -1.0f, 1.0f);
-  //std::vector<float> A_data = random.Uniform<float>(A_dims, -10.0f, 10.0f);
   std::vector<T> B_data;
   std::vector<T> tmp_B_data = random.Uniform<T>(B_dims,
                                                 (constexpr(std::is_same_v<T, int8_t>)) ?
-                                                std::numeric_limits<int8_t>::lowest() / 2 : std::numeric_limits<uint8_t>::lowest(),
+                                                std::numeric_limits<int8_t>::lowest() / 2 :
+                                                std::numeric_limits<uint8_t>::lowest(),
                                                 std::numeric_limits<T>::max() / 2);
   std::transform(tmp_B_data.begin(), tmp_B_data.end(), std::back_inserter(B_data), [](int32_t v) -> T {
     return static_cast<T>(v);
@@ -125,7 +118,8 @@ void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
                 B_zero_point.end(),
                 [&random](T& zp) {
                   zp = static_cast<T>(random.Uniform<T>(std::array<int64_t, 1>{1},
-                  std::numeric_limits<T>::min(), std::numeric_limits<T>::max())[0]);
+                                                        std::numeric_limits<T>::min(),
+                                                        std::numeric_limits<T>::max())[0]);
                 });
 
   std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
@@ -148,24 +142,14 @@ void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
   }
 
   std::vector<float> Y_data(M * N);
-  CalculateDynamicQuantizeMatMul<T>(M, N, K, A_data, B_data, B_scale, B_zero_point, Bias, Y_data, per_column, has_zp, has_bias);
-  test.AddOutput<float>("Y", {M, N}, Y_data);
-  // Only DML EP supports these data type combinations for now
-  //if (constexpr(std::is_same_v<IType, int8_t>) &&
-  //     constexpr(std::is_same_v<WType, uint8_t>))) {
-  //  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  //  execution_providers.push_back(DefaultDmlExecutionProvider());
-  //  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-  //} else {
-    test.SetOutputRelErr("Y", 0.5f);
-   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-   execution_providers.push_back(DefaultDmlExecutionProvider());
-    test.Run();
+  CalculateDynamicQuantizeMatMul<T>(M, N, K, A_data, B_data, B_scale, B_zero_point, Bias, Y_data,
+                                    per_column, has_zp, has_bias);
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+  test.Run();
 }
 
 template <typename T, bool HasZeroPoint, bool HasBias>
 void RunDynamicQuantizeMatMulTest() {
-
   TestDynamicQuantizeMatMul<T>(false,        /*is_matrix_b_constant*/
                                false,        /*per_column*/
                                HasZeroPoint, /*has_zp*/
@@ -177,13 +161,13 @@ void RunDynamicQuantizeMatMulTest() {
                                HasZeroPoint, /*has_zp*/
                                HasBias       /*has_bias*/
   );
-  
+
   TestDynamicQuantizeMatMul<T>(false,        /*is_matrix_b_constant*/
                                true,         /*per_column*/
                                HasZeroPoint, /*has_zp*/
                                HasBias       /*has_bias*/
   );
-  
+
   TestDynamicQuantizeMatMul<T>(true,         /*is_matrix_b_constant*/
                                true,         /*per_column*/
                                HasZeroPoint, /*has_zp*/
@@ -207,7 +191,6 @@ TEST(DynamicQuantizeMatMul, NoZeroPoint_HasBias_test_U8) {
   RunDynamicQuantizeMatMulTest<uint8_t, false, true>();
 }
 
-
 TEST(DynamicQuantizeMatMul, NoZeroPoint_NoBias_test_S8) {
   RunDynamicQuantizeMatMulTest<int8_t, false, false>();
 }
@@ -224,22 +207,19 @@ TEST(DynamicQuantizeMatMul, HasZeroPoint_HasBias_test_U8) {
   RunDynamicQuantizeMatMulTest<uint8_t, true, true>();
 }
 
-
-//TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
-//  std::vector<int64_t> A_dims{0, 128};
-//  std::vector<int64_t> B_dims{128, 128};
-//  std::vector<int64_t> Y_dims{0, 128};
-//
-//  TestDynamicQuantizeMatMul<uint8_t>(
-// 
-//                                     ,
-//                                     false /*is_matrix_b_constant*/);
-//
-//  TestDynamicQuantizeMatMul<uint8_t>(
-// 
-//                                     ,
-//                                     true /*is_matrix_b_constant*/);
-//}
+TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
+  std::vector<int64_t> A_dims{0, 2};
+  std::vector<int64_t> B_dims{2, 2};
+  std::vector<int64_t> Y_dims{0, 2};
+  OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("T1", A_dims, {});
+  test.AddInput<uint8_t>("T2", B_dims, {1, 6, 0, 8});
+  test.AddInput<float>("b_scale", {1}, {1.0f});
+  test.AddInput<uint8_t>("b_zero_point", {1}, {0});
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {0, 2}, {});
+  test.Run();
+}
 
 TEST(DynamicQuantizeMatMul, B_PerColumn_ND) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
