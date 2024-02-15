@@ -397,7 +397,7 @@ class TestBeamSearchWhisper(unittest.TestCase):
 
     @pytest.mark.slow
     def test_openai_impl_whisper(self):
-        optional_args = ["--model_impl", "openai", "--chain_model", "--use_whisper_beamsearch"]
+        optional_args = ["--model_impl", "openai"]
         self.run_configs(optional_args)
 
 

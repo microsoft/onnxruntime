@@ -1,5 +1,22 @@
 # Whisper
 
+## Prerequisites
+
+Please note the package versions needed for using Whisper in the `requirements.txt` file that fits your scenario.
+- `requirements-cpu.txt`
+  - For running Whisper on CPU
+- `requirements-cuda.txt`
+  - For running Whisper on CUDA
+  - Note that `torch` with CUDA enabled is not installed automatically. This is because `torch` should be installed with the CUDA version used on your machine. Please visit [the PyTorch website](https://pytorch.org/get-started/locally/) to download the `torch` version that is used with the CUDA version installed on your machine and satisfies the requirement listed in the file.
+- `requirements.txt`
+  - Package versions needed in each of the above files
+
+In addition to the above packages, you will need to install `ffmpeg` on your machine. Visit the [FFmpeg website](https://ffmpeg.org/) for details. You can also install it natively using package managers.
+
+- Linux: `sudo apt-get install ffmpeg`
+- MacOS: `sudo brew install ffmpeg`
+- Windows: Download from website
+
 ## Exporting Whisper with Beam Search
 
 There are several ways to export Whisper with beam search (using Whisper tiny as an example).
