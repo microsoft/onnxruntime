@@ -1799,6 +1799,7 @@ common::Status InferenceSession::Initialize() {
         auto* target_ep = execution_providers_.Get(it);
 
         if (target_ep && target_ep->IsGraphCaptureEnabled()) {
+          std::cout << "check if target_ep is graph capture enabled:" << target_ep->Type() << std::endl;
           // Graphs capture can't work with control flow nodes
           if (HasControlflowNodes(graph)) {
             LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
@@ -1859,6 +1860,7 @@ common::Status InferenceSession::Initialize() {
           }
 
           LOGS(*session_logger_, INFO) << "This session will use the CUDA/HIP Graph feature as requested by the user.";
+          std::cout << "This session will use the CUDA/HIP Graph feature as requested by the user." << std::endl;
           cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
           break;  // Make sure only one ep can run CUDA graph.
         }
@@ -2397,6 +2399,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   // Check if this Run() is simply going to be a CUDA Graph replay.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
+    std::cout << "Replaying the captured "
+              << cached_execution_provider_for_graph_replay_.Type()
+              << " CUDA Graph for this model with tag: " << run_options.run_tag << std::endl;
     LOGS(*session_logger_, INFO) << "Replaying the captured "
                                  << cached_execution_provider_for_graph_replay_.Type()
                                  << " CUDA Graph for this model with tag: " << run_options.run_tag;

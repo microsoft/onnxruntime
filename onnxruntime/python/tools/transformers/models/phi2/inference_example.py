@@ -113,7 +113,13 @@ class ORTGenerator:
 
     def create_session(self, device_id, use_fp16=True, use_buffer_share=True, packed_kv=False, use_step=False):
         sess_options = ort.SessionOptions()
-        ep = ("CUDAExecutionProvider", {"device_id": device_id}) if device_id >= 0 else "CPUExecutionProvider"
+        #sess_options.log_verbosity_level = 0
+        #sess_options.log_severity_level = 0
+        ep = (
+            ("CUDAExecutionProvider", {"device_id": device_id, "enable_cuda_graph": True})
+            if device_id >= 0
+            else "CPUExecutionProvider"
+        )
         self.sess = ort.InferenceSession(self.onnx_decoder_path, sess_options=sess_options, providers=[ep])
 
         self.device = torch.device("cuda", device_id) if torch.cuda.is_available() else torch.device("cpu")
@@ -136,11 +142,21 @@ class ORTGenerator:
         current_length = sequence_length
         has_eos = torch.zeros(batch_size, device=self.device, dtype=torch.bool)
 
+        # bugbug: move outside
+        ro_prompt = ort.RunOptions()
+        ro_prompt.add_run_config_entry("ep.cuda.cuda_graph_annotation", "-1")
+        ro_token = ort.RunOptions()
+        ro_token.add_run_config_entry("ep.cuda.cuda_graph_annotation", "1")
+        prompt_run = True
         while current_length < max_length:
             io_binding = self.apply_io_binding(self.sess, inputs, outputs)
 
             io_binding.synchronize_inputs()
-            self.sess.run_with_iobinding(io_binding)
+            if prompt_run:
+                self.sess.run_with_iobinding(io_binding, ro_prompt)
+                prompt_run = False
+            else:
+                self.sess.run_with_iobinding(io_binding, ro_token)
             io_binding.synchronize_outputs()
 
             # Sample with argmax (greedy search)

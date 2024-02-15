@@ -24,9 +24,6 @@ void CUDAGraph::CaptureBegin(GraphAnnotationOptional_t cuda_graph_annotation_id)
                 "Create a new instance to capture a new graph.");
   } else {
     std::cout << "CaptureBegin: cuda_graph_annotation_id is " << *cuda_graph_annotation_id << std::endl;
-    ORT_ENFORCE(graph_exec_map_.find(*cuda_graph_annotation_id) != graph_exec_map_.end(),
-                "This cuda_graph_annotation_id has already captured a cuda graph. "
-                "Use another cuda_graph_annotation_id to capture a new cuda graph.");
 
     cuda_graph_annotation_id_ = cuda_graph_annotation_id;
   }
@@ -102,10 +99,8 @@ bool CUDAGraph::IsAdditionalGraphCaptured() const {
 
 bool CUDAGraph::IsGraphCaptureAllowedOnRun() const {
   if (!cuda_graph_annotation_id_.has_value()) {
-    std::cout << "IsGraphCaptureAllowedOnRun: true" << std::endl;
     return true;
   }
-  std::cout << "IsGraphCaptureAllowedOnRun: " << (*cuda_graph_annotation_id_ != kDefaultSkipGraphCapture) << std::endl;
   return *cuda_graph_annotation_id_ != kDefaultSkipGraphCapture;
 }
 

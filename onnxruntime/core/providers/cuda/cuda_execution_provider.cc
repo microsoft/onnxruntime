@@ -191,8 +191,11 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 }
 
 bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
-  return cuda_graph_.IsGraphCaptureAllowedOnRun() &&
-    regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+}
+
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowedOnRun() const {
+  return cuda_graph_.IsGraphCaptureAllowedOnRun();
 }
 
 void CUDAExecutionProvider::PerThreadContext::SetCudaGraphAnnotationId(GraphAnnotationOptional_t cuda_graph_annotation_id) {
@@ -437,10 +440,11 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
 }
 
 bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
-  return info_.enable_cuda_graph && GetPerThreadContext().IsGraphCaptureAllowed();
+  return (info_.enable_cuda_graph == 1) && GetPerThreadContext().IsGraphCaptureAllowedOnRun();
 }
 
 void CUDAExecutionProvider::SetGraphAnnotation(GraphAnnotation_t cuda_graph_annotation_id) {
+  std::cout << "SetGraphAnnotation: cuda_graph_annotation_id is " << cuda_graph_annotation_id << std::endl;
   GetPerThreadContext().SetCudaGraphAnnotationId(make_optional<GraphAnnotation_t>(cuda_graph_annotation_id));
 }
 
