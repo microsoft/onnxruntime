@@ -870,14 +870,6 @@ public:
     QLinearMatMulHelper(const Info_t& info, const Shape_t& shape) : MatMulHelperBase(info, shape, 0, 3) {}
 };
 
-class MatMulIntegerToFloatHelper : public MatMulHelperBase
-{
-public:
-    template<typename Info_t, typename Shape_t>
-    MatMulIntegerToFloatHelper(const Info_t& info, const Shape_t& shape) : MatMulHelperBase(info, shape, 0, 1) {}
-};
-
-
 class TopKHelper
 {
     void Initialize(
