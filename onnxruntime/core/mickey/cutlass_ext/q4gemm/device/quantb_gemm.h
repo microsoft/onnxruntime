@@ -68,7 +68,7 @@ namespace device {
   to support quantization.
 
   This implementation pretty much follows the design of cutlass. But this class seems to be
-  just a wrapper of the Gemm kernel class. Is this really necessary?
+  just a wrapper of the Gemm kernel class. Consider combining them in future iterations.
 
 */
 template <
@@ -220,7 +220,6 @@ class QuantBGemm {
 
   /// Argument structure
   struct Arguments {
-
     //
     // Data members
     //
@@ -248,9 +247,7 @@ class QuantBGemm {
 
     /// Default ctor
     CUTLASS_HOST_DEVICE
-    Arguments(): problem_size(0, 0, 0) {
-
-    }
+    Arguments(): problem_size(0, 0, 0) {}
 
     /// Constructs an Arguments structure
     CUTLASS_HOST_DEVICE
@@ -262,8 +259,7 @@ class QuantBGemm {
       TensorRef<ElementC const, LayoutC> ref_C_,
       TensorRef<ElementC, LayoutC> ref_D_,
       typename EpilogueOutputOp::Params epilogue_ =
-        typename EpilogueOutputOp::Params()
-    ):
+        typename EpilogueOutputOp::Params()):
       problem_size(problem_size_),
       ref_A(ref_A_),
       ref_B(ref_B_),
@@ -284,8 +280,7 @@ class QuantBGemm {
       TensorRef<ElementC const, LayoutC> ref_C_,
       TensorRef<ElementC, LayoutC> ref_D_,
       typename EpilogueOutputOp::Params epilogue_ =
-        typename EpilogueOutputOp::Params()
-    ):
+        typename EpilogueOutputOp::Params()):
       problem_size(problem_size_),
       ref_A(ref_A_),
       ref_B(ref_B_),
@@ -298,13 +293,11 @@ class QuantBGemm {
     }
   };
 
-private:
-
+ private:
   /// Kernel parameters object
   typename GemmKernel::Params params_;
 
-public:
-
+ public:
   /// Constructs the GEMM.
   QuantBGemm() { }
 

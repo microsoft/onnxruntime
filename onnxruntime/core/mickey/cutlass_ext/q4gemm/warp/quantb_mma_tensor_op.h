@@ -88,7 +88,7 @@ struct ConvertAndPack<T, T, N, Round> {
 
   CUTLASS_HOST_DEVICE
   Array<T, N> operator()(Array<T, N> const &source) {
-		return source;
+    return source;
   }
 };
 

@@ -40,14 +40,14 @@ struct b32_pair{
   uint32_t b;
 };
 
-struct fp16_quard{
+struct fp16_quad{
   cutlass::half_t a;
   cutlass::half_t b;
   cutlass::half_t c;
   cutlass::half_t d;
 };
 
-struct b16_quard{
+struct b16_quad{
   int16_t a;
   int16_t b;
   int16_t c;
@@ -57,8 +57,8 @@ struct b16_quard{
 union b64 {
   uint64_t single;
   b32_pair pair;
-  b16_quard quard;
-  fp16_quard fp16_quard;
+  b16_quad quard;
+  fp16_quad fp16_quad;
 };
 
 static_assert(sizeof(b64) == 8, "b64 should be 64 bits");
@@ -88,7 +88,7 @@ void weights2Half(cutlass::Array<uint8_t,Size/2> const &weights,
         "  shl.b32       %1, %4, 2;\n"
         "  shr.u32       %2, %4, 2;\n"
         "  shr.u32       %3, %4, 6;\n"
-        "  lop3.b32      %0, %0, 0x03c003c0, 0x4c004c00, 0xea;\n" // a & 0x03c0 | 0xcc00
+        "  lop3.b32      %0, %0, 0x03c003c0, 0x4c004c00, 0xea;\n" // a & 0x03c0 | 0x4c00
         "  lop3.b32      %1, %1, 0x03c003c0, 0x4c004c00, 0xea;\n"
         "  lop3.b32      %2, %2, 0x03c003c0, 0x4c004c00, 0xea;\n"
         "  lop3.b32      %3, %3, 0x03c003c0, 0x4c004c00, 0xea;\n"
@@ -147,7 +147,7 @@ public:
   //  T3 |  T7 | T11 | T15 | T19 | T23 | T27 | T31
   using CoreTile = layout::PitchLinearShape<4, 8>;
 
-  /// Each thread holds a 32b fragement per tile: for half precision, it's 2 elements, 4 elements for int8
+  /// Each thread holds a 32b fragment per tile: for half precision, it's 2 elements, 4 elements for int8
   static int const kNumBsPerCoreTileFragement = 32 / sizeof_bits<typename ArchMmaOperator::ElementB>::value;
 
   /// Each mma instruction can process either 1 or 2 tensor core operand B tiles (stacked on the k dimension)
@@ -175,13 +175,13 @@ public:
   /// stride to reach the meta data for the next CoreTile on the K dimension
   static int const kKTileStride = (kNumBsPerCoreTileFragement * CoreTile::kContiguous + BlockingShape::kRow - 1) / BlockingShape::kRow;
 
-  /// Stride on N dimention should be the tile width, shrunk by blocking size on this dimension.
+  /// Stride on N dimension should be the tile width, shrunk by blocking size on this dimension.
   static int const kNStride = (CoreTile::kStrided + BlockingShape::kColumn - 1) / BlockingShape::kColumn;
 
   /// On N dimension, how many tiles share the same meta data
   static int const kNRepeats = (BlockingShape::kColumn + CoreTile::kStrided - 1) / CoreTile::kStrided;
 
-  /// Each fragement should cover kMmaIterationsB number of mma intructions on the N dimension.
+  /// Each fragment should cover kMmaIterationsB number of mma intructions on the N dimension.
   /// When blocking size on this dimension exceeds the tile width, multiple iterations
   /// would share the same data.
   static int const kMmaIterations = (kMmaIterationsB + kNRepeats - 1) / kNRepeats;
@@ -487,10 +487,10 @@ public:
 
           offsets_ptr += 4;
         } else {
-          offsets.fp16_quard.a = scales_ptr->fp16_quard.a * static_cast<cutlass::half_t>(-16-8);
-          offsets.fp16_quard.b = scales_ptr->fp16_quard.b * static_cast<cutlass::half_t>(-16-8);
-          offsets.fp16_quard.c = scales_ptr->fp16_quard.c * static_cast<cutlass::half_t>(-16-8);
-          offsets.fp16_quard.d = scales_ptr->fp16_quard.d * static_cast<cutlass::half_t>(-16-8);
+          offsets.fp16_quad.a = scales_ptr->fp16_quad.a * static_cast<cutlass::half_t>(-16-8);
+          offsets.fp16_quad.b = scales_ptr->fp16_quad.b * static_cast<cutlass::half_t>(-16-8);
+          offsets.fp16_quad.c = scales_ptr->fp16_quad.c * static_cast<cutlass::half_t>(-16-8);
+          offsets.fp16_quad.d = scales_ptr->fp16_quad.d * static_cast<cutlass::half_t>(-16-8);
         }
 
         CUTLASS_PRAGMA_UNROLL

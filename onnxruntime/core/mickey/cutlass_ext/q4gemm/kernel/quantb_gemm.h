@@ -310,20 +310,12 @@ struct QuantBGemm {
       tb_offset_B,
       params.gather_B_indices);
 
-    int qscale_k = problem_size_k / Mma::QuantBlocking::kRow;
-    int qscale_n = params.problem_size.n() / Mma::QuantBlocking::kColumn;
-    if (qscale_k == 0) {
-      printf("qscale_k is 0! can_implement() should have returned false!\n");
-    }
-    if (qscale_k * Mma::QuantBlocking::kRow != problem_size_k) {
-      printf("qscale_k * Mma::QuantBlocking::kK != problem_size_k! can_implement() should have returned false!\n");
-    }
-    if (qscale_n == 0) {
-      printf("qscale_n is 0! can_implement() should have returned false!\n");
-    }
-    if (qscale_n * Mma::QuantBlocking::kColumn != params.problem_size.n()) {
-      printf("qscale_n * Mma::QuantBlocking::kN != params.problem_size.n()! can_implement() should have returned false!\n");
-    }
+    const int qscale_k = problem_size_k / Mma::QuantBlocking::kRow;
+    const int qscale_n = params.problem_size.n() / Mma::QuantBlocking::kColumn;
+
+    // should have been verified by can_implement()
+    assert((qscale_k > 0) && (qscale_k * Mma::QuantBlocking::kRow == problem_size_k));
+    assert((qscale_n > 0) && (qscale_n * Mma::QuantBlocking::kColumn == params.problem_size.n()));
 
     cutlass::MatrixCoord tb_offset_QScale{
       threadblock_tile_offset.k() * (params.gemm_k_size/Mma::QuantBlocking::kRow),
@@ -347,8 +339,8 @@ struct QuantBGemm {
 
     // Broadcast the warp_id computed by lane 0 to ensure dependent code
     // is compiled as warp-uniform.
-    int warp_idx = canonical_warp_idx();
-    int lane_idx = threadIdx.x % 32;
+    const int warp_idx = canonical_warp_idx();
+    const int lane_idx = threadIdx.x % 32;
 
     //
     // Main loop
