@@ -461,7 +461,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>repetition_penalty</tt> (optional) : T</dt>
 <dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
 <dt><tt>vocab_mask</tt> (optional) : M</dt>
-<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vocab_size)</dd>
 <dt><tt>prefix_vocab_mask</tt> (optional) : M</dt>
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 <dt><tt>attention_mask</tt> (optional) : I</dt>
@@ -2252,7 +2252,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>repetition_penalty</tt> (optional) : T</dt>
 <dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
 <dt><tt>vocab_mask</tt> (optional) : I</dt>
-<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vocab_size)</dd>
 <dt><tt>prefix_vocab_mask</tt> (optional) : I</dt>
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 <dt><tt>attention_mask</tt> (optional) : I</dt>
@@ -5154,7 +5154,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>repetition_penalty</tt> (optional) : T</dt>
 <dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
 <dt><tt>vocab_mask</tt> (optional) : I</dt>
-<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vocab_size)</dd>
 <dt><tt>prefix_vocab_mask</tt> (optional) : I</dt>
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 <dt><tt>attention_mask</tt> (optional) : I</dt>
@@ -5793,11 +5793,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>num_return_sequences</tt> : I</dt>
 <dd>The number of returned sequences in the batch. Shape is (1)</dd>
 <dt><tt>length_penalty</tt> (optional) : T</dt>
-<dd>Exponential penalty to the length. Default value 1.0 means no penalty.Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences.Shape is (1,)</dd>
+<dd>Exponential penalty to the length. Default value 1.0 means no penalty. Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences. Shape is (1,)</dd>
 <dt><tt>repetition_penalty</tt> (optional) : T</dt>
 <dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
 <dt><tt>vocab_mask</tt> (optional) : M</dt>
-<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vocab_size)</dd>
 <dt><tt>prefix_vocab_mask</tt> (optional) : M</dt>
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 <dt><tt>attention_mask</tt> (optional) : I</dt>
@@ -5807,7 +5807,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>logits_processor</tt> (optional) : I</dt>
 <dd>Specific logits processor for different types of beamsearch models. Default value 0 means no specific logit processor. Accepts value >= 0. Shape is (1)</dd>
 <dt><tt>cross_qk_layer_head</tt> (optional) : I</dt>
-<dd>Only keep this list of (layer, head) of QK in the final cross_qk output when use_cross_qk is set. Default collect allits shape is (number of (layer, head) to keep, 2), i.e., [[layer_id1, head_id1], [layer_id2, head_id2]......]</dd>
+<dd>Only keep this list of (layer, head) of QK in the final cross_qk output when use_cross_qk is set. Default collect all its shape is (number of (layer, head) to keep, 2), i.e., [[layer_id1, head_id1], [layer_id2, head_id2]......]</dd>
 <dt><tt>extra_decoding_ids</tt> (optional) : I</dt>
 <dd>Part of the decoder_input_ids that we need cross qk for it. it is of shape  (batch_size, extra_decoding_ids_len).In such case, we should remove this from the tail of the decoder_input_ids, and put it here. ids < 0 in it (for multiple batch) are treated as stop of the extra_decoding_ids for corresponding batch.</dd>
 <dt><tt>temperature</tt> (optional) : T</dt>
@@ -5822,11 +5822,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>sequences_scores</tt> (optional) : T</dt>
 <dd>Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)</dd>
 <dt><tt>scores</tt> (optional) : T</dt>
-<dd>Processed beam scores for each vocabulary token at each generation step.Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam.Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)</dd>
+<dd>Processed beam scores for each vocabulary token at each generation step. Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam. Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)</dd>
 <dt><tt>cross_qk</tt> (optional) : V</dt>
-<dd>Output the accumulated stacked Q*K in cross attentions. Let H = number of Head of cross attention, F = the frames or kv-seq-len of the cross attention input, T = real decoded token length, L = number of layers,B = batch size, R = num_return_sequences. It then should return tensor of shape [B, R, L*H, T, F].If cross_qk_layer_head is given, shape is [B, R, cross_qk_layer_head.shape[0], T, F]</dd>
+<dd>Output the accumulated stacked Q*K in cross attentions. Let H = number of Head of cross attention, F = the frames or kv-seq-len of the cross attention input, T = real decoded token length, L = number of layers, B = batch size, R = num_return_sequences. It then should return tensor of shape [B, R, L*H, T, F]. If cross_qk_layer_head is given, shape is [B, R, cross_qk_layer_head.shape[0], T, F]</dd>
 <dt><tt>non_speech_probs</tt> (optional) : T</dt>
-<dd>For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token_id.Currently we treat the last token's logits is what we need, in future extra graph logic may be add to the encoder/context-decoder subgraph.The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]</dd>
+<dd>For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token_id. The shape of non_speech_probs is [B]</dd>
 </dl>
 
 #### Type Constraints

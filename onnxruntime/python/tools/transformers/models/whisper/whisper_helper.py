@@ -6,12 +6,14 @@
 
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
+from float16 import float_to_float16_max_diff
+from onnx_model import OnnxModel
+from optimizer import optimize_model
 from packaging import version
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from transformers import __version__ as transformers_version
@@ -20,11 +22,6 @@ from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff
-from onnx_model import OnnxModel
-from optimizer import optimize_model
 
 logger = logging.getLogger(__name__)
 
@@ -342,7 +339,7 @@ class WhisperHelper:
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
 
-        from datasets import load_dataset
+        from datasets import load_dataset  # noqa: F811
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
