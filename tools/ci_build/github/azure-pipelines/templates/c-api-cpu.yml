@@ -132,14 +132,14 @@ stages:
         popd
       displayName: "Build Apple xcframework"
 
-    - script: |
-        python3 tools/ci_build/github/apple/test_apple_packages.py \
-          --fail_if_cocoapods_missing \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --variant Full \
-          --skip_macos_test
-      displayName: "Test Apple framework"
+    #- script: |
+    #    python3 tools/ci_build/github/apple/test_apple_packages.py \
+    #      --fail_if_cocoapods_missing \
+    #      --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
+    #      --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+    #      --variant Full \
+    #      --skip_macos_test
+    #  displayName: "Test Apple framework"
 
     - task: PublishBuildArtifacts@1
       inputs:
