@@ -162,8 +162,6 @@ class CudnnRnnBase : public CudaKernel {
   cudnnDirectionMode_t cudnn_direction_mode_;
   bool reverse_;
   int64_t num_directions_;
-  // input_size_ from attribute
-  int64_t input_size_;
   // hidden_size_ from attribute
   int64_t hidden_size_;
   cudnnRNNMode_t rnn_mode_;

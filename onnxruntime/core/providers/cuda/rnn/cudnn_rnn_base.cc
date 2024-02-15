@@ -139,7 +139,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   if (get_W && get_R) {
     CudnnRNN tmp_rnn_desc;
     auto proj_size = hidden_size_;
-    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(input_size_,
+    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(W->Shape()[2], // input_size
                                          hidden_size_,
                                          proj_size,
                                          RNN_NUM_LAYERS,
