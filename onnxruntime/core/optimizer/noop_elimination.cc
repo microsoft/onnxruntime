@@ -91,11 +91,11 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
         return false;
     }
 
-    if ((op_type == "Add" || op_type == "Sub") && value != 0.0f) {
+    if (value != 0.0f && (op_type == "Add" || op_type == "Sub")) {
       return false;
     }
 
-    if ((op_type == "Mul" || op_type == "Div") && value != 1.0f) {
+    if (value != 1.0f && (op_type == "Mul" || op_type == "Div")) {
       return false;
     }
   }
