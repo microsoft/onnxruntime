@@ -334,18 +334,21 @@ static void RunSessionAndVerify(InferenceSession& session, const RunOptions& run
                                 const std::vector<std::string>& output_names,
                                 const std::vector<std::vector<int64_t>>& output_shapes,
                                 const std::vector<std::vector<float>>& expected_values) {
-  std::vector<OrtValue> fetches;
-  auto status = session.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
+  // Let it run for a while
+  for (int it = 0; it < 10; ++it) {
+    std::vector<OrtValue> fetches;
+    auto status = session.Run(run_options, feeds, output_names, &fetches);
+    ASSERT_TRUE(status.IsOK());
 
-  for (size_t i = 0; i < fetches.size(); i++) {
-    auto& tensor = fetches[i].Get<Tensor>();
-    TensorShape expected_shape(output_shapes[i]);
-    ASSERT_EQ(expected_shape, tensor.Shape());
+    for (size_t i = 0; i < fetches.size(); i++) {
+      auto& tensor = fetches[i].Get<Tensor>();
+      TensorShape expected_shape(output_shapes[i]);
+      ASSERT_EQ(expected_shape, tensor.Shape());
 
-    gsl::span<const float> actual = tensor.DataAsSpan<float>();
-    gsl::span<const float> expected(expected_values[i].data(), expected_values[i].size());
-    ASSERT_EQ(expected, actual);
+      gsl::span<const float> actual = tensor.DataAsSpan<float>();
+      gsl::span<const float> expected(expected_values[i].data(), expected_values[i].size());
+      ASSERT_EQ(expected, actual);
+    }
   }
 }
 
@@ -539,7 +542,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
   ASSERT_TRUE(status.IsOK());
 
   std::vector<std::thread> threads;
-  constexpr int num_threads = 2;
+  constexpr int num_threads = 5;
 
   for (int i = 0; i < num_threads; i++) {
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
@@ -591,7 +594,7 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
   ASSERT_TRUE(status.IsOK());
 
   std::vector<std::thread> threads;
-  constexpr int num_threads = 2;
+  constexpr int num_threads = 5;
 
   for (int i = 0; i < num_threads; i++) {
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
