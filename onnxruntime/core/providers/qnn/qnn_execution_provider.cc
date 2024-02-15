@@ -827,11 +827,8 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
     LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
   }
 
-  if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode || rpc_control_latency > 0) {
-    auto per_thread_context = GetPerThreadContext();
-    if (!per_thread_context.IsHtpPowerConfigIdValid()) {
-      return Status::OK();
-    }
+  auto per_thread_context = GetPerThreadContext();
+  if (per_thread_context.IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(per_thread_context.GetHtpPowerConfigId(),
                                                                   htp_performance_mode));
