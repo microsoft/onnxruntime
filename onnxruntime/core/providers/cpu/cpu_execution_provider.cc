@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include <absl/base/config.h>
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/mlas/inc/mlas.h"
@@ -29,7 +30,7 @@ CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
 
 std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
   bool create_arena = info_.create_arena;
-#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC) || defined(ABSL_HAVE_ADDRESS_SANITIZER)
   // JEMalloc/mimalloc already have memory pool, so just use device allocator.
   create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
