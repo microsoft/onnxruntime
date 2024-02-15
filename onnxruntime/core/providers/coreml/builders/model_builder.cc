@@ -948,7 +948,7 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
     auto get_sanitized_names = [this](std::vector<std::string>&& names) -> std::vector<std::string> {
       std::vector<std::string> output(std::move(names));
 
-      for (std::string& name : names) {
+      for (std::string& name : output) {
         name = GetSafeName(name);
       }
 
