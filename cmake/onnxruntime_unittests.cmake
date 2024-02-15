@@ -803,6 +803,10 @@ if(WIN32)
   list(APPEND onnxruntime_test_providers_libs Advapi32)
 endif()
 
+if (WIN32 AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+  # error LNK2001: unresolved external symbol _Thrd_sleep_for
+  list(REMOVE_ITEM all_tests "${TEST_SRC_DIR}/framework/tunable_op_test.cc" "${TEST_SRC_DIR}/providers/cpu/controlflow/loop_test.cc")
+endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     list(REMOVE_ITEM all_tests
