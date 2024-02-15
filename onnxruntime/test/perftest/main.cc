@@ -43,6 +43,13 @@ int real_main(int argc, char* argv[]) {
   }
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
+
+  // Exit if user enabled -n option so that user can measure session creation time
+  if (test_config.run_config.exit_after_session_creation) {
+    perf_runner.LogSessionCreationTime();
+    return 0;
+  }
+
   auto status = perf_runner.Run();
   if (!status.IsOK()) {
     printf("Run failed:%s\n", status.ErrorMessage().c_str());

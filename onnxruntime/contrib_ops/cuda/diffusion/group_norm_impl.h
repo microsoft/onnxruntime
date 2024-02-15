@@ -8,6 +8,8 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 
+#include "core/providers/cuda/tunable/cuda_tunable.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -21,7 +23,8 @@ int GetChannelsPerBlock(int num_channels, int num_groups);
 
 template <typename T>
 Status LaunchGroupNormKernel(
-    cudaStream_t stream,
+    CudaTuningContext* tuning_ctx,
+    Stream* ort_stream,
     T* output,              // normalized output tensor. Shape is (n, h, w, c)
     T* add_out,             // optional output tensor for element-wise sum of input + skip + bias. Shape is (n, h, w, c)
     const T* input,         // input tensor. Shape is (n, h, w, c)

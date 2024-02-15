@@ -33,7 +33,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
@@ -41,9 +41,8 @@ class ConvOpBuilder : public BaseOpBuilder {
     return params.use_nchw ? ANEURALNETWORKS_FEATURE_LEVEL_3 : ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
-  bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+  bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                    const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
@@ -279,19 +278,19 @@ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 bool ConvOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
   if (!IsQuantizedOp(node_unit))
-    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(graph_viewer, node_unit, params);
 
   // QLinearConv only supports input of uint8 for now
   if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, ArgType::kInput))
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0, 1}, params, ArgType::kInput))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput))
     return false;
 
   return true;
@@ -299,7 +298,7 @@ bool ConvOpBuilder::HasSupportedInputOutputsImpl(
 
 // Operator support related
 
-bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool ConvOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                       const OpSupportCheckParams& params) const {
   const auto& op_type = node_unit.OpType();
   bool is_quant_conv = IsQuantizedOp(node_unit);
@@ -314,8 +313,9 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
   NodeAttrHelper helper(node_unit);
   const auto group = helper.Get("group", 1);
   const auto weight_name = inputs[1].node_arg.Name();
-  if (Contains(initializers, weight_name)) {
-    const auto& tensor = *initializers.at(weight_name);
+  const auto* weight = graph_viewer.GetConstantInitializer(weight_name);
+  if (weight) {
+    const auto& tensor = *weight;
     if (tensor.dims().size() != 4) {
       LOGS_DEFAULT(VERBOSE) << "Only conv 2d is supported.";
       return false;
@@ -335,13 +335,13 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
       }
     }
   } else {
-    LOGS_DEFAULT(VERBOSE) << "The weight of convolution must be known";
+    LOGS_DEFAULT(VERBOSE) << "The weight of convolution must be a constant initializer";
     return false;
   }
 
   if (is_quant_conv) {
-    if (inputs.size() > 2 && !Contains(initializers, inputs[2].node_arg.Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be known";
+    if (inputs.size() > 2 && !graph_viewer.GetConstantInitializer(inputs[2].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be a constant initializer";
       return false;
     }
   }

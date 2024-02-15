@@ -254,7 +254,7 @@ class PlannerTest : public ::testing::Test {
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
-        state_->GetDataTransferMgr());
+        state_->GetDataTransferMgr(), state_->GetAllocators(), state_->GetSessionOptions().config_options);
 
     op_kernel_infos_.push_back(std::move(info));
     const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
@@ -327,10 +327,23 @@ class PlannerTest : public ::testing::Test {
 
     if (invoke_createPlan_explicityly) {
       onnxruntime::GraphViewer graph_viewer{graph_};
-      status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
-                                             kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                             MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
-                                             ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
+      status = SequentialPlanner::CreatePlan(
+          nullptr,
+          graph_viewer,
+          outer_scope_node_args,
+          execution_providers_,
+          kernel_create_info_map,
+          {},
+          {},
+          state_->GetOrtValueNameIdxMap(),
+          test_context,
+#ifdef ORT_ENABLE_STREAM
+          MockStreamHandleRegsitry(),
+#endif
+          /* {{kCpuExecutionProvider, 1}}, {},*/
+          ORT_TSTR(""),
+          DefaultLoggingManager().DefaultLogger(),
+          plan_);
 
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
       // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());

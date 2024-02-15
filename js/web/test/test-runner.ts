@@ -96,7 +96,7 @@ async function loadTensors(
   const outputs: Test.NamedTensor[] = [];
   let dataFileType: 'none'|'pb'|'npy' = 'none';
 
-  const allowInt64 = ['wasm', 'xnnpack', 'webgpu'].includes(backendName);
+  const allowInt64 = ['wasm', 'webgpu', 'webnn'].includes(backendName);
 
   for (const dataFile of testCase.dataFiles) {
     const ext = extname(dataFile);
@@ -137,7 +137,8 @@ async function loadTensors(
 }
 
 async function initializeSession(
-    modelFilePath: string, backendHint: string, ioBindingMode: Test.IOBindingMode, profile: boolean,
+    modelFilePath: string, backendHint: ort.InferenceSession.ExecutionProviderConfig, ioBindingMode: Test.IOBindingMode,
+    profile: boolean, externalData: ort.InferenceSession.SessionOptions['externalData'],
     sessionOptions: ort.InferenceSession.SessionOptions, fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
   const preloadModelData: Uint8Array|undefined =
       fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
@@ -152,7 +153,8 @@ async function initializeSession(
     executionProviders: [backendHint],
     profiler: profilerConfig,
     enableProfiling: profile,
-    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined
+    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
+    externalData
   };
 
   let session: ort.InferenceSession;
@@ -232,9 +234,8 @@ export class ModelTestContext {
   /**
    * create a ModelTestContext object that used in every test cases in the given ModelTest.
    */
-  static async create(
-      modelTest: Test.ModelTest, profile: boolean,
-      sessionOptions?: ort.InferenceSession.SessionOptions): Promise<ModelTestContext> {
+  static async create(modelTest: Test.ModelTest, profile: boolean, testOptions?: Test.Options):
+      Promise<ModelTestContext> {
     if (this.initializing) {
       throw new Error('cannot create a ModelTestContext object when the previous creation is not done');
     }
@@ -243,8 +244,12 @@ export class ModelTestContext {
       this.initializing = true;
 
       const initStart = now();
+      const executionProviderConfig =
+          modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || 'webnn') : modelTest.backend!;
       const session = await initializeSession(
-          modelTest.modelUrl, modelTest.backend!, modelTest.ioBinding, profile, sessionOptions || {}, this.cache);
+          modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, modelTest.externalData,
+          testOptions?.sessionOptions || {}, this.cache);
+
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {
@@ -313,7 +318,7 @@ export class TensorResultValidator {
     } else if (backend === 'webgpu') {
       this.absoluteThreshold = WEBGPU_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WEBGPU_THRESHOLD_RELATIVE_ERROR;
-    } else if (backend === 'wasm' || backend === 'xnnpack' || backend === 'webnn') {
+    } else if (backend === 'wasm' || backend === 'webnn') {
       this.absoluteThreshold = WASM_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WASM_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'onnxruntime') {

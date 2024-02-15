@@ -115,6 +115,11 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   }
 }
 
+void PerformanceRunner::LogSessionCreationTime() {
+  std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
+  std::cout << "\nSession creation time cost: " << session_create_duration.count() << " s\n";
+}
+
 Status PerformanceRunner::Run() {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");

@@ -58,10 +58,8 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
 
     def _build_param_index_to_name_mapping(model, map_result):
         """Build index to name mapping, which is used to retrieve data from optimizer group."""
-        index = 0
-        for param in model.named_parameters():
+        for index, param in enumerate(model.named_parameters()):
             map_result[index] = param[0]
-            index += 1
 
     torch.manual_seed(seed)
 
@@ -119,8 +117,7 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
         _sync_stream()
 
         for group in adamw_optimizer.param_groups:
-            p_index = 0
-            for param in group["params"]:
+            for p_index, param in enumerate(group["params"]):
                 state = adamw_optimizer.state[param]
                 name = param_index_to_name_mapping[p_index]
                 # Collect flattened optimizer state data.
@@ -130,7 +127,6 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
                 else:
                     m1_dict[name].append(_torch_tensor_to_str(state["exp_avg"].view(-1)))
                     m2_dict[name].append(_torch_tensor_to_str(state["exp_avg_sq"].view(-1)))
-                p_index += 1
 
         adamw_optimizer.step()
         adamw_optimizer.zero_grad()

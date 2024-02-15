@@ -51,7 +51,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Google.Protobuf" Version="3.16.0" />
+		<PackageReference Include="Google.Protobuf" Version="3.21.12" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="7.0.0" />
 		<PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.16.0-dev-20230821-1235-cbaa008391" />
 		<PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.9.0-dev-20230823-0618-3f1ce5ef" />

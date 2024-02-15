@@ -753,7 +753,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
          check ancestor graph/s for 'name' if not found in 'graph'.
-  @remarks check_outer_scope of true is not supported in a minimal build
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 

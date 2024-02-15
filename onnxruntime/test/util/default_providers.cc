@@ -208,12 +208,18 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
 }
 
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
-// For any non - macOS system, CoreML will only be used for ort model converter
-// Make it unavailable here, you can still manually append CoreML EP to session for model conversion
+  // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
+  // The test will create a model but execution of it will obviously fail.
+  // To test creating an ML Program, set the environment variable COREML_EP_TEST_MLPROGRAM to any value.
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+
+  if (!Env::Default().GetEnvironmentVar("COREML_EP_TEST_MLPROGRAM").empty()) {
+    coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+  }
+
   return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #else
   return nullptr;
@@ -274,8 +280,9 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
-  if (auto factory = DMLProviderFactoryCreator::Create(0, false, false, false))
+  if (auto factory = DMLProviderFactoryCreator::CreateFromOptions(nullptr, false, false)) {
     return factory->CreateProvider();
+  }
 #endif
   return nullptr;
 }
