@@ -509,7 +509,7 @@ def parse_args():
         "--logits-processor",
         type=int,
         default=1,
-        help="Type of logits processor to use. See `WhisperBeamSearch` in https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc for details.",
+        help="Whether to use timestamps logits processor or not (0 for false, 1 for true).",
     )
     parser.add_argument(
         "--temperature",

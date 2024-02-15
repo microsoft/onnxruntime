@@ -159,21 +159,21 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TimestampLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TimestampLogitsProcessor(int eos_token_id,         // <|endoftext|>
-                           int sot_token_id,         // <|startoftranscript|>
-                           int translate_token_id,   // <|translate|>
-                           int transcribe_token_id,  // <|transcribe|>
-                           int solm_token_id,        // <|startoflm|>
-                           int not_token_id,         // <|notimestamps|>
-                           int beg_token_id,         // <|0.00|>
+  TimestampLogitsProcessor(int end_of_text_token_id,          // <|endoftext|>
+                           int start_of_transcript_token_id,  // <|startoftranscript|>
+                           int translate_token_id,            // <|translate|>
+                           int transcribe_token_id,           // <|transcribe|>
+                           int start_of_lm_token_id,          // <|startoflm|>
+                           int no_timestamps_token_id,        // <|notimestamps|>
+                           int beginning_timestamp_token_id,  // <|0.00|>
                            int max_initial_timestamp_index)
-      : eos_token_id_(eos_token_id),
-        sot_token_id_(sot_token_id),
+      : end_of_text_token_id_(end_of_text_token_id),
+        start_of_transcript_token_id_(start_of_transcript_token_id),
         translate_token_id_(translate_token_id),
         transcribe_token_id_(transcribe_token_id),
-        solm_token_id_(solm_token_id),
-        not_token_id_(not_token_id),
-        beg_token_id_(beg_token_id),
+        start_of_lm_token_id_(start_of_lm_token_id),
+        no_timestamps_token_id_(no_timestamps_token_id),
+        beginning_timestamp_token_id_(beginning_timestamp_token_id),
         max_initial_timestamp_index_(max_initial_timestamp_index) {}
 
   void Process(const ISequences* sequences,
@@ -189,7 +189,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       size_t sample_begin = 0;
       for (size_t j = 0; j < seq_length; j++) {
         sample_begin++;
-        if (sequence[j] >= beg_token_id_) {
+        if (sequence[j] >= beginning_timestamp_token_id_) {
           break;
         }
       }
@@ -197,30 +197,30 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       // Suppress tokens
       for (int j = 0; j < vocab_size; j++) {
         // Suppress notimestamps and solm tokens
-        if (j == not_token_id_ || j == solm_token_id_) {
+        if (j == no_timestamps_token_id_ || j == start_of_lm_token_id_) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
 
         // Suppress sot, translate and transcribe tokens
         if (seq_length > sample_begin) {
-          if (j == sot_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {
+          if (j == start_of_transcript_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {
             beam_token_scores[j] = std::numeric_limits<T>::lowest();
           }
         }
       }
 
       // Timestamps should be in pair except the first one
-      const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
-      const bool penultimate_was_timestamp = seq_length <= sample_begin || sequence[seq_length - 2] >= beg_token_id_;
+      const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beginning_timestamp_token_id_;
+      const bool penultimate_was_timestamp = seq_length <= sample_begin || sequence[seq_length - 2] >= beginning_timestamp_token_id_;
       if (last_was_timestamp) {
         if (penultimate_was_timestamp) {
           // If timestamps show up in pair, or it's the first timestamp, no more timestamp is generated
-          for (int j = beg_token_id_; j < vocab_size; j++) {
+          for (int j = beginning_timestamp_token_id_; j < vocab_size; j++) {
             beam_token_scores[j] = std::numeric_limits<T>::lowest();
           }
         } else {
           // If timestamp doesn't show up in pair, generate timestamp
-          for (int j = 0; j < eos_token_id_; j++) {
+          for (int j = 0; j < end_of_text_token_id_; j++) {
             beam_token_scores[j] = std::numeric_limits<T>::lowest();
           }
         }
@@ -229,7 +229,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       // Find timestamp tokens
       std::vector<int32_t> timestamps;
       for (const auto& word_id : sequence) {
-        if (word_id >= beg_token_id_) {
+        if (word_id >= beginning_timestamp_token_id_) {
           timestamps.push_back(word_id);
         }
       }
@@ -246,13 +246,13 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
           timestamp_last = timestamps.back() + 1;
         }
 
-        for (int j = beg_token_id_; j < timestamp_last; j++) {
+        for (int j = beginning_timestamp_token_id_; j < timestamp_last; j++) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
       }
 
       if (seq_length == sample_begin) {
-        const int last_allowed = beg_token_id_ + max_initial_timestamp_index_;
+        const int last_allowed = beginning_timestamp_token_id_ + max_initial_timestamp_index_;
         for (int j = last_allowed + 1; j < vocab_size; j++) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
@@ -262,8 +262,8 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       float timestamp_logprob = std::numeric_limits<T>::lowest();
       {
         float logsumexp = 0.0f;
-        const float logprob_max = *std::max_element(beam_token_scores.begin() + beg_token_id_, beam_token_scores.end());
-        for (int j = beg_token_id_; j < vocab_size; ++j) {
+        const float logprob_max = *std::max_element(beam_token_scores.begin() + beginning_timestamp_token_id_, beam_token_scores.end());
+        for (int j = beginning_timestamp_token_id_; j < vocab_size; ++j) {
           if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
             logsumexp += expf(beam_token_scores[j] - logprob_max);
           }
@@ -273,9 +273,9 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
 
-      const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beg_token_id_);
+      const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beginning_timestamp_token_id_);
       if (timestamp_logprob > max_text_token_logprob) {
-        for (int j = 0; j < beg_token_id_; ++j) {
+        for (int j = 0; j < beginning_timestamp_token_id_; ++j) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
       }
@@ -283,13 +283,13 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
   }
 
  private:
-  int eos_token_id_;
-  int sot_token_id_;
+  int end_of_text_token_id_;
+  int start_of_transcript_token_id_;
   int translate_token_id_;
   int transcribe_token_id_;
-  int solm_token_id_;
-  int not_token_id_;
-  int beg_token_id_;
+  int start_of_lm_token_id_;
+  int no_timestamps_token_id_;
+  int beginning_timestamp_token_id_;
   int max_initial_timestamp_index_;
 };
 

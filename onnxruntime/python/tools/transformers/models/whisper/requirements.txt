@@ -13,7 +13,7 @@ datasets
 soundfile
 librosa
 optimum
-onnxruntime>=1.15.1
+onnxruntime-gpu>=1.17.0
 onnxruntime-extensions>=0.9.0
 protobuf==3.20.2
 numpy==1.23.3
