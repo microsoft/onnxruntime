@@ -12,6 +12,9 @@
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "HTP/QnnHtpGraph.h"
+#include <vector>
+#include <set>
+#include <unordered_map>
 
 namespace onnxruntime {
 
@@ -93,7 +96,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
     bool IsHtpPowerConfigIdValid() { return is_htp_power_config_id_valid_; }
 
-    uint32_t GetHtpPowerConfigId() { return htp_power_config_id_; };
+    uint32_t GetHtpPowerConfigId() { return htp_power_config_id_; }
 
    private:
     bool is_htp_power_config_id_valid_ = false;
