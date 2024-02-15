@@ -36,9 +36,9 @@ python yolov8_pose_e2e.py
 ```
 
 After the script has run, you will see one PyTorch model and two ONNX models:
-* yolov8n-pose.pt: The original Yolov8 PyTorch model
-* yolov8n-pose.onnx: The exported Yolov8 ONNX model
-* yolov8n-pose.with_pre_post_processing.onnx: The ONNX model with pre and post processing included in the model
+* `yolov8n-pose.pt`: The original Yolov8 PyTorch model
+* `yolov8n-pose.onnx`: The exported Yolov8 ONNX model
+* `yolov8n-pose.with_pre_post_processing.onnx`: The ONNX model with pre and post processing included in the model
 
 
 ## Run examples of pose detection
@@ -46,7 +46,7 @@ After the script has run, you will see one PyTorch model and two ONNX models:
 You can use the same script to run the model, supplying your own image to detect poses.
 
 ```bash
-pytthon yolov8_pose_e2e.py --input_image person.jpg
+python yolov8_pose_e2e.py --input_image person.jpg
 ```
 
 And the output is drawn on the original image!
