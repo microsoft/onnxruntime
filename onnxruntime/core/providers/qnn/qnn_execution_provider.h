@@ -93,6 +93,7 @@ class QNNExecutionProvider : public IExecutionProvider {
                      qnn::HtpPerformanceMode default_htp_performance_mode,
                      uint32_t default_rpc_control_latency);
     ~PerThreadContext();
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 
     bool IsHtpPowerConfigIdValid() { return is_htp_power_config_id_valid_; }
 

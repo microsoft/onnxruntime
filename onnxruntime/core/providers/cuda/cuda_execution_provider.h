@@ -115,6 +115,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                      CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
     ~PerThreadContext();
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 
     cublasHandle_t CublasHandle() const {
       return cublas_handle_;
