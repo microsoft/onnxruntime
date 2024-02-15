@@ -141,7 +141,7 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
 /// <param name="op_type">Operator type.</param>
 /// <param name="helper">Node attribute helper.</param>
 /// <param name="num_spatial_dims">Number of spatial dims in input. Generally rank - 2 (ignore N and C dims).</param>
-void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, const std::string& op_type,
+void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
                        const NodeAttrHelper& helper, int num_spatial_dims);
 }  // namespace coreml
 }  // namespace onnxruntime

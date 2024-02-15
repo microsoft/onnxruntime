@@ -499,7 +499,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     // COREML_FLAG_CREATE_MLPROGRAM
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, coreml_flags));
 #else
-    ORT_THROW("COREML is not supported in this build\n");
+    ORT_THROW("CoreML is not supported in this build\n");
 #endif
 #else
     ORT_THROW("COREML is not supported on this platform.\n");

@@ -140,11 +140,11 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       AddOperationInput(*gemm_op, "x", a.Name());
 
       // CoreML takes weight input as {N, K} which is the reverse of ONNX.
-      // However if transB is true the input weight is {N, K} so can be added directly.
+      // if transB is true the input weight is {N, K} so can be added directly.
       if (transB) {
         AddOperationInput(*gemm_op, "weight", b.Name());
       } else {
-        // need to transpose as the CoreML weight is {N, K} which is the reverse of ONNX.
+        // transpose from {K, N} to {N, K}
         std::vector<float> weight_t;
         std::vector<int64_t> weight_t_shape = {N, K};
         ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(*b_initializer, weight_t));
@@ -165,7 +165,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           Initializer unpacked_tensor(bias);
           auto bias_data = unpacked_tensor.DataAsSpan<float>();
           std::string bias_data_name;
-          if (N != 1 && bias_data.size() == 1) {
+          if (bias_data.size() == 1) {
             // expand scalar to N
             std::vector<float> expanded_bias_data(N, bias_data[0]);
             bias_data_name = model_builder.AddConstant(gemm_op->type(), "bias", expanded_bias_data);
@@ -206,7 +206,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     coreml_inner_product->set_outputchannels(N);
 
     // CoreML takes weight input as {N, K} which is the reverse of ONNX.
-    // However if Gemm's transB is true the input weight is {N, K} so can be added directly.
+    // if Gemm's transB is true the input weight is {N, K} and can be added directly.
     if (transB) {
       ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), *b_initializer));
     } else {
@@ -317,7 +317,6 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       }
 
       // B is {K, N} in ONNX spec by default, or {N, K} in Gemm if transB is true
-      // const auto K = transB ? b_shape[1] : b_shape[0];
       const auto N = transB ? b_shape[0] : b_shape[1];
 
       size_t c_rank = c_shape.size();
@@ -341,7 +340,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       }
 
       if (!c_valid) {
-        LOGS(logger, VERBOSE) << "Shape of C Gemm input must be {}, {1}, {N}, or {1, N}. N:" << N << " C shape: "
+        LOGS(logger, VERBOSE) << "Shape of C Gemm input must be {}, {1}, {N}, or {1, N}. N:" << N << " C shape:"
                               << Shape2String(c_shape);
 
         return false;

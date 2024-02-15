@@ -187,7 +187,7 @@ TEST(BatchNormTest, PositiveTestCaseDefaultEpsilon) {
   input_data_map.insert({"var", var});
 
   InputShapesMap input_shapes_map;
-  vector<int64_t> input_shape{1, 1, 7, 7};
+  vector<int64_t> input_shape{1, 1, 7, 7, 1};
   input_shapes_map.insert({"X", input_shape});
   input_shapes_map.insert({"scale", {1}});
   input_shapes_map.insert({"B", {1}});

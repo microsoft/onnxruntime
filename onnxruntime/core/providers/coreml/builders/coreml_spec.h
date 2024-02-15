@@ -5,14 +5,15 @@
 
 #include "onnxruntime_config.h"
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+
+// Disable warning from protobuf code.
 //
 // In file included from coreml_proto/Model.pb.h:30:
 // In file included from _deps/protobuf-src/src/google/protobuf/extension_set.h:53:
 // _deps/protobuf-src/src/google/protobuf/parse_context.h:328:47:
 //     error: implicit conversion loses integer precision: 'long' to 'int' [-Werror,-Wshorten-64-to-32]
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
 #ifdef HAS_SHORTEN_64_TO_32
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif

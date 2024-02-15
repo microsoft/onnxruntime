@@ -245,7 +245,7 @@ MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
 }
 
 template <typename T1, typename T2>
-MILSpec::Value CreateTensorValue(gsl::span<const T1> data,
+MILSpec::Value CreateTensorValue(const gsl::span<const T1> data,
                                  std::optional<gsl::span<const int64_t>> shape) {
   MILSpec::Value value;
   MILSpec::TensorType& tensor_type = *value.mutable_type()->mutable_tensortype();
@@ -271,17 +271,14 @@ MILSpec::Value CreateScalarTensorValue(const T& data) {
   return CreateTensorValue<T>(data_span, shape);
 }
 
-// explicit specializations for types we handle so the implementation can be in the .cc file.
+// explicit specializations for types we handle so the implementation can be in the .cc file
 template MILSpec::Value CreateTensorValue<int64_t, int32_t>(gsl::span<const int64_t> data,
                                                             std::optional<gsl::span<const int64_t>> shape);
-template MILSpec::Value CreateTensorValue<float>(gsl::span<const float> data,
-                                                 std::optional<gsl::span<const int64_t>> shape);
-template MILSpec::Value CreateTensorValue<std::string>(gsl::span<const std::string> data,
-                                                       std::optional<gsl::span<const int64_t>> shape);
-template MILSpec::Value CreateTensorValue<bool>(gsl::span<const bool> data,
-                                                std::optional<gsl::span<const int64_t>> shape);
 
-template MILSpec::Value CreateScalarTensorValue<std::string>(const std::string& data);
+template MILSpec::Value CreateScalarTensorValue(const float& data);
+template MILSpec::Value CreateScalarTensorValue(const int32_t& data);
+template MILSpec::Value CreateScalarTensorValue(const std::string& data);
+template MILSpec::Value CreateScalarTensorValue(const bool& data);
 
 COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& node_arg) {
   MILSpec::NamedValueType nvt;
@@ -313,7 +310,7 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
                     output.Shape());
 }
 
-void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, const std::string& op_type,
+void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
                        const NodeAttrHelper& helper, int num_spatial_dims) {
   AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
 

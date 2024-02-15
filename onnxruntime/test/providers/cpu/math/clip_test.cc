@@ -182,7 +182,7 @@ TEST(MathOpTest, Clip) {
   run_test(true);
 }
 
-// Use clip between [0, 6] as Relu6 (to test optimized path in some  EPs, such as NNAPI and CoreML)
+// Use clip between [0, 6] as Relu6 to test optimized path in some  EPs, such as NNAPI and CoreML
 TEST(MathOpTest, Clip_Relu6) {
   // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
@@ -208,7 +208,7 @@ TEST(MathOpTest, Clip_Relu6) {
   run_test(true);
 }
 
-// Use clip between [0, inf] as Relu (to test optimized path in some EPs, such as CoreML)
+// Use clip between [0, inf] as Relu to test optimized path in some EPs, such as CoreML
 TEST(MathOpTest, Clip_Relu) {
   // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {

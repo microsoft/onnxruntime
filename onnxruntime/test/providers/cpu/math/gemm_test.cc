@@ -302,7 +302,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmScalarBroadcast) {
   };
 
   run_test(false, false);
-  // CoreML EP requires weight and bias both to be initializers
+  // CoreML EP requires weight and bias to be initializers
   run_test(true, true);
 }
 

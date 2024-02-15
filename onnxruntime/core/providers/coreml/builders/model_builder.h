@@ -115,15 +115,9 @@ class ModelBuilder {
     return AddConstantImpl(op_type, value_type, value, shape);
   }
 
-  // helper for when calling code has a non-const vector locally, as `AsSpan` results in gsl::span<T>
-  // not gsl::span<const T> for a non-const vector.
-  // e.g. NodeAttrHelper returns std::optional<std::vector<T>>. with this helper the value from the optional can
-  // be used directly. Otherwise you need to extract the value, make it const and create a span before calling the
-  // AddConstant that takes gsl::span<const T>.
-  // Also, if you have a non-const vector from modifying the values (e.g. re-ordering pads) it can be used directly.
   template <typename T>
-  std::string AddConstant(std::string_view op_type, std::string_view value_type, const std::vector<T>& value,
-                          std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+  const std::string& AddConstant(std::string_view op_type, std::string_view value_type, const std::vector<T>& value,
+                                 std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
     return AddConstant(op_type, value_type, AsSpan(value), shape);
   }
 
@@ -134,6 +128,13 @@ class ModelBuilder {
   const std::string& AddScalarConstant(std::string_view op_type, std::string_view value_type, const T& value) {
     return AddConstant(op_type, value_type, AsSpan({value}), AsSpan<const int64_t>({}));
   }
+
+  /// <summary>
+  /// Add an existing a constant ONNX initializer to the ML Program as a 'const' operation
+  /// </summary>
+  /// <param name="name">Initializer name</param>
+  /// <param name="initializer">Initializer data</param>
+  void AddConstant(std::string_view name, const ONNX_NAMESPACE::TensorProto& initializer);
 
   // add the operation to the main function
   void AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation> operation);
@@ -151,22 +152,24 @@ class ModelBuilder {
   // be added to CoreML model, since CoreML does not like input unused
   void AddInputToSkip(const std::string& input_name);
 
-  std::string GetUniqueName(std::string_view base_name);
-  std::string GetUniqueName(const Node& node, std::string_view suffix);
+  const std::string& GetUniqueName(const std::string& base_name);
+  const std::string& GetUniqueName(const Node& node, std::string_view suffix);
 
   const logging::Logger& Logger() const { return logger_; }
 
  private:
 #if defined(COREML_ENABLE_MLPROGRAM)
+  template <typename T>
+  const std::string& AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
+                                     std::optional<gsl::span<const int64_t>> shape = std::nullopt);
+
   // apply the CoreML naming rules and fix any invalid names.
   const std::string& GetSafeName(const std::string& name);
   // sanitize all the names in the ML Model
   void SanitizeNames();
 
-  template <typename T>
-  const std::string& AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
-                                     std::optional<gsl::span<const int64_t>> shape = std::nullopt);
-  const std::string& AddConstantOperation(const std::string& name, COREML_SPEC::MILSpec::Value&& initializer);
+  // add Value as a const operation. return value name in case sanitization changed it
+  const std::string& AddConstantOperation(std::string_view name, COREML_SPEC::MILSpec::Value&& initializer);
   const std::string& AddTensorValueAsConstantOperation(std::string_view op_type, std::string_view value_type,
                                                        COREML_SPEC::MILSpec::Value&& input_value);
 #endif

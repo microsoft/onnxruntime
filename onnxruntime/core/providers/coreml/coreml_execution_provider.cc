@@ -152,15 +152,14 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
     compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
+      const size_t num_inputs = ctx.GetInputCount();
+      const size_t num_outputs = ctx.GetOutputCount();
 
       coreml::Model* model = reinterpret_cast<coreml::Model*>(state);
 
       // input/output names used by the CoreML model in the order that matches the fused_node InputDefs/OutputDefs
       const auto& model_inputs = model->GetOrderedInputs();
       const auto& model_outputs = model->GetOrderedOutputs();
-
-      const size_t num_inputs = ctx.GetInputCount();
-      const size_t num_outputs = ctx.GetOutputCount();
 
       ORT_RETURN_IF_NOT(model_inputs.size() <= num_inputs, "Inconsistent input sizes");
       ORT_RETURN_IF_NOT(model_outputs.size() == num_outputs, "Inconsistent output sizes");

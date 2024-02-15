@@ -82,17 +82,17 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& new_shape_name = input_defs[1]->Name();
-  const auto* new_shape = input_params.graph_viewer.GetConstantInitializer(new_shape_name);
-  if (!new_shape) {
+  const auto* new_shape_tensor = input_params.graph_viewer.GetConstantInitializer(new_shape_name);
+  if (!new_shape_tensor) {
     // ONNX has different rules around how -1 and 0 values are used/combined, and
     // we can't check if those can be translated to CoreML if the shape is unknown.
     LOGS(logger, VERBOSE) << "New shape of reshape must be a constant initializer";
     return false;
   }
 
-  Initializer unpacked_tensor(*new_shape);
-  auto new_shape_dims = unpacked_tensor.DataAsSpan<int64_t>();
-  if (new_shape_dims.empty()) {
+  Initializer unpacked_tensor(*new_shape_tensor);
+  auto new_shape = unpacked_tensor.DataAsSpan<int64_t>();
+  if (new_shape.empty()) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";
     return false;
   }
@@ -107,9 +107,9 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   }
 
   // CoreML reshape doesn't support new shape with more than 5 dimensions.
-  if (new_shape_dims.size() > 5) {
+  if (new_shape.size() > 5) {
     LOGS(logger, VERBOSE) << "Reshape does not support new shape with rank greater than 5. Input shape: "
-                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape_dims);
+                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
     return false;
   }
 
@@ -117,10 +117,10 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   NodeAttrHelper helper(node);
   const bool allow_zero = helper.Get("allowzero", 0) == 1;
   if (allow_zero) {
-    if (std::find(new_shape_dims.begin(), new_shape_dims.end(), int64_t{0}) != new_shape_dims.end()) {
+    if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
       LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0 as dimension when allowzero is enabled. "
                                "Input shape: "
-                            << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape_dims);
+                            << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
       return false;
     }
   }

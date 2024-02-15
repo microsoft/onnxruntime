@@ -11,6 +11,7 @@ To export ONNX, PyTorch version 2.2.0 or higher is required. The [official websi
 **There are two options to run the conversion script:**\
 _From source:_
 ```bash
+# Default onnxruntime package is built with CUDA 11.8. For CUDA 12.x, refer to https://onnxruntime.ai/docs/install/#python-installs
 pip install onnxruntime-gpu==1.17.0 # or onnxruntime==1.17.0 if using cpu
 git clone git@github.com:microsoft/onnxruntime.git
 cd onnxruntime/onnxruntime/python/tools/transformers

@@ -34,7 +34,7 @@ from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _f
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
 
-DEFAULT_OPSET = 15
+DEFAULT_OPSET = 17
 
 
 # PyTorch model definitions for tests
@@ -5280,7 +5280,7 @@ def test_sigmoid_grad_opset13():
     assert ort_model._torch_module._execution_manager(True)._runtime_options.onnx_opset_version == 13
 
 
-@pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
+@pytest.mark.parametrize("opset_version", [12, 13, 14, 15, 17])
 def test_opset_version_change(opset_version):
     original_env = None
     if "ORTMODULE_ONNX_OPSET_VERSION" in os.environ:
