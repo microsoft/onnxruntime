@@ -1327,8 +1327,10 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    # Applies to macosx/iphoneos/iphonesimulator/mac_catalyst builds
+    # minor note: the below condition basically just means an apple framework build
+    # that could contain support for platform macosx/iphoneos/iphonesimulator/maccatalyst
     if args.build_apple_framework or args.ios:
+        # note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
         if not args.mac_catalyst and not args.cmake_generator == "Xcode":
             raise BuildError(
                 "iOS/MacOS framework build requires use of the Xcode CMake generator ('--cmake_generator Xcode')."
@@ -1363,6 +1365,7 @@ def generate_build_tree(
                 "-DCMAKE_TOOLCHAIN_FILE="
                 + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
             ]
+        # for catalyst builds, we need to manually specify cflags for target e.g. x86_64-apple-ios14.0-macabi, etc.
         if args.mac_catalyst:
             cmake_args += [
                 "-DCMAKE_CXX_COMPILER_TARGET=" + f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
