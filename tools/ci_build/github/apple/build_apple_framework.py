@@ -50,9 +50,11 @@ def _build_for_apple_sysroot(
     # Build binary for each arch, one by one
     for current_arch in archs:
         build_dir_current_arch = os.path.join(intermediates_dir, sysroot + "_" + current_arch)
+        # Use MacOS SDK for Catalyst builds
+        apple_sysroot = "macosx" if sysroot == "macabi" else sysroot
         build_command = [
             *base_build_command,
-            "--apple_sysroot=" + sysroot,
+            "--apple_sysroot=" + apple_sysroot,
             "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
         ]
@@ -65,9 +67,11 @@ def _build_for_apple_sysroot(
             build_dir_current_arch,
             build_config,
             build_config + "-" + sysroot,
-            "onnxruntime.framework"
-            if build_dynamic_framework
-            else os.path.join("static_framework", "onnxruntime.framework"),
+            (
+                "onnxruntime.framework"
+                if build_dynamic_framework
+                else os.path.join("static_framework", "onnxruntime.framework")
+            ),
         )
         ort_libs.append(os.path.join(framework_dir, "onnxruntime"))
 

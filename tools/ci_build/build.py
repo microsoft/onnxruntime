@@ -384,6 +384,8 @@ def parse_arguments():
 
     parser.add_argument("--ios", action="store_true", help="build for ios")
 
+    parser.add_argument("--mac_catalyst", action="store_true", help="build for mac catalyst")
+
     parser.add_argument(
         "--apple_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
     )
@@ -1290,8 +1292,9 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
+    # Applies to macosx/iphoneos/iphonesimulator/mac_catalyst builds
     if args.build_apple_framework or args.ios:
-        if not args.cmake_generator == "Xcode":
+        if not args.mac_catalyst and not args.cmake_generator == "Xcode":
             raise BuildError(
                 "iOS/MacOS framework build requires use of the Xcode CMake generator ('--cmake_generator Xcode')."
             )
@@ -1309,18 +1312,36 @@ def generate_build_tree(
                 "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
                 + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
             )
+        # note: this value is mainly used in framework_info.json file to specify the build osx type
+        platform_name = "macabi" if args.mac_catalyst else args.apple_sysroot
         cmake_args += [
             "-Donnxruntime_BUILD_SHARED_LIB=ON",
             "-DCMAKE_OSX_SYSROOT=" + args.apple_sysroot,
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
             "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+            "-DPLATFORM_NAME=" + platform_name,
         ]
         if args.ios:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
                 + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
+            ]
+        if args.mac_catalyst:
+            cmake_args += [
+                "-DCMAKE_CXX_COMPILER_TARGET=" + f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
+                "-DCMAKE_C_COMPILER_TARGET=" + f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
+                "-DCMAKE_CC_COMPILER_TARGET=" + f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
+                "-DCMAKE_CXX_FLAGS=" + f"--target={args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
+                "-DCMAKE_CXX_FLAGS_RELEASE="
+                + f"-O3 -DNDEBUG --target={args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
+                "-DCMAKE_C_FLAGS=" + f"--target={args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
+                "-DCMAKE_C_FLAGS_RELEASE="
+                + f"-O3 -DNDEBUG --target={args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
+                "-DCMAKE_CC_FLAGS=" + f"--target={args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
+                "-DCMAKE_CC_FLAGS_RELEASE="
+                + f"-O3 -DNDEBUG --target={args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi",
             ]
 
     if args.build_wasm:
@@ -1474,9 +1495,11 @@ def generate_build_tree(
                     else "OFF"
                 ),
                 f"-DCMAKE_BUILD_TYPE={config}",
-                f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
-                else "",
+                (
+                    f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
+                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                    else ""
+                ),
             ],
             cwd=config_build_dir,
             cuda_home=cuda_home,
@@ -1826,7 +1849,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if args.android:
             run_android_tests(args, source_dir, build_dir, config, cwd)
             continue
-        elif args.ios:
+        elif args.ios or args.mac_catalyst:
             run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
@@ -2271,6 +2294,8 @@ def is_cross_compiling_on_apple(args):
         return False
     if args.ios:
         return True
+    if args.mac_catalyst:
+        return True
     if args.osx_arch != platform.machine():
         return True
     return False
@@ -2567,7 +2592,13 @@ def main():
             cmake_extra_args += ["-G", args.cmake_generator]
 
         if is_macOS():
-            if not args.ios and not args.android and args.osx_arch == "arm64" and platform.machine() == "x86_64":
+            if (
+                not args.ios
+                and not args.mac_catalyst
+                and not args.android
+                and args.osx_arch == "arm64"
+                and platform.machine() == "x86_64"
+            ):
                 if args.test:
                     log.warning("Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False

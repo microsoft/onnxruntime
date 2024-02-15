@@ -46,7 +46,7 @@ endif()
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
 function(add_jblas)
-    add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas) 
+    add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas)
     target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
     target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/jblas_gemm.cpp
@@ -626,6 +626,10 @@ if (WIN32)
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
     target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072>")
   endif()
+endif()
+
+if (PLATFORM_NAME STREQUAL "macabi")
+  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS}) # Needed for maccatalyst C compilation
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

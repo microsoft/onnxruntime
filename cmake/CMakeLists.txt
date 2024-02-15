@@ -50,6 +50,13 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Suggested by https://gitlab.kitware.com/cmake/cmake/-/issues/20132
+# MacCatalyst does not support well in CMake
+# The error that can emerge without this flag looks like:
+# "clang : error : overriding '-mmacosx-version-min=11.0' option with '-target x86_64-apple-ios12.0-macabi' [-Werror,-Woverriding-t-option]"
+add_compile_options(-Wno-overriding-t-option)
+add_link_options(-Wno-overriding-t-option)
+
 # Enable CTest
 enable_testing()
 include(Dart)
