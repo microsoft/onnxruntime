@@ -62,7 +62,8 @@ class AttentionCPUBase : public AttentionBase {
 
     void* mask_data = nullptr;
     if (mask_index != nullptr || causal) {
-      size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
+      //size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
+      size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sizeof(T);
       mask_data = allocator->Alloc(mask_data_bytes);
       memset(mask_data, 0, mask_data_bytes);
     }

@@ -364,6 +364,7 @@ public:
         // Causal Mask: [pastSequenceLength, pastSequenceLength + 1 ... pastSequenceLength + batchSize -1]
         // passed to MHA as maskIndex Tensor when unidirectional == 1
         std::array<uint32_t, 2> causalMaskOutputShape = {1, batchSize};
+        //std::array<uint32_t, 2> causalMaskOutputShape = {1, pastSequenceLength + sequenceLength};
         TensorDesc causalMaskTensorDesc;
         DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC causalMaskOperatorDesc = {};
         DML_TENSOR_DESC namedcausalMaskTensorDesc;
