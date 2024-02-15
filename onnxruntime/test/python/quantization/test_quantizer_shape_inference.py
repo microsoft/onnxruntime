@@ -11,7 +11,7 @@ import onnx
 import onnx.helper as oh
 import onnx.numpy_helper as onh
 from onnxruntime.quantization.onnx_quantizer import ONNXQuantizer
-from onnxruntime.quantization.quant_utils import QuantType, QuantizationMode
+from onnxruntime.quantization.quant_utils import QuantizationMode, QuantType
 
 
 class TestQuantizerShapeInference(unittest.TestCase):

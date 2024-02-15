@@ -7,7 +7,7 @@
 import logging
 import os
 
-import onnx  # noqa: F401
+import onnx
 import torch
 from transformers.modeling_utils import Conv1D
 
