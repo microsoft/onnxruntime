@@ -2294,8 +2294,6 @@ def is_cross_compiling_on_apple(args):
         return False
     if args.ios:
         return True
-    if args.mac_catalyst:
-        return True
     if args.osx_arch != platform.machine():
         return True
     return False
