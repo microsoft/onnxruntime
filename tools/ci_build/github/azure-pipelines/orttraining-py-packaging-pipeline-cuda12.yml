@@ -13,7 +13,7 @@ stages:
   parameters:
     build_py_parameters: --enable_training --update --build
     torch_version: '2.1.0'
-    opset_version: '15'
+    opset_version: '17'
     cuda_version: '12.2'
     cmake_cuda_architectures: 70;75;80;86;90
     docker_file: Dockerfile.manylinux2_28_training_cuda12_2

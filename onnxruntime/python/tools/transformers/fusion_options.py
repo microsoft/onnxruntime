@@ -24,9 +24,17 @@ class AttentionOpType(Enum):
     Attention = "Attention"
     MultiHeadAttention = "MultiHeadAttention"
     GroupQueryAttention = "GroupQueryAttention"
+    PagedAttention = "PagedAttention"
 
     def __str__(self):
         return self.value
+
+    # Override __eq__ to return string comparison
+    def __hash__(self):
+        return hash(self.value)
+
+    def __eq__(self, other):
+        return other.value == self.value
 
 
 class FusionOptions:
