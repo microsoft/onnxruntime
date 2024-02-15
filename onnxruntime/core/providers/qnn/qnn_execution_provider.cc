@@ -832,15 +832,14 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
     LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
   }
 
-  auto per_thread_context = GetPerThreadContext();
-  if (per_thread_context.IsHtpPowerConfigIdValid()) {
+  if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(per_thread_context.GetHtpPowerConfigId(),
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
                                                                   htp_performance_mode));
     }
 
     if (rpc_control_latency > 0) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcControlLatency(per_thread_context.GetHtpPowerConfigId(),
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcControlLatency(GetPerThreadContext().GetHtpPowerConfigId(),
                                                                      rpc_control_latency));
     }
   }
@@ -862,11 +861,10 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
   }
 
   if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-    auto per_thread_context = GetPerThreadContext();
-    if (!per_thread_context.IsHtpPowerConfigIdValid()) {
+    if (!GetPerThreadContext().IsHtpPowerConfigIdValid()) {
       return Status::OK();
     }
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(per_thread_context.GetHtpPowerConfigId(),
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
                                                                 htp_performance_mode));
   }
 
