@@ -9,22 +9,10 @@ add_compile_definitions(USE_COREML=1)
 
 # Check if we can build the coremltools code for creating an mlpackage with an mlprogram.
 # The coremltools source requires std::filesystem::path which is only available from iOS 13 on.
-set(_enable_ML_PROGRAM ON)
 if (IOS AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS 13.0)
   message(WARNING "CoreML ML Program is not supported on iOS < 13.0. Excluding ML Program support from build.")
-  set(_enable_ML_PROGRAM OFF)
-elseif(LINUX)
-  # uuid-dev is required. we don't bother installing on CIs as it's really for manual developer testing.
-  find_library(LibUUID_LIBRARY NAMES uuid)
-  find_path(LibUUID_INCLUDE_DIR NAMES uuid/uuid.h)
-  if (NOT LibUUID_INCLUDE_DIR)
-    message(STATUS "uuid/uuid.h was not found as is required for ML Program support. "
-                    "Run `sudo apt install uuid-dev` if you need to test ML Program related CoreML EP code. ")
-    set(_enable_ML_PROGRAM OFF)
-  endif()
-endif()
-
-if (_enable_ML_PROGRAM)
+else()
+  set(_enable_ML_PROGRAM ON)
   add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
 endif()
 
@@ -111,7 +99,7 @@ if(_enable_ML_PROGRAM)
   file(GLOB
     onnxruntime_providers_coreml_modelpackage_cc_srcs CONFIGURE_DEPENDS
     "${coremltools_SOURCE_DIR}/modelpackage/src/ModelPackage.?pp"
-    "${coremltools_SOURCE_DIR}/modelpackage/src/Utils/JsonMap.?pp"
+    "${coremltools_SOURCE_DIR}/modelpackage/src/utils/JsonMap.?pp"
   )
 
   set(coremltools_srcs
