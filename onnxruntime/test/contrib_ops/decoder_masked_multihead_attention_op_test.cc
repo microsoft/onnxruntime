@@ -647,9 +647,9 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
   constexpr int number_of_heads = 12;
 
   // Vary batch size
-  for (int batch_size: batch_sizes) {
+  for (int batch_size : batch_sizes) {
     // Vary kv_lengths
-    for (int past_sequence_length: past_sequence_lengths) {
+    for (int past_sequence_length : past_sequence_lengths) {
       // Vary head_size / hidden_size
       for (int hidden_size : hidden_sizes) {
         int head_size = (hidden_size / number_of_heads);
@@ -783,7 +783,7 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
   constexpr int sequence_length = 1;
   constexpr int number_of_heads = 12;
 
-  for (MyTestCase test_case: test_cases) {
+  for (MyTestCase test_case : test_cases) {
     int batch_size = test_case.batch_size;
     int past_sequence_length = test_case.past_sequence_length;
     int hidden_size = test_case.hidden_size;
@@ -827,7 +827,7 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
     int num_chunks = head_size / chunk_size;
     auto transposed = Transpose<MLFloat16>(kv_cache.data(), batch_size, number_of_heads, num_chunks, max_sequence_length, chunk_size);
     CheckEquality<MLFloat16>(transposed.data(), reordered_kv_cache.data(), batch_size, number_of_heads, num_chunks,
-                              max_sequence_length, past_sequence_length, chunk_size);
+                             max_sequence_length, past_sequence_length, chunk_size);
 
     tester.AddInput<MLFloat16>("past", past_dims, reordered_kv_cache);
 
@@ -856,7 +856,7 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
                                                                 sequence_length, total_sequence_length, head_size);
 
     auto present = MergeReorderedKVCacheWithK<MLFloat16>(reordered_kv_cache, qkv_matrix + hidden_size, batch_size,
-                                                          number_of_heads, past_sequence_length, max_sequence_length, head_size);
+                                                         number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
     // Validate our test logic
     // We want to validate if our merged "unordered" K is the same as
@@ -868,9 +868,9 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
                                           number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
     auto output = Softmax_QK_Transpose_V(softmax_qk_transpose.data(), present.data() + (past_present_size / 2),
-                                          batch_size, number_of_heads,
-                                          sequence_length, total_sequence_length,
-                                          max_sequence_length, head_size);
+                                         batch_size, number_of_heads,
+                                         sequence_length, total_sequence_length,
+                                         max_sequence_length, head_size);
 
     // Output(s)
     tester.AddOutput<MLFloat16>("output", input_dims, output);
