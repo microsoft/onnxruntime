@@ -112,7 +112,7 @@ RUN pip install \
     cerberus \
     sympy \
     h5py \
-    datasets==1.9.0 \
+    datasets==2.17.0 \
     requests \
     sacrebleu==1.5.1 \
     sacremoses \
