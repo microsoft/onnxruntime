@@ -169,7 +169,8 @@ export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'erro
  * Check whether the given tensor type is supported by GPU buffer
  */
 export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuBufferDataTypes => type === 'float32' ||
-    type === 'int32' || type === 'int64' || type === 'bool' || type === 'float16' || type === 'uint32';
+    type === 'float16' || type === 'int32' || type === 'int64' || type === 'uint32' || type === 'uint8' ||
+    type === 'bool';
 
 /**
  * Map string data location to integer value
