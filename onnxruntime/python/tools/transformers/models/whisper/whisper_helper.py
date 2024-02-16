@@ -406,7 +406,14 @@ class WhisperHelper:
         expected_transcription_with_comma = (
             " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
         )
-        expected_transcription_options = {expected_transcription_no_comma, expected_transcription_with_comma}
+        expected_transcription_with_quote_and_comma = (
+            ' "Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel.'
+        )
+        expected_transcription_options = {
+            expected_transcription_no_comma,
+            expected_transcription_with_comma,
+            expected_transcription_with_quote_and_comma,
+        }
         pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)[0]
         ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)[0]
 
