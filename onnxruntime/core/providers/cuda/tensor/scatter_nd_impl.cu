@@ -8,6 +8,16 @@
 namespace onnxruntime {
 namespace cuda {
 
+/*
+enum class Reduction : int {
+  None = 0,
+  Add = 1,
+  Mul = 2,
+  Min = 3,
+  Max = 4,
+};  
+*/
+
 template <typename T>
 __global__ void _ScatterNDKernel(
     T* output_data,
@@ -68,7 +78,9 @@ Status ScatterNDImpl(
     const int64_t last_index_dimension,
     const int64_t* element_counts_and_input_dims,
     const void* updates_data,
-    const size_t num_updates_elements) {
+    const size_t num_updates_elements,
+    const int operation) {
+  ORT_THROW(operation == 0, "unexpected reduction for ScatterND");
   if (num_indices == 0)
     return Status::OK();
 

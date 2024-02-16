@@ -18,9 +18,27 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                       .MayInplace(0, 0),
                                   ScatterND);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
+                                  kOnnxDomain,
+                                  13, 15,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .MayInplace(0, 0),
+                                  ScatterND);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
+                                  kOnnxDomain,
+                                  16, 17,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .MayInplace(0, 0),
+                                  ScatterND);
+
 ONNX_OPERATOR_KERNEL_EX(ScatterND,
                         kOnnxDomain,
-                        13,
+                        18,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -80,7 +98,8 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
       last_index_dimension,
       element_counts_and_input_dims_gpu.GpuPtr(),
       updates_tensor->DataRaw(),
-      input_shape.SizeFromDimension(last_index_dimension)));
+      input_shape.SizeFromDimension(last_index_dimension),
+      static_cast<int>(reduction_)));
 
   return Status::OK();
 }

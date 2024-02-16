@@ -180,5 +180,16 @@ TEST(ScatterNDOpTest, ScatterND_batched_3tensor_int64) {
   test3.Run();
 }
 
+TEST(ScatterNDOpTest, ScatterND_18_add) {
+  OpTester test1("ScatterND", 18);
+  test1.AddAttribute("reduction", "add");
+  test1.AddInput<float>("data", {4, 4, 4}, {1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 2, 1, 8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8});
+  test1.AddInput<int64_t>("indices", {2, 1}, {0, 0});
+  test1.AddInput<float>("updates", {2, 4, 4}, {5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4});
+  test1.AddOutput<float>("output", {4, 4, 4}, {7, 8, 9, 10, 13, 14, 15, 16, 18, 17, 16, 15, 16, 15, 14, 13, 1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8});
+  test1.Run();
+}
+
+
 }  // namespace test
 }  // namespace onnxruntime

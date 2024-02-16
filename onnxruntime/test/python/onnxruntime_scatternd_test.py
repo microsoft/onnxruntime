@@ -1,13 +1,14 @@
 import itertools
 import json
 import os
+import typing
 import unittest
+import warnings
 import numpy as np
-import onnxruntime  # noqa: F401
+import onnxruntime
 import onnx.helper as oh
 from onnx import TensorProto, load
 from onnx.numpy_helper import from_array
-from experimental_experiment.ext_test_case import ExtTestCase, ignore_warnings
 
 
 def has_cuda():
@@ -15,13 +16,31 @@ def has_cuda():
     return "CUDAExecutionProvider" in available_providers
 
 
-class TestScatterPerProvider(ExtTestCase):
+def ignore_warnings(warns: typing.List[Warning]) -> typing.Callable:
+
+    def wrapper(fct):
+        if warns is None:
+            raise AssertionError(f"warns cannot be None for '{fct}'.")
+
+        def call_f(self):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", warns)
+                return fct(self)
+
+        return call_f
+
+    return wrapper
+
+
+class TestScatterPerProvider(unittest.TestCase):
+
+    def assertExists(self, filename: str):
+        assert os.path.exists(filename), f"Unable to find {filename!r}."
+
     def common_scatter(self, opset, providers, dtype, reduction, expected_names):
         from onnxruntime import InferenceSession, SessionOptions
 
-        op_type = (
-            "ScatterElements" if "ScatterElements" in expected_names else "ScatterND"
-        )
+        op_type = "ScatterElements" if "ScatterElements" in expected_names else "ScatterND"
         ndim = 2 if op_type == "ScatterElements" else 3
 
         assert dtype in (np.float16, np.float32)
@@ -42,9 +61,7 @@ class TestScatterPerProvider(ExtTestCase):
                 "name",
                 [
                     oh.make_tensor_value_info("X", TensorProto.FLOAT, [None] * ndim),
-                    oh.make_tensor_value_info(
-                        "indices", TensorProto.INT64, [None, None]
-                    ),
+                    oh.make_tensor_value_info("indices", TensorProto.INT64, [None, None]),
                     oh.make_tensor_value_info("updates", itype, [None] * ndim),
                 ],
                 [oh.make_tensor_value_info("Y", itype, [None] * ndim)],
@@ -105,7 +122,7 @@ class TestScatterPerProvider(ExtTestCase):
         sess.run(None, {"X": data, "indices": indices, "updates": updates})
         prof = sess.end_profiling()
 
-        with open(prof, "r") as f:
+        with open(prof, "r") as f:  # noqa: UP015
             content = f.read()
         js = json.loads(content)
 
@@ -124,15 +141,9 @@ class TestScatterPerProvider(ExtTestCase):
                     row["op_name"] = changed
                     break
             rows.append(row)
-            exe_providers.append(
-                (row.get("args_provider", None), row.get("args_op_name", None))
-            )
-        short_list = [
-            (a, b) for a, b in exe_providers if a is not None and b is not None
-        ]
-        self.assertEqual(
-            short_list, [("CUDAExecutionProvider", o) for o in expected_names]
-        )
+            exe_providers.append((row.get("args_provider", None), row.get("args_op_name", None)))
+        short_list = [(a, b) for a, b in exe_providers if a is not None and b is not None]
+        self.assertEqual(short_list, [("CUDAExecutionProvider", o) for o in expected_names])
 
     @unittest.skipIf(not has_cuda(), reason="cuda not available")
     @ignore_warnings(DeprecationWarning)
@@ -150,9 +161,7 @@ class TestScatterPerProvider(ExtTestCase):
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
         }
-        for opset, dtype, reduction in itertools.product(
-            [16, 18], [np.float32, np.float16], ["none", "add"]
-        ):
+        for opset, dtype, reduction in itertools.product([16, 18], [np.float32, np.float16], ["none", "add"]):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
@@ -178,9 +187,7 @@ class TestScatterPerProvider(ExtTestCase):
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
         }
-        for opset, dtype, reduction in itertools.product(
-            [16, 18], [np.float32, np.float16], ["none", "add"]
-        ):
+        for opset, dtype, reduction in itertools.product([16, 18], [np.float32, np.float16], ["none", "add"]):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
@@ -203,9 +210,7 @@ class TestScatterPerProvider(ExtTestCase):
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
         }
-        for opset, dtype, reduction in itertools.product(
-            [16, 18], [np.float32, np.float16], ["none", "add"]
-        ):
+        for opset, dtype, reduction in itertools.product([16, 18], [np.float32, np.float16], ["none", "add"]):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
@@ -228,9 +233,7 @@ class TestScatterPerProvider(ExtTestCase):
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
         }
-        for opset, dtype, reduction in itertools.product(
-            [16, 18], [np.float32, np.float16], ["none", "add"]
-        ):
+        for opset, dtype, reduction in itertools.product([16, 18], [np.float32, np.float16], ["none", "add"]):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
