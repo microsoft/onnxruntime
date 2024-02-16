@@ -286,33 +286,24 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                           std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
                                            const logging::Logger& logger) const {
-  // If we have visited one of the nodes in the node_unit, use the result directly
-  const auto it = node_unit_supported_result.find(&node_unit);
-  if (it != node_unit_supported_result.cend()) {
-    return it->second;
+  const std::string& op_type = node_unit.OpType();
+  bool supported = false;
+  const auto* op_builder = qnn::GetOpBuilder(op_type);
+  if (op_builder == nullptr) {
+    LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
+                          << node_unit.OpType() << " node `" << node_unit.Name()
+                          << "` will not be assigned to QNN EP.";
   } else {
-    const std::string& op_type = node_unit.OpType();
-
-    bool supported = false;
-    const auto* op_builder = qnn::GetOpBuilder(op_type);
-    if (op_builder == nullptr) {
-      LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
-                            << node_unit.OpType() << " node `" << node_unit.Name()
-                            << "` will not be assigned to QNN EP.";
-    } else {
-      auto status = op_builder->IsOpSupported(qnn_model_wrapper,
-                                              node_unit, logger);
-      if (Status::OK() != status) {
-        LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
-                              << "` is not supported: " << status.ErrorMessage();
-      }
-      supported = (Status::OK() == status);
+    auto status = op_builder->IsOpSupported(qnn_model_wrapper,
+                                            node_unit, logger);
+    if (Status::OK() != status) {
+      LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
+                            << "` is not supported: " << status.ErrorMessage();
     }
-    node_unit_supported_result[&node_unit] = supported;
-    return supported;
+    supported = (Status::OK() == status);
   }
+  return supported;
 }
 
 std::unordered_set<const Node*>
@@ -391,24 +382,51 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     if (node != &node_unit->GetNode()) {
       continue;
     }
-    const bool supported = IsNodeSupported(qnn_model_wrapper,
-                                           *node_unit,
-                                           node_unit_supported_result,
-                                           logger);
-    LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                          << "] index: [" << node->Index()
-                          << "] name: [" << node->Name()
-                          << "] Operator type: [" << node->OpType()
-                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
-                          << "] index: [" << node_unit->Index()
-                          << "] name: [" << node_unit->Name()
-                          << "]";
+
+    if (node_unit_supported_result.count(node_unit) != 0) {
+      continue;  // Already handled this node unit
+    }
+
+    // Try to convert certain standalone DQ -> Q sequences into QNN Convert op
+    auto convert_result = TryHandleConvertSequence(qnn_model_wrapper,
+                                                   *node_unit,
+                                                   node_unit_map,
+                                                   logger,
+                                                   true /*do_op_validation*/);
+    if (!convert_result.status.IsOK()) {
+      LOGS(logger, WARNING) << "Failed to convert DQ -> Q sequence to QNN Convert. "
+                            << "Type: " << node_unit->OpType() << ", Node name: " << node_unit->Name() << ", "
+                            << "Message: " << convert_result.status.ErrorMessage();
+    }
+
+    bool supported = false;
+
+    if (convert_result.status.IsOK() && convert_result.q_node_unit) {  // Merged DQ -> Q sequence into QNN Convert op
+      supported = true;
+
+      // Mark the Q node unit as handled and supported here so that we don't try to process it again.
+      node_unit_supported_result.insert({convert_result.q_node_unit, true});
+      supported_nodes.insert(&convert_result.q_node_unit->GetNode());
+    } else {
+      supported = IsNodeSupported(qnn_model_wrapper, *node_unit, logger);
+      LOGS(logger, VERBOSE) << "Node supported: [" << supported
+                            << "] index: [" << node->Index()
+                            << "] name: [" << node->Name()
+                            << "] Operator type: [" << node->OpType()
+                            << "] as part of the NodeUnit type: [" << node_unit->OpType()
+                            << "] index: [" << node_unit->Index()
+                            << "] name: [" << node_unit->Name()
+                            << "]";
+    }
+
     if (supported) {
       // If the node_unit is supported, add all of its nodes to the supported list.
       for (const auto* node_in_group : node_unit->GetAllNodesInGroup()) {
         supported_nodes.insert(node_in_group);
       }
     }
+
+    node_unit_supported_result.insert({node_unit, supported});
   }
 
   return supported_nodes;
