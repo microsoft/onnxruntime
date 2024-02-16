@@ -34,7 +34,7 @@ static const char* const kOrtRunOptionsConfigDisableSynchronizeExecutionProvider
 // Set HTP performance mode for QNN HTP backend before session run.
 // options for HTP performance mode: "burst", "balanced", "default", "high_performance",
 // "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver",
-// "sustained_high_performance".Default to "default".
+// "sustained_high_performance". Default to "default".
 static const char* const kOrtRunOptionsConfigQnnPerfMode = "qnn.htp_perf_mode";
 
 // Set HTP performance mode for QNN HTP backend post session run.

@@ -30,10 +30,24 @@ static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 void RunOnUnload(std::function<void()> function) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard{mutex};
-  if (!s_run_on_unload_)
+  if (!s_run_on_unload_) {
     s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
+  }
   s_run_on_unload_->push_back(std::move(function));
 }
+
+struct OnUnload {
+  ~OnUnload() {
+    if (!s_run_on_unload_)
+      return;
+
+    for (auto& function : *s_run_on_unload_)
+      function();
+
+    s_run_on_unload_.reset();
+  }
+
+} g_on_unload;
 
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
@@ -296,13 +310,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
 QNNExecutionProvider::~QNNExecutionProvider() {
   // clean up thread local context caches
-  {
-    std::lock_guard<OrtMutex> lock(context_state_.mutex);
-    for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
-      const auto cache = cache_weak.lock();
-      if (!cache) continue;
-      ORT_IGNORE_RETURN_VALUE(cache->erase(this));
-    }
+  std::lock_guard<OrtMutex> lock(context_state_.mutex);
+  for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
+    const auto cache = cache_weak.lock();
+    if (!cache) continue;
+    ORT_IGNORE_RETURN_VALUE(cache->erase(this));
   }
 }
 
