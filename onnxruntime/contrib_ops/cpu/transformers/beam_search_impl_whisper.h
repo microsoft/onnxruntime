@@ -134,8 +134,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     TensorShape no_speech_probs_shape{parameters->batch_size};
     Tensor* no_speech_probs = this->context_.Output(parameters->no_speech_probs_output_id, no_speech_probs_shape);
     if (no_speech_probs && no_speech_probs->MutableData<T>()) {
-      ORT_ENFORCE(parameters->no_speech_token >= 0 && parameters->no_speech_token < parameters->vocab_size,
-                  "no_speech_token id out of range, it is ", parameters->no_speech_token,
+      ORT_ENFORCE(parameters->no_speech_token_id >= 0 && parameters->no_speech_token_id < parameters->vocab_size,
+                  "no_speech_token_id is out of range, it is ", parameters->no_speech_token_id,
                   ", vocab_size is ", parameters->vocab_size);
       this->parameters_->no_speech_probs = (void*)no_speech_probs->MutableData<T>();
     }
