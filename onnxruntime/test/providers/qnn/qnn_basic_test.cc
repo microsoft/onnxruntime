@@ -539,8 +539,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 
   std::vector<std::string> perf_modes{
       "burst", "balanced", "default", "high_performance", "high_power_saver",
-      "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver"
-  };
+      "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver"};
 
   size_t post_i = perf_modes.size() - 1;
   ASSERT_TRUE(post_i > num_threads);
