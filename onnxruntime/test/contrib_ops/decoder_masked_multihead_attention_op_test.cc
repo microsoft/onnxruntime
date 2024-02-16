@@ -640,125 +640,139 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
     return;
   }
 
-  std::vector<int> batch_sizes = {1, 4};
-  std::vector<int> past_sequence_lengths = {1, 3000};
-  std::vector<int> hidden_sizes = {768};
+  // Buckets for test data:
+  // batch_size: 1, >=2
+  // past_sequence_length 0~30, 31~2046, >=2047 (so that total_sequence_length: 1~31, 32~2047, >=2048)
+  // head_size: 32, 64, 128
+  struct MyTestCase {
+    int batch_size;
+    int past_sequence_length;
+    int hidden_size;
+  } test_cases[] = {
+      {1, 0, 768},
+      {1, 1, 384},
+      {2, 30, 768},
+      {3, 31, 1536},
+      {4, 512, 384},
+      {1, 1024, 768},
+      {1, 2046, 1536},
+      {2, 2047, 384},
+      {3, 3000, 768},
+  };
+
   constexpr int sequence_length = 1;
   constexpr int number_of_heads = 12;
 
-  // Vary batch size
-  for (int batch_size : batch_sizes) {
-    // Vary kv_lengths
-    for (int past_sequence_length : past_sequence_lengths) {
-      // Vary head_size / hidden_size
-      for (int hidden_size : hidden_sizes) {
-        int head_size = (hidden_size / number_of_heads);
-        int total_sequence_length = sequence_length + past_sequence_length;
-        int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
+  for (MyTestCase test_case : test_cases) {
+    int batch_size = test_case.batch_size;
+    int past_sequence_length = test_case.past_sequence_length;
+    int hidden_size = test_case.hidden_size;
 
-        OpTester tester("DecoderMaskedSelfAttention", 1, onnxruntime::kMSDomain);
-        tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
-        tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(1));
+    int head_size = (hidden_size / number_of_heads);
+    int total_sequence_length = sequence_length + past_sequence_length;
+    int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
 
-        std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-        std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
-        std::vector<int64_t> bias_dims = {3 * hidden_size};
-        std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
+    OpTester tester("DecoderMaskedSelfAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+    tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(1));
 
-        auto input = CreateRandom<float>(batch_size * sequence_length * hidden_size);
-        tester.AddInput<float>("input", input_dims, input);
+    std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+    std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+    std::vector<int64_t> bias_dims = {3 * hidden_size};
+    std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
 
-        auto weight = CreateRandom<float>(hidden_size * 3 * hidden_size);
-        tester.AddInput<float>("weight", weights_dims, weight);
+    auto input = CreateRandom<float>(batch_size * sequence_length * hidden_size);
+    tester.AddInput<float>("input", input_dims, input);
 
-        auto bias = CreateRandom<float>(3 * hidden_size);
-        tester.AddInput<float>("bias", bias_dims, bias);
+    auto weight = CreateRandom<float>(hidden_size * 3 * hidden_size);
+    tester.AddInput<float>("weight", weights_dims, weight);
 
-        // Mask
-        tester.AddOptionalInputEdge<int32_t>();
+    auto bias = CreateRandom<float>(3 * hidden_size);
+    tester.AddInput<float>("bias", bias_dims, bias);
 
-        // Past
-        std::vector<int64_t> past_dims = {2, batch_size, number_of_heads, max_sequence_length, head_size};
-        int past_present_size = 2 * batch_size * number_of_heads * max_sequence_length * head_size;
+    // Mask
+    tester.AddOptionalInputEdge<int32_t>();
 
-        auto kv_cache = CreateRandom<float>(past_present_size);
+    // Past
+    std::vector<int64_t> past_dims = {2, batch_size, number_of_heads, max_sequence_length, head_size};
+    int past_present_size = 2 * batch_size * number_of_heads * max_sequence_length * head_size;
 
-        auto reordered_kv_cache = ReorderKVCache<float>(kv_cache, batch_size,
-                                                        number_of_heads, past_sequence_length, head_size, max_sequence_length);
+    auto kv_cache = CreateRandom<float>(past_present_size);
 
-        // Validate if reordering went well - by transposing and checking equality
-        int chunk_size = 16 / sizeof(float);
-        int num_chunks = head_size / chunk_size;
-        auto transposed = Transpose<float>(kv_cache.data(), batch_size, number_of_heads, num_chunks, max_sequence_length, chunk_size);
-        CheckEquality<float>(transposed.data(), reordered_kv_cache.data(), batch_size, number_of_heads, num_chunks,
-                             max_sequence_length, past_sequence_length, chunk_size);
+    auto reordered_kv_cache = ReorderKVCache<float>(kv_cache, batch_size,
+                                                    number_of_heads, past_sequence_length, head_size, max_sequence_length);
 
-        tester.AddInput<float>("past", past_dims, reordered_kv_cache);
+    // Validate if reordering went well - by transposing and checking equality
+    int chunk_size = 16 / sizeof(float);
+    int num_chunks = head_size / chunk_size;
+    auto transposed = Transpose<float>(kv_cache.data(), batch_size, number_of_heads, num_chunks, max_sequence_length, chunk_size);
+    CheckEquality<float>(transposed.data(), reordered_kv_cache.data(), batch_size, number_of_heads, num_chunks,
+                         max_sequence_length, past_sequence_length, chunk_size);
 
-        // Rel
-        tester.AddOptionalInputEdge<float>();
+    tester.AddInput<float>("past", past_dims, reordered_kv_cache);
 
-        // Past sequence length
-        std::vector<int32_t> arr_past_sequence_len(1, past_sequence_length);
-        tester.AddInput<int32_t>("past_sequence_length", {1}, arr_past_sequence_len);
+    // Rel
+    tester.AddOptionalInputEdge<float>();
 
-        // QKV MatMul
-        auto qkv = QKV(input, weight, bias, batch_size, sequence_length, hidden_size);
-        auto* qkv_matrix = qkv.data();
+    // Past sequence length
+    std::vector<int32_t> arr_past_sequence_len(1, past_sequence_length);
+    tester.AddInput<int32_t>("past_sequence_length", {1}, arr_past_sequence_len);
 
-        auto pair = MergePastKWithPresentKAndTranspose<float>(kv_cache.data(), qkv_matrix + hidden_size, batch_size,
-                                                              number_of_heads, past_sequence_length,
-                                                              max_sequence_length, head_size);
+    // QKV MatMul
+    auto qkv = QKV(input, weight, bias, batch_size, sequence_length, hidden_size);
+    auto* qkv_matrix = qkv.data();
 
-        auto k_merged = pair.first;
-        auto k_transpose = pair.second;
+    auto pair = MergePastKWithPresentKAndTranspose<float>(kv_cache.data(), qkv_matrix + hidden_size, batch_size,
+                                                          number_of_heads, past_sequence_length,
+                                                          max_sequence_length, head_size);
 
-        auto qk_transpose = QK_Transpose<float>(qkv_matrix, k_transpose.data(), batch_size, number_of_heads,
-                                                total_sequence_length, head_size);
+    auto k_merged = pair.first;
+    auto k_transpose = pair.second;
 
-        auto softmax_qk_transpose = Softmax_QK_Transpose<float>(qk_transpose.data(), batch_size, number_of_heads,
-                                                                sequence_length, total_sequence_length, head_size);
+    auto qk_transpose = QK_Transpose<float>(qkv_matrix, k_transpose.data(), batch_size, number_of_heads,
+                                            total_sequence_length, head_size);
 
-        auto present = MergeReorderedKVCacheWithK<float>(reordered_kv_cache, qkv_matrix + hidden_size, batch_size,
-                                                         number_of_heads, past_sequence_length, max_sequence_length, head_size);
+    auto softmax_qk_transpose = Softmax_QK_Transpose<float>(qk_transpose.data(), batch_size, number_of_heads,
+                                                            sequence_length, total_sequence_length, head_size);
 
-        // Validate our test logic
-        // We want to validate if our merged "unordered" K is the same as
-        // the merged "ordered" K so that the QKT we do in our test code
-        // is equivalent to the QKT we do in the kernel
-        ValidateReorderedMergedKWithK<float>(k_merged.data(), present.data(), batch_size, number_of_heads, total_sequence_length, max_sequence_length, head_size);
+    auto present = MergeReorderedKVCacheWithK<float>(reordered_kv_cache, qkv_matrix + hidden_size, batch_size,
+                                                     number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
-        MergeReorderedKVCacheWithV<float>(present.data() + (past_present_size / 2), qkv_matrix + 2 * hidden_size, batch_size,
-                                          number_of_heads, past_sequence_length, max_sequence_length, head_size);
+    // Validate our test logic
+    // We want to validate if our merged "unordered" K is the same as
+    // the merged "ordered" K so that the QKT we do in our test code
+    // is equivalent to the QKT we do in the kernel
+    ValidateReorderedMergedKWithK<float>(k_merged.data(), present.data(), batch_size, number_of_heads, total_sequence_length, max_sequence_length, head_size);
 
-        auto output = Softmax_QK_Transpose_V<float>(softmax_qk_transpose.data(), present.data() + (past_present_size / 2),
-                                                    batch_size, number_of_heads,
-                                                    sequence_length, total_sequence_length,
-                                                    max_sequence_length, head_size);
+    MergeReorderedKVCacheWithV<float>(present.data() + (past_present_size / 2), qkv_matrix + 2 * hidden_size, batch_size,
+                                      number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
-        // Output(s)
-        tester.AddOutput<float>("output", input_dims, output);
+    auto output = Softmax_QK_Transpose_V<float>(softmax_qk_transpose.data(), present.data() + (past_present_size / 2),
+                                                batch_size, number_of_heads,
+                                                sequence_length, total_sequence_length,
+                                                max_sequence_length, head_size);
 
-        tester.AddOutput<float>("present", past_dims, present);
+    // Output(s)
+    tester.AddOutput<float>("output", input_dims, output);
 
-        // Run - Regular kernel execution path
-        {
-          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-          execution_providers.push_back(DefaultCudaExecutionProvider());
-          tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-        }
+    tester.AddOutput<float>("present", past_dims, present);
 
-        // Test alternate kernel path of loading more KV data "in flight"
-        {
-          ScopedEnvironmentVariables scoped_env_vars{
-              EnvVarMap{{onnxruntime::contrib::attention::kDecoderMaskedAttentionLoadKVDataInFlight, "1"}}};
+    // Run - Regular kernel execution path
+    {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
 
-          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-          execution_providers.push_back(DefaultCudaExecutionProvider());
+    // Test alternate kernel path of loading more KV data "in flight"
+    {
+      ScopedEnvironmentVariables scoped_env_vars{
+          EnvVarMap{{onnxruntime::contrib::attention::kDecoderMaskedAttentionLoadKVDataInFlight, "1"}}};
 
-          tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-        }
-      }
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }
 }
@@ -769,14 +783,23 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
     return;
   }
 
+  // Buckets for test data:
+  // batch_size: 1, >=2
+  // past_sequence_length 0, 1~30, 31~2046, >=2047 (so that total_sequence_length: 1, 2-31, 32~2047, >=2048)
+  // head_size: 32, 64, 128
   struct MyTestCase {
     int batch_size;
     int past_sequence_length;
     int hidden_size;
   } test_cases[] = {
+      {1, 0, 768},
       {1, 1, 768},
-      {3, 16, 384},
-      {8, 1, 1536},
+      {3, 30, 384},
+      {8, 31, 1536},
+      {4, 256, 384},
+      {3, 1024, 768},
+      {2, 2046, 1536},
+      {1, 2047, 384},
       {2, 3000, 768},
   };
 
