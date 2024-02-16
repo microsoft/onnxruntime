@@ -28,8 +28,8 @@ constexpr const char* QNN = "QNN";
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
 void RunOnUnload(std::function<void()> function) {
-  static std::mutex mutex;
-  std::lock_guard<std::mutex> guard{mutex};
+  OrtMutex mutex;
+  std::lock_guard<OrtMutex> guard(mutex);
   if (!s_run_on_unload_) {
     s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
   }

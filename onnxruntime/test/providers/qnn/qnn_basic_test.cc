@@ -333,9 +333,10 @@ static void CreateModelInMemory(std::unique_ptr<ModelAndBuilder>& result,
 static void RunSessionAndVerify(InferenceSession& session, const RunOptions& run_options, const NameMLValMap& feeds,
                                 const std::vector<std::string>& output_names,
                                 const std::vector<std::vector<int64_t>>& output_shapes,
-                                const std::vector<std::vector<float>>& expected_values) {
+                                const std::vector<std::vector<float>>& expected_values,
+                                int loop_count = 10) {
   // Let it run for a while
-  for (int it = 0; it < 10; ++it) {
+  for (int it = 0; it < loop_count; ++it) {
     std::vector<OrtValue> fetches;
     auto status = session.Run(run_options, feeds, output_names, &fetches);
     ASSERT_TRUE(status.IsOK());
@@ -408,11 +409,11 @@ TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
 
   std::vector<std::thread> threads;
   constexpr int num_threads = 5;
-
+  constexpr int loop_count = 10;
   for (int i = 0; i < num_threads; i++) {
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
                                   model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values));
+                                  output_shapes, output_values, loop_count));
   }
 
   for (auto& th : threads) {
@@ -488,11 +489,12 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
 
   std::vector<std::thread> threads;
   constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
 
   for (int i = 0; i < num_threads; i++) {
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
                                   model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values));
+                                  output_shapes, output_values, loop_count));
   }
 
   for (auto& th : threads) {
@@ -536,6 +538,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 
   std::vector<std::thread> threads;
   constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
 
   std::vector<std::string> perf_modes{
       "burst", "balanced", "default", "high_performance", "high_power_saver",
@@ -553,7 +556,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
                                   model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values));
+                                  output_shapes, output_values, loop_count));
   }
 
   for (auto& th : threads) {
@@ -601,11 +604,12 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
 
   std::vector<std::thread> threads;
   constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
 
   for (int i = 0; i < num_threads; i++) {
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
                                   model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values));
+                                  output_shapes, output_values, loop_count));
   }
 
   for (auto& th : threads) {
@@ -651,6 +655,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 
   std::vector<std::thread> threads;
   constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
 
   std::vector<std::string> perf_modes{
       "burst", "balanced", "default", "high_performance", "high_power_saver",
@@ -668,7 +673,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
                                   model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values));
+                                  output_shapes, output_values, loop_count));
   }
 
   for (auto& th : threads) {
