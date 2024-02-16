@@ -40,6 +40,7 @@
 				<li>
 					<p>Community</p>
 					<ul class="p-2">
+						<li><a href={pathvar + '/events'}>Events</a></li>
 						<li><a href={pathvar + '/testimonials'}>Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime" target="_blank"
@@ -83,6 +84,7 @@
 				<details class="z-[1]">
 					<summary>Community</summary>
 					<ul class="p-2">
+						<li><a href={pathvar + '/events'}>Events</a></li>
 						<li><a href={pathvar + '/testimonials'}>Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime" target="_blank"
