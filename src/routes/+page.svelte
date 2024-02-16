@@ -2,7 +2,7 @@
 	import Hero from './components/hero.svelte';
 	import Customers from './components/customers.svelte';
 	import CodeBlocks from './components/code-blocks.svelte';
-	import Videos from './components/videos.svelte';
+	import VideoGallery from './components/videogallery.svelte';
 	import Performance from './components/performance.svelte';
 	import CrossPlatform from './components/cross-platform.svelte';
 	import GenerativeAi from './components/generative-ai-hero.svelte';
@@ -15,6 +15,21 @@
 	let removetoast = (e: any) => {
 		e.target.parentNode.parentNode.remove();
 	};
+
+	let videos = [
+        {
+            title: 'What is ONNX Runtime (ORT)?',
+            link: 'https://www.youtube.com/embed/M4o4YRVba4o?si=LHc-2AhKt3TrY60g'
+        },
+        {
+            title: 'Converting Models to ONNX Format',
+            link: 'https://www.youtube.com/embed/lRBsmnBE9ZA?si=l5i0Q2P7VtSJyGK1'
+        },
+        {
+            title: 'Optimize Training and Inference with ONNX Runtime (ORT/ACPT/DeepSpeed)',
+            link: 'https://www.youtube.com/embed/lC7d_7waHLM?si=U4252VEd1t5ioZUN'
+        }
+    ];
 
 	onMount(() => {
 		anime({
@@ -33,7 +48,7 @@
 <Hero />
 <Customers />
 <CodeBlocks />
-<Videos />
+<VideoGallery {videos}/>
 <Saos once={true} animation={'slide-in-left 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
 	<GenerativeAi />
 </Saos>

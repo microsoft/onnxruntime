@@ -9,10 +9,11 @@
 	import HFImage from '../../images/blogs/hugging-face-blog-img.png';
 	import LlamaImage from '../../images/blogs/accelerating-llama-2/Figure1-LLaMA-2-7B-E2E-Throughput.png';
 	import SDXLTurboImage from '../../images/blogs/sdxl_blog_thumbnail.png';
+	import { createEventDispatcher } from 'svelte';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
-			translateY: -20,
+			translateY: -5,
 			direction: 'alternate',
 			loop: false,
 			delay: function (el, i, l) {
@@ -23,6 +24,18 @@
 			}
 		});
 	});
+
+	let showBlogs = true;
+	const dispatch = createEventDispatcher();
+
+	onMount(() => {
+		dispatch('switchTab', 'blogs');
+	});
+
+	function switchTab(tab) {
+		showBlogs = tab === 'blogs';
+		dispatch('switchTab', tab);
+	}
 	let featuredblog = [
 		{
 			title: 'Accelerating SD Turbo and SDXL Turbo Inference with ONNX Runtime and Olive',
@@ -49,7 +62,7 @@
 			link: 'blogs/pytorch-on-the-edge',
 			image:
 				'https://onnxruntime.ai/_app/immutable/assets/pytorch-on-the-edge-with-ort.cdaa9c84.png',
-				imgalt: 'Run PyTorch models on the edge'
+			imgalt: 'Run PyTorch models on the edge'
 		}
 	];
 	let blogs = [
@@ -248,6 +261,28 @@
 			link: 'https://cloudblogs.microsoft.com/opensource/2021/06/30/journey-to-optimize-large-scale-transformer-model-inference-with-onnx-runtime/'
 		}
 	];
+	let blogsCommunity = [
+		{
+			title: 'AMD expands its AI and ML development tools with ROCm 6.0',
+			date: 'February 15, 2024',
+			link: 'https://overclock3d.net/news/software/amd-expands-its-ai-and-machine-learning-development-tools-with-rocm-6-0-with-expanded-gpu-support/',
+			blurb:
+				'ROCm 6.0 features support for the ONNX runtime. This support enhances AI development capabilities and interoperability.'
+		},
+		{
+			title: 'UC San Diego Students Win MLPerf Contest at SC23',
+			date: 'February 2, 2024',
+			blurb:
+				'During the annual Student Cluster Competition (SCC), UC San Diego undergraduate students achieved third place. Their success was fueled by optimizing performance using industry benchmarks, including the MLPerf Inference Benchmark. The seamless support for PyTorch and ONNX Runtime enabled them to port and fine-tune their code efficiently.',
+			link: 'https://www.hpcwire.com/off-the-wire/uc-san-diego-students-win-mlperf-contest-at-sc23/'
+		},	
+		{
+			title: 'Human Capital Management (HCM) - Sentence Similarity Language Model using Java',
+			date: 'December 5, 2023',
+			blurb: 'Using ONNX Runtime, the HCM team was able to deploy a sentence similarity language model using Java, demonstrating how easy it is to use with multiple languages.',
+			link: 'https://www.linkedin.com/pulse/hcm-sentence-similarity-language-model-using-java-jonathon-palmieri-tdlpc%3FtrackingId=CN2PPVO4Toqh8r6JsAYMIw%253D%253D/?trackingId=ByNomo0pQFKM%2F%2BWEknVs7Q%3D%3D'
+		}
+	];
 </script>
 
 <svelte:head>
@@ -277,12 +312,35 @@
 			{/each}
 		</div>
 	</div>
-	<div class="mx-4 md:mx-10">
-		<h3 class="text-3xl pb-8">Recent posts</h3>
-		<div class="grid gap-4 grid-cols-1 md:grid-cols-2">
-			{#each blogs as blog, i}
-				<Blog title={blog.title} description={blog.blurb} date={blog.date} link={blog.link} />
-			{/each}
+	<div class="mx-4">
+		<div role="tablist" class="tabs tabs-bordered tabs-lg mb-10">
+			<button
+				role="tab"
+				tabindex="0"
+				class="tab text-3xl {showBlogs ? 'tab-active' : ''}"
+				on:click={() => switchTab('blogs')}
+				on:keypress={() => switchTab('blogs')}>Recent posts</button
+			>
+			<button
+				tabindex="0"
+				role="tab"
+				class="tab text-3xl {!showBlogs ? 'tab-active' : ''}"
+				on:click={() => switchTab('community')}
+				on:keypress={() => switchTab('community')}>Community Posts</button
+			>
 		</div>
+		{#if showBlogs}
+			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 mx-10">
+				{#each blogs as blog, i}
+					<Blog title={blog.title} description={blog.blurb} date={blog.date} link={blog.link} />
+				{/each}
+			</div>
+		{:else}
+			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 mx-10">
+				{#each blogsCommunity as blog, i}
+					<Blog title={blog.title} description={blog.blurb} date={blog.date} link={blog.link} />
+				{/each}
+			</div>
+		{/if}
 	</div>
 </div>
