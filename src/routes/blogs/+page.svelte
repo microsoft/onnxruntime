@@ -330,13 +330,13 @@
 			>
 		</div>
 		{#if showBlogs}
-			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 mx-10">
+			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 mx-0 md:mx-6">
 				{#each blogs as blog, i}
 					<Blog title={blog.title} description={blog.blurb} date={blog.date} link={blog.link} />
 				{/each}
 			</div>
 		{:else}
-			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 mx-10">
+			<div class="grid gap-4 grid-cols-1 md:grid-cols-2 mx-0 md:mx-6">
 				{#each blogsCommunity as blog, i}
 					<Blog title={blog.title} description={blog.blurb} date={blog.date} link={blog.link} />
 				{/each}

@@ -30,7 +30,7 @@
 >
 	<a href={link}>
 		<div class="card card-side grid grid-cols-3">
-			<div class="card-body col-span-2">
+			<div class="card-body col-span-3 md:col-span-2">
 				<h2 class="card-title">{title}</h2>
 				<p>{description}</p>
 				<p class="text-blue-500 text-right">
@@ -42,7 +42,7 @@
 					{/each}
 				</div>
 			</div>
-			<div class="card-image col-span-1 m-auto">
+			<div class="card-image col-span-1 m-auto hidden md:flex">
 				<img class="" src={image} alt={imagealt} />
 			</div>
 		</div>

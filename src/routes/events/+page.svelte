@@ -16,7 +16,7 @@
 				{ name: 'Event Page', link: 'https://developer.microsoft.com/en-us/reactor/events/21648/' },
 				{
 					name: 'Recording Playlist',
-					link: 'https://www.youtube.com/watch?v=6roKUuxUprA&list=PLqPV7GJuaUV8qw9Zj5zXvzUZdSxx_sn7U'
+					link: 'https://www.youtube.com/playlist?list=PLqPV7GJuaUV8qw9Zj5zXvzUZdSxx_sn7U'
 				}
 			],
 			image: converttoort,
@@ -48,9 +48,7 @@
 	</div>
 	<div class="pt-5 mx-4 md:mx-10">
 		<h3 class="text-3xl pb-8">Upcoming Events</h3>
-		<div class="grid gap-4 grid-cols-1 lg:grid-cols-3">
-
-		</div>
+		<div class="grid gap-4 grid-cols-1 lg:grid-cols-3" />
 	</div>
 	<div class="mx-4 md:mx-10">
 		<h3 class="text-3xl pb-8">Past Events</h3>
@@ -68,6 +66,6 @@
 	</div>
 	<div class="mx-4 md:mx-10">
 		<h3 class="text-3xl py-4">Past Event Videos</h3>
-			<Videogallery {videos} title=false px=0 my=0/>
+		<Videogallery {videos} title="false" px="0" my="0" />
 	</div>
 </div>
