@@ -4,11 +4,13 @@ import os
 import typing
 import unittest
 import warnings
+
 import numpy as np
-import onnxruntime
 import onnx.helper as oh
 from onnx import TensorProto, load
 from onnx.numpy_helper import from_array
+
+import onnxruntime
 
 
 def has_cuda():
@@ -17,7 +19,6 @@ def has_cuda():
 
 
 def ignore_warnings(warns: typing.List[Warning]) -> typing.Callable:
-
     def wrapper(fct):
         if warns is None:
             raise AssertionError(f"warns cannot be None for '{fct}'.")
@@ -33,8 +34,7 @@ def ignore_warnings(warns: typing.List[Warning]) -> typing.Callable:
 
 
 class TestScatterPerProvider(unittest.TestCase):
-
-    def assertExists(self, filename: str):
+    def assert_exists(self, filename: str):
         assert os.path.exists(filename), f"Unable to find {filename!r}."
 
     def common_scatter(self, opset, providers, dtype, reduction, expected_names):
@@ -65,7 +65,7 @@ class TestScatterPerProvider(unittest.TestCase):
                     oh.make_tensor_value_info("updates", itype, [None] * ndim),
                 ],
                 [oh.make_tensor_value_info("Y", itype, [None] * ndim)],
-                [from_array(np.array([1], dtype=dtype), name="I")],
+                [from_array(np.array([0], dtype=dtype), name="I")],
             ),
             opset_imports=[oh.make_opsetid("", opset)],
             ir_version=8 if opset <= 18 else 9,
@@ -81,7 +81,7 @@ class TestScatterPerProvider(unittest.TestCase):
         opts.optimized_model_filepath = filename
         sess = InferenceSession(model.SerializeToString(), opts, providers=providers)
         self.assertTrue(sess is not None)
-        self.assertExists(filename)
+        self.assert_exists(filename)
         onx = load(filename)
         names = [n.op_type for n in onx.graph.node]
         self.assertEqual(expected_names, names)
@@ -95,6 +95,7 @@ class TestScatterPerProvider(unittest.TestCase):
 
         if op_type == "ScatterElements":
             data = np.zeros((3, 3), dtype=np.float32)
+            data[0, 0] = 1
             indices = np.array([[1, 0, 2], [0, 2, 1]], dtype=np.int64)
             updates = np.array([[1.0, 1.1, 1.2], [2.0, 2.1, 2.2]], dtype=dtype)
         else:
@@ -119,7 +120,8 @@ class TestScatterPerProvider(unittest.TestCase):
         opts.enable_profiling = True
         opts.optimized_model_filepath = filename
         sess = InferenceSession(model.SerializeToString(), opts, providers=providers)
-        sess.run(None, {"X": data, "indices": indices, "updates": updates})
+        got = sess.run(None, {"X": data, "indices": indices, "updates": updates})[0]
+        self.assertEqual(got.dtype, updates.dtype)
         prof = sess.end_profiling()
 
         with open(prof, "r") as f:  # noqa: UP015
@@ -166,7 +168,7 @@ class TestScatterPerProvider(unittest.TestCase):
                 self.common_scatter(
                     opset,
                     ["CUDAExecutionProvider"],
-                    np.float32,
+                    dtype,
                     reduction,
                     expected[dtype, reduction],
                 )
@@ -192,7 +194,7 @@ class TestScatterPerProvider(unittest.TestCase):
                 self.common_scatter(
                     opset,
                     ["CUDAExecutionProvider"],
-                    np.float32,
+                    dtype,
                     reduction,
                     expected[dtype, reduction],
                 )
@@ -210,12 +212,12 @@ class TestScatterPerProvider(unittest.TestCase):
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
         }
-        for opset, dtype, reduction in itertools.product([16, 18], [np.float32, np.float16], ["none", "add"]):
+        for opset, dtype, reduction in itertools.product([16, 18], [np.float32], ["none", "add"]):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
                     ["CPUExecutionProvider"],
-                    np.float32,
+                    dtype,
                     reduction,
                     expected[dtype, reduction],
                 )
@@ -224,7 +226,7 @@ class TestScatterPerProvider(unittest.TestCase):
     def test_scatternd_cpu(self):
         default_value = [
             "Cast",
-            "ScatterElements",
+            "ScatterND",
             "Sub",
         ]
         expected = {
@@ -233,12 +235,12 @@ class TestScatterPerProvider(unittest.TestCase):
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
         }
-        for opset, dtype, reduction in itertools.product([16, 18], [np.float32, np.float16], ["none", "add"]):
+        for opset, dtype, reduction in itertools.product([16, 18], [np.float32], ["none", "add"]):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
                     ["CPUExecutionProvider"],
-                    np.float32,
+                    dtype,
                     reduction,
                     expected[dtype, reduction],
                 )

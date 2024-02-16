@@ -62,8 +62,6 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
   const void* input_data = input_tensor->DataRaw();
   void* output_data = output_tensor->MutableDataRaw();
 
-  size_t element_size = input_tensor->DataType()->Size();
-
   if (input_data != output_data) {
     // TODO: Run benchmarks to determine if a dedicated kernel doing data copy will be faster than invoking cudaMemcpy ?
     CUDA_RETURN_IF_ERROR(
@@ -89,17 +87,39 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
   CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this, element_counts_and_input_dims);
   ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(context->GetComputeStream()));
 
-  ORT_RETURN_IF_ERROR(ScatterNDImpl(
-      Stream(context),
-      output_data,
-      element_size,
-      indices_shape.Size() / static_cast<size_t>(last_index_dimension),
-      indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
-      last_index_dimension,
-      element_counts_and_input_dims_gpu.GpuPtr(),
-      updates_tensor->DataRaw(),
-      input_shape.SizeFromDimension(last_index_dimension),
-      static_cast<int>(reduction_)));
+  switch (reduction_) {
+    case Reduction::None: {
+        size_t element_size = input_tensor->DataType()->Size();
+        ORT_RETURN_IF_ERROR(ScatterNDImpl(
+          Stream(context),
+          output_data,
+          element_size,
+          indices_shape.Size() / static_cast<size_t>(last_index_dimension),
+          indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
+          last_index_dimension,
+          element_counts_and_input_dims_gpu.GpuPtr(),
+          updates_tensor->DataRaw(),
+          input_shape.SizeFromDimension(last_index_dimension)));
+      }
+      break;
+    case Reduction::Add: {
+        auto element_type = input_tensor->DataType()->AsPrimitiveDataType()->GetDataType();
+        ORT_RETURN_IF_ERROR(ScatterNDImplAdd(
+          Stream(context),
+          output_data,
+          element_type,
+          indices_shape.Size() / static_cast<size_t>(last_index_dimension),
+          indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
+          last_index_dimension,
+          element_counts_and_input_dims_gpu.GpuPtr(),
+          updates_tensor->DataRaw(),
+          input_shape.SizeFromDimension(last_index_dimension)));
+      }
+      break;
+    default:
+      ORT_THROW("ScatterND not supported for other reduction than Add, None.");
+      break;
+  }
 
   return Status::OK();
 }

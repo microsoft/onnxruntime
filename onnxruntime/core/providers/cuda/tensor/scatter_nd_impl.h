@@ -17,8 +17,18 @@ Status ScatterNDImpl(
     const int64_t last_index_dimension,
     const int64_t* element_counts_and_input_dims,
     const void* updates_data,
-    const size_t num_updates_elements,
-    const int operation);
+    const size_t num_updates_elements);
+
+Status ScatterNDImplAdd(
+    cudaStream_t stream,
+    void* output_data,
+    const int32_t element_size,
+    const size_t num_indices,
+    const int64_t* indices_data,
+    const int64_t last_index_dimension,
+    const int64_t* element_counts_and_input_dims,
+    const void* updates_data,
+    const size_t num_updates_elements);
 
 }  // namespace cuda
 }  // namespace onnxruntime

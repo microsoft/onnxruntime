@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
@@ -18,7 +19,8 @@ class ScatterND final : public CudaKernel {
     Mul = 2,
     Min = 3,
     Max = 4,
-  };  
+  };
+
  public:
   explicit ScatterND(const OpKernelInfo& info) : CudaKernel(info) {
     std::string reduction = info.GetAttrOrDefault<std::string>("reduction", "none");
@@ -35,7 +37,7 @@ class ScatterND final : public CudaKernel {
     }
   }
   Status ComputeInternal(OpKernelContext* context) const override;
-  
+
  private:
   // "reduction" attribute has been defined since opset 13 but
   // we never implemented it. Let's try to support them starting
