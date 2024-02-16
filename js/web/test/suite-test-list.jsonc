@@ -1362,6 +1362,7 @@
       "less.jsonc",
       "log.jsonc",
       "matmul.jsonc",
+      "matmulnbits.jsonc",
       "matmul-broadcast.jsonc",
       "mul.jsonc",
       "mul_int32.jsonc",
