@@ -10,6 +10,7 @@
 	import LlamaImage from '../../images/blogs/accelerating-llama-2/Figure1-LLaMA-2-7B-E2E-Throughput.png';
 	import SDXLTurboImage from '../../images/blogs/sdxl_blog_thumbnail.png';
 	import { createEventDispatcher } from 'svelte';
+	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -38,6 +39,15 @@
 	}
 	let featuredblog = [
 		{
+			title: 'On-Device Training: Training a model in browser',
+			date: 'February 6th, 2024',
+			blurb:
+				'Want to do ML training for your website in-browser? Learn more about what web training with ONNX Runtime has to offer in our blog below and experiment with your own applications through our easy-to-follow tutorials and demo.',
+			link: 'https://cloudblogs.microsoft.com/opensource/2024/02/06/on-device-training-training-a-model-in-browser',
+			image: WebTrainingImage,
+			imgalt: 'Components of the onnxruntime-web JS package'
+		},
+		{
 			title: 'Accelerating SD Turbo and SDXL Turbo Inference with ONNX Runtime and Olive',
 			date: 'January 15th, 2024',
 			blurb:
@@ -53,7 +63,9 @@
 			link: 'blogs/accelerating-llama-2',
 			image: LlamaImage,
 			imgalt: 'LLaMA-2 e2e throughput'
-		},
+		}
+	];
+	let blogs = [
 		{
 			title: 'Run PyTorch models on the edge',
 			date: 'October 12th, 2023',
@@ -63,9 +75,7 @@
 			image:
 				'https://onnxruntime.ai/_app/immutable/assets/pytorch-on-the-edge-with-ort.cdaa9c84.png',
 			imgalt: 'Run PyTorch models on the edge'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title: 'Accelerating over 130,000 Hugging Face models with ONNX Runtime',
 			date: 'October 4th, 2023',

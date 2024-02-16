@@ -90,6 +90,7 @@ There are two ways to configure TensorRT settings, either by **TensorRT Executio
 | trt_context_memory_sharing_enable     | ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE     | bool   |
 | trt_layer_norm_fp32_fallback          | ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK          | bool   |
 | trt_timing_cache_enable               | ORT_TENSORRT_TIMING_CACHE_ENABLE               | bool   |
+| trt_timing_cache_path                 | ORT_TENSORRT_TIMING_CACHE_PATH                 | string |
 | trt_force_timing_cache                | ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE         | bool   |
 | trt_detailed_build_log                | ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE         | bool   |
 | trt_build_heuristics_enable           | ORT_TENSORRT_BUILD_HEURISTICS_ENABLE           | bool   |
@@ -178,6 +179,9 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
 * `trt_timing_cache_enable`: Enable TensorRT timing cache.
   * Check [Timing cache](#timing-cache) for details.
+
+* `trt_timing_cache_path`: Specify path for TensorRT timing cache if `trt_timing_cache_enable` is `True`.
+  * Not specifying a `trt_timing_cache_path` will result in using the working directory  
 
 * `trt_force_timing_cache`: Force the TensorRT timing cache to be used even if device profile does not match.
     * A perfect match is only the exact same GPU model as the on that produced the timing cache.
