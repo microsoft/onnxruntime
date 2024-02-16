@@ -75,7 +75,7 @@ class WhisperEncoderDecoderInitInputs:
         config: WhisperConfig,
         batch_size: int,
         encode_sequence_length: int,
-        use_decoder_input_ids: int,
+        use_decoder_input_ids: bool,
         device: torch.device,
         use_int32_inputs: bool = False,
     ):  # -> WhisperEncoderDecoderInitInputs:
@@ -125,7 +125,7 @@ class WhisperEncoderDecoderInitHelper:
             model.config,
             batch_size=2,
             encode_sequence_length=3000,
-            use_decoder_input_ids=use_decoder_input_ids,
+            use_decoder_input_ids=True,
             device=device,
             use_int32_inputs=use_int32_inputs,
         )
@@ -159,7 +159,7 @@ class WhisperEncoderDecoderInitHelper:
         hidden_size = str(model.config.d_model)
         head_size = str(model.config.d_model // model.config.encoder_attention_heads)
         dynamic_axes = {
-            "encoder_input_ids": {0: "batch_size", 1: "encode_sequence_length"},
+            "encoder_input_ids": {0: "batch_size", 1: "feature_size"},
             "encoder_hidden_states": {
                 0: "batch_size",
                 1: "encode_sequence_length",
