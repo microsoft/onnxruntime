@@ -32,10 +32,12 @@ namespace Dml
 
     DmlGraphFusionTransformer::DmlGraphFusionTransformer(
         const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
+        const onnxruntime::IExecutionProvider* provider,
+        const bool graphSerializationEnabled
     )
         :onnxruntime::GraphTransformer(name),
-         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl())
+         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl()),
+         graphSerializationEnabled(graphSerializationEnabled)
     {
     }
 
@@ -309,6 +311,7 @@ namespace Dml
                     std::move(compiledPartitionInfo->isInputsUploadedByDmlEP),
                     compiledPartitionInfo->graphDesc,
                     compiledPartitionInfo->compiledOperator,
+                    graphSerializationEnabled,
                     &compiledPartitionInfo->serializedGraphInputIndexToSubgraphInputIndex,
                     &compiledPartitionInfo->serializedGraphLargeConstantNameToSubgraphInputIndex);
             }

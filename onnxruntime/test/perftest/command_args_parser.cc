@@ -68,6 +68,7 @@ namespace perftest {
       "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
       "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"
       "\t    [DML only] [enable_dynamic_graph_fusion]: Options: 'true', 'false', \n"
+      "\t    [DML only] [enable_graph_serialization]: Options: 'true', 'false', \n"
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
       "\t    [OpenVINO only] [enable_npu_fast_compile]: Optionally enabled to speeds up the model's compilation on NPU device targets.\n"

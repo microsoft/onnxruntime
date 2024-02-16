@@ -88,6 +88,7 @@ namespace DmlGraphFusionHelper
         std::vector<uint8_t>&& isInputsUploadedByDmlEP,
         const GraphDescBuilder::GraphDesc& graphDesc,
         Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+        const bool graphSerializationEnabled,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex = nullptr,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex = nullptr);
 

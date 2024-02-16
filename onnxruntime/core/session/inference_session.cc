@@ -1725,10 +1725,17 @@ common::Status InferenceSession::Initialize() {
         // graph optimization level and is generally always applied.
         bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
                                         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableDmlGraphFusion, "0") == "0";
+        std::string dml_graph_serialization_enabled_config_val = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphSerialization, "0");
+        std::transform(dml_graph_serialization_enabled_config_val.begin(),
+                       dml_graph_serialization_enabled_config_val.end(),
+                       dml_graph_serialization_enabled_config_val.begin(),
+                       [](char ch) { return std::tolower(ch); });
+        bool dml_graph_serialization_enabled = dml_graph_serialization_enabled_config_val == "true";
 
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                      dmlExecutionProvider);
+                                                                                                                                      dmlExecutionProvider,
+                                                                                                                                      dml_graph_serialization_enabled);
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }

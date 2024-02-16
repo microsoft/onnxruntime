@@ -135,6 +135,7 @@ namespace DmlGraphFusionHelper
 
     void ProcessInputData(
         const ExecutionProviderImpl* providerImpl,
+        const bool graphSerializationEnabled,
         const std::vector<uint8_t>& isInputsUploadedByDmlEP,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex,
@@ -170,9 +171,11 @@ namespace DmlGraphFusionHelper
             inputsUsed[it->second] = true;
         }
 
-#if  defined(DML_ENABLE_SERIALIZATION) || defined(DML_ENABLE_SERIALIZATION_DEBUG)
-        const std::wstring modelName = GetModelName(graph.ModelPath());
-#endif // DML_ENABLE_SERIALIZATION
+        std::wstring modelName;
+        if (graphSerializationEnabled)
+        {
+            modelName = GetModelName(graph.ModelPath());
+        }
 
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
         {
@@ -217,9 +220,10 @@ namespace DmlGraphFusionHelper
 
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
                 tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
-#if defined(DML_ENABLE_SERIALIZATION) || defined(DML_ENABLE_SERIALIZATION_DEBUG)
-                WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
-#endif // DML_ENABLE_SERIALIZATION
+                if(graphSerializationEnabled)
+                {
+                    WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
+                }
 
                 if (inputRawData)
                 {
@@ -588,10 +592,13 @@ namespace DmlGraphFusionHelper
         std::vector<uint8_t>&& isInputsUploadedByDmlEP,
         const GraphDescBuilder::GraphDesc& graphDesc,
         Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+        const bool graphSerializationEnabled,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex)
     {
-#if defined(DML_ENABLE_SERIALIZATION) || defined(DML_ENABLE_SERIALIZATION_DEBUG)
+      if (graphSerializationEnabled)
+      {
+
         const std::wstring modelName = GetModelName(graph.ModelPath());
         auto buffer = SerializeDmlGraph(graphDesc);
 
@@ -600,7 +607,7 @@ namespace DmlGraphFusionHelper
             std::to_wstring(partitionIndex) +
             L".bin";
         WriteToFile(modelName, partitionName, buffer.data(), buffer.size());
-#ifdef DML_ENABLE_SERIALIZATION_DEBUG
+
         std::vector<std::unique_ptr<std::byte[]>> rawData;
         DmlSerializedGraphDesc deserializedGraphDesc = DeserializeDmlGraph(buffer.data(), rawData);
         GraphDescBuilder::GraphDesc deserializedDmlGraphDesc = {};
@@ -619,8 +626,7 @@ namespace DmlGraphFusionHelper
                         providerImpl,
                         serializedGraphInputIndexToSubgraphInputIndex,
                         serializedGraphLargeConstantNameToSubgraphInputIndex);
-#endif // DML_ENABLE_SERIALIZATION_DEBUG
-#endif // DML_ENABLE_SERIALIZATION
+      }
 
         auto& fusedNode = graph.BeginFuseSubGraph(indexedSubGraph, indexedSubGraph.GetMetaDef()->name);
         fusedNode.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
@@ -635,6 +641,7 @@ namespace DmlGraphFusionHelper
         std::vector<bool> inputsUsed;
         ProcessInputData(
             providerImpl,
+            graphSerializationEnabled,
             isInputsUploadedByDmlEP,
             serializedGraphInputIndexToSubgraphInputIndex,
             serializedGraphLargeConstantNameToSubgraphInputIndex,
