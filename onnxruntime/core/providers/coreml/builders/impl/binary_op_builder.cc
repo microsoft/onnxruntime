@@ -1,35 +1,28 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
-#ifdef __APPLE__
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {
-
 class BinaryOpBuilder : public BaseOpBuilder {
-  // Add operator related
- private:
-#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
-  // Operator support related
+
   int GetMinSupportedOpSet(const Node& node) const override;
 
-  bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                              const logging::Logger& logger) const override;
 };
 
-#ifdef __APPLE__
-static bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger) {
+namespace {
+bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
 
   const auto* x_shape_proto = input_defs[0]->Shape();
@@ -57,15 +50,14 @@ static bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger&
                     y_shape_proto->dim().begin(), y_shape_proto->dim().end(),
                     dim_eq);
 }
-
-// Add operator related
+}  // namespace
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
   if (op_type == "Add") {
     // original mutable_add() has limited broadcasting support
@@ -99,31 +91,28 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif
-
-// Operator support related
 
 int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
   // Add/Sub/Mul/Div opset 6- has broadcast attributes we do not support now
   return 7;
 }
 
-bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const {
-  bool is_pow = node.OpType() == "Pow";
-  if (!is_pow) {
-    return BaseOpBuilder::HasSupportedInputsImpl(node, logger);
+bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                             const logging::Logger& logger) const {
+  if (node.OpType() != "Pow") {
+    return IsInput0Supported(node, input_params, logger);
   }
 
   const auto& input_1 = *node.InputDefs()[0];
   const auto& input_2 = *node.InputDefs()[1];
+
   // Pow we only support both inputs as fp32 for now
   int32_t input_type_1;
-  if (!GetType(input_1, input_type_1, logger))
-    return false;
-
   int32_t input_type_2;
-  if (!GetType(input_2, input_type_2, logger))
+  if (!GetType(input_1, input_type_1, logger) ||
+      !GetType(input_2, input_type_2, logger)) {
     return false;
+  }
 
   if (input_type_1 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT || input_type_1 != input_type_2) {
     LOGS(logger, VERBOSE) << "Pow only supports fp32 inputs, actual input type"

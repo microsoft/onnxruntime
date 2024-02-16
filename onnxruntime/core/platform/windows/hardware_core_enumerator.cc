@@ -1,11 +1,12 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "lib/Api/pch/pch.h"
+#include "hardware_core_enumerator.h"
+#include <memory>
+#include <Windows.h>
+#include <assert.h>
 
-#include "HardwareCoreEnumerator.h"
-
-namespace WINMLP {
+namespace onnxruntime {
 
 struct LogicalProcessorInformation {
   std::unique_ptr<char[]> Buffer;
@@ -14,7 +15,7 @@ struct LogicalProcessorInformation {
 
 struct CoreCounter {
   uint32_t PhysicalCores = 0;
-  uint32_t Num2CacheCores = 0;
+  uint32_t SocDieCores = 0;
 };
 
 static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RELATIONSHIP relationship) {
@@ -26,8 +27,7 @@ static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RE
   auto processorInformationBytes = std::make_unique<char[]>(length);
 
   rc = GetLogicalProcessorInformationEx(
-    relationship, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(processorInformationBytes.get()), &length
-  );
+      relationship, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(processorInformationBytes.get()), &length);
 
   assert(rc == TRUE);
 
@@ -51,10 +51,9 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
   size_t read = 0;
   PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX currentProcessorInfo = NULL;
 
-  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length
-  ) {
+  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length) {
     currentProcessorInfo =
-      reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(logicalProcessorInformation.Buffer.get() + read);
+        reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(logicalProcessorInformation.Buffer.get() + read);
     if ((read + currentProcessorInfo->Size) > logicalProcessorInformation.Length) {
       break;
     }
@@ -75,7 +74,7 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
     read += currentProcessorInfo->Size;
   }
 
-  cores.Num2CacheCores = CountSetBits(dwLevel2GroupMask & ~dwLevel3GroupMask);
+  cores.SocDieCores = CountSetBits(dwLevel2GroupMask & ~dwLevel3GroupMask);
   return cores;
 }
 
@@ -83,25 +82,8 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of physical cores = # of P cores + # of E Cores + # of Soc Cores.
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
   auto cores = GetNumberOPhysicalAndEngineeringCores();
-
-  const int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
-  int regs_leaf0[4];
-  int regs_leaf7[4];
-  __cpuid(regs_leaf0, 0);
-  __cpuid(regs_leaf7, 0x7);
-
-  auto isIntel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) &&
-    (kVendorID_Intel[2] == regs_leaf0[3]);
-
-  auto isHybrid = (regs_leaf7[3] & (1 << 15));
-
-  if (isIntel && isHybrid) {
-    // We want to use the number of physical cores, but exclude soc cores
-    // On Intel Hybrid processors, numSocCores == cores.Num2CacheCores
-    return cores.PhysicalCores - cores.Num2CacheCores;
-  }
-
-  return cores.PhysicalCores;
+  // We want to use the number of physical cores, but exclude soc cores
+  return cores.PhysicalCores - cores.SocDieCores;
 }
 
-}  // namespace WINMLP
+}  // namespace onnxruntime
