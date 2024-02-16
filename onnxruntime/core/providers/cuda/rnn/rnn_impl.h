@@ -28,17 +28,6 @@ void ReorderBidirectionalDataInSequence(cudaStream_t stream,
                                         const size_t N);
 
 template <typename T>
-void RnnMaskImpl(cudaStream_t stream,
-                 const int32_t num_directions,
-                 const int32_t seq_length,
-                 const int32_t batch_size,
-                 const int32_t hidden_size,
-                 const int32_t* sequence_lens,
-                 T* y_output_data,
-                 T* y_h_output_data,
-                 const size_t N);
-
-template <typename T>
 void MaskZeroSequences(cudaStream_t stream,
                        const int32_t hidden_size,
                        T* y_output_data,

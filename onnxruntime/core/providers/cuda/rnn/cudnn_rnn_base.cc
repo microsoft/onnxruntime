@@ -139,7 +139,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   if (get_W && get_R) {
     CudnnRNN tmp_rnn_desc;
     auto proj_size = hidden_size_;
-    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(W->Shape()[2], // input_size
+    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(W->Shape()[2],  // input_size
                                          hidden_size_,
                                          proj_size,
                                          RNN_NUM_LAYERS,
@@ -196,17 +196,29 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, batch_size);
   int32_t* seq_len_array = sequence_lens_buffer.CpuPtr();
 
+  // 0-len sequences are not supported by cuDNN. Replace them by sequences of len 1 and mask them out with SetZeroSequences
   for (int i = 0; i < batch_size; ++i) {
     if (0 == sequence_lens_data[i]) {
       seq_len_array[i] = 1;
       zero_seq_index_cache[zero_seq_count] = i;
       ++zero_seq_count;
     } else {
-      seq_len_array[i] = gsl::narrow_cast<int32_t>(sequence_lens_data[i]);
+      seq_len_array[i] = sequence_lens_data[i];
     }
   }
 
-  memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, batch_size * sizeof(int32_t));
+  // Calculate the zero position cache for reverse direction if it's bidirectional
+  // The cache is for Y_h or Y_c, and the 1st sequence for Y, no need to do it for other sequence in Y since
+  // we hacked the 0 sequence to 1
+  if (zero_seq_count && num_directions_ > 1) {
+    zero_seq_index_cache.resize(zero_seq_count * num_directions_);
+    for (int64_t i = 0; i < zero_seq_count; ++i) {
+      zero_seq_index_cache[static_cast<size_t>(zero_seq_count) + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
+    }
+    zero_seq_count *= num_directions_;
+  }
+
+  // The sequence lens buffer is required by the sequence reverse operation on the GPU.
   if (reverse_) {
     ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(ctx->GetComputeStream()));
   }
@@ -294,45 +306,33 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes, ctx->GetComputeStream());
   auto reservespace_cuda = GetScratchBuffer<void>(reservespace_bytes, ctx->GetComputeStream());
 
-  {
-    // Calculate the zero position cache for reverse direction if it's bidirectional
-    // The cache is for Y_h or Y_c, and the 1st sequence for Y, no need to do it for other sequence in Y since
-    // we hacked the 0 sequence to 1
-    if (zero_seq_count && num_directions_ > 1) {
-      zero_seq_index_cache_size = zero_seq_count * num_directions_;
-      zero_seq_index_cache.resize(zero_seq_index_cache_size);
-      for (int64_t i = 0; i < zero_seq_count; ++i) {
-        zero_seq_index_cache[static_cast<size_t>(zero_seq_count) + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
-      }
-    }
+  CUDNN_RETURN_IF_ERROR(cudnnRNNForward(GetCudnnHandle(ctx),
+                                        rnn_desc,
+                                        CUDNN_FWD_MODE_INFERENCE,
+                                        sequence_lens_data,  // should be zero starting with cudnn 8.9.1
+                                        x_desc1,
+                                        x_data_input,
+                                        y_desc1,
+                                        y_data,  // output
+                                        hx_desc,
+                                        hx_data,   // input
+                                        y_h_data,  // output
+                                        cx_desc, cx_data, y_c_data,
+                                        weight_cached_ ? w_data_cache_size_in_bytes_ : w_data_size_in_bytes,
+                                        weight_cached_ ? w_data_cache_.get() : w_data.get(),
+                                        workspace_bytes,
+                                        workspace_cuda.get(),
+                                        reservespace_bytes,
+                                        reservespace_cuda.get()));
 
-    CUDNN_RETURN_IF_ERROR(cudnnRNNForward(GetCudnnHandle(ctx),
-                                          rnn_desc,
-                                          CUDNN_FWD_MODE_INFERENCE,
-                                          sequence_lens_data,  // should be zero starting with cudnn 8.9.1
-                                          x_desc1,
-                                          x_data_input,
-                                          y_desc1,
-                                          y_data,  // output
-                                          hx_desc,
-                                          hx_data,   // input
-                                          y_h_data,  // output
-                                          cx_desc, cx_data, y_c_data,
-                                          weight_cached_ ? w_data_cache_size_in_bytes_ : w_data_size_in_bytes,
-                                          weight_cached_ ? w_data_cache_.get() : w_data.get(),
-                                          workspace_bytes,
-                                          workspace_cuda.get(),
-                                          reservespace_bytes,
-                                          reservespace_cuda.get()));
-
-    // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
-    if (nullptr == Y) {
+  // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
+  if (nullptr == Y) {
+    // Mask on output for 0 sequence batches
+    if (zero_seq_count > 0) {
       // Mask on output for 0 sequence batches
-      if (zero_seq_count > 0) {
-        SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data, ctx->GetComputeStream());
-      }
-      return Status::OK();
+      SetZeroSequences(zero_seq_count, zero_seq_index_cache, y_data, y_h_data, y_c_data, ctx->GetComputeStream());
     }
+    return Status::OK();
   }
 
   IAllocatorUniquePtr<T> y_reorganized_data;
@@ -369,7 +369,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Mask on output for 0 sequence batches
   if (zero_seq_count > 0) {
-    SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data, ctx->GetComputeStream());
+    SetZeroSequences(zero_seq_count, zero_seq_index_cache, y_data, y_h_data, y_c_data, ctx->GetComputeStream());
   }
 
   return Status::OK();
