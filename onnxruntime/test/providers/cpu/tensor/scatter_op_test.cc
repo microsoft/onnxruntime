@@ -325,7 +325,8 @@ TEST(ScatterElements, AddReduction_MLFloat16) {
   test.AddInput<MLFloat16>("updates", {4, 3}, ToFloat16(std::vector<float>({1.f, 1.f, 1.f, 2.f, 2.f, 2.f, 3.f, 3.f, 3.f, 4.f, 4.f, 4.f})));
   test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16(std::vector<float>({-9.f, -4.f, -1.f, -7.f + (1.f + 2.f + 3.f + 4.f), -3.f + (1.f + 2.f + 3.f + 4.f), -6.f + (1.f + 2.f + 3.f + 4.f)})));
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ScatterElements, AddReductionAxis1) {
