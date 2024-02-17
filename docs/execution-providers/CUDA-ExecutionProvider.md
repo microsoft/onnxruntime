@@ -181,6 +181,8 @@ sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_model.onnx", sess_options=sess_options, providers=providers)
 ```
 
+This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
+
 ### gpu_external_[alloc|free|empty_cache]
 
 gpu_external_* is used to pass external allocators.
@@ -203,6 +205,7 @@ with `onnxruntime_USE_CUDA_NHWC_OPS=ON`.
 If this is enabled the EP prefers NHWC operators over NCHW. Needed transforms will be added to the model. As NVIDIA
 tensor cores can only work on NHWC layout this can increase performance if the model consists of many supported
 operators and does not need too many new transpose nodes. Wider operator support is planned in the future.
+
 This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2
 provider options struct can be created
 using [CreateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172)
