@@ -7,13 +7,19 @@ grand_parent: Tutorials
 nav_order: 1
 ---
 
-# Object detection and pose estimation on mobile with Yolov8
+# Object detection and pose estimation on mobile with YOLOv8
 
 Learn how to build and run ONNX models with built-in pre and post processing for object detection and pose detection.
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 ## Object detection with Yolov8
 
-You can find the full source code for the [Android](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/object_detection/ios) app in the ONNX Runtime inference examples repository.
+You can find the full source code for the [Android](https://github.com/microsoft/ app in the ONNX Runtime inference examples repository.
 
 ### Build the ONNX model with built-in pre and post processing
 
@@ -34,14 +40,14 @@ curl https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/tut
 Run the script.
 
 ```bash
-python yolo_e2e.py --test_image <image to test on>
+python yolo_e2e.py [--test_image <image to test on>]
 ```
 
 After the script has run, you will see one PyTorch model and two ONNX models:
 * `yolov8n.pt`: The original Yolov8 PyTorch model
 * `yolov8n.onnx`: The exported Yolov8 ONNX model
 * `yolov8n.with_pre_post_processing.onnx`: The ONNX model with pre and post processing included in the model
-* `<test image>.out`: Your test image with bounding boxes supplied.
+* `<test image>.out.jpg`: Your test image with bounding boxes supplied.
 
 For example, the wolves test image in the extensions repo:
 
@@ -49,7 +55,7 @@ For example, the wolves test image in the extensions repo:
 
 ### Build an Android application
 
-Load the android application into Android Developer Studio.
+Load the Android application into Android Developer Studio.
 
 You see the main inference code in [ObjectDetector.kt](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/mobile/examples/object_detection/android/app/src/main/java/ai/onnxruntime/example/objectdetection/ObjectDetector.kt). It's as simple as loading the image image into byte array, and running it through the model with ONNX Runtime to get the original image with boxes.
 
@@ -119,7 +125,7 @@ After the script has run, you will see one PyTorch model and two ONNX models:
 * `yolov8n-pose.with_pre_post_processing.onnx`: The ONNX model with pre and post processing included in the model
 
 
-### Run examples of pose detection
+### Run examples of pose estimation
 
 You can use the same script to run the model, supplying your own image to detect poses.
 
