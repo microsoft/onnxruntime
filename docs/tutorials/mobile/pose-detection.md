@@ -1,19 +1,23 @@
 ---
-title: Pose detection with Yolov8
-description: Run the Yolov8 model with built-in pre and post processing
-image: /images/tutorial-superres-og-image.png
+title: Object detection and pose estimation with Yolov8
+description: Run the Yolov8 model on mobile (iOS and Android) with built-in pre and post processing to perform object detection and pose estimation
+image: /images/pose-thumbnail.png
 parent: Deploy on mobile
 grand_parent: Tutorials
-nav_order: 3
+nav_order: 1
 ---
 
-# Pose detection with the Yolov8 model
+# Object detection and pose estimation on mobile with Yolov8
 
-Learn how to build an ONNX model for pose detection with built-in pre and post processing.
+Learn how to build and run ONNX models with built-in pre and post processing for object detection and pose detection.
 
-Note: this tutorial uses Python. Android and iOS samples are coming soon!
+## Object detection with Yolov8
 
-## Build the Yolov8 model with pre and post processing
+You can find the full source code for the [Android](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/object_detection/ios) app in the ONNX Runtime inference examples repository.
+
+### Build the ONNX model with built-in pre and post processing
+
+This step is optional as the model is available in the examples repository in the applications folders above. If you are interested, the following steps show you how to build the model yourself.
 
 Create a Python environment and install the following packages.
 
@@ -26,7 +30,85 @@ onnxruntime-extensions
 Download the following script to build the model.
 
 ```bash
-https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/tutorials/yolov8_pose_e2e.py > yolov8_pose_e2e.py
+curl https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/tutorials/yolo_e2e.py > yolo_e2e.py
+```
+
+Run the script.
+
+```bash
+python yolo_e2e.py --test_image <image to test on>
+```
+
+After the script has run, you will see one PyTorch model and two ONNX models:
+* `yolov8n.pt`: The original Yolov8 PyTorch model
+* `yolov8n.onnx`: The exported Yolov8 ONNX model
+* `yolov8n.with_pre_post_processing.onnx`: The ONNX model with pre and post processing included in the model
+* `<test image>.out`: Your test image with bounding boxes supplied.
+
+For example, the wolves test image in the extensions repo:
+
+![Image of three white wolves with red bounding boxes](../../../images/wolves-with-bounding-boxes.png)
+
+### Build an Android application
+
+Load the android application into Android Developer Studio.
+
+You see the main inference code in [ObjectDetector.kt](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/mobile/examples/object_detection/android/app/src/main/java/ai/onnxruntime/example/objectdetection/ObjectDetector.kt). It's as simple as loading the image image into byte array, and running it through the model with ONNX Runtime to get the original image with boxes.
+
+```java
+    fun detect(inputStream: InputStream, ortEnv: OrtEnvironment, ortSession: OrtSession): Result {
+        // Step 1: convert image into byte array (raw image bytes)
+        val rawImageBytes = inputStream.readBytes()
+
+        // Step 2: get the shape of the byte array and make ort tensor
+        val shape = longArrayOf(rawImageBytes.size.toLong())
+
+        val inputTensor = OnnxTensor.createTensor(
+            ortEnv,
+            ByteBuffer.wrap(rawImageBytes),
+            shape,
+            OnnxJavaType.UINT8
+        )
+        inputTensor.use {
+            // Step 3: call ort inferenceSession run
+            val output = ortSession.run(Collections.singletonMap("image", inputTensor),
+                setOf("image_out","scaled_box_out_next")
+            )
+
+            // Step 4: output analysis
+            output.use {
+                val rawOutput = (output?.get(0)?.value) as ByteArray
+                val boxOutput = (output?.get(1)?.value) as Array<FloatArray>
+                val outputImageBitmap = byteArrayToBitmap(rawOutput)
+
+                // Step 5: set output result
+                var result = Result(outputImageBitmap,boxOutput)
+                return result
+            }
+        }
+    }
+```
+
+![Image of person with bicycle](../../../images/person-with-bicyle-and-bounding-boxes.jpg)
+
+## Pose estimation with Yolov8
+
+### Build the pose estimation model
+
+Note: this part of the tutorial uses Python. Android and iOS samples are coming soon!
+
+Create a Python environment and install the following packages.
+
+```bash
+onnx
+onnxruntime
+onnxruntime-extensions
+```
+
+Download the following script to build the model.
+
+```bash
+wget https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/tutorials/yolov8_pose_e2e.py > yolov8_pose_e2e.py
 ```
 
 Run the script.
@@ -41,7 +123,7 @@ After the script has run, you will see one PyTorch model and two ONNX models:
 * `yolov8n-pose.with_pre_post_processing.onnx`: The ONNX model with pre and post processing included in the model
 
 
-## Run examples of pose detection
+### Run examples of pose detection
 
 You can use the same script to run the model, supplying your own image to detect poses.
 
@@ -54,9 +136,14 @@ And the output is drawn on the original image!
 ![Person with pose drawn](../../../images/person-with-pose.png)
 
 
-## Develop your mobile application
+### Develop your mobile application
 
 You can use the Python inference code as a basis for developing your mobile application. 
+
+## Additional resources
+
+[ONNX Runtime examples repository](https://github.com/microsoft/onnxruntime-inference-examples)
+[ONNX Runtime extentions repository](https://github.com/microsoft/onnxruntime-extensions)
 
 
 
