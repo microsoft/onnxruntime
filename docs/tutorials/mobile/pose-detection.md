@@ -1,6 +1,6 @@
 ---
-title: Object detection and pose estimation with Yolov8
-description: Run the Yolov8 model on mobile (iOS and Android) with built-in pre and post processing to perform object detection and pose estimation
+title: Object detection and pose estimation with YOLOv8
+description: Run the YOLOv8 model on mobile (iOS and Android) with built-in pre and post processing to perform object detection and pose estimation
 image: /images/pose-thumbnail.png
 parent: Deploy on mobile
 grand_parent: Tutorials
