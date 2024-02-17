@@ -108,9 +108,6 @@ class lru_unordered_map {
   list_type lru_list_;
 };
 
-// cached miopen descriptors
-constexpr size_t MAX_CACHED_ALGO_PERF_RESULTS = 10000;
-
 template <typename AlgoPerfType>
 struct MiopenConvState {
   // if x/w dims changed, update algo and miopenTensors
@@ -147,9 +144,6 @@ struct MiopenConvState {
     decltype(AlgoPerfType().bwd_data_algo) bwd_data_algo;
     decltype(AlgoPerfType().memory) memory;
   };
-
-  lru_unordered_map<TensorShapeVector, PerfFwdResultParams, vector_hash> cached_benchmark_fwd_results{MAX_CACHED_ALGO_PERF_RESULTS};
-  lru_unordered_map<TensorShapeVector, PerfBwdResultParams, vector_hash> cached_benchmark_bwd_results{MAX_CACHED_ALGO_PERF_RESULTS};
 
   // Some properties needed to support asymmetric padded Conv nodes
   bool post_slicing_required;
