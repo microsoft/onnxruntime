@@ -159,11 +159,27 @@ Default value: 0
 
 ### enable_skip_layer_norm_strict_mode
 
-Whether to use strict mode in SkipLayerNormalization cuda implementation. The default and recommanded setting is false.
+Whether to use strict mode in SkipLayerNormalization cuda implementation. The default and recommended setting is false.
 If enabled, accuracy improvement and performance drop can be expected.
 This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 Default value: 0
+
+### use_tf32
+
+TF32 is a math mode available on NVIDIA GPUs since Ampere. It allows certain float32 matrix multiplications and convolutions to run much faster on tensor cores with [TensorFloat-32](https://blogs.nvidia.com/blog/tensorfloat-32-precision-format/) reduced precision: float32 inputs are rounded with 10 bits of mantissa and results are accumulated with float32 precision.
+
+Default value: 1
+
+TensorFloat-32 is enabled by default. Starting from ONNX Runtime 1.18, you can use this flag to disable it for an inference session.
+
+Example python usage:
+
+```python
+providers = [("CUDAExecutionProvider", {"use_tf32": 0})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_model.onnx", sess_options=sess_options, providers=providers)
+```
 
 ### gpu_external_[alloc|free|empty_cache]
 
