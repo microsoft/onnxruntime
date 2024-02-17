@@ -9,7 +9,7 @@ nav_order: 1
 
 # Object detection and pose estimation on mobile with YOLOv8
 
-Learn how to build and run ONNX models with built-in pre and post processing for object detection and pose detection.
+Learn how to build and run ONNX models with built-in pre and post processing for object detection and pose estimation.
 
 ## Contents
 {: .no_toc }
