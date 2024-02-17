@@ -17,7 +17,7 @@ Learn how to build and run ONNX models with built-in pre and post processing for
 * TOC placeholder
 {:toc}
 
-## Object detection with Yolov8
+## Object detection with YOLOv8
 
 You can find the full source code for the [Android](https://github.com/microsoft/ app in the ONNX Runtime inference examples repository.
 
@@ -44,8 +44,8 @@ python yolo_e2e.py [--test_image <image to test on>]
 ```
 
 After the script has run, you will see one PyTorch model and two ONNX models:
-* `yolov8n.pt`: The original Yolov8 PyTorch model
-* `yolov8n.onnx`: The exported Yolov8 ONNX model
+* `yolov8n.pt`: The original YOLOv8 PyTorch model
+* `yolov8n.onnx`: The exported YOLOv8 ONNX model
 * `yolov8n.with_pre_post_processing.onnx`: The ONNX model with pre and post processing included in the model
 * `<test image>.out.jpg`: Your test image with bounding boxes supplied.
 
@@ -95,7 +95,7 @@ You see the main inference code in [ObjectDetector.kt](https://github.com/micros
 
 ![Image of person with bicycle](../../../images/person-with-bicycle-and-bounding-boxes.png)
 
-## Pose estimation with Yolov8
+## Pose estimation with YOLOv8
 
 ### Build the pose estimation model
 
@@ -120,8 +120,8 @@ python yolov8_pose_e2e.py
 ```
 
 After the script has run, you will see one PyTorch model and two ONNX models:
-* `yolov8n-pose.pt`: The original Yolov8 PyTorch model
-* `yolov8n-pose.onnx`: The exported Yolov8 ONNX model
+* `yolov8n-pose.pt`: The original YOLOv8 PyTorch model
+* `yolov8n-pose.onnx`: The exported YOLOv8 ONNX model
 * `yolov8n-pose.with_pre_post_processing.onnx`: The ONNX model with pre and post processing included in the model
 
 
