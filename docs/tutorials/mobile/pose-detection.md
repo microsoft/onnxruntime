@@ -93,7 +93,7 @@ You see the main inference code in [ObjectDetector.kt](https://github.com/micros
     }
 ```
 
-![Image of person with bicycle](../../../images/person-with-bicyle-and-bounding-boxes.jpg)
+![Image of person with bicycle](../../../images/person-with-bicycle-and-bounding-boxes.png)
 
 ## Pose estimation with Yolov8
 
