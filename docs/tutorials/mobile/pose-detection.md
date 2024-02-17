@@ -22,9 +22,7 @@ This step is optional as the model is available in the examples repository in th
 Create a Python environment and install the following packages.
 
 ```bash
-onnx
-onnxruntime
-onnxruntime-extensions
+pip install --upgrade onnx onnxruntime onnxruntime-extensions pillow
 ```
 
 Download the following script to build the model.
@@ -100,15 +98,13 @@ Note: this part of the tutorial uses Python. Android and iOS samples are coming 
 Create a Python environment and install the following packages.
 
 ```bash
-onnx
-onnxruntime
-onnxruntime-extensions
+pip install --upgrade onnx onnxruntime onnxruntime-extensions pillow
 ```
 
 Download the following script to build the model.
 
 ```bash
-wget https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/tutorials/yolov8_pose_e2e.py > yolov8_pose_e2e.py
+curl https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/tutorials/yolov8_pose_e2e.py > yolov8_pose_e2e.py
 ```
 
 Run the script.
@@ -128,7 +124,7 @@ After the script has run, you will see one PyTorch model and two ONNX models:
 You can use the same script to run the model, supplying your own image to detect poses.
 
 ```bash
-python yolov8_pose_e2e.py --input_image person.jpg
+python yolov8_pose_e2e.py --test_image person.jpg --run_model
 ```
 
 And the output is drawn on the original image!
