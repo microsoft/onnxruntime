@@ -28,7 +28,7 @@ See [here](../install/index.md#install-on-ios) for installation instructions.
 
 Please see the [Build page](../build/eps.md#xnnpack) for instructions on building a package that includes the XNNPACK EP.
 
-Support build for Android/iOS/Windows/Linux
+You can build ONNX Runtime with the XNNPACK EP for Android, iOS, Windows, and Linux.
 
 ## Usage
 
