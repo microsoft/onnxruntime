@@ -43,9 +43,10 @@ struct GroupNormNHWCTunableParams : OpParams, GroupNormNHWCParams<T> {
     std::string silu_suffix = this->use_silu ? "_silu" : "_pass";
     std::string skip_suffix = this->skip != nullptr ? "_skip" : "_noskip";
     std::string broadcast_suffix = this->broadcast_skip ? "_broadcast" : "_nobroadcast";
+    std::string bias_suffix = this->bias != nullptr ? "_bias" : "_nobias";
     std::string sig = std::to_string(this->n) + "_" + std::to_string(this->h * this->w) + "_" +
                       std::to_string(this->c) + "_" + std::to_string(this->groups) + silu_suffix +
-                      skip_suffix + broadcast_suffix;
+                      skip_suffix + broadcast_suffix + bias_suffix;
     return sig;
   }
 };
