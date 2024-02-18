@@ -188,23 +188,23 @@ class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCTunableParams<T>> {
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWCOp)
 
 #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSwish=*/false>()) {
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSilu=*/false>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 
-    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSwish=*/true>()) {
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSilu=*/true>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef USE_TRITON_KERNEL
-    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSwish=*/false>()) {
+    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSilu=*/false>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
-    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSwish=*/true>()) {
+    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSilu=*/true>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }

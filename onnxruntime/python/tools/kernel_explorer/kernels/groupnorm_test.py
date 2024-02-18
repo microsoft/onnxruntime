@@ -35,7 +35,7 @@ def sigmoid_function(x):
     return 1.0 / (1.0 + np.exp(-x))
 
 
-def group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, with_swish, has_skip):
+def group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, with_silu, has_skip):
     add_output = None
     if has_skip:
         input_x = input_x + skip_x + bias_x
@@ -49,13 +49,13 @@ def group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, with_s
     x = x.transpose([0, 2, 3, 1])
     x = x * gamma + beta
 
-    if with_swish:
+    if with_silu:
         x = x * sigmoid_function(x)
     return x, add_output
 
 
 def run_group_norm(
-    batch_size: int, height: int, num_channels: int, num_groups: int, dtype: str, swish: bool, has_skip: bool, func
+    batch_size: int, height: int, num_channels: int, num_groups: int, dtype: str, silu: bool, has_skip: bool, func
 ):
     np.random.seed(0)
     width = height
@@ -78,7 +78,7 @@ def run_group_norm(
         if has_skip
         else np.empty((0), dtype=dtype)
     )
-    use_swish = swish
+    use_silu = silu
     broadcast_skip = False
     channels_per_block = 0  # Compute in params initialization
 
@@ -107,11 +107,11 @@ def run_group_norm(
         height,
         width,
         num_groups,
-        use_swish,
+        use_silu,
         broadcast_skip,
         channels_per_block,
     )
-    y_ref, y_add_d_ref = group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, use_swish, has_skip)
+    y_ref, y_add_d_ref = group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, use_silu, has_skip)
     y_ref = y_ref.astype(dtype)
 
     for impl in my_op.ListOps():
@@ -134,21 +134,21 @@ dtypes = ["float32", "float16"]
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("swish", [True])
+@pytest.mark.parametrize("silu", [True])
 @pytest.mark.parametrize("has_skip", [True, False])
-def test_group_norm(sd_sizes, dtype, swish, has_skip):
+def test_group_norm(sd_sizes, dtype, silu, has_skip):
     for func in dtype_to_funcs(dtype):
-        run_group_norm(*sd_sizes, dtype, swish, has_skip, func)
+        run_group_norm(*sd_sizes, dtype, silu, has_skip, func)
 
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("swish", [True])
+@pytest.mark.parametrize("silu", [True])
 @pytest.mark.parametrize("has_skip", [False])
-def test_group_norm_ck(sd_sizes, dtype, swish, has_skip):
-    swish_suffix = "Swish" if swish else "Pass"
-    ck_f_name = "CKGroupNormNHWC" + swish_suffix + "_" + dtype_to_suffix(dtype)
-    run_group_norm(*sd_sizes, dtype, swish, has_skip, ck_f_name)
+def test_group_norm_ck(sd_sizes, dtype, silu, has_skip):
+    silu_suffix = "Silu" if silu else "Pass"
+    ck_f_name = "CKGroupNormNHWC" + silu_suffix + "_" + dtype_to_suffix(dtype)
+    run_group_norm(*sd_sizes, dtype, silu, has_skip, ck_f_name)
 
 
 @dataclass
@@ -176,7 +176,7 @@ def profile_group_norm_func(
     num_channels: int,
     num_groups: int,
     dtype: str,
-    swish: bool,
+    silu: bool,
     has_skip: bool,
     func,
 ):
@@ -199,7 +199,7 @@ def profile_group_norm_func(
         if has_skip
         else np.empty((0), dtype=dtype)
     )
-    use_swish = swish
+    use_silu = silu
     broadcast_skip = False
     channels_per_block = 0  # Compute in params initialization
 
@@ -228,7 +228,7 @@ def profile_group_norm_func(
         height,
         width,
         num_groups,
-        use_swish,
+        use_silu,
         broadcast_skip,
         channels_per_block,
     )
@@ -245,14 +245,14 @@ def profile_group_norm_func(
         )
 
 
-def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, swish=True, has_skip=True, sort=True):
+def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, silu=True, has_skip=True, sort=True):
     with ke.benchmark(sort):
         for func in dtype_to_funcs(dtype):
-            profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, has_skip, func)
+            profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, silu, has_skip, func)
         # ck function
-        swish_suffix = "Swish" if swish else "Pass"
-        ck_f_name = "CKGroupNormNHWC" + swish_suffix + "_" + dtype_to_suffix(dtype)
-        profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, has_skip, ck_f_name)
+        silu_suffix = "Silu" if silu else "Pass"
+        ck_f_name = "CKGroupNormNHWC" + silu_suffix + "_" + dtype_to_suffix(dtype)
+        profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, silu, has_skip, ck_f_name)
 
 
 sd_profile_sizes = [
@@ -291,7 +291,7 @@ if __name__ == "__main__":
     group.add_argument("num_channels", type=int)
     group.add_argument("num_groups", type=int)
     group.add_argument("dtype", choices=dtypes)
-    group.add_argument("--swish", action="store_true")
+    group.add_argument("--silu", action="store_true")
     group.add_argument("--has_skip", action="store_true")
     group.add_argument("--sort", action="store_true")
 
@@ -306,7 +306,7 @@ if __name__ == "__main__":
             args.num_channels,
             args.num_groups,
             args.dtype,
-            args.swish,
+            args.silu,
             args.has_skip,
             args.sort,
         )

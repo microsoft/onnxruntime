@@ -20,21 +20,21 @@ namespace rocm {
 
 namespace {
 
-template <typename T, bool WithSwish>
+template <typename T, bool WithSilu>
 std::string GetGroupNormTritonGroupName() {
   std::string ret = "GroupNormTriton_";
-  std::string swish_suffix = WithSwish ? "Swish_" : "Pass_";
-  ret += swish_suffix;
+  std::string silu_suffix = WithSilu ? "Silu_" : "Pass_";
+  ret += silu_suffix;
   ret += GetDataTypeName<T>();
   return ret;
 }
 
 }  // namespace
 
-template <typename T, bool WithSwish>
+template <typename T, bool WithSilu>
 auto GetTritonGroupNormNHWCTypeStringAndOps() {
   std::vector<std::pair<std::string, tunable::Op<GroupNormNHWCTunableParams<T>>>> ret;
-  auto group_name = GetGroupNormTritonGroupName<T, WithSwish>();
+  auto group_name = GetGroupNormTritonGroupName<T, WithSilu>();
   auto* kernel_list = GetOrtTritonKernelByGroup(group_name);
   if (kernel_list == nullptr) {
     return ret;
@@ -47,17 +47,17 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
     auto hw_size = metadata->constants.at("HW_SIZE");
     auto impl = [i, block_size, hw_size](const GroupNormNHWCTunableParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((params->skip != nullptr || params->bias != nullptr),
-                                                "Skip is not supported");
+                                                "Input skip or bias is not supported by triton kernel.");
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->channels_per_group > block_size || params->channels_per_group * 2 <= block_size,
           "Arg block_size (", block_size, ") is not the next power of 2 of channels_per_group (",
           params->channels_per_group, ").");
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->hw % hw_size != 0, "Arg hw_size (", hw_size, ") is not a divisor of hw (", params->hw, ").");
-      if constexpr (WithSwish) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->use_silu, "Swish version does not support GN w/o swish.");
+      if constexpr (WithSilu) {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->use_silu, "Silu version does not support GN w/o silu.");
       } else {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->use_silu, "Pass version does not support GN w/ swish.");
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->use_silu, "Pass version does not support GN w/ silu.");
       }
       // Construct args for launch kernel
       struct {

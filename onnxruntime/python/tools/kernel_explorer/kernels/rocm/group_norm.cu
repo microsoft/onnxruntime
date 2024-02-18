@@ -130,7 +130,7 @@ class GroupNormNHWCTunable : public IKernelExplorer {
 };
 
 #ifdef USE_COMPOSABLE_KERNEL
-template <typename T, bool WithSwish>
+template <typename T, bool WithSilu>
 class CKGroupNormNHWC : public IKernelExplorer {
  public:
   CKGroupNormNHWC(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip,
@@ -142,7 +142,7 @@ class CKGroupNormNHWC : public IKernelExplorer {
                 static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
                 epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip,
                 channels_per_block) {
-    for (auto&& [type_string, op] : contrib::rocm::GetCKGroupNormNHWCTypeStringAndOps<T, float, WithSwish>()) {
+    for (auto&& [type_string, op] : contrib::rocm::GetCKGroupNormNHWCTypeStringAndOps<T, float, WithSilu>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -187,7 +187,7 @@ class CKGroupNormNHWC : public IKernelExplorer {
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef USE_TRITON_KERNEL
-template <typename T, bool WithSwish>
+template <typename T, bool WithSilu>
 class GroupNormNHWCTriton : public IKernelExplorer {
  public:
   GroupNormNHWCTriton(DeviceArray& output, DeviceArray& add_output, DeviceArray& input, DeviceArray& skip,
@@ -199,7 +199,7 @@ class GroupNormNHWCTriton : public IKernelExplorer {
                 static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()), static_cast<float*>(workspace.ptr()),
                 epsilon, batch_size, num_channels, height, width, num_groups, use_silu, broadcast_skip,
                 channels_per_block) {
-    for (auto&& [name, op] : contrib::rocm::GetTritonGroupNormNHWCTypeStringAndOps<T, WithSwish>()) {
+    for (auto&& [name, op] : contrib::rocm::GetTritonGroupNormNHWCTypeStringAndOps<T, WithSilu>()) {
       name_strings_.emplace_back(name);
       ops_.emplace_back(std::move(op));
     }
@@ -272,11 +272,11 @@ class GroupNormNHWCTriton : public IKernelExplorer {
 #define REGISTER_OP_TYPED(name, type) \
   REGISTER_COMMON(#name "_" #type, name, type)
 
-#define REGISTER_CK(type, with_swish, swish_suffix) \
-  REGISTER_COMMON("CKGroupNormNHWC" swish_suffix "_" #type, CKGroupNormNHWC, type, with_swish)
+#define REGISTER_CK(type, with_silu, silu_suffix) \
+  REGISTER_COMMON("CKGroupNormNHWC" silu_suffix "_" #type, CKGroupNormNHWC, type, with_silu)
 
-#define REGISTER_TRITON(type, with_swish, swish_suffix) \
-  REGISTER_COMMON("GroupNormNHWCTriton" swish_suffix "_" #type, GroupNormNHWCTriton, type, with_swish)
+#define REGISTER_TRITON(type, with_silu, silu_suffix) \
+  REGISTER_COMMON("GroupNormNHWCTriton" silu_suffix "_" #type, GroupNormNHWCTriton, type, with_silu)
 
 KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, half);
@@ -290,16 +290,16 @@ KE_REGISTER(m) {
 
 #ifdef USE_COMPOSABLE_KERNEL
   REGISTER_CK(half, false, "Pass");
-  REGISTER_CK(half, true, "Swish");
+  REGISTER_CK(half, true, "Silu");
   REGISTER_CK(float, false, "Pass");
-  REGISTER_CK(float, true, "Swish");
+  REGISTER_CK(float, true, "Silu");
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef USE_TRITON_KERNEL
   REGISTER_TRITON(half, false, "Pass");
-  REGISTER_TRITON(half, true, "Swish");
+  REGISTER_TRITON(half, true, "Silu");
   REGISTER_TRITON(float, false, "Pass");
-  REGISTER_TRITON(float, true, "Swish");
+  REGISTER_TRITON(float, true, "Silu");
 #endif
 }
 
