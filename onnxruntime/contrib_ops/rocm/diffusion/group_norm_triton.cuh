@@ -47,6 +47,9 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
     auto hw_size = metadata->constants.at("HW_SIZE");
     auto impl = [i, block_size, hw_size](const GroupNormNHWCTunableParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          params->skip != nullptr && params->broadcast_skip, "Arg broadcast_skip is not supported.");
+
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->channels_per_group > block_size || params->channels_per_group * 2 <= block_size,
           "Arg block_size (", block_size, ") is not the next power of 2 of channels_per_group (",
           params->channels_per_group, ").");
@@ -72,7 +75,6 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
         float eps;
         bool has_skip;
         bool has_bias;
-        bool broadcast_skip;
       } args = {
           (const void*)params->src,
           (const void*)params->skip,
@@ -87,7 +89,6 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
           params->epsilon,
           params->skip != nullptr,
           params->bias != nullptr,
-          params->broadcast_skip,
       };
 
       // Grid dim is (batch_count, groups, 1)
