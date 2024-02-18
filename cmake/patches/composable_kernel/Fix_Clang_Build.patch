@@ -71,6 +71,19 @@ index 04674124c..12e8b8b00 100644
 -    LDCONFIG
 -    HEADER_ONLY
 -)
+diff --git a/docs/sphinx/requirements.txt b/docs/sphinx/requirements.txt
+index 8041b8198..4b5c13c54 100644
+--- a/docs/sphinx/requirements.txt
++++ b/docs/sphinx/requirements.txt
+@@ -84,7 +84,7 @@ pydata-sphinx-theme==0.13.3
+     #   sphinx-book-theme
+ pygithub==1.58.2
+     # via rocm-docs-core
+-pygments==2.14.0
++pygments==2.15.0
+     # via
+     #   accessible-pygments
+     #   pydata-sphinx-theme
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 index 9cb5d0e9a..141a46f3d 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
