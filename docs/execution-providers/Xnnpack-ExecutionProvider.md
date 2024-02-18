@@ -41,7 +41,7 @@ The XNNPACK EP must be explicitly registered when creating the inference session
 ```C++
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
-so.AppendExecutionProvider("XNNPACK", {{"intra_op_num_threads", std::to_string(intra_op_num_threads)}});
+so.AppendExecutionProvider("XNNPACK", {"intra_op_num_threads", std::to_string(intra_op_num_threads)});
 Ort::Session session(env, model_path, so);
 ```
 
@@ -56,7 +56,7 @@ To minimize this, we recommend setting the following options:
 ```
 2. Set the XNNPACK intra-op thread-pool size when registering the XNNPACK EP. The suggested value would be the number of physical cores on the device.
 ```C++
-    so.AppendExecutionProvider("XNNPACK", {{"intra_op_num_threads", std::to_string(intra_op_num_threads)}});
+    so.AppendExecutionProvider("XNNPACK", {"intra_op_num_threads", std::to_string(intra_op_num_threads)});
 ```
 3. Set the ORT intra-op thread-pool size to 1:
 ```C++
