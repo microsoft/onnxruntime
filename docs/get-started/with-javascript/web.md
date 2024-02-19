@@ -54,7 +54,7 @@ For a complete table for importing, see [Conditional Importing](https://github.c
 
 ## Documentation
 
-See [Tutorial: Web](../tutorials/web/index.md) for more details. Please also check the following links:
+See [Tutorial: Web](../../tutorials/web/index.md) for more details. Please also check the following links:
 - [Tensor](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/js/api-usage_tensor) - a demonstration of basic usage of Tensor.
 - [Tensor <--> Image conversion](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/js/api-usage-tensor-image) - a demonstration of conversions from Image elements to and from Tensor.
 - [InferenceSession](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/js/api-usage_inference-session) - a demonstration of basic usage of InferenceSession.

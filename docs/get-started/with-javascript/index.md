@@ -11,7 +11,7 @@ nav_order: 6
 
 ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.js binding](https://github.com/microsoft/onnxruntime/tree/main/js/node), [ONNX Runtime Web](https://github.com/microsoft/onnxruntime/tree/main/js/web), and [ONNX Runtime for React Native](https://github.com/microsoft/onnxruntime/tree/main/js/react_native).
 
-See [how to choose the right package](../tutorials/web/build-web-app#options-for-deployment-target) for your JavaScript application.
+See [how to choose the right package](../../tutorials/web/build-web-app#options-for-deployment-target) for your JavaScript application.
 
 ## Contents
 {: .no_toc }
@@ -32,13 +32,13 @@ See [how to choose the right package](../tutorials/web/build-web-app#options-for
 |Web|[onnxruntime-web](https://www.npmjs.com/package/onnxruntime-web)|CPU and GPU|Chromium Browsers (Chrome, Edge): wasm, webgl, webgpu, webnn<br/>Safari: wasm, webgl<br/>Other Browsers: wasm<br/> Node.js: wasm|
 |React Native|[onnxruntime-react-native](https://www.npmjs.com/package/onnxruntime-react-native)|CPU|Android, iOS|
 
-- For Web, pre-built binaries are published in NPM package as well as served in CDNs. See [Deploy ONNX Runtime Web](TBD) for more details. If you want to use a custom build, you can [build ONNX Runtime Web from source](../build/web.md).
-- For Node.js binding, to use on platforms without pre-built binaries, you can [build Node.js binding from source](../build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.
+- For Web, pre-built binaries are published in NPM package as well as served in CDNs. If you want to use a custom build, you can [build ONNX Runtime Web from source](../../build/web.md).
+- For Node.js binding, to use on platforms without pre-built binaries, you can [build Node.js binding from source](../../build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.
 - Explore a simple web application to [classify images with ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/classify-images-nextjs-github-template.html).
 
 ## API Reference
 
-See [ONNX Runtime JavaScript API](../api/js/index.html){:target="_blank"} for API reference.
+See [ONNX Runtime JavaScript API](../../api/js/index.html){:target="_blank"} for API reference.
 
 See also:
 

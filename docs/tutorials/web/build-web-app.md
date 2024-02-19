@@ -79,7 +79,7 @@ Add "@dev" to the package name to use the nightly build (eg. npm install onnxrun
 ## Consume onnxruntime-web in your code
 
 1. Import onnxruntime-web
-   See  [import onnxruntime-web](../../get-started/with-javascript.md#import-1)
+   See  [import onnxruntime-web](../../get-started/with-javascript/web.md#import)
 
 2. Initialize the inference session
    See [InferenceSession.create](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/js/quick-start_onnxruntime-web-bundler/main.js#L14)
