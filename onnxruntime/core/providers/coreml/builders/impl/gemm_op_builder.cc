@@ -200,7 +200,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   {
     auto* coreml_inner_product = layer->mutable_innerproduct();
 
-    *layer->mutable_input()->Add() = input_defs[0]->Name();
+    *layer->mutable_input()->Add() = a.Name();
 
     coreml_inner_product->set_inputchannels(K);
     coreml_inner_product->set_outputchannels(N);
