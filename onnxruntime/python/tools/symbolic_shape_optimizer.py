@@ -115,7 +115,7 @@ def share_shape_ops_if_possible(symbolic_shape_inference):
     graph = symbolic_shape_inference.out_mp_.graph
     shape_value_to_nodes_dict = shape_value_to_nodes(symbolic_shape_inference)
     node_to_remove = []
-    for _, nodes in shape_value_to_nodes_dict.items():
+    for nodes in shape_value_to_nodes_dict.values():
         if len(nodes) <= 1:
             continue
         shape_node_to_keep = nodes[0]
