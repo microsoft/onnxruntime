@@ -1,7 +1,7 @@
 ---
 title: Custom Excel Functions for BERT Tasks in JavaScript
 description:  Custom Excel Functions for BERT Tasks in JavaScript
-parent: Deploy on web
+parent: Web
 grand_parent: Tutorials
 has_children: false
 nav_order: 2
