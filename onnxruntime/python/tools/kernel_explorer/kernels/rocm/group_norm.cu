@@ -66,10 +66,6 @@ class GroupNormNHWCStaticSelection : public IKernelExplorer {
   }
 
   void Run() override {
-    HIP_CALL_THROW(hipMemsetAsync(params_.group_sum_buffer,
-                                  0,
-                                  GetGroupNormWorkspaceSizeInBytes(params_.n, params_.groups),
-                                  params_.StreamHandle()));
     ORT_THROW_IF_ERROR((contrib::rocm::GroupNormNHWCStaticSelection<T>(&params_)));
   }
 
@@ -78,10 +74,6 @@ class GroupNormNHWCStaticSelection : public IKernelExplorer {
   }
 
   bool SelectOp(const std::string& name) {
-    HIP_CALL_THROW(hipMemsetAsync(params_.group_sum_buffer,
-                                  0,
-                                  GetGroupNormWorkspaceSizeInBytes(params_.n, params_.groups),
-                                  params_.StreamHandle()));
     Status status = contrib::rocm::GroupNormNHWCStaticSelection<T>(&params_);
     return status.IsOK() && name == type_string_;
   }
@@ -108,10 +100,6 @@ class GroupNormNHWCTunable : public IKernelExplorer {
   }
 
   void Run() override {
-    HIP_CALL_THROW(hipMemsetAsync(params_.group_sum_buffer,
-                                  0,
-                                  GetGroupNormWorkspaceSizeInBytes(params_.n, params_.groups),
-                                  params_.StreamHandle()));
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
@@ -149,10 +137,6 @@ class CKGroupNormNHWC : public IKernelExplorer {
   }
 
   void Run() override {
-    HIP_CALL_THROW(hipMemsetAsync(params_.group_sum_buffer,
-                                  0,
-                                  GetGroupNormWorkspaceSizeInBytes(params_.n, params_.groups),
-                                  params_.StreamHandle()));
     ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
   }
 
@@ -164,10 +148,6 @@ class CKGroupNormNHWC : public IKernelExplorer {
     for (size_t i = 0; i < ops_.size(); i++) {
       if (type_strings_[i] == name) {
         selected_op_ = i;
-        HIP_CALL_THROW(hipMemsetAsync(params_.group_sum_buffer,
-                                      0,
-                                      GetGroupNormWorkspaceSizeInBytes(params_.n, params_.groups),
-                                      params_.StreamHandle()));
         Status status = ops_[i](&params_);
         return status.IsOK();
       }

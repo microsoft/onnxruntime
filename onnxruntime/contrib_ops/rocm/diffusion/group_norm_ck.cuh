@@ -26,6 +26,11 @@ namespace rocm {
 
 using onnxruntime::rocm::CKDataTypeAdaptor;
 
+// The SiLU function is a special case of Swish function,
+// The Swish function is parametrized by b, which is set to 1.0 for SiLU. They are defined as:
+// SiLU(x) = x * sigmoid(x)
+// Swish(x) = x * sigmoid(bx)
+// The default value of b is 1.0 in ck::tensor_operation::element_wise::Swish function. We treat them as the same function here.
 using Silu = ck::tensor_operation::element_wise::Swish;
 using Pass = ck::tensor_operation::element_wise::PassThrough;
 

@@ -20,7 +20,7 @@ namespace rocm {
 using onnxruntime::rocm::GPU_WARP_SIZE;
 
 template <typename T>
-void groupNormNHWCSum(const GroupNormNHWCTunableParams<T>* params) {
+void GroupNormNHWCSum(const GroupNormNHWCTunableParams<T>* params) {
   dim3 grid;
 
   // The number of blocks to compute all the channels.
@@ -71,7 +71,7 @@ Status GroupNormNHWCSumOp(const GroupNormNHWCTunableParams<T>* params) {
 }
 
 template <typename T>
-void groupNormNHWCScale(const GroupNormNHWCTunableParams<T>* params) {
+void GroupNormNHWCScale(const GroupNormNHWCTunableParams<T>* params) {
   dim3 grid;
 
   // The number of blocks to compute all the channels.
@@ -161,9 +161,9 @@ Status GroupNormNHWCStaticSelection(const GroupNormNHWCTunableParams<T>* params)
                                      0,
                                      GetGroupNormWorkspaceSizeInBytes(params->n, params->groups),
                                      params->StreamHandle()));
-  groupNormNHWCSum<T>(params);
+  GroupNormNHWCSum<T>(params);
   HIP_RETURN_IF_ERROR(hipGetLastError());
-  groupNormNHWCScale<T>(params);
+  GroupNormNHWCScale<T>(params);
   HIP_RETURN_IF_ERROR(hipGetLastError());
   return Status::OK();
 }
