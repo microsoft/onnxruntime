@@ -115,7 +115,7 @@ class ApiGraph final : public api::GraphRef {
     const auto& graph_outputs = graph_.GetOutputs();
     graph_outputs_.reserve(graph_outputs.size());
     for (const auto* output : graph_outputs) {
-      graph_outputs_.insert(output->Name());
+      graph_outputs_.emplace(output->Name());
     }
   }
 

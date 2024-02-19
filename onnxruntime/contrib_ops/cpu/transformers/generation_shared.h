@@ -183,7 +183,14 @@ struct IGenerationParameters {
   // Parameters for whisper model
   bool decoder_output_cross_qk = false;
   gsl::span<const int32_t> extra_decoding_ids;
-  int32_t no_speech_token = -1;
+
+  // Token ids are defined below in the order that they appear in the tokenizer
+  int32_t translate_token_id = -1;
+  int32_t transcribe_token_id = -1;
+  int32_t start_of_lm_token_id = -1;
+  int32_t no_speech_token_id = -1;
+  int32_t no_timestamps_token_id = -1;
+  int32_t beginning_timestamp_token_id = -1;
   void* no_speech_probs = nullptr;
 
   int cross_qk_layer_head_input_id = -1;
