@@ -428,7 +428,7 @@ def parse_arguments():
         action="store_const",
         const="Xcode",
         dest="cmake_generator",
-        help="Use Xcode as cmake generator, this is only supported on MacOS. Equivalent to '--cmake_generator Xcode'.",
+        help="Use Xcode as cmake generator, this is only supported on MacOS. (non Catalyst build). Equivalent to '--cmake_generator Xcode'.",
     )
     parser.add_argument(
         "--osx_arch",
@@ -1380,7 +1380,7 @@ def generate_build_tree(
                 "-DCMAKE_C_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_CC_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_CXX_FLAGS=" + f"--target={macabi_target}",
-                "-DCMAKE_CXX_FLAGS_RELEASE=" + f"-O3 -DNDEBUG --target= {macabi_target}",
+                "-DCMAKE_CXX_FLAGS_RELEASE=" + f"-O3 -DNDEBUG --target={macabi_target}",
                 "-DCMAKE_C_FLAGS=" + f"--target={macabi_target}",
                 "-DCMAKE_C_FLAGS_RELEASE=" + f"-O3 -DNDEBUG --target={macabi_target}",
                 "-DCMAKE_CC_FLAGS=" + f"--target={macabi_target}",
