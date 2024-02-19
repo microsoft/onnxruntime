@@ -167,8 +167,9 @@ __global__ void _GridSampleKernel(
     if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max ||
         grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) { // out of bound
       if (padding_mode == 1) {  // border
-        grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
-        grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
+        // Clamping must not be done here, see #10607
+        //grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
+        //grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
       } else if (padding_mode == 2) {  // reflection
         grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);
         grid_y_imgSpace = GsReflect(grid_y_imgSpace, y_min, y_max);
