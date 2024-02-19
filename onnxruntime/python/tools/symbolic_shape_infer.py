@@ -2842,7 +2842,9 @@ class SymbolicShapeInference:
                 output.CopyFrom(self.known_vi_[output.name])
 
     @staticmethod
-    def infer_shapes(in_mp, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0):
+    def infer_shapes(
+        in_mp, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0, return_obj=False
+    ):
         onnx_opset = get_opset(in_mp)
         if (not onnx_opset) or onnx_opset < 7:
             logger.warning("Only support models of onnx opset 7 and above.")
@@ -2857,7 +2859,8 @@ class SymbolicShapeInference:
             onnx.save_model(symbolic_shape_inference.out_mp_, "sym_shape_infer_temp.onnx", save_as_external_data=True)
             raise Exception("Incomplete symbolic shape inference")
 
-        SymbolicShapeInference.optimize_graph(symbolic_shape_inference)
+        if return_obj:
+            return symbolic_shape_inference
         return symbolic_shape_inference.out_mp_
 
     @staticmethod

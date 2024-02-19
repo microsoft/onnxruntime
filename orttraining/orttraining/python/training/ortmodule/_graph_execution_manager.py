@@ -38,6 +38,7 @@ from ._runtime_inspector import RuntimeInspector
 from ._utils import check_function_has_param, get_rank
 from .options import DebugOptions, LogLevel, _MemoryOptimizationLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
+from onnxruntime.tools import symbolic_shape_optimizer
 
 
 class _RunStateInfo:
@@ -305,9 +306,12 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
 
         if self._runtime_options.run_symbolic_shape_infer:
-            self._onnx_models.exported_model = SymbolicShapeInference.infer_shapes(
-                self._onnx_models.exported_model, auto_merge=True, guess_output_rank=True
+            symbolic_shape_inference = SymbolicShapeInference.infer_shapes(
+                self._onnx_models.exported_model, auto_merge=True, guess_output_rank=True, return_obj=True
             )
+
+            symbolic_shape_optimizer.optimize_graph(symbolic_shape_inference)
+            self._onnx_models.exported_model = symbolic_shape_inference.out_mp_
 
         # Restore the recorded random states
         _utils.set_random_states(random_states)
