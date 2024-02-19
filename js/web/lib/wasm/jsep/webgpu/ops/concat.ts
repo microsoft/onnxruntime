@@ -154,6 +154,13 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
   validateInputs(context.inputs);
+  // 0 length tensors are valid for concat, remove them
+  for (let i = 0; i < context.inputs.length; i++) {
+    const size = ShapeUtil.size(context.inputs[i].dims);
+    if (size === 0) {
+      context.inputs.slice(i, 1);
+    }
+  }
   context.compute(createConcatProgramInfo(context.inputs, attributes.axis));
 };
 
