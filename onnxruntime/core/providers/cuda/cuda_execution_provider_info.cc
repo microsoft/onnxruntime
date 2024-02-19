@@ -34,6 +34,7 @@ constexpr const char* kEnableSkipLayerNormStrictMode = "enable_skip_layer_norm_s
 constexpr const char* kPreferNHWCMode = "prefer_nhwc";
 constexpr const char* kUseEPLevelUnifiedStream = "use_ep_level_unified_stream";
 constexpr const char* kUseTF32 = "use_tf32";
+constexpr const char* kGeluDisableHalf2 = "gelu_disable_half2";
 
 }  // namespace provider_option_names
 }  // namespace cuda
@@ -117,6 +118,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kPreferNHWCMode, info.prefer_nhwc)
           .AddAssignmentToReference(cuda::provider_option_names::kUseEPLevelUnifiedStream, info.use_ep_level_unified_stream)
           .AddAssignmentToReference(cuda::provider_option_names::kUseTF32, info.use_tf32)
+          .AddAssignmentToReference(cuda::provider_option_names::kGeluDisableHalf2, info.gelu_disable_half2)
           .AddValueParser(
               cuda::provider_option_names::kTunableOpEnable,
               [&info](const std::string& value_str) -> Status {
@@ -170,7 +172,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kPreferNHWCMode, MakeStringWithClassicLocale(info.prefer_nhwc)},
       {cuda::provider_option_names::kUseEPLevelUnifiedStream, MakeStringWithClassicLocale(info.use_ep_level_unified_stream)},
       {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
-  };
+      {cuda::provider_option_names::kGeluDisableHalf2, MakeStringWithClassicLocale(info.gelu_disable_half2)}};
 
   return options;
 }
@@ -192,6 +194,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kPreferNHWCMode, MakeStringWithClassicLocale(info.prefer_nhwc)},
       {cuda::provider_option_names::kUseEPLevelUnifiedStream, MakeStringWithClassicLocale(info.use_ep_level_unified_stream)},
       {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
+      {cuda::provider_option_names::kGeluDisableHalf2, MakeStringWithClassicLocale(info.gelu_disable_half2)},
   };
 
   return options;

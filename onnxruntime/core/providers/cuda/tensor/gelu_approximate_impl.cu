@@ -24,12 +24,9 @@ limitations under the License.
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "contrib_ops/cuda/bert/fast_gelu_impl.h"
-
-using namespace onnxruntime::cuda;
+#include "core/providers/cuda/tensor/gelu_impl.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 // constants for approximating the normal cdf
@@ -114,5 +111,4 @@ Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int
 }
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime

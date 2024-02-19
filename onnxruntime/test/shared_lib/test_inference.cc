@@ -3229,11 +3229,12 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   std::vector<const char*> keys{
       "device_id", "has_user_compute_stream", "gpu_mem_limit", "arena_extend_strategy",
-      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
+      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace",
+      "cudnn_conv1d_pad_to_nc1d", "gelu_disable_half2"};
 
   std::vector<const char*> values{
       "0", "0", "1024", "kSameAsRequested",
-      "DEFAULT", "1", "1"};
+      "DEFAULT", "1", "1", "1"};
 
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 6) == nullptr);
 
@@ -3253,6 +3254,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("do_copy_in_default_stream=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
+  ASSERT_TRUE(s.find("gelu_disable_half2") != std::string::npos);
 
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);
 

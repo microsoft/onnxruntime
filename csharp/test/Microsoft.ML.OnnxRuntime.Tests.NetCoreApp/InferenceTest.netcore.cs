@@ -95,6 +95,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 providerOptionsDict["do_copy_in_default_stream"] = "1";
                 providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
                 providerOptionsDict["cudnn_conv1d_pad_to_nc1d"] = "1";
+                providerOptionsDict["gelu_disable_half2"] = "1";
                 cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
                 var resultProviderOptionsDict = new Dictionary<string, string>();
@@ -115,6 +116,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 value = resultProviderOptionsDict["cudnn_conv_use_max_workspace"];
                 Assert.Equal("1", value);
                 value = resultProviderOptionsDict["cudnn_conv1d_pad_to_nc1d"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["gelu_disable_half2"];
                 Assert.Equal("1", value);
 
                 // test correctness of provider options
@@ -145,7 +148,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void CanRunInferenceOnAModelWithTensorRT()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            
+
             int deviceId = 0;
             string deviceIdStr = System.Environment.GetEnvironmentVariable("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
             if (!string.IsNullOrEmpty(deviceIdStr) && int.TryParse(deviceIdStr, out int parsedValue) && parsedValue >= 0)

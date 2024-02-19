@@ -79,6 +79,8 @@ struct CUDAExecutionProviderInfo {
   // By default, enable TF32 to speed up float GEMM/MatMul or cuDNN convolution of float matrices.
   bool use_tf32{true};
 
+  bool gelu_disable_half2{false};
+
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtCUDAProviderOptionsV2& info);
@@ -104,7 +106,8 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
                   (static_cast<size_t>(info.enable_skip_layer_norm_strict_mode) << 27) ^
                   (static_cast<size_t>(info.prefer_nhwc) << 28) ^
                   (static_cast<size_t>(info.use_ep_level_unified_stream) << 29) ^
-                  (static_cast<size_t>(info.use_tf32) << 30);
+                  (static_cast<size_t>(info.use_tf32) << 30) ^
+                  (static_cast<size_t>(info.gelu_disable_half2) << 31);
     onnxruntime::HashCombine(data, value);
 
     onnxruntime::HashCombine(info.gpu_mem_limit, value);

@@ -215,6 +215,9 @@ void* CudaStream::GetResource(int version, int id) const {
     case CudaResource::use_tf32_t:
       return reinterpret_cast<void*>(ep_info_.use_tf32);
       break;
+    case CudaResource::gelu_disable_half2_t:
+      return reinterpret_cast<void*>(ep_info_.gelu_disable_half2);
+      break;
     default:
       break;
   }
