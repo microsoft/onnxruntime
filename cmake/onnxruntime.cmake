@@ -281,6 +281,8 @@ endif()
 
 # Assemble the Apple static framework (iOS and macOS)
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  # when building for mac catalyst, the CMAKE_OSX_SYSROOT is set to MacOSX as well, to avoid duplication,
+  # we specify as `-macabi` in the name of the output static apple framework directory.
   if (PLATFORM_NAME STREQUAL "macabi")
     set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-macabi)
   else()

@@ -8,6 +8,15 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   string(APPEND CMAKE_ASM_FLAGS_RELEASE " -O3")
 endif()
 
+# Suggested by https://gitlab.kitware.com/cmake/cmake/-/issues/20132
+# MacCatalyst is not well supported in CMake
+# The error that can emerge without this flag can look like:
+# "clang : error : overriding '-mmacosx-version-min=11.0' option with '-target x86_64-apple-ios14.0-macabi' [-Werror,-Woverriding-t-option]"
+if (PLATFORM_NAME STREQUAL "macabi")
+  add_compile_options(-Wno-overriding-t-option)
+  add_link_options(-Wno-overriding-t-option)
+endif()
+
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
 if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)

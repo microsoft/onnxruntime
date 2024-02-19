@@ -632,7 +632,9 @@ if (WIN32)
 endif()
 
 if (PLATFORM_NAME STREQUAL "macabi")
-  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS}) # Needed for maccatalyst C compilation
+  # Needed for maccatalyst C compilation
+  # i.e. the flags below add "--target=x86_64-apple-ios14.0-macabi -ffunction-sections -fdata-sections"
+  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
