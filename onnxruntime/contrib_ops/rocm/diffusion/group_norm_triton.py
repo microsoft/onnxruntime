@@ -24,6 +24,7 @@ def group_norm_kernel(
     eps,
     has_skip,
     has_bias,
+    broadcast_skip,
     BLOCK_SIZE: tl.constexpr,
     HW_SIZE: tl.constexpr,
     ACTIVATION_SILU: tl.constexpr,
@@ -44,7 +45,11 @@ def group_norm_kernel(
     bias = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     if has_skip:
         add_out_ptr += row_x * stride + row_y * c_per_group
-        skip_ptr += row_x * stride + row_y * c_per_group
+        if broadcast_skip:
+            broadcast_skip_ptr = skip_ptr + row_x * c + row_y * c_per_group
+            bias += tl.load(broadcast_skip_ptr + cols, mask=cols < c_per_group, other=0.0).to(tl.float32)
+        else:
+            skip_ptr += row_x * stride + row_y * c_per_group
     if has_bias:
         bias_ptr += row_y * c_per_group
         bias += tl.load(bias_ptr + cols, mask=cols < c_per_group, other=0.0).to(tl.float32)
@@ -55,11 +60,11 @@ def group_norm_kernel(
     for i in range(tl.cdiv(img_size, HW_SIZE)):
         x_ptr = input_ptr + i * HW_SIZE * c
         a = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-        if has_skip:
+        if has_skip and not broadcast_skip:
             s_ptr = skip_ptr + i * HW_SIZE * c
             s = tl.load(s_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
             a += s
-        if has_bias:
+        if has_bias or broadcast_skip:
             a += bias
         _sum += a
         _square_sum += a * a
@@ -103,7 +108,7 @@ blocks = [16, 32, 64, 128]
 hw_sizes = [8, 16, 32, 64, 128, 256]
 warps = [1, 2, 4, 8, 16]
 name_pattern = "GroupNormTriton_{}_{}_b{}_hw{}_w{}"
-sig_pattern = "*{},*{},*{},*{},*{},*fp32,*fp32,i32,i32,i32,fp32,i1,i1"
+sig_pattern = "*{},*{},*{},*{},*{},*fp32,*fp32,i32,i32,i32,fp32,i1,i1,i1"
 group_pattern = "GroupNormTriton_{}_{}"
 
 
