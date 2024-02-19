@@ -205,7 +205,7 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtDevice& info) const {
 Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValueImpl(ort_value_idx); }
 
 #ifdef ENABLE_TRAINING
-Status IExecutionFrame::ReleaseAllMLValues(){
+Status IExecutionFrame::ReleaseAllMLValues() {
   for (size_t ort_value_idx = 0; ort_value_idx < all_values_.size(); ort_value_idx++) {
     all_values_[ort_value_idx] = OrtValue();
   }
@@ -848,8 +848,8 @@ Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_
     return status;
   } catch (const std::exception& e) {
     LOGS(session_state_.Logger(), WARNING)
-      << "Exception caught when allocating memory for ort_value with index: " << ort_value_idx
-      << "so clean up all_values_";
+        << "Exception caught when allocating memory for ort_value with index: " << ort_value_idx
+        << "so clean up all_values_";
     static_cast<void>(ReleaseAllMLValues());
     return Status(ONNXRUNTIME, FAIL, e.what());
   }

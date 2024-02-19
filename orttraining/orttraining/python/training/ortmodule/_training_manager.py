@@ -211,7 +211,6 @@ class TrainingManager(GraphExecutionManager):
                 finally:
                     del ctx.run_info.state
 
-
         return _ORTModuleFunction
 
     def forward(self, *inputs, **kwargs):
