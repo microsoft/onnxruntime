@@ -1600,7 +1600,7 @@ if (UNIX AND onnxruntime_USE_NCCL)
 else()
   set(onnxruntime_USE_NCCL OFF)
   set(onnxruntime_USE_MPI OFF)
-message( WARNING "MPI and NCCL disabled on Win build." )
+  message( WARNING "MPI and NCCL are disabled because build is on Windows or USE_NCCL is set to OFF." )
 endif()
 
 if (onnxruntime_USE_MPI)
