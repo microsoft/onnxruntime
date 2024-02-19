@@ -19,10 +19,10 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
-      GridSample<T, LAYOUT>);
+      onnxruntime::contrib::cuda::GridSample<T, LAYOUT>);
 
 REGISTER_KERNEL_TYPED(float, 1, LAYOUT_NCHW, kMSDomain)
-REGISTER_KERNEL_TYPED(float, 20, LAYOUT_NHWC, kMSInternalNHWCDomain)
+REGISTER_KERNEL_TYPED(float, 16, LAYOUT_NHWC, kMSInternalNHWCDomain)
 
 template <typename T, bool IsNHWC>
 GridSample<T, IsNHWC>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
@@ -92,4 +92,8 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
 }
 }  // namespace cuda
 }  // namespace contrib
+
+namespace cuda {
+  REGISTER_KERNEL_TYPED(float, 16, LAYOUT_NCHW, kOnnxDomain)
+}  // namespace cuda
 }  // namespace onnxruntime

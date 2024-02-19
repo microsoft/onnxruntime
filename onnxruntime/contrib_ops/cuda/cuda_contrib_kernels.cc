@@ -204,7 +204,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSDomain, 1
 #endif
 
 #ifdef ENABLE_CUDA_NHWC_OPS
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSInternalNHWCDomain, 20, float, GridSample);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSInternalNHWCDomain, 16, float, GridSample);
 #endif
 
 template <>
@@ -413,7 +413,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
 #endif
 
 #ifdef ENABLE_CUDA_NHWC_OPS
-    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSInternalNHWCDomain, 20, float, GridSample)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSInternalNHWCDomain, 16, float, GridSample)>,
 #endif
   };
 
