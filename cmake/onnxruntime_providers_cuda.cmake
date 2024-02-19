@@ -181,10 +181,10 @@
     set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
     FetchContent_Declare(
         cudnn_frontend
-#        GIT_REPOSITORY https://github.com/NVIDIA/cudnn-frontend
-#        GIT_TAG v1.0.3
-        GIT_REPOSITORY https://github.com/gedoensmax/cudnn-frontend
-        GIT_TAG 1.0/release
+        GIT_REPOSITORY https://github.com/NVIDIA/cudnn-frontend
+        GIT_TAG v1.0.3
+#        GIT_REPOSITORY https://github.com/gedoensmax/cudnn-frontend
+#        GIT_TAG 1.0/release
         )
     FetchContent_MakeAvailable(cudnn_frontend)
 

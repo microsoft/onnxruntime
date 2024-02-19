@@ -338,7 +338,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       }
     }
 
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
     if constexpr (channels_last) {
       s_.cudnn_fe_graph = std::make_unique<cudnn_frontend::graph::Graph>();
 
@@ -463,7 +463,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
     }
 #endif
   } else {
@@ -490,7 +490,7 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   }
   auto cudnn_handle = GetCudnnHandle(context);
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
   if constexpr (NHWC) {
     s_.variant_pack.insert_or_assign(s_.cudnn_fe_X, const_cast<void*>(s_.x_data));
     s_.variant_pack.insert_or_assign(s_.cudnn_fe_W, const_cast<void*>(s_.w_data));
@@ -531,7 +531,7 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
       CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data,
                                            &alpha, s_.y_tensor, s_.y_data));
     }
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
   }
 #endif
 

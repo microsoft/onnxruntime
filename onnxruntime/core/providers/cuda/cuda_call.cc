@@ -78,7 +78,7 @@ const char* CudaErrString<cufftResult>(cufftResult e) {
 }
 #endif
 
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
 #define CASE_ENUM_TO_STR_CUDNN_FE(x) \
   case cudnn_frontend::error_code_t::x:                   \
     return #x
@@ -120,7 +120,7 @@ int GetErrorCode(ERRTYPE err) {
   return (int) err;
 }
 
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
 template <>
 int GetErrorCode(cudnn_frontend::error_t err) {
   return (int) err.get_code();
@@ -175,7 +175,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
 template Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
 #ifndef USE_CUDA_MINIMAL
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
 template Status CudaCall<cudnn_frontend::error_t, false, cudnn_frontend::error_code_t>(cudnn_frontend::error_t retCode, const char* exprString, const char* libName, cudnn_frontend::error_code_t successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cudnn_frontend::error_t, true, cudnn_frontend::error_code_t>(cudnn_frontend::error_t retCode, const char* exprString, const char* libName, cudnn_frontend::error_code_t successCode, const char* msg, const char* file, const int line);
 #endif

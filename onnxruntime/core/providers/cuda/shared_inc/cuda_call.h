@@ -4,7 +4,7 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_pch.h"
-#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(USE_CUDA_MINIMAL)
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(USE_CUDA_MINIMAL) && !defined(__CUDACC__)
 #include <cudnn_frontend.h>
 #endif
 namespace onnxruntime {
@@ -25,7 +25,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
 #define CUDNN_CALL(expr) (CudaCall<cudnnStatus_t, false>((expr), #expr, "CUDNN", CUDNN_STATUS_SUCCESS, "", __FILE__, __LINE__))
 #define CUDNN_CALL2(expr, m) (CudaCall<cudnnStatus_t, false>((expr), #expr, "CUDNN", CUDNN_STATUS_SUCCESS, m, __FILE__, __LINE__))
 
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
 #define CUDNN_FE_CALL(expr) (CudaCall<cudnn_frontend::error_t, false, cudnn_frontend::error_code_t>((cudnn_frontend::error_t)(expr), #expr, "CUDNN_FE", cudnn_frontend::error_code_t::OK, "", __FILE__, __LINE__))
 #endif
 

@@ -150,7 +150,7 @@ struct CudnnConvState {
   const void* z_data = nullptr;
   CudnnConvolutionDescriptor conv_desc;
 
-#ifdef ENABLE_CUDA_NHWC_OPS
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
   std::unique_ptr<cudnn_frontend::graph::Graph> cudnn_fe_graph;
   std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_X;
   std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_W;
