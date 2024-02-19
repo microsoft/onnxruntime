@@ -206,7 +206,7 @@ Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValu
 
 #ifdef ENABLE_TRAINING
 Status IExecutionFrame::ReleaseAllMLValues(){
-  for (uint ort_value_idx = 0; ort_value_idx < all_values_.size(); ort_value_idx++) {
+  for (size_t ort_value_idx = 0; ort_value_idx < all_values_.size(); ort_value_idx++) {
     all_values_[ort_value_idx] = OrtValue();
   }
   return Status::OK();
