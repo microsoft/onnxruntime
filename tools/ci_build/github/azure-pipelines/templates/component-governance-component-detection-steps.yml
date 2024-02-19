@@ -8,7 +8,7 @@ steps:
 - ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
   - task: DeleteFiles@1
     inputs:
-      SourceFolder: '$(Build.SourcesDirectory)'
+      SourceFolder: '$(Build.BinariesDirectory)'
       contents: |
         **/*
     displayName: 'Clean up build directory'
