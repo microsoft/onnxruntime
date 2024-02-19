@@ -9,11 +9,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T, VERSION, LAYOUT, DOMAIN)                   \
+#define REGISTER_KERNEL_TYPED(T, VERSION, LAYOUT, DOMAIN)          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
       GridSample,                                                  \
       DOMAIN,                                                      \
-      VERSION,                                                          \
+      VERSION,                                                     \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
@@ -68,7 +68,7 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
   dims_output[Ch::N] = dims_input[Ch::N];
   dims_output[Ch::C] = dims_input[Ch::C];
   dims_output[Ch::H] = dims_grid[1 /* Grid::H */];
-  dims_output[Ch::W] = dims_grid[2 /* Grid::W */]; 
+  dims_output[Ch::W] = dims_grid[2 /* Grid::W */];
   Tensor* Y = context->Output(0, dims_output);
   // Return early if the output tensor is going to be of size 0
   if (Y->Shape().Size() == 0) {
@@ -94,6 +94,6 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
 }  // namespace contrib
 
 namespace cuda {
-  REGISTER_KERNEL_TYPED(float, 16, LAYOUT_NCHW, kOnnxDomain)
+REGISTER_KERNEL_TYPED(float, 16, LAYOUT_NCHW, kOnnxDomain)
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -168,7 +168,7 @@ struct NumericLimits<double> {
   }
 };
 
-// TODO Where to put this? good places might be 
+// TODO Where to put this? good places might be
 // core/framework/tensor_shape.h
 // core/util/matrix_layout.h
 
