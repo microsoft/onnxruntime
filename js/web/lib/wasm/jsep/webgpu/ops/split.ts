@@ -107,7 +107,7 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
   }`;
   return {
     name: 'Split',
-    shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank']},
+    shaderCache: {hint: `${attributes.cacheKey};${inputShape}`, inputDependencies: ['rank']},
     getShaderSource,
     getRunData: () => ({
       outputs: outputsTensorInfo,
