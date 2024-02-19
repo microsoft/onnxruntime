@@ -99,9 +99,9 @@ def group_norm_kernel(
 # but this will result in too many functions and slow down the compilation.
 with_silu = [True, False]
 dtypes = ["fp32", "fp16"]
-blocks = [16, 32, 64]
+blocks = [16, 32, 64, 128]
 hw_sizes = [8, 16, 32, 64, 128, 256]
-warps = [1, 2, 4, 8]
+warps = [1, 2, 4, 8, 16]
 name_pattern = "GroupNormTriton_{}_{}_b{}_hw{}_w{}"
 sig_pattern = "*{},*{},*{},*{},*{},*fp32,*fp32,i32,i32,i32,fp32,i1,i1"
 group_pattern = "GroupNormTriton_{}_{}"

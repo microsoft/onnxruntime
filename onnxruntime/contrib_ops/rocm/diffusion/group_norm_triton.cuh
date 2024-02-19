@@ -80,7 +80,7 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
           (const void*)params->skip,
           (const void*)params->bias,
           (void*)params->dst,
-          (void*)params->add_out,
+          (void*)params->skip_workspace,
           (const void*)params->gamma,
           (const void*)params->beta,
           params->hw,
