@@ -191,7 +191,6 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   // there's a ZeroMask kernel to reset the result to 0 for the 0 sequence
   int64_t zero_seq_count = 0;
   std::vector<int32_t> zero_seq_index_cache(batch_size, 0);
-  int64_t zero_seq_index_cache_size = 0;
 
   CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, batch_size);
   int32_t* seq_len_array = sequence_lens_buffer.CpuPtr();
