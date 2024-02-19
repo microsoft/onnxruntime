@@ -534,8 +534,10 @@ export class WebGpuBackend {
       };
       this.pendingKernels.push(pendingKernelInfo);
 
-      const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
-      sessionPendingKernels!.push(pendingKernelInfo);
+      if (this.sessionStatus === 'capturing') {
+        const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
+        sessionPendingKernels!.push(pendingKernelInfo);
+      }
     }
 
     this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);

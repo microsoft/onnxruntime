@@ -103,7 +103,7 @@ export class Tensor implements TensorInterface {
         }
         case 'gpu-buffer': {
           if ((type !== 'float32' && type !== 'float16' && type !== 'int32' && type !== 'int64' && type !== 'uint32' &&
-               type !== 'bool')) {
+               type !== 'uint8' && type !== 'bool')) {
             throw new TypeError(`unsupported type "${type}" to create tensor from gpu buffer`);
           }
           this.gpuBufferData = arg0.gpuBuffer;

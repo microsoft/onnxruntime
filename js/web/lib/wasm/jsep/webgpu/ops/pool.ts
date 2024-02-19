@@ -298,7 +298,7 @@ const createAveragePoolProgramInfo =
       }
       const [programUniforms, uniforms, hasPads, pwStartEndNotZero, phStartEndNotZero] =
           getUniformAndPadInfo(outputShape, adjustedAttributes);
-      programUniforms.push(...createTensorShapeVariables(input.dims), ...createTensorShapeVariables(outputShape));
+      programUniforms.push(...createTensorShapeVariables(input.dims, outputShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       return {
         name,
@@ -370,7 +370,7 @@ const createMaxPoolProgramInfo =
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       const [programUniforms, uniforms, hasPads, pwStartEndNotZero, phStartEndNotZero] =
           getUniformAndPadInfo(outputShape, adjustedAttributes);
-      programUniforms.push(...createTensorShapeVariables(input.dims), ...createTensorShapeVariables(outputShape));
+      programUniforms.push(...createTensorShapeVariables(input.dims, outputShape));
       return {
         name,
         shaderCache:
