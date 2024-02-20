@@ -348,6 +348,8 @@ class MatMul4BitsQuantizer:
 
             self.int4_quant_algo()
 
+def ort_convert_str_to_bool(value):
+    return value.lower() in ("true", "1")
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -366,7 +368,9 @@ set of 4b integers with a scaling factor and an optional offset.
         "--symmetric",
         required=False,
         default=True,
-        type=bool,
+        const=False,
+        nargs='?',
+        type=ort_convert_str_to_bool,
         help="Indicate whether to quantize the model symmetrically",
     )
     parser.add_argument(
