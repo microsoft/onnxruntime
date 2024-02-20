@@ -41,68 +41,16 @@ onnxruntime_genai.Model(model_folder: str, device: onnxruntime_genai.DeviceType)
 - `device`: (optional) The device to run on. One of:
    - onnxruntime_genai.CPU
    - onnxruntime_genai.CUDA
-   - onnxruntime_genai.CPU
-   If not specified, defaults to XXX
+   If not specified, defaults to CPU.
 
 #### Return value
 
-### Create a Generator
+`onnxruntime_genai.Model`
+
+### Create tokenizer object
 
 ```python
-onnxruntime_genai.Model.Generator(params: GeneratorParams) -> Generator
-```
-
-#### Parameters
-
-- `params`: (Required) The set of parameters that control the generation
-
-#### Return value
-
-- `onnxruntime_genai.Generator`
-
-
-### Generate
-
-```python
-onnxruntime_genai.Model.generate(params: GeneratorParams) -> XXXX 
-```
-
-#### Parameters
-- `params`: (Required) Created by the `GenerateParams` method.
-
-#### Return value
-
-### Generate sequence
-
-```python
-onnxruntime_genai.Model.generate_sequence(input_ids: , params: )
-```
-
-#### Parameters
-
-- `input_ids`: tokenized prompt
-- `params`: dictionary of generation parameters
-
-
-### Create GeneratorParameters class
-
-```python
-params=onnxruntime_genai.GeneratorParams(model: onnxruntime_genai.Model) -> onnxruntime_genai.GeneratorParams
-```
-
-#### Parameters
-
-- `model`: (required) The model that was loaded by onnxruntime_genai.Model()
-
-#### Return value
-
-
-## Tokenizer class
-
-### Create tokenizer
-
-```python
-create_tokenizer(model: onnxruntime_genai.Model) -> onnxruntime_genai.Tokenizer
+onnxruntime_genai.Model.create_tokenizer(model: onnxruntime_genai.Model) -> onnxruntime_genai.Tokenizer
 ```
 
 #### Parameters
@@ -114,71 +62,154 @@ create_tokenizer(model: onnxruntime_genai.Model) -> onnxruntime_genai.Tokenizer
 - `Tokenizer`
 
 
-### Encode
+### Generate method
 
 ```python
-onnxruntime_genai.Tokenizer.encode(XXXX) -> XXXX
+onnxruntime_genai.Model.generate(params: GeneratorParams) -> XXXX 
+```
+
+#### Parameters
+- `params`: (Required) Created by the `GenerateParams` method.
+
+#### Return value
+
+`numpy.int32 [ batch_size, max_length]`
+
+
+## GeneratorParams class
+
+### Create GeneratorParams object
+
+```python
+onnxruntime_genai.GeneratorParams(model: onnxruntime_genai.Model) -> onnxruntime_genai.GeneratorParams
 ```
 
 #### Parameters
 
+- `model`: (required) The model that was loaded by onnxruntime_genai.Model()
+
 #### Return value
+
+`onnxruntime_genai.GeneratorParams`
+
+## Tokenizer class
+
+Tokenizer objects are created from a Model.
+
+### Encode
+
+```python
+onnxruntime_genai.Tokenizer.encode(prompt: str) -> numpy.int32
+```
+
+#### Parameters
+
+- `prompt`: (Required)
+
+#### Return value
+
+`numpy.int32`: an array of tokens representing the prompt
 
 ### Decode
 
 ```python
-onnxruntime_genai.StreamingTokenizer.decode(XXXX) -> XXXX
+onnxruntime_genai.Tokenizer.decode(numpy.int32) -> str 
 ```
 
 #### Parameters
 
+`numpy.int32`: (Required) a sequence of generated tokens
+
+
 #### Return value
+
+str: the decoded generated tokens
+
 
 ### Encode batch
 
 ```python
-onnxruntime_genai.Tokenizer.encode_batch(XXXX) -> XXXX
+onnxruntime_genai.Tokenizer.encode_batch(texts: list[str]) -> 
 ```
 
 #### Parameters
 
+- `texts`: a list of inputs
+
 #### Return value
+
+`[[numpy.int32]]`: a 2 D array of tokens
 
 ### Decode batch
 
 ```python
-onnxruntime_genai.decode_batch(XXXX) -> XXXX
+onnxruntime_genai.Tokenize.decode_batch(tokens: [[numpy.int32]]) -> list[str]
 ```
 
 #### Parameters
+
+- tokens
 
 #### Return value
 
+`texts`: a batch of decoded text
 
 
-### Create streaming tokenizer
+### Create tokenizer decoding stream
+
+Decodes one token at a time to allow for responsive user interfaces.
 
 ```python
-create_stream(model: onnxruntime_genai.Model) -> TokenizerStream
+onnxruntime_genai.Tokenizer.create_stream() -> TokenizerStream
 ```
 
 #### Parameters
 
-- `model`: (Required) The model that was loaded by the `Model()`
+None
 
 #### Return value
 
 - TokenizerStream
 
-### Decode token stream
+## TokenizerStream class
+
+This class keeps track of the generated token sequence, returning the next displayable string (according to the tokenizer's vocabulary) when decode is called. Explain empty string ...
+
+### Decode method
 
 ```python
-onnxruntime_genai.TokenizerStream.decode(token: ) -> token
+onnxruntime_genai.TokenizerStream.decode(token: int32) -> str
 ```
   
+#### Parameters
+
+- `token`: (Required) A token to decode
+
+#### Returns
+
+`str`: Next displayable text, if at the end of displayable block?, otherwise empty string
+
 ## Generator class
 
+### Create a Generator
+
+```python
+onnxruntime_genai.Generator(model: Model, params: GeneratorParams) -> Generator
+```
+
+#### Parameters
+
+- `model`: (Required) The model to use for generation
+- `params`: (Required) The set of parameters that control the generation
+
+#### Return value
+
+- `onnxruntime_genai.Generator`
+
+
 ### Is generation done
+
+Returns true when all sequences are at max length, or have reached the end of sequence.
 
 ```python
 onnxruntime_genai.Generator.is_done() -> bool
@@ -186,42 +217,56 @@ onnxruntime_genai.Generator.is_done() -> bool
 
 ### Compute logits
 
+Runs the model through one iteration.
+
 ```python
-onnxruntime_genai.Generator.compute_logits() ->
+onnxruntime_genai.Generator.compute_logits()
 ```
 
 ### Generate next token
 
+Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using Top P sampling.
+
 ```python
-onnxruntime_genai.Generator.generate_next_token() -> 
+onnxruntime_genai.Generator.generate_next_token()
 ```
 
 ### Generate next token with Top P sampling
 
+Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using Top P sampling.
+
 ```python
-onnxruntime_genai.Generator.generate_next_token_top_p() -> 
+onnxruntime_genai.Generator.generate_next_token_top_p()
 ```
 
 ### Generate next token with Top K sampling
 
+Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using Top K sampling.
+
 ```python
-onnxruntime_genai.Generator.generate_next_token_top_k() -> 
+onnxruntime_genai.Generator.generate_next_token_top_k()
 ```
 
 ### Generate next token with Top K and Top P sampling
 
+Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using both Top K then Top P sampling.
+
 ```python
-onnxruntime_genai.Generator.generate_next_token_top_k_top_p() -> 
+onnxruntime_genai.Generator.generate_next_token_top_k_top_p()
 ```
 
 ### Get next tokens
 
+Returns the most recently generated tokens.
+
 ```python
-onnxruntime_genai.Generator.generate_next_tokens() -> 
+onnxruntime_genai.Generator.get_next_tokens() -> [numpy.int32]
 ```
 
 ### Get sequence
 
 ```python
-onnxruntime_genai.Generator.generate_next_token() -> 
+onnxruntime_genai.Generator.get_sequence(index: int) -> [numpy.int32] 
 ```
+
+- `index`: (Required) The index of the sequence in the batch to return
