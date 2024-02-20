@@ -1669,8 +1669,6 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
                     f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
             elif args.cmake_generator == "Xcode":
-                # CMake will generate correct build tool args for Xcode
-                # cmd_args += ["--parallel", str(num_parallel_jobs)]
                 build_tool_args += [
                     "-parallelizeTargets",
                     "-jobs",
