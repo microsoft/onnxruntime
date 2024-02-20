@@ -38,5 +38,17 @@ const ort = require('onnxruntime-node');
 
 ## Supported Versions
 
-ONNX Runtime Node.js binding supports Node.js v12.x+ or Electron v5.x+
+The following table lists the supported versions of ONNX Runtime Node.js binding provided with pre-built binaries.
 
+
+| EPs/Platforms | Windows x64 | Windows arm64 | Linux x64 | Linux arm64 | MacOS x64 | MacOS arm64 |
+|--------------|--------|---------|--------|------|---|----|
+| CPU  |   ✔️    |    ✔️    |   ✔️   |  ✔️  |  ✔️  |  ✔️  |
+| DirectML  |   ✔️    |    ✔️    |  ❌  |  ❌  |  ❌  |  ❌  |
+| CUDA     |  ❌  |  ❌  |  ✔️<sup>\[1]</sup>  | ❌ | ❌ |  ❌  |
+
+
+- \[1]: CUDA v11.8.
+
+
+For platforms not on the list or want a custom build, you can [build Node.js binding from source](../../build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.
