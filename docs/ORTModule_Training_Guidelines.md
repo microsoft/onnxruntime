@@ -253,6 +253,11 @@ data sparsity based performance optimizations.
 	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=1 # Enable
 	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
 	```
+You main need below line before model initialization
+
+```python
+config.pad_token_id = config.eos_token_id
+```
 
 #### ORTMODULE_CACHE_DIR
 
