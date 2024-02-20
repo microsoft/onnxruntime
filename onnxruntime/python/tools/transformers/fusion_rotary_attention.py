@@ -362,6 +362,7 @@ class FusionRotaryAttention(FusionAttention):
         # v_nodes_1 is for LLaMA-2 Microsoft
         # v_nodes_3 is for LLaMA-2 Hugging Face
         # v_nodes_4 is for LLaMA-2 70B model
+        # v_nodes_5 is for Phi-2 DirectML
         past_v, present_v, past_seq_len = "", "", ""
         v_nodes = None
         add_v = None
@@ -529,6 +530,7 @@ class FusionRotaryAttention(FusionAttention):
             present_v = concat_v.output[0]
         elif v_nodes_5 is not None:
             concat_v, transpose_v, reshape_v, add_v, matmul_v = v_nodes_5
+            matmul_v = add_v
             v_nodes = v_nodes_5
             past_v = concat_v.input[0]
             present_v = concat_v.output[0]
@@ -618,7 +620,6 @@ class FusionRotaryAttention(FusionAttention):
         # k_nodes_4 is for LLaMA-2 70B Hugging Face
         past_k, present_k = "", ""
         k_nodes = None
-        add_k = None
         slice_k = None
         concat_k_half = None
         k_nodes_1 = self.model.match_parent_path(
@@ -843,7 +844,7 @@ class FusionRotaryAttention(FusionAttention):
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
         elif k_nodes_5 is not None:
-            _, concat_k, concat_k_half, rotary_k, slice_k, _, reshape_k, add_k, matmul_k = k_nodes_5
+            _, concat_k, concat_k_half, rotary_k, slice_k, _, reshape_k, _, matmul_k = k_nodes_5
             k_nodes = k_nodes_5
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
@@ -853,9 +854,8 @@ class FusionRotaryAttention(FusionAttention):
 
         # q_nodes_1 is for LLaMA-2 Microsoft
         # q_nodes_2 is for LLaMA-2 Hugging Face
-        # q_nodes_3 is for Phi2 Hugging Face
+        # q_nodes_3 is for Phi-2 DirectML
         q_nodes = None
-        add_q = None
         slice_q = None
         concat_q_half = None
         q_nodes_1 = self.model.match_parent_path(
@@ -880,7 +880,7 @@ class FusionRotaryAttention(FusionAttention):
             rotary_q, _, reshape_q, matmul_q = q_nodes_2
             q_nodes = q_nodes_2
         elif q_nodes_3 is not None:
-            concat_q_half, rotary_q, slice_q, _, reshape_q, add_q, matmul_q = q_nodes_3
+            concat_q_half, rotary_q, slice_q, _, reshape_q, _, matmul_q = q_nodes_3
             q_nodes = q_nodes_3
         else:
             logger.debug("fuse_rotary_attention: failed to match q nodes")
@@ -925,36 +925,49 @@ class FusionRotaryAttention(FusionAttention):
             rotary_k.input[0] = slice_k.output[0] if slice_k else matmul_k.output[0]
 
             # Rename current output of rotary_k (present_key) so it doesn't match output of MHA (present_key)
-            # concat_k_half.output[0] = concat_k_half.name + "_output_0"
+            if concat_q_half is None:
+                rotary_k.output[0] = rotary_k.name + "_output_0"
 
             if qkv_nodes == qkv_nodes_3:
                 qkv_nodes = qkv_nodes[1:]
 
-        def get_num_heads_and_hidden_size(reshape_q):
-            """Detect num_heads and hidden_size for ONNX model from MiDaS
+        def create_hidden_size_concat_node(reshape_q):
+            """Detect num_heads and hidden_size for ONNX model from phi-2
             Args:
                 reshape_q (NodeProto): reshape node for q
             Returns:
-                Tuple[int, int]: num_heads and hidden_size
+                hidden_size_concat_node(NodeProto): Concat node to be used by reshape
             """
             concat = self.model.match_parent(reshape_q, "Concat", 1)
 
+            if concat is None:
+                logger.debug("fuse_rotary_attention: failed to trace the concat node from reshape_q")
+                return
+
             # The shape is a tensor like [?, ?, num_heads, head_size]
-            num_head_value = self.model.get_constant_value(concat.input[2])[0]
+            num_head_constant_node = self.model.get_constant_value(concat.input[2])
+            head_size_constant_node = self.model.get_constant_value(concat.input[3])
 
-            head_size_value = self.model.get_constant_value(concat.input[3])[0]
+            if num_head_constant_node is None or head_size_constant_node is None:
+                logger.debug("fuse_rotary_attention: failed to get constant nodes of num_heads or head_size")
+                return
 
-            hidden_size_initilizer = "hidden_size_initilizer"
+            num_head_value = num_head_constant_node[0]
+            head_size_value = head_size_constant_node[0]
+
+            hidden_size = num_head_value * head_size_value
+
+            hidden_size_initilizer = self.model.create_node_name("Initializer", name_prefix="hidden_size")
             if self.model.get_initializer(hidden_size_initilizer) is None:
                 self.add_initializer(
                     name=hidden_size_initilizer,
                     data_type=TensorProto.INT64,
                     dims=[1],
-                    vals=[num_head_value * head_size_value],
+                    vals=[hidden_size],
                     raw=False,
                 )
 
-            hidden_size_reshape_node_name = self.model.create_node_name("Concat", name_prefix="hidden_size_concat_node")
+            hidden_size_reshape_node_name = self.model.create_node_name("Concat", name_prefix="hidden_size_concat")
 
             hidden_size_concat_node = helper.make_node(
                 "Concat",
@@ -970,49 +983,58 @@ class FusionRotaryAttention(FusionAttention):
 
             return hidden_size_concat_node
 
-        if q_nodes_3:
-            hidden_size_concat_node = get_num_heads_and_hidden_size(reshape_k)
+        # Add Tranpose and Reshape nodes for patial rotary embedding applied in phi-2 before passing into MHA
+        if concat_q_half and concat_k_half:
+            # Transpose the key output of rotary Embedding
+            k_transpose_node_name = self.model.create_node_name("Transpose")
+            k_tranpose_output_name = k_transpose_node_name + "_output_0"
+            k_transpose_node = helper.make_node("Transpose", inputs=[concat_k_half.output[0]], outputs=[k_tranpose_output_name],
+                                                name=k_transpose_node_name)
+            k_transpose_node.attribute.extend([helper.make_attribute("perm", [0, 2, 1, 3])])
 
-            transpose_node_name = self.model.create_node_name("Transpose")
 
-            tranpose_output_name = transpose_node_name + "_output_0"
+            # Transpose the query output of rotary Embedding
+            q_transpose_node_name = self.model.create_node_name("Transpose")
+            q_tranpose_output_name = q_transpose_node_name + "_output_0"
+            q_transpose_node = helper.make_node("Transpose", inputs=[concat_q_half.output[0]], outputs=[q_tranpose_output_name],
+                                                name=q_transpose_node_name)
+            q_transpose_node.attribute.extend([helper.make_attribute("perm", [0, 2, 1, 3])])
 
-            transpose_node = helper.make_node("Transpose", inputs=[concat_k_half.output[0]], outputs=[tranpose_output_name], name=transpose_node_name)
-            transpose_node.attribute.extend([helper.make_attribute("perm", [0, 2, 1, 3])])
 
-            # Reshape the Rotary Embedding output for key
+            hidden_size_concat_node = create_hidden_size_concat_node(reshape_k)
+            if hidden_size_concat_node is None:
+                logger.debug("fuse_rotary_attention: failed to create hidden_size_concat_node")
+                return
+
+            # Reshape the Rotary Embedding output for key for 4D to 3D
             concat_k_reshape_node_name = self.model.create_node_name("Reshape", name_prefix="concat_k_half")
             concat_k_reshape_node = helper.make_node(
                 "Reshape",
-                inputs=[transpose_node.output[0], hidden_size_concat_node.output[0]],
+                inputs=[k_transpose_node.output[0], hidden_size_concat_node.output[0]],
                 outputs=[concat_k_reshape_node_name + "_output_0"],
                 name=concat_k_reshape_node_name,
             )
 
-            q_transpose_node_name = self.model.create_node_name("Transpose")
-
-            q_tranpose_output_name = q_transpose_node_name + "_output_0"
-
-            q_transpose_node = helper.make_node("Transpose", inputs=[concat_q_half.output[0]], outputs=[q_tranpose_output_name],
-                                            name=q_transpose_node_name)
-            q_transpose_node.attribute.extend([helper.make_attribute("perm", [0, 2, 1, 3])])
-            # Reshape the Rotary Embedding output for query
+            # Reshape the Rotary Embedding output for query from 4D to 3D
             concat_q_reshape_node_name = self.model.create_node_name("Reshape", name_prefix="concat_q_half")
-
             concat_q_reshape_node = helper.make_node(
                 "Reshape",
                 inputs=[q_transpose_node.output[0], hidden_size_concat_node.output[0]],
                 outputs=[concat_q_reshape_node_name + "_output_0"],
                 name=concat_q_reshape_node_name,
             )
+
+            rotary_k = concat_k_reshape_node
+            rotary_q = concat_q_reshape_node
+
             self.nodes_to_add.append(hidden_size_concat_node)
-            self.nodes_to_add.append(transpose_node)
+            self.nodes_to_add.append(k_transpose_node)
             self.nodes_to_add.append(q_transpose_node)
             self.nodes_to_add.append(concat_k_reshape_node)
             self.nodes_to_add.append(concat_q_reshape_node)
 
             self.node_name_to_graph_name[hidden_size_concat_node.name] = self.this_graph_name
-            self.node_name_to_graph_name[transpose_node.name] = self.this_graph_name
+            self.node_name_to_graph_name[k_transpose_node.name] = self.this_graph_name
             self.node_name_to_graph_name[q_transpose_node.name] = self.this_graph_name
             self.node_name_to_graph_name[concat_k_reshape_node.name] = self.this_graph_name
             self.node_name_to_graph_name[concat_q_reshape_node.name] = self.this_graph_name
@@ -1020,9 +1042,9 @@ class FusionRotaryAttention(FusionAttention):
         new_node = self.create_mha_node(
             matmul_q.input[0],
             root_output,
-            concat_q_reshape_node if concat_q_half else rotary_q,
-            concat_k_reshape_node if concat_k_half else rotary_k,
-            add_v if add_v else matmul_v,
+            rotary_q,
+            rotary_k,
+            matmul_v,
             attn_mask,
             add_qk_str,
             past_k,
@@ -1040,10 +1062,7 @@ class FusionRotaryAttention(FusionAttention):
         self.nodes_to_remove.extend(qkv_nodes[1:])
 
         if v_nodes != v_nodes_4:
-            if add_v:
-                self.nodes_to_remove.extend(v_nodes[:-2])
-            else:
-                self.nodes_to_remove.extend(v_nodes[:-1])
+            self.nodes_to_remove.extend(v_nodes[:-1] if add_v is None else v_nodes[:-2])
         else:
             nodes_to_keep = [v_nodes[0][-1]]
             for temp_path in v_nodes:
@@ -1307,7 +1326,8 @@ class FusionRotaryEmbeddings(Fusion):
                 [1, 0, 0, 0, 0],
             )
 
-            rotate_half_x2_path_1 = rotate_half_x2_path_1_1 if rotate_half_x2_path_1_1 else rotate_half_x2_path_1_2
+            rotate_half_x2_path_1 = rotate_half_x2_path_1_1 if rotate_half_x2_path_1_1\
+                                    else rotate_half_x2_path_1_2 if rotate_half_x2_path_1_2 else None
 
             rotate_half_x2_path_2_1 = self.model.match_parent_path(
                 node,
@@ -1321,7 +1341,8 @@ class FusionRotaryEmbeddings(Fusion):
                 [1, 0, 0, 0, 1, 0, 0, 0, 0],
             )
 
-            rotate_half_x2_path_2 = rotate_half_x2_path_2_1 if rotate_half_x2_path_2_1 else rotate_half_x2_path_2_2
+            rotate_half_x2_path_2 = rotate_half_x2_path_2_1 if rotate_half_x2_path_2_1 \
+                                    else rotate_half_x2_path_2_2 if rotate_half_x2_path_2_2 else None
 
             if rotate_half_x2_path_1 is None or rotate_half_x2_path_2 is None:
                 logger.debug("fuse_rotary_embeddings: failed to match x2 in rotate_half")
@@ -1339,7 +1360,8 @@ class FusionRotaryEmbeddings(Fusion):
                 [1, 0, 1, 0],
             )
 
-            rotate_half_x1_path_1 = rotate_half_x1_path_1_1 if rotate_half_x1_path_1_1 else rotate_half_x1_path_1_2
+            rotate_half_x1_path_1 = rotate_half_x1_path_1_1 if rotate_half_x1_path_1_1 \
+                                    else rotate_half_x1_path_1_2 if rotate_half_x1_path_1_2 else None
 
             rotate_half_x1_path_2_1 = self.model.match_parent_path(
                 node,
@@ -1353,7 +1375,8 @@ class FusionRotaryEmbeddings(Fusion):
                 [1, 0, 1, 2, 0, 0, 0, 0],
             )
 
-            rotate_half_x1_path_2 = rotate_half_x1_path_2_1 if rotate_half_x1_path_2_1 else rotate_half_x1_path_2_2
+            rotate_half_x1_path_2 = rotate_half_x1_path_2_1 if rotate_half_x1_path_2_1 \
+                                    else rotate_half_x1_path_2_2 if rotate_half_x1_path_2_2 else None
 
             if rotate_half_x1_path_1 is None or rotate_half_x1_path_2 is None:
                 logger.debug("fuse_rotary_embeddings: failed to match x1 in rotate_half")
@@ -1381,7 +1404,7 @@ class FusionRotaryEmbeddings(Fusion):
                 [0, 0],
             )
 
-            x_path = x_path_1 if x_path_1 else x_path_2
+            x_path = x_path_1 if x_path_1 else x_path_2 if x_path_2 else None
 
             if x_path is None:
                 logger.debug("fuse_rotary_embeddings: failed to match x in rotate_half")
