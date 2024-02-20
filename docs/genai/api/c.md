@@ -2,6 +2,7 @@
 title: C API
 description: C API reference for ONNX Runtime GenAI
 has_children: false
+parent: API docs
 grand_parent: Generative AI
 nav_order: 2
 ---

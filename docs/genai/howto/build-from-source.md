@@ -2,6 +2,8 @@
 title: Build from source
 description: How to build ONNX Runtime GenAI from source
 has_children: false
+parent: How to
+grand_parent: Generative AI
 nav_order: 2
 ---
 

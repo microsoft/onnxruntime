@@ -2,6 +2,7 @@
 title: Python API
 description: Python API reference for ONNX Runtime GenAI
 has_children: false
+grand_parent: Generative AI
 nav_order: 2
 ---
 
@@ -44,17 +45,19 @@ onnxruntime_genai.Model(model_folder: str, device: onnxruntime_genai.DeviceType)
 
 #### Return value
 
-### GeneratorParameters class
+### Create a Generator
 
 ```python
-params=onnxruntime_genai.GeneratorParams(model: onnxruntime_genai.Model) -> onnxruntime_genai.GeneratorParams
+onnxruntime_genai.Model.Generator(params: GeneratorParams) -> Generator
 ```
 
 #### Parameters
 
-- `model`: (required) The model that was loaded by onnxruntime_genai.Model()
+- `params`: (Required) The set of parameters that control the generation
 
 #### Return value
+
+- `onnxruntime_genai.Generator`
 
 
 ### Generate
@@ -71,13 +74,27 @@ onnxruntime_genai.Model.generate(params: GeneratorParams) -> XXXX
 ### Generate sequence
 
 ```python
-onnxruntime_genai.Model.generate_sequence(input_ids: , params: **kwargs)
+onnxruntime_genai.Model.generate_sequence(input_ids: , params: )
 ```
 
 #### Parameters
 
 - `input_ids`: tokenized prompt
 - `params`: dictionary of generation parameters
+
+
+### Create GeneratorParameters class
+
+```python
+params=onnxruntime_genai.GeneratorParams(model: onnxruntime_genai.Model) -> onnxruntime_genai.GeneratorParams
+```
+
+#### Parameters
+
+- `model`: (required) The model that was loaded by onnxruntime_genai.Model()
+
+#### Return value
+
 
 ## Tokenizer class
 
@@ -158,26 +175,52 @@ create_stream(model: onnxruntime_genai.Model) -> TokenizerStream
 onnxruntime_genai.TokenizerStream.decode(token: ) -> token
 ```
   
+## Generator class
 
-  pybind11::class_<PyGenerator>(m, "Generator")
-      .def(pybind11::init<Model&, PyGeneratorParams&>())
-      .def("is_done", &PyGenerator::IsDone)
-      .def("compute_logits", &PyGenerator::ComputeLogits)
-      .def("generate_next_token", &PyGenerator::GenerateNextToken)
-      .def("generate_next_token_top", &PyGenerator::GenerateNextToken_Top)
-      .def("generate_next_token_top_p", &PyGenerator::GenerateNextToken_TopP)
-      .def("generate_next_token_top_k", &PyGenerator::GenerateNextToken_TopK)
-      .def("generate_next_token_top_k_top_p", &PyGenerator::GenerateNextToken_TopK_TopP)
-      .def("get_next_tokens", &PyGenerator::GetNextTokens)
-      .def("get_sequence", &PyGenerator::GetSequence);
+### Is generation done
 
-  m.def("is_cuda_available", []() {
-#ifdef USE_CUDA
-    return true;
-#else
-        return false;
-#endif
-  });
-}
+```python
+onnxruntime_genai.Generator.is_done() -> bool
+```
 
-}  // namespace Generators
+### Compute logits
+
+```python
+onnxruntime_genai.Generator.compute_logits() ->
+```
+
+### Generate next token
+
+```python
+onnxruntime_genai.Generator.generate_next_token() -> 
+```
+
+### Generate next token with Top P sampling
+
+```python
+onnxruntime_genai.Generator.generate_next_token_top_p() -> 
+```
+
+### Generate next token with Top K sampling
+
+```python
+onnxruntime_genai.Generator.generate_next_token_top_k() -> 
+```
+
+### Generate next token with Top K and Top P sampling
+
+```python
+onnxruntime_genai.Generator.generate_next_token_top_k_top_p() -> 
+```
+
+### Get next tokens
+
+```python
+onnxruntime_genai.Generator.generate_next_tokens() -> 
+```
+
+### Get sequence
+
+```python
+onnxruntime_genai.Generator.generate_next_token() -> 
+```

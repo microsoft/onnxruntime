@@ -2,6 +2,8 @@
 title: Install ONNX Runtime GenAI
 description: Instructions to install ONNX Runtime GenAI on your target platform in your environment
 has_children: false
+parent: How to
+grand_parent: Generative AI
 nav_order: 1
 ---
 
