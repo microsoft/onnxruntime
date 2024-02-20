@@ -23,9 +23,6 @@ RUN dnf install -y \
     ln -s /usr/bin/python3 python3.8 &&\
     ln -s /usr/bin/pip3 pip3.8;
 
-# Install ffmpeg, needed by whisper
-RUN dnf install -y ffmpeg
-
 RUN pip3 install --upgrade pip
 RUN pip3 install setuptools>=68.2.2
 
