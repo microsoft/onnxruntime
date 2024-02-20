@@ -1,6 +1,7 @@
 ---
 title: Generative AI
-description: Run generative models with ONNX Runtime GenAi
+description: Run generative models with ONNX Runtime GenAI
+has_children: true
 nav_order: 6
 ---
 
