@@ -1974,6 +1974,31 @@ TEST_F(PlannerTest, TestCpuIf) {
     ASSERT_TRUE(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()) == WaitOnEPStep);
   }
 }
+
+TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/issue_19480.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  status = sess.Load();
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK()) << "No crash";
+  const SequentialExecutionPlan* plan = sess.GetSessionState().GetExecutionPlan();
+  ASSERT_EQ(plan->allocation_plan[14].alloc_kind, AllocKind::kReuse) << "The input of reshape and gather will reuse the output of shape";
+
+  int gather_count = 0;
+  for (size_t i = 0; i < plan->execution_plan[1]->steps_.size(); i++) {
+    if (strstr(typeid(*(plan->execution_plan[1]->steps_[i])).name(), "LaunchKernelStep")) {
+      const Node* node = sess.GetSessionState().GetGraphViewer().GetNode(plan->execution_plan[1]->steps_[i]->GetNodeIndex());
+      if (node->OpType() == "Gather")
+        gather_count++;
+      else
+        FAIL() << "CPU stream should contain only gather ops";
+    }
+  }
+  ASSERT_EQ(gather_count, 4) << "4 gather ops are all placed in CPU stream";
+}
 #endif
 }  // namespace test
 }  // namespace onnxruntime
