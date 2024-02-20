@@ -8,6 +8,10 @@ nav_order: 2
 ---
 
 # Build onnxruntime-genai from source
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Pre-requisites
 

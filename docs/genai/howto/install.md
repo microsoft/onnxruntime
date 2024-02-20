@@ -8,6 +8,10 @@ nav_order: 1
 ---
 
 # Install ONNX Runtime GenAI
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Python package
 

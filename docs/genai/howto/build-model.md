@@ -8,6 +8,10 @@ nav_order: 2
 ---
 
 # Generate models using Model Builder
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 The model builder greatly accelerates creating optimized and quantized ONNX models that run with ONNX Runtime GenAI.
 

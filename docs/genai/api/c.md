@@ -8,7 +8,10 @@ nav_order: 2
 ---
 
 # ONNX Runtime GenAI C API
+{: .no_toc }
 
+* TOC placeholder
+{:toc}
 
 
 ## Create model

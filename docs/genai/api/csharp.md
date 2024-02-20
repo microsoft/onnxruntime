@@ -8,4 +8,7 @@ nav_order: 3
 ---
 
 # ONNX Runtime GenAI C# API
+{: .no_toc }
 
+* TOC placeholder
+{:toc}
