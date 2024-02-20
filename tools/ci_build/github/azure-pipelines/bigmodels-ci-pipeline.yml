@@ -364,17 +364,17 @@ stages:
         docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            onnxruntimepackagestest \
-            bash -c "
+            bash -c '
               set -ex; \
               pushd /workspace/onnxruntime/python/tools/transformers/ ; \
               python3 -m pip install --upgrade pip ; \
-              pushd models/llama ; \
+              pushd models/whisper ; \
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format ;\
               popd ; \
-            "
+            '
       displayName: 'Run Whisper Model'
       workingDirectory: $(Build.SourcesDirectory)
