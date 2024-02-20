@@ -1357,7 +1357,6 @@ class PlannerImpl {
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
       ClearUseCount();
-      for (size_t j = 0; j < ort_value_info_.size(); j++) ort_value_info_[j].reused_buffer_index = static_cast<OrtValueIndex>(j);
       freelist_.clear();  // DONOT share freelist across streams
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
