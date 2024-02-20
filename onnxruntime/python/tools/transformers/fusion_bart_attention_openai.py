@@ -127,8 +127,8 @@ class FusionBartAttentionOpenai(FusionAttention):
                 root_input = output
                 break
 
-        graph_input_names = set([node.name  for node in self.model.graph().input])
-        graph_output_names = set([node.name  for node in self.model.graph().output])
+        graph_input_names = set([node.name for node in self.model.graph().input])
+        graph_output_names = set([node.name for node in self.model.graph().output])
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -152,13 +152,13 @@ class FusionBartAttentionOpenai(FusionAttention):
         if v_nodes is not None:
             (transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes
             # For initial pass through encoder-decoder_with_past to get starting past values (beam search)
-            #present_v = add_v.output[0]
+            # present_v = add_v.output[0]
 
             add_v_children = self.model.get_children(add_v)
             for child in add_v_children:
                 if child.op_type == "Reshape":
-                    #if child.output[0] in graph_output_names:
-                    #present_v = child.output[0]
+                    # if child.output[0] in graph_output_names:
+                    # present_v = child.output[0]
                     reshape_v_children = self.model.get_children(child)
                     for reshape_child in reshape_v_children:
                         if reshape_child.op_type == "Transpose":
@@ -205,12 +205,8 @@ class FusionBartAttentionOpenai(FusionAttention):
         present_v = present_v if present_v in graph_output_names else ""
 
         qk_nodes_1 = self.model.match_parent_path(matmul_qkv, ["Softmax", "MatMul"], [0, 0])
-        qk_nodes_2 = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "Add", "Add", "MatMul"], [0, 0, 0, 0]
-        )
-        qk_nodes_3 = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0]
-        )
+        qk_nodes_2 = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Add", "MatMul"], [0, 0, 0, 0])
+        qk_nodes_3 = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0])
         if qk_nodes_1 is not None:
             _, matmul_qk = qk_nodes_1
             qk_nodes = qk_nodes_1
@@ -262,12 +258,12 @@ class FusionBartAttentionOpenai(FusionAttention):
             k_nodes = k_nodes_with_bias
             present_k = matmul_k.output[0]
             mat_k_out_tmp = matmul_k.output[0] + "_temp"
-            #matmul_k.output[0] = matmul_k.output[0] + "_temp"
+            # matmul_k.output[0] = matmul_k.output[0] + "_temp"
 
             matmul_k_children = self.model.get_children(matmul_k)
             for child in matmul_k_children:
                 if child.op_type == "Reshape":
-                    #if child.output[0] in graph_output_names:
+                    # if child.output[0] in graph_output_names:
                     #    present_k = child.output[0]
                     reshape_k_children = self.model.get_children(child)
                     for reshape_child in reshape_k_children:
@@ -291,9 +287,8 @@ class FusionBartAttentionOpenai(FusionAttention):
                                 if reshape_parent.op_type == "Transpose":
                                     if reshape_parent.input[0] in graph_input_names:
                                         past_k = reshape_parent.input[0]
-                #else:
+                # else:
                 #    matmul_k.output[0] = mat_k_out_tmp
-
 
         elif k_nodes_no_bias is not None:
             _, reshape_k_2, transpose_k_1, reshape_k_1, matmul_k = k_nodes_no_bias
@@ -334,7 +329,7 @@ class FusionBartAttentionOpenai(FusionAttention):
             add_name = self.model.create_node_name("Add")
             add_k = helper.make_node("Add", [empty_bias_name, matmul_k.output[0]], [reshape_k_1.name], add_name)
 
-        '''
+        """
         if not past_k and not self.check_runtime_shape_path(
             reshape_qkv_2,
             reshape_qkv_1,
@@ -344,7 +339,7 @@ class FusionBartAttentionOpenai(FusionAttention):
             root_input,
         ):
             return
-        '''
+        """
 
         three_root_inputs = past_k and past_v and matmul_k is None and "matmul_v" not in locals()
         one_root_input = (
@@ -387,7 +382,7 @@ class FusionBartAttentionOpenai(FusionAttention):
             )
             if mask_nodes_whisper is not None:
                 pass
-                #mask_index = mask_nodes_whisper[0].output[-1]
+                # mask_index = mask_nodes_whisper[0].output[-1]
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
 

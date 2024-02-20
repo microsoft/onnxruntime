@@ -190,8 +190,8 @@ void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) 
   no_speech_token = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_speech_token", -1LL));
   cross_qk_layer_head_input_id = 12;
   extra_decoding_ids_input_id = 13;
-  left_pad_mask_input_id = 14;
-  position_ids_input_id = 15;
+  left_pad_mask_input_id = 15;
+  position_ids_input_id = 16;
   cross_qk_output_id = 3;
   no_speech_probs_output_id = 4;
 }

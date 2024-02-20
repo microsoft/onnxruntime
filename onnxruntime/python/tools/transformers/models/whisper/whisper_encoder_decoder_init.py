@@ -8,7 +8,6 @@ import copy
 import logging
 import os
 import tempfile
-import copy
 from pathlib import Path
 from typing import List, Optional
 
@@ -59,7 +58,9 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         # Decoder out: (logits, past_key_values, encoder_hidden_state)
         if self.model_impl == "openai":
             encoder_hidden_states.unsqueeze(0)
-            decinit_out, present = self.whisper_decoder_openai_init(decoder_input_ids, encoder_hidden_states, left_pad_mask=left_pad_mask, position_ids=position_ids)
+            decinit_out, present = self.whisper_decoder_openai_init(
+                decoder_input_ids, encoder_hidden_states, left_pad_mask=left_pad_mask, position_ids=position_ids
+            )
             return decinit_out, encoder_hidden_states, present
         else:
             decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_hidden_states)
@@ -142,7 +143,9 @@ class WhisperEncoderDecoderInitHelper:
 
         # TODO : Investigate whether copy of model if needed
         cloned_model = copy.deepcopy(model).to(device)
-        out = cloned_model(inputs.encoder_input_ids, inputs.decoder_input_ids, inputs.left_pad_mask, inputs.position_ids)
+        out = cloned_model(
+            inputs.encoder_input_ids, inputs.decoder_input_ids, inputs.left_pad_mask, inputs.position_ids
+        )
         present = out[2]
         present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
 

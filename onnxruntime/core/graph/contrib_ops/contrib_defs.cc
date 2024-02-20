@@ -1232,8 +1232,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WhisperBeamSearch, 1,
                                        "are treated as stop of the extra_decoding_ids for corresponding batch.",
                                        "I", OpSchema::Optional)
                                 .Input(14, "temperature", "Temperature value to apply to logits processing during this execution's decoding. Shape is (1)", "T", OpSchema::Optional)
-                                .Input(15, "left_pad_mask", "The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)", "T", OpSchema::Optional)
-                                .Input(16, "position_ids", "The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)", "I", OpSchema::Optional)
+                                .Input(15, "left_pad_mask", "The mask is added to qk node in the qkv attention function. Shape is (batch_size, initial_sequence_length)", "T", OpSchema::Optional)
+                                .Input(16, "position_ids", "Used to select indices of positional embeddings. Shape is (batch_size, initial_sequence_length)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
                                 .Output(2, "scores",

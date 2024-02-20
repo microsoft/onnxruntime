@@ -6,13 +6,15 @@
 
 import logging
 import os
-import io
 import sys
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
+from float16 import float_to_float16_max_diff
+from onnx_model import OnnxModel
+from optimizer import optimize_model
 from packaging import version
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from transformers import __version__ as transformers_version
@@ -20,16 +22,9 @@ from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoder
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
 
-from whisper.model import Whisper, ModelDimensions
-from whisper import _MODELS, _ALIGNMENT_HEADS
-from whisper import _download
-
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff
-from onnx_model import OnnxModel
-from optimizer import optimize_model
 
 logger = logging.getLogger(__name__)
 
@@ -348,8 +343,6 @@ class WhisperHelper:
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
 
-        from datasets import load_dataset
-
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
 
@@ -382,14 +375,11 @@ class WhisperHelper:
         }
 
         # Generate prompts
-        prompt_text = "Christians"
-        prompt_ids = processor.get_prompt_ids(prompt_text)
-        #print(prompt_ids)
-        #print(processor.decode(pt_model.generate(**inputs, prompt_ids=prompt_ids)))
+        # prompt_text = ""
+        # prompt_ids = processor.get_prompt_ids(prompt_text)
 
         use_extra_decoding_ids = "extra_decoding_ids" in ort_names
         for name, dtype in zip(ort_names, ort_dtypes):
-            print(name, dtype)
             if name == "input_features":
                 inputs[name] = inputs[name].detach().cpu().numpy()
             elif name == "vocab_mask":
@@ -423,20 +413,17 @@ class WhisperHelper:
         diff = pt_outputs - ort_outputs
         max_diff = max(diff.min(), diff.max(), key=abs)
 
-        if True:
+        if max_diff > 0:
             # For ONNX Runtime INT8 model
             pt_expected_transcription = (
                 " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
             )
-            print(pt_outputs)
-            print(ort_outputs)
             pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)
-            print(pt_transcription)
+
             ort_expected_transcription = (
                 " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
             )
             ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
-            print(ort_transcription)
 
             parity = (
                 pt_expected_transcription == pt_transcription[0] and ort_expected_transcription == ort_transcription[0]
