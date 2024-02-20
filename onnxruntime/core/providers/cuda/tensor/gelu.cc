@@ -9,15 +9,16 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      Gelu,                                                       \
-      kOnnxDomain,                                                \
-      20,                                                         \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
+      Gelu,                                                      \
+      kOnnxDomain,                                               \
+      20,                                                        \
+      T,                                                         \
+      kCudaExecutionProvider,                                    \
+      (*KernelDefBuilder::Create())                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .MayInplace(0, 0),                                     \
       Gelu<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -62,5 +63,27 @@ Status Gelu<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 }  // namespace cuda
+
+#ifndef DISABLE_CONTRIB_OPS
+namespace contrib::cuda {
+#define REGISTER_CONTRIB_KERNEL_TYPED(T)                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
+      Gelu,                                                      \
+      kMSDomain,                                                 \
+      1,                                                         \
+      T,                                                         \
+      kCudaExecutionProvider,                                    \
+      (*KernelDefBuilder::Create())                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .MayInplace(0, 0),                                     \
+      onnxruntime::cuda::Gelu<T>);
+
+REGISTER_CONTRIB_KERNEL_TYPED(float)
+REGISTER_CONTRIB_KERNEL_TYPED(MLFloat16)
+REGISTER_CONTRIB_KERNEL_TYPED(BFloat16)
+
+#undef REGISTER_CONTRIB_KERNEL_TYPED
+}  // namespace contrib::cuda
+#endif
 
 }  // namespace onnxruntime

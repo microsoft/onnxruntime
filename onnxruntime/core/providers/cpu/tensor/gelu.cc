@@ -17,6 +17,8 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
+// May revisit the implementations to support inplace computation, if needed.
+
 ONNX_CPU_OPERATOR_KERNEL(
     Gelu,
     20,
