@@ -268,7 +268,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: Onnxruntime-Linux-A10-24G
+    pool: onnxruntime-Linux-GPU-T4
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
@@ -314,7 +314,7 @@ stages:
               pushd /workspace/onnxruntime/python/tools/transformers/ ; \
               python3 -m pip install --upgrade pip ; \
               pushd models/llama ; \
-              python3 -m pip install -r requirements-cuda.txt ; \
+              python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
@@ -322,4 +322,59 @@ stages:
               popd ; \
             "
       displayName: 'Run Llama2 to Onnx F16 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+- stage: Whisper_ONNX
+  dependsOn:
+  - Build_Onnxruntime_Cuda
+  jobs:
+  - job: Whisper_ONNX
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: Onnxruntime-Linux-A10-24G
+    steps:
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Onnxruntime Artifact'
+        ArtifactName: 'drop-ort-linux-gpu'
+        TargetPath: '$(Build.BinariesDirectory)/ort-artifact/'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimeubi8packagestest
+        UpdateDepsTxt: false
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           onnxruntimeubi8packagestest \
+            bash -c "
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/llama ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format ;\
+              popd ; \
+            "
+      displayName: 'Run Whisper Model'
       workingDirectory: $(Build.SourcesDirectory)
