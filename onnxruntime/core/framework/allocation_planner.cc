@@ -1357,6 +1357,7 @@ class PlannerImpl {
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
       ClearUseCount();
+      for (size_t j = 0; j < ort_value_info_.size(); j++) ort_value_info_[j].reused_buffer_index = static_cast<OrtValueIndex>(j);
       freelist_.clear();  // DONOT share freelist across streams
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -1476,7 +1477,6 @@ class PlannerImpl {
           auto original = ort_value_info_[Index(sym)].reused_buffer_index_per_stream;
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-          if (original != -1 && UseCount(original) == 0) continue;
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
           }
@@ -1490,7 +1490,6 @@ class PlannerImpl {
           auto original = ort_value_info_[Index(sym)].reused_buffer_index_per_stream;
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-          if (original != -1 && UseCount(original) == 0) continue;
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
           }
@@ -1505,7 +1504,6 @@ class PlannerImpl {
           auto original = ort_value_info_[Index(sym)].reused_buffer_index_per_stream;
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-          if (UseCount(original) == 0) continue;
           if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
           }
