@@ -113,14 +113,10 @@ class ONNXQuantizer:
             "ForceQuantizeNoInputCheck" in self.extra_options and self.extra_options["ForceQuantizeNoInputCheck"]
         )
         self.q_matmul_const_b_only = "MatMulConstBOnly" in self.extra_options and self.extra_options["MatMulConstBOnly"]
-        self.is_weight_symmetric = (
-            weight_qType in (QuantType.QInt8, QuantType.QInt16, QuantType.QFLOAT8E4M3FN)
-            if "WeightSymmetric" not in self.extra_options
-            else self.extra_options["WeightSymmetric"]
+        self.is_weight_symmetric = self.extra_options.get(
+            "WeightSymmetric", weight_qType in (QuantType.QInt8, QuantType.QInt16, QuantType.QFLOAT8E4M3FN)
         )
-        self.is_activation_symmetric = (
-            False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
-        )
+        self.is_activation_symmetric = self.extra_options.get("ActivationSymmetric", False)
         self.min_real_range = self.extra_options.get("MinimumRealRange")
 
         self.activation_qType = getattr(activation_qType, "tensor_type", activation_qType)
@@ -1336,9 +1332,15 @@ class ONNXQuantizer:
         if (value_name in self.quantized_value_map) and (value_name not in self.generated_value_names):
             quantized_value = self.quantized_value_map[value_name]
             # Add DequantizeLinear Node for this input
+
             scale_init = find_by_name(quantized_value.scale_name, self.model.initializer())
-            # axis is not specified so scale_init must be a scalar.
-            assert onnx.numpy_helper.to_array(scale_init).size == 1
+
+            # In case we are working with subgraphs, the graph `producer_name` is set to `"onnx-quantizer"` in the `quantize_subgraph` method. In this case, the scale initializer may be on the top level graph, so the check below can not be done.
+            if self.model.model.producer_name != "onnx-quantizer" or (
+                self.model.model.producer_name == "onnx-quantizer" and scale_init is not None
+            ):
+                # axis is not specified so scale_init must be a scalar.
+                assert onnx.numpy_helper.to_array(scale_init).size == 1
 
             dqlinear_name = value_name + "_DequantizeLinear"
             dqlinear_node = self.model.find_node_by_name(dqlinear_name, self.new_nodes, self.model.graph())

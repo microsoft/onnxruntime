@@ -13,6 +13,7 @@ import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose'
 import {cumsum, parseCumSumAttributes} from './ops/cumsum';
 import {einsum, parseEinsumAttributes} from './ops/einsum';
 import {expand} from './ops/expand';
+import {fastGelu} from './ops/fast-gelu';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
 import {gemm, parseGemmAttributes} from './ops/gemm';
@@ -25,7 +26,7 @@ import * as pool from './ops/pool';
 import {range} from './ops/range';
 import {reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
-import {parseSkipLayerNormAttributes, skipLayerNorm} from './ops/skip-layer-norm';
+import {skipLayerNorm} from './ops/skip-layer-norm';
 import {parseSliceAttributes, slice} from './ops/slice';
 import {parseSoftmaxAttributes, softmax} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
@@ -72,6 +73,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Erf', [unaryOps.erf]],
   ['Exp', [unaryOps.exp]],
   ['Expand', [expand]],
+  ['FastGelu', [fastGelu]],
   ['Floor', [unaryOps.floor]],
   ['FusedConv', [conv, parseConvAttributes]],
   ['Gather', [gather, parseGatherAttributes]],
@@ -82,6 +84,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],
   ['Greater', [binaryOps.greater]],
   ['GreaterOrEqual', [binaryOps.greaterOrEqual]],
+  ['HardSigmoid', [unaryOps.hardSigmoid, unaryOps.parseHardSigmoidAttributes]],
   ['InstanceNormalization', [instanceNorm]],
   ['LayerNormalization', [layerNorm]],
   ['LeakyRelu', [unaryOps.leakyRelu, unaryOps.parseAlphaAttributes]],
@@ -115,7 +118,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
   ['Slice', [slice, parseSliceAttributes]],
-  ['SkipLayerNormalization', [skipLayerNorm, parseSkipLayerNormAttributes]],
+  ['SkipLayerNormalization', [skipLayerNorm]],
   ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],
   ['Softmax', [softmax, parseSoftmaxAttributes]],

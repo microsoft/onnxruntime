@@ -97,10 +97,8 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: outputDataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)},
-      programUniforms: [
-        {type: 'uint32', data: vecSize}, ...createTensorShapeVariables(dimsC), ...createTensorShapeVariables(dimsA),
-        ...createTensorShapeVariables(dimsB), ...createTensorShapeVariables(outputShape)
-      ],
+      programUniforms:
+          [{type: DataType.uint32, data: vecSize}, ...createTensorShapeVariables(dimsC, dimsA, dimsB, outputShape)],
     }),
   };
 };

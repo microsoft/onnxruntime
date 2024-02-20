@@ -141,8 +141,7 @@ class HalfGemmOptions {
   }
 #else
   cublasMath_t GetMathMode() const {
-    // CublasMathModeSetter will check whether device has tensor cores later.
-    return CUBLAS_TENSOR_OP_MATH;
+    return CUBLAS_DEFAULT_MATH;
   }
 
   cudaDataType GetComputeType() const {

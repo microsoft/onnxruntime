@@ -1047,3 +1047,26 @@ def test_custom_loss_function():
 
     with tempfile.TemporaryDirectory() as temp_dir:
         artifacts.generate_artifacts(onnx_model, loss=CustomLossBlock(), artifact_directory=temp_dir)
+
+
+def test_save_nominal_checkpoint():
+    device = "cpu"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(
+            base_model,
+            requires_grad=["fc1.weight", "fc1.bias", "fc2.weight", "fc2.bias"],
+            loss=artifacts.LossType.CrossEntropyLoss,
+            optimizer=artifacts.OptimType.AdamW,
+            artifact_directory=temp_dir,
+            nominal_checkpoint=True,
+        )
+
+        assert os.path.exists(os.path.join(temp_dir, "checkpoint"))
+        assert os.path.exists(os.path.join(temp_dir, "nominal_checkpoint"))
+        assert (
+            os.stat(os.path.join(temp_dir, "checkpoint")).st_size
+            > os.stat(os.path.join(temp_dir, "nominal_checkpoint")).st_size
+        )

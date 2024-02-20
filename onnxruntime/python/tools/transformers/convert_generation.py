@@ -55,10 +55,6 @@ import onnx
 import torch
 from benchmark_helper import Precision, setup_logger
 from fusion_utils import NumpyHelper
-from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
-from models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
-from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
-from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 from onnx import GraphProto, ModelProto, TensorProto
 from onnx_model import OnnxModel
 from transformers import (
@@ -73,6 +69,10 @@ from transformers import (
 )
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
+from onnxruntime.transformers.models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
+from onnxruntime.transformers.models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
+from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+from onnxruntime.transformers.models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 
 logger = logging.getLogger("")
 
@@ -372,7 +372,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         required=False,
         default=1,
-        help="Minimumber of tokens we keep per batch example in the output.",
+        help="Minimum number of tokens we keep per batch example in the output.",
     )
 
     beam_parameters_group.add_argument(
@@ -466,7 +466,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--save_test_data",
         required=False,
         action="store_true",
-        help="save test data for onnxruntimer_perf_test tool",
+        help="save test data for onnxruntime_perf_test tool",
     )
     test_group.set_defaults(save_test_data=False)
 
@@ -1225,7 +1225,7 @@ def find_past_seq_len_usage(subg: GraphProto):
     tensor_names_to_rename = set()
     nodes_to_remove = []
 
-    graph_intput_names = {inp.name: index for index, inp in enumerate(subg.input)}
+    graph_input_names = {inp.name: index for index, inp in enumerate(subg.input)}
 
     input_name_to_nodes = {}
     output_name_to_node = {}
@@ -1259,7 +1259,7 @@ def find_past_seq_len_usage(subg: GraphProto):
                 if (
                     shape_node.op_type == "Shape"
                     and shape_node.input[0]
-                    and shape_node.input[0] in graph_intput_names
+                    and shape_node.input[0] in graph_input_names
                     and (
                         shape_node.input[0].startswith("past_key_self_")
                         or shape_node.input[0].startswith("past_value_self_")
@@ -1423,7 +1423,7 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
         if node.op_type == "MultiHeadAttention":
             old_nodes.extend([node])
 
-    # If not all the MultiheadAttention nodes are fused, this optimization is not applicable
+    # If not all the MultiHeadAttention nodes are fused, this optimization is not applicable
     if len(old_nodes) < num_layers:
         return False
 

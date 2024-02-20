@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifdef USE_CUTLASS
 
 #pragma once
 
@@ -38,4 +37,3 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
                                                         const int multi_processor_count, const int is_weight_only);
 
 }  // namespace ort_fastertransformer
-#endif

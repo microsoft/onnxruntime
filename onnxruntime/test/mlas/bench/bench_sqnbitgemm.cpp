@@ -61,10 +61,11 @@ void SQNBITGEMM(benchmark::State& state) {
   }
 
   std::unique_ptr<std::byte[]> PackedQuantBData;
-  if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen);
+  if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
-    MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, QuantBData.data(), PackedQuantBData.get(), tp.get());
+    MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
+                                 tp.get());
   }
 
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
@@ -87,7 +88,9 @@ void SQNBITGEMM(benchmark::State& state) {
   }
 }
 
-static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
+static void SQ4BitGemmArgs(benchmark::internal::Benchmark* b) {
+  constexpr size_t BlkBitWidth = 4;
+
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "ComputeType"});
 
   ArgsProductWithFilter(b,
@@ -96,19 +99,17 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
                          {1, 1024, 2048},                          // M
                          {4096, 11008},                            // N
                          {4096, 11008},                            // K
-                         {8},                                      // Threads
+                         {1, 8},                                   // Threads
                          {int64_t{false}, int64_t{true}},          // Symmetric
                          {int64_t{CompFp32}, int64_t{CompInt8}}},  // ComputeType
 
-                        [](const std::vector<int64_t>& args) {
+                        [&](const std::vector<int64_t>& args) {
                           return MlasIsSQNBitGemmAvailable(
-                              // M, N, K
-                              narrow<size_t>(args[1]), narrow<size_t>(args[2]), narrow<size_t>(args[3]),
                               // BlkBitWidth, BlkLen
-                              4, narrow<size_t>(args[0]),
+                              BlkBitWidth, narrow<size_t>(args[0]),
                               // ComputeType
                               static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(args[6]));
                         });
 }
 
-BENCHMARK(SQNBITGEMM<4>)->Apply(SQNBitGemmArgs)->UseRealTime();
+BENCHMARK(SQNBITGEMM<4>)->Apply(SQ4BitGemmArgs)->UseRealTime();

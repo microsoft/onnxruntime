@@ -138,7 +138,7 @@ jobs:
       Today: $(TODAY)
       CacheDir: $(ORT_CACHE_DIR)
       AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "
-      BuildPyArguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      BuildPyArguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
       MsbuildArguments: '-maxcpucount'
       BuildArch: ${{ parameters.buildArch }}
       Platform: ${{ parameters.msbuildPlatform }}

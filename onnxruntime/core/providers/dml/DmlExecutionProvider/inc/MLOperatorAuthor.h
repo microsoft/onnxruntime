@@ -96,7 +96,10 @@ enum class MLOperatorTensorDataType : uint32_t
     Complex64 = 14,
 
     //! 128 bit complex type (unsupported)
-    Complex128 = 15
+    Complex128 = 15,
+
+    // Specific to DML
+    Int4 = 16
 };
 
 //! \enum MLOperatorEdgeType

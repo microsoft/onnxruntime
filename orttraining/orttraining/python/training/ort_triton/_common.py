@@ -30,7 +30,7 @@ class CodegenContext:
     # For some operators such as data load/store, we need an internal variable name inside the kernel function.
     def get_internal_variable_name(self, name: str) -> str:
         var_name = self._var_map[name]
-        var_name = self._var_map[var_name] if var_name in self._var_map else var_name
+        var_name = self._var_map.get(var_name, var_name)
         return f'float("{var_name}")' if var_name in _SPECIAL_FLOATS else var_name
 
 
