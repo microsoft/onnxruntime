@@ -23,7 +23,7 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_KERNEL_TYPED(double)
 
 template <typename T>
 Status Gelu<T>::ComputeInternal(OpKernelContext* context) const {
@@ -80,7 +80,7 @@ namespace contrib::cuda {
 
 REGISTER_CONTRIB_KERNEL_TYPED(float)
 REGISTER_CONTRIB_KERNEL_TYPED(MLFloat16)
-REGISTER_CONTRIB_KERNEL_TYPED(BFloat16)
+REGISTER_CONTRIB_KERNEL_TYPED(double)
 
 #undef REGISTER_CONTRIB_KERNEL_TYPED
 }  // namespace contrib::cuda

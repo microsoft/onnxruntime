@@ -74,6 +74,17 @@ Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int
 
 template <>
 Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
+                            const double* input, const double* bias, double* output, bool /*use_half2*/) {
+  constexpr int blockSize = 256;
+  const int gridSize = (input_length + blockSize - 1) / blockSize;
+  FastGeluKernel<double, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length,
+                                                                        input, bias, output);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template <>
+Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
                             const half* input, const half* bias, half* output, bool use_half2) {
   constexpr int blockSize = 256;
   if (use_half2 && 0 == (bias_length & 1) && prop.major >= 7) {
@@ -109,6 +120,18 @@ Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int
 
   return CUDA_CALL(cudaGetLastError());
 }
+
+#define SPECIALIZED_FASTGELU_IMPL(T)                                                              \
+  template Status LaunchFastGeluKernel<T>(const cudaDeviceProp& prop,                             \
+                                          cudaStream_t stream, int input_length, int bias_length, \
+                                          const T* input, const T* bias, T* output, bool use_half2);
+
+SPECIALIZED_FASTGELU_IMPL(float);
+SPECIALIZED_FASTGELU_IMPL(half);
+SPECIALIZED_FASTGELU_IMPL(double);
+SPECIALIZED_FASTGELU_IMPL(BFloat16);
+
+#undef SPECIALIZED_FASTGELU_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime
