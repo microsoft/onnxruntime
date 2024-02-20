@@ -159,11 +159,29 @@ Default value: 0
 
 ### enable_skip_layer_norm_strict_mode
 
-Whether to use strict mode in SkipLayerNormalization cuda implementation. The default and recommanded setting is false.
+Whether to use strict mode in SkipLayerNormalization cuda implementation. The default and recommended setting is false.
 If enabled, accuracy improvement and performance drop can be expected.
 This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 Default value: 0
+
+### use_tf32
+
+TF32 is a math mode available on NVIDIA GPUs since Ampere. It allows certain float32 matrix multiplications and convolutions to run much faster on tensor cores with [TensorFloat-32](https://blogs.nvidia.com/blog/tensorfloat-32-precision-format/) reduced precision: float32 inputs are rounded with 10 bits of mantissa and results are accumulated with float32 precision.
+
+Default value: 1
+
+TensorFloat-32 is enabled by default. Starting from ONNX Runtime 1.18, you can use this flag to disable it for an inference session.
+
+Example python usage:
+
+```python
+providers = [("CUDAExecutionProvider", {"use_tf32": 0})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_model.onnx", sess_options=sess_options, providers=providers)
+```
+
+This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 ### gpu_external_[alloc|free|empty_cache]
 
@@ -187,6 +205,7 @@ with `onnxruntime_USE_CUDA_NHWC_OPS=ON`.
 If this is enabled the EP prefers NHWC operators over NCHW. Needed transforms will be added to the model. As NVIDIA
 tensor cores can only work on NHWC layout this can increase performance if the model consists of many supported
 operators and does not need too many new transpose nodes. Wider operator support is planned in the future.
+
 This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2
 provider options struct can be created
 using [CreateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172)
