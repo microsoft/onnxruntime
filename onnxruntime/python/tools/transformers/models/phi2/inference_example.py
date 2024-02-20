@@ -146,7 +146,7 @@ class ORTGenerator:
         ro_prompt = ort.RunOptions()
         ro_prompt.add_run_config_entry("ep.cuda.cuda_graph_annotation", "-1")
         ro_token = ort.RunOptions()
-        ro_token.add_run_config_entry("ep.cuda.cuda_graph_annotation", "1")
+        ro_token.add_run_config_entry("ep.cuda.cuda_graph_annotation", "2")
         prompt_run = True
         while current_length < max_length:
             io_binding = self.apply_io_binding(self.sess, inputs, outputs)
@@ -209,6 +209,7 @@ class ORTGenerator:
                         {f"present_key_{i}": present.contiguous(), f"present_value_{i}": present.clone().contiguous()}
                     ) if not self.packed_kv else outputs.update({f"present_{i}": present.contiguous()})
 
+        print(all_token_ids)
         texts = self.tokenizer.batch_decode(all_token_ids, skip_special_tokens=True)
         return texts
 
@@ -224,7 +225,7 @@ def run_phi2(onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_
 
     generator = ORTGenerator(onnx_model_path)
     generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv, use_step)
-    texts = generator.generate(prompt, max_length=200)
+    texts = generator.generate(prompt, max_length=128)
 
     for i in range(len(texts)):
         print("Prompt: ", prompt[i])

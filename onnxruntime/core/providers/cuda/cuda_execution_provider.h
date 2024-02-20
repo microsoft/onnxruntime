@@ -177,7 +177,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     }
 
     bool IsGraphCaptureAllowed() const;
-    bool IsGraphCaptureAllowedOnRun() const;
+    bool IsGraphCaptureSkippedOnRun() const;
     void SetCudaGraphAnnotationId(GraphAnnotationOptional_t cuda_graph_annotation_id);
     void CaptureBegin();
     void CaptureEnd();

@@ -16,16 +16,22 @@ void CUDAGraph::SetStream(cudaStream_t stream) {
   stream_ = stream;
 }
 
-void CUDAGraph::CaptureBegin(GraphAnnotationOptional_t cuda_graph_annotation_id) {
-  if (!cuda_graph_annotation_id.has_value()) {
+void CUDAGraph::SetGraphAnnotation(GraphAnnotationOptional_t cuda_graph_annotation_id) {
+  cuda_graph_annotation_id_ = cuda_graph_annotation_id;
+}
+
+void CUDAGraph::CaptureBegin() {
+  if (!cuda_graph_annotation_id_.has_value()) {
     std::cout << "CaptureBegin: cuda_graph_annotation_id is empty" << std::endl;
     ORT_ENFORCE(!has_graph_exec_,
                 "This cuda graph has already captured a graph. "
                 "Create a new instance to capture a new graph.");
   } else {
-    std::cout << "CaptureBegin: cuda_graph_annotation_id is " << *cuda_graph_annotation_id << std::endl;
-
-    cuda_graph_annotation_id_ = cuda_graph_annotation_id;
+    std::cout << "CaptureBegin: cuda_graph_annotation_id is " << *cuda_graph_annotation_id_ << std::endl;
+    if (!IsGraphCaptureAllowedOnRun()) {
+      std::cout << "CaptureBegin: Graph capture is not allowed on this run" << std::endl;
+      return;
+    }
   }
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
@@ -33,10 +39,16 @@ void CUDAGraph::CaptureBegin(GraphAnnotationOptional_t cuda_graph_annotation_id)
   // will support multiple threads. For multiple threads with multiple graphs
   // and streams, `cudaStreamCaptureModeGlobal` needs to be changed to
   // `cudaStreamCaptureModeThreadLocal`
+  std::cout << "REAL cuda graph capture begins" << std::endl;
   CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal));
 }
 
 void CUDAGraph::CaptureEnd() {
+  std::cout << "CUDAGraph::CaptureEnd()" << std::endl;
+  if (!IsGraphCaptureAllowedOnRun()) {
+    return;
+  }
+
   if (cuda_graph_annotation_id_.has_value()) {
     std::cout << "CaptureEnd: cuda_graph_annotation_id is " << *cuda_graph_annotation_id_ << std::endl;
     CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &additional_graph_));
@@ -47,6 +59,7 @@ void CUDAGraph::CaptureEnd() {
     cudaGraphExec_t graph_exec = NULL;
 
     has_additional_graph_ = true;
+    std::cout << "REAL cuda graph capture ends" << std::endl;
     CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec, additional_graph_, NULL, NULL, 0));
     CUDA_CALL_THROW(cudaGraphDestroy(additional_graph_));
     has_additional_graph_ = false;
@@ -64,6 +77,7 @@ void CUDAGraph::CaptureEnd() {
   }
 
   has_graph_ = true;
+  std::cout << "REAL cuda graph capture ends" << std::endl;
   CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec_, graph_, NULL, NULL, 0));
   has_graph_exec_ = true;
   CUDA_CALL_THROW(cudaGraphDestroy(graph_));
@@ -71,6 +85,9 @@ void CUDAGraph::CaptureEnd() {
 }
 
 Status CUDAGraph::Replay(GraphAnnotationOptional_t cuda_graph_annotation_id) {
+  if (!IsGraphCaptureAllowedOnRun()) {
+    return Status::OK();
+  }
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
   if (cuda_graph_annotation_id_.has_value()) {
@@ -93,12 +110,13 @@ Status CUDAGraph::Replay(GraphAnnotationOptional_t cuda_graph_annotation_id) {
   return Status::OK();
 }
 
-bool CUDAGraph::IsAdditionalGraphCaptured() const {
-  return !graph_exec_map_.empty();
+bool CUDAGraph::IsAdditionalGraphCaptured(GraphAnnotation_t cuda_graph_annotation_id) const {
+  return graph_exec_map_.find(cuda_graph_annotation_id) != graph_exec_map_.end();
 }
 
 bool CUDAGraph::IsGraphCaptureAllowedOnRun() const {
   if (!cuda_graph_annotation_id_.has_value()) {
+    std::cout << "IsGraphCaptureAllowedOnRun()::cuda_graph_annotation_id is empty" << std::endl;
     return true;
   }
   return *cuda_graph_annotation_id_ != kDefaultSkipGraphCapture;

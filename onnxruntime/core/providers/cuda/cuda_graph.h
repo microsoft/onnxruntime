@@ -21,15 +21,16 @@ struct CUDAGraph {
   ~CUDAGraph();
 
   void SetStream(cudaStream_t stream);
+  void SetGraphAnnotation(GraphAnnotationOptional_t cuda_graph_annotation_id);
 
-  void CaptureBegin(GraphAnnotationOptional_t cuda_graph_annotation_id);
+  void CaptureBegin();
   void CaptureEnd();
   Status Replay(GraphAnnotationOptional_t cuda_graph_annotation_id);
 
   void Reset();
   void ResetAdditional();
 
-  bool IsAdditionalGraphCaptured() const;
+  bool IsAdditionalGraphCaptured(GraphAnnotation_t cuda_graph_annotation_id) const;
   bool IsGraphCaptureAllowedOnRun() const;
 
  private:
