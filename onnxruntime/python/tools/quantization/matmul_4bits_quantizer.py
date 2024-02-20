@@ -368,7 +368,7 @@ set of 4b integers with a scaling factor and an optional offset.
         "--symmetric",
         required=False,
         default=True,
-        const=False,
+        const=True,
         nargs='?',
         type=ort_convert_str_to_bool,
         help="Indicate whether to quantize the model symmetrically",
