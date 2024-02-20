@@ -20,7 +20,7 @@ nav_order: 1
 (Temporary)
 1. Build from source
 
-   Follow the instructions in [build-from-source.md]
+   Follow the [build from source](./build-from-source.md) instructions.
 
 2. Install wheel
 
@@ -36,7 +36,7 @@ nav_order: 1
 (Temporary)
 1. Build from source
 
-   Follow the instructions in [build-from-source.md]
+   Follow the [build from source](./build-from-source.md) instructions.
 
 2. Build nuget package
 
@@ -60,7 +60,7 @@ Unzip archive
 (Temporary)
 1. Build from source
 
-   Follow the instructions in [build-from-source.md]
+   Follow the [build from source](build-from-source.md) instructions.
 
    
 2. Use the following include locations to build your C application
