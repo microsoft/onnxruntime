@@ -1080,8 +1080,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                         char const* output_name,
                         size_t output_index,
                         size_t output_type,
-                        cudaStream_t stream,
-                        bool* sync_stream_after_dds_output_copy) {
+                        cudaStream_t stream) {
   auto allocator = allocator_map[output_name].get();
   auto& shape = allocator->getOutputShape();
   auto output_tensor = ctx.GetOutput(output_index, shape);
@@ -1099,17 +1098,21 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
   auto elem_cnt = output_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
 
   /*
-   * Copy output data allocation buffer to ORT context output address.
+   * Copy output data allocation buffer to ORT context output address or
+   * cast (int32/float -> int64/double) to ORT context output address.
    * 
-   * If the output tensor is empty tensor (i.e. any of the dimension is 0) which means element count is 0,
-   * TRT EP does not perform cuda memory copy to prevent overwriting other location that might belong to other tensor.
+   * Note:
+   * 1. If the output tensor is empty tensor (i.e. any of the dimension is 0) which means element count is 0,
+   *    TRT EP does not perform cuda memory copy to prevent overwriting other location that might belong to other tensors.
+   * 2. The cudaMemcpyAsync() and cuda::Impl_Cast() (implemented as _UnaryElementWise() in cuda ep) are all async, but we
+   *    don't need to explicitly call cudaStreamSynchronize() after those APIs due to CUDA EP and TRT EP uses same stream,
+   *    and within the same stream, operations are guaranteed to be executed in order.
    */
   switch (output_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<float>();
       if (output_tensor_ptr != nullptr && elem_cnt > 0) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(float), cudaMemcpyDeviceToDevice, stream));
-        *sync_stream_after_dds_output_copy = true;
       }
       break;
     }
@@ -1117,7 +1120,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint16_t>();
       if (output_tensor_ptr != nullptr && elem_cnt > 0) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(uint16_t), cudaMemcpyDeviceToDevice, stream));
-        *sync_stream_after_dds_output_copy = true;
       }
       break;
     }
@@ -1125,7 +1127,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<bool>();
       if (output_tensor_ptr != nullptr && elem_cnt > 0) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(bool), cudaMemcpyDeviceToDevice, stream));
-        *sync_stream_after_dds_output_copy = true;
       }
       break;
     }
@@ -1133,7 +1134,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<int8_t>();
       if (output_tensor_ptr != nullptr && elem_cnt > 0) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(int8_t), cudaMemcpyDeviceToDevice, stream));
-        *sync_stream_after_dds_output_copy = true;
       }
       break;
     }
@@ -1141,7 +1141,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint8_t>();
       if (output_tensor_ptr != nullptr && elem_cnt > 0) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(uint8_t), cudaMemcpyDeviceToDevice, stream));
-        *sync_stream_after_dds_output_copy = true;
       }
       break;
     }
@@ -1149,7 +1148,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<int32_t>();
       if (output_tensor_ptr != nullptr && elem_cnt > 0) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(int32_t), cudaMemcpyDeviceToDevice, stream));
-        *sync_stream_after_dds_output_copy = true;
       }
       break;
     }
@@ -1159,7 +1157,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
       if (output_tensor_ptr != nullptr && elem_cnt > 0) {
         cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), reinterpret_cast<int64_t*>(output_tensor_ptr), elem_cnt);
-        *sync_stream_after_dds_output_copy = true;
       }
       break;
     }
@@ -1169,7 +1166,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
       if (output_tensor_ptr != nullptr && elem_cnt > 0) {
         cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), reinterpret_cast<double*>(output_tensor_ptr), elem_cnt);
-        *sync_stream_after_dds_output_copy = true;
       }
       break;
     }
@@ -3585,8 +3581,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
-    bool sync_stream_after_dds_output_copy = false;
-
     // Assign TRT output back to ORT output
     // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
     // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
@@ -3605,7 +3599,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream, &sync_stream_after_dds_output_copy);
+        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
         }
@@ -3623,10 +3617,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           }
         }
       }
-    }
-
-    if (sync_stream_after_dds_output_copy) {
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
     // End CUDA graph capture.
@@ -3903,7 +3893,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream, &sync_stream_after_dds_output_copy);
+        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
         }
@@ -3921,10 +3911,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
           }
         }
       }
-    }
-
-    if (sync_stream_after_dds_output_copy) {
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
     // End CUDA graph capture.
