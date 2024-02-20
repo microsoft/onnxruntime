@@ -371,6 +371,7 @@ set of 4b integers with a scaling factor and an optional offset.
         const=True,
         nargs='?',
         type=ort_convert_str_to_bool,
+        choices=[True, False],
         help="Indicate whether to quantize the model symmetrically",
     )
     parser.add_argument(
