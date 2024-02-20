@@ -2,6 +2,7 @@
 title: Build models
 description: How to build models with ONNX Runtime GenAI
 has_children: false
+parent: How to
 grand_parent: Generative AI
 nav_order: 2
 ---
