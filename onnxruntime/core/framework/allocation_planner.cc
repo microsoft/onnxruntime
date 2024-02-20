@@ -200,6 +200,7 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     OrtValueIndex inplace_reused_buffer_index = -1;  // index of original buffer to reuse inplace
 #endif
+    OrtValueIndex reused_buffer_index_per_stream;
   };
 
   // ort_value_info_ is indexed by an OrtValueIndex
@@ -277,6 +278,7 @@ class PlannerImpl {
     OrtValueIndex original = Buffer(reused);
     // record that the new buffer will reuse that original buffer
     Buffer(reused_for) = original;
+    ort_value_info_[reused_for].reused_buffer_index_per_stream = original;
     // adjust original buffer's usecount
     UseCount(original) += UseCount(reused_for);
 
@@ -357,7 +359,8 @@ class PlannerImpl {
           auto p_input_arg = input_args[pair.first];
           if (p_input_arg->Exists()) {
             auto input_arg_index = Index(p_input_arg->Name());
-            auto original = Buffer(input_arg_index);
+            //auto original = Buffer(input_arg_index);
+            auto original = ort_value_info_[input_arg_index].reused_buffer_index_per_stream;
             if (1 == UseCount(original)) {
               if (SameSize(*p_input_arg, *p_output_arg)) {
                 // we can reuse this input since it is its last use and permitted for in-place update
@@ -1344,6 +1347,7 @@ class PlannerImpl {
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       // compute use count first
       ORT_RETURN_IF_ERROR(ComputeReuseCount());
+      for (size_t j = 0; j < ort_value_info_.size(); j++) ort_value_info_[j].reused_buffer_index_per_stream = static_cast<OrtValueIndex>(j);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       if (i == 0) {
         for (auto ort_value_info : ort_value_info_) {
@@ -1468,7 +1472,8 @@ class PlannerImpl {
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
-          auto original = Buffer(Index(sym));
+          //auto original = Buffer(Index(sym));
+          auto original = ort_value_info_[Index(sym)].reused_buffer_index_per_stream;
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if (original != -1 && UseCount(original) == 0) continue;
@@ -1481,7 +1486,8 @@ class PlannerImpl {
       for (auto node_input : pnode->ImplicitInputDefs()) {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
-          auto original = Buffer(Index(sym));
+          //auto original = Buffer(Index(sym));
+          auto original = ort_value_info_[Index(sym)].reused_buffer_index_per_stream;
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if (original != -1 && UseCount(original) == 0) continue;
@@ -1495,7 +1501,8 @@ class PlannerImpl {
       for (auto node_output : pnode->OutputDefs()) {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
-          auto original = Buffer(Index(sym));
+          //auto original = Buffer(Index(sym));
+          auto original = ort_value_info_[Index(sym)].reused_buffer_index_per_stream;
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if (UseCount(original) == 0) continue;
