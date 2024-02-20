@@ -6,37 +6,37 @@
 
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
+from float16 import float_to_float16_max_diff
+from onnx_model import OnnxModel
+from optimizer import optimize_model
+from packaging import version
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
+from transformers import __version__ as transformers_version
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
 
 from onnxruntime import InferenceSession
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from optimizer import optimize_model  # noqa: E402
-
 logger = logging.getLogger(__name__)
 
 PRETRAINED_WHISPER_MODELS = [
     "whisper-tiny",
     "whisper-tiny.en",
+    "whisper-base",
+    "whisper-base.en",
     "whisper-small",
     "whisper-small.en",
     "whisper-medium",
     "whisper-medium.en",
-    "whisper-base",
-    "whisper-base.en",
     "whisper-large",
     "whisper-large-v2",
+    "whisper-large-v3",
 ]
 
 
@@ -71,8 +71,48 @@ class WhisperHelper:
         return os.path.join(directory, model_name + ".onnx")
 
     @staticmethod
+    def load_model_openai(
+        model_name_or_path: str,
+        cache_dir: str,
+        device: torch.device,
+    ) -> torch.nn.Module:
+        """Load model given a pretrained name or path, then build models for ONNX conversion.
+
+        Args:
+            model_name_or_path (str): pretrained model name or path
+            cache_dir (str): cache directory
+            device (torch.device): device to run the model
+            merge_encoder_and_decoder_init (bool, optional): Whether merge encoder and decoder initialization into one ONNX model. Defaults to True.
+        Returns:
+            Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
+        """
+        from whisper import _ALIGNMENT_HEADS, _MODELS, _download
+        from whisper.model import ModelDimensions, Whisper
+
+        in_memory = False
+
+        model_name = model_name_or_path.split("/")[-1][8:]
+        checkpoint_file, alignment_heads = None, None
+        if model_name in _MODELS:
+            checkpoint_file = _download(_MODELS[model_name], cache_dir, in_memory)
+            alignment_heads = _ALIGNMENT_HEADS[model_name]
+
+        with open(checkpoint_file, "rb") as fp:
+            checkpoint = torch.load(fp, map_location=device)
+        del checkpoint_file
+
+        dims = ModelDimensions(**checkpoint["dims"])
+        model = Whisper(dims)
+        model.load_state_dict(checkpoint["model_state_dict"])
+
+        if alignment_heads is not None:
+            model.set_alignment_heads(alignment_heads)
+        return model.to(device)
+
+    @staticmethod
     def load_model(
         model_name_or_path: str,
+        model_impl: str,
         cache_dir: str,
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
@@ -88,19 +128,33 @@ class WhisperHelper:
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
-        model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        extra_kwargs = {}
+        if version.parse(transformers_version) >= version.parse("4.36.0"):
+            extra_kwargs["attn_implementation"] = "eager"
+        model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir, **extra_kwargs)
+
+        if model_impl == "openai":
+            openai_model = WhisperHelper.load_model_openai(model_name_or_path, cache_dir, device)
+            model_encoder, model_decoder = openai_model.encoder, openai_model.decoder
+            passed_model = openai_model
+        else:
+            model_encoder, model_decoder = model, model
+            passed_model = None
+
         if state_dict_path:
             model.load_state_dict(torch.load(state_dict_path), strict=False)
 
-        decoder = WhisperDecoder(model, model.config)
+        decoder = WhisperDecoder(model_decoder, model.config, model_impl=model_impl, model=passed_model)
         decoder.eval().to(device)
 
         if merge_encoder_and_decoder_init:
             encoder_decoder_init = WhisperEncoderDecoderInit(
-                model,
-                model,
+                model_encoder,
+                model_decoder,
                 model.config,
                 decoder_start_token_id=None,
+                model_impl=model_impl,
+                model=passed_model,
             )
             return {"encoder_decoder_init": encoder_decoder_init, "decoder": decoder}
         else:
@@ -262,11 +316,17 @@ class WhisperHelper:
     @staticmethod
     def verify_onnx(
         model_name_or_path: str,
+        cache_dir: str,
         ort_session: InferenceSession,
         device: torch.device,
     ):
         """Compare the result from PyTorch and ONNX Runtime to verify the ONNX model is good."""
-        pt_model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path).to(device)
+        extra_kwargs = {}
+        if version.parse(transformers_version) >= version.parse("4.36.0"):
+            extra_kwargs["attn_implementation"] = "eager"
+        pt_model = WhisperForConditionalGeneration.from_pretrained(
+            model_name_or_path, cache_dir=cache_dir, **extra_kwargs
+        ).to(device)
         processor = WhisperProcessor.from_pretrained(model_name_or_path)
         config = WhisperConfig.from_pretrained(model_name_or_path)
 
@@ -279,12 +339,17 @@ class WhisperHelper:
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
 
-        from datasets import load_dataset  # noqa: F811
+        from datasets import load_dataset
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
 
-        batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 26, 0, 5, 1
+        start_id = [config.decoder_start_token_id]  # ex: [50258]
+        prompt_ids = processor.get_decoder_prompt_ids(language="english", task="transcribe")
+        prompt_ids = list(map(lambda token: token[1], prompt_ids))  # ex: [50259, 50358, 50363]
+        forced_decoder_ids = start_id + prompt_ids  # ex: [50258, 50259, 50358, 50363]
+
+        batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 30, 0, 1, 1
         length_penalty, repetition_penalty = 1.0, 1.0
         inputs = {
             "input_features": input_features.to(device),
@@ -321,43 +386,51 @@ class WhisperHelper:
             elif name == "prefix_vocab_mask":
                 inputs[name] = np.ones((batch_size, config.vocab_size), dtype=ort_to_np[dtype])
             elif name == "decoder_input_ids":
-                raw_input_ids = (
-                    [[config.decoder_start_token_id]]
-                    if use_extra_decoding_ids
-                    else [[config.decoder_start_token_id, 50259, 50359, 50363]]
-                )
+                raw_input_ids = [start_id] if use_extra_decoding_ids else [forced_decoder_ids]
                 inputs[name] = np.array(raw_input_ids, dtype=ort_to_np[dtype])
             elif name == "logits_processor":
                 inputs[name] = np.array([1], dtype=ort_to_np[dtype])
             elif name == "cross_qk_layer_head":
                 inputs[name] = np.array([[0, 0]], dtype=ort_to_np[dtype])
             elif name == "extra_decoding_ids":
-                inputs[name] = np.repeat(np.array([[50259, 50359, 50363]], dtype=ort_to_np[dtype]), batch_size, 0)
+                inputs[name] = np.repeat(np.array([prompt_ids], dtype=ort_to_np[dtype]), batch_size, 0)
+            elif name == "temperature":
+                inputs[name] = np.array([1.0], dtype=ort_to_np[dtype])
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
         ort_outputs = ort_session.run(None, inputs)[0][0]
 
-        if pt_outputs.shape != ort_outputs.shape:
-            logger.warning("PyTorch and ONNX Runtime outputs do not have the same shape")
+        expected_transcription_no_comma = (
+            " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
+        )
+        expected_transcription_with_comma = (
+            " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
+        )
+        expected_transcription_with_quote_and_comma = (
+            ' "Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel.'
+        )
+        expected_transcription_options = {
+            expected_transcription_no_comma,
+            expected_transcription_with_comma,
+            expected_transcription_with_quote_and_comma,
+        }
+        pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)[0]
+        ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)[0]
 
-        diff = pt_outputs - ort_outputs
-        max_diff = max(diff.min(), diff.max(), key=abs)
+        parity = (
+            pt_transcription in expected_transcription_options and ort_transcription in expected_transcription_options
+        )
+        max_diff = 0
 
-        if max_diff > 0:
-            # For ONNX Runtime INT8 model
-            pt_expected_transcription = (
-                " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
-            )
-            pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)
-            ort_expected_transcription = (
-                " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
-            )
-            ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
+        if not parity:
+            if pt_outputs.shape != ort_outputs.shape:
+                diff = pt_outputs - ort_outputs[:, : len(pt_outputs[0])]
+            else:
+                diff = pt_outputs - ort_outputs
+            max_diff = max(diff.min(), diff.max(), key=abs)
 
-            parity = (
-                pt_expected_transcription == pt_transcription[0] and ort_expected_transcription == ort_transcription[0]
-            )
-            if parity:
-                max_diff = 0
+        if max_diff != 0:
+            logger.warning(f"PyTorch outputs: {pt_transcription}")
+            logger.warning(f"ONNX Runtime outputs: {ort_transcription}")
 
         return max_diff

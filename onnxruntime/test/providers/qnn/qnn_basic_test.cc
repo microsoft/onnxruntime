@@ -176,7 +176,10 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 // types and shapes.
 static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false,
                                std::string htp_graph_finalization_opt_mode = "",
-                               std::string qnn_context_priority = "") {
+                               std::string qnn_context_priority = "",
+                               std::string soc_model = "",
+                               std::string htp_arch = "",
+                               std::string device_id = "") {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -203,6 +206,18 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
 
   if (!qnn_context_priority.empty()) {
     options["qnn_context_priority"] = std::move(qnn_context_priority);
+  }
+
+  if (!soc_model.empty()) {
+    options["soc_model"] = std::move(soc_model);
+  }
+
+  if (!htp_arch.empty()) {
+    options["htp_arch"] = std::move(htp_arch);
+  }
+
+  if (!device_id.empty()) {
+    options["device_id"] = std::move(device_id);
   }
 
   so.AppendExecutionProvider("QNN", options);
@@ -519,6 +534,45 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
   }
 }
 
+// Test that models run with various SoC model values
+TEST_F(QnnHTPBackendTests, HTPSocModels) {
+  constexpr std::array<const char*, 3> soc_models = { "",   // No explicit SoC model specified
+                                                      "0",  // "Unknown"
+#if defined(_M_ARM64)
+                                                      "37" };  // SC8280X
+#elif defined(__linux__)
+                                                      "30" };  // SM8350
+#else
+                                                      "" };
+#endif
+
+  for (auto soc_model : soc_models) {
+    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                       true,   // use_htp
+                       false,  // enable_qnn_saver
+                       "",     // htp_graph_finalization_opt_mode
+                       "",     // qnn_context_priority
+                       soc_model);
+  }
+}
+
+// Test that models run with various HTP architecture values (and set device_id)
+TEST_F(QnnHTPBackendTests, HTPArchValues) {
+  constexpr std::array<const char*, 3> htp_archs = {"",     // No explicit arch specified
+                                                    "0",    // "None"
+                                                    "68"};  // v68
+  for (auto htp_arch : htp_archs) {
+    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                       true,      // use_htp
+                       false,     // enable_qnn_saver
+                       "",        // htp_graph_finalization_opt_mode
+                       "",        // qnn_context_priority
+                       "",        // soc_model
+                       htp_arch,  // htp_arch
+                       "0");      // device_id
+  }
+}
+
 // Test that models run with high QNN context priority.
 TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
@@ -557,49 +611,6 @@ static GetTestModelFn BuildCastAddTestCase() {
     // add_output -> Q -> DQ -> output
     AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add_output, q_parameter.scale, q_parameter.zero_point);
   };
-}
-
-// Test that models with 2 inputs which has different data type can still generate the context binary
-TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  // Add kMSDomain to cover contrib op like Gelu
-  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
-
-  auto& logging_manager = DefaultLoggingManager();
-  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
-
-  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
-                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                           logging_manager.DefaultLogger());
-  Graph& graph = model.MainGraph();
-  ModelTestBuilder helper(graph);
-  BuildCastAddTestCase()(helper);
-  helper.SetGraphOutputs();
-  ASSERT_STATUS_OK(model.MainGraph().Resolve());
-
-  // Serialize the model to a string.
-  std::string model_data;
-  model.ToProto().SerializeToString(&model_data);
-
-  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
-
-  const std::string context_binary_file = "./qnn_context_binary_int32_fp32_inputs_test.onnx";
-  Ort::SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
-
-  so.AppendExecutionProvider("QNN", provider_options);
-
-  Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
-
-  // Make sure the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
 }
 
 // A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)

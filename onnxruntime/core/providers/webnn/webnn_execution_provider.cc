@@ -19,7 +19,7 @@ namespace onnxruntime {
 
 WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags,
                                                const std::string& webnn_threads_number, const std::string& webnn_power_flags)
-    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider, true} {
+    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
   // Create WebNN context and graph builder.
   const emscripten::val ml = emscripten::val::global("navigator")["ml"];
   if (!ml.as<bool>()) {
@@ -42,7 +42,8 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
   if (webnn_power_flags.compare("default") != 0) {
     context_options.set("powerPreference", emscripten::val(webnn_power_flags));
   }
-  wnn_context_ = ml.call<emscripten::val>("createContextSync", context_options);
+
+  wnn_context_ = ml.call<emscripten::val>("createContext", context_options).await();
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
   }
@@ -168,7 +169,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // Assign inputs and outputs to subgraph's meta_def.
     uint64_t model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     meta_def->name = "WEBNN_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain = kMSDomain;
@@ -281,9 +282,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         // Since all the input output of WebNN EP is MultiArray, we will make the scalar input as a {1} MultiArray.
         if (shape.empty())
           shape.push_back(1);
-        std::vector<int> temp(shape.size());
-        transform(shape.begin(), shape.end(), temp.begin(),
-                  [](int64_t dim) -> uint32_t { return SafeInt<int32_t>(dim); });
         const void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
@@ -317,6 +315,8 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           void* output_buffer;
           switch (output_type) {
             case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+            case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+            case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
             case ONNX_NAMESPACE::TensorProto_DataType_INT32:

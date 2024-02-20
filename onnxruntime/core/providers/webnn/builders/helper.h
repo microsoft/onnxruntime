@@ -54,6 +54,19 @@ std::string GetShapeString(std::vector<T>& shape) {
   return shape_info.str();
 }
 
+inline std::string GetTensorName(const ConstPointerContainer<std::vector<NodeArg*>>& input_defs, const size_t index) {
+  return (input_defs.size() > index) ? std::string(input_defs[index]->Name()) : "";
+}
+
+inline std::vector<uint32_t> GetVecUint32FromVecInt64(const std::vector<int64_t>& int64_vec) {
+  std::vector<uint32_t> uint32_vec;
+  uint32_vec.reserve(int64_vec.size());
+  std::transform(int64_vec.begin(), int64_vec.end(),
+                 std::back_inserter(uint32_vec),
+                 [](int64_t val) -> uint32_t { return SafeInt<uint32_t>(val); });
+  return uint32_vec;
+}
+
 template <typename T>
 bool ReadIntArrayFrom1DTensor(const onnx::TensorProto& tensor, std::vector<T>& array, const logging::Logger& logger) {
   std::vector<uint8_t> unpacked_tensor;
@@ -101,7 +114,11 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
   }
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       scalar = emscripten::val{*reinterpret_cast<uint8_t*>(unpacked_tensor.data())};
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      scalar = emscripten::val{*reinterpret_cast<int8_t*>(unpacked_tensor.data())};
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       scalar = emscripten::val{MLFloat16::FromBits(*reinterpret_cast<uint16_t*>(unpacked_tensor.data())).ToFloat()};
@@ -148,9 +165,12 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Clip", {"clamp", true}},
     {"Concat", {"concat", true}},
     {"Conv", {"conv2d", true}},
+    {"ConvInteger", {"conv2dInteger", false}},
     {"ConvTranspose", {"convTranspose2d", true}},
     {"Cos", {"cos", false}},
     {"Div", {"div", true}},
+    {"DequantizeLinear", {"dequantizeLinear", false}},
+    {"DynamicQuantizeLinear", {"dynamicQuantizeLinear", false}},
     {"Elu", {"elu", true}},
     {"Equal", {"equal", false}},
     {"Erf", {"erf", false}},
@@ -176,6 +196,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Log", {"log", false}},
     {"LpPool", {"l2Pool2d", false}},
     {"MatMul", {"matmul", false}},
+    {"MatMulInteger", {"matmulInteger", false}},
     {"Max", {"max", true}},
     {"MaxPool", {"maxPool2d", true}},
     {"Min", {"min", true}},
@@ -242,8 +263,10 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 1> supported_cpu_data
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
 };
 
-constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 7> supported_gpu_data_types = {
+constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 9> supported_gpu_data_types = {
     ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+    ONNX_NAMESPACE::TensorProto_DataType_INT8,
+    ONNX_NAMESPACE::TensorProto_DataType_UINT8,
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
     ONNX_NAMESPACE::TensorProto_DataType_INT32,

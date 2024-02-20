@@ -20,15 +20,15 @@ class Slice : public JsKernel, public SliceBase {
     std::vector<int32_t> starts(attr_starts.begin(), attr_starts.end());
     std::vector<int32_t> ends(attr_ends.begin(), attr_ends.end());
 
-    JSEP_INIT_KERNEL_ATTRIBUTE(Slice, ({"starts" : $1 ? Array.from(HEAP32.subarray($2, $2 + $1)) : [],
-                                        "ends" : $3 ? Array.from(HEAP32.subarray($4, $4 + $3)) : [],
-                                        "axes" : $5 ? Array.from(HEAP32.subarray($6, $6 + $5)) : []}),
-                               gsl::narrow_cast<int32_t>(starts.size()),
-                               JSEP_HEAP_PTR((starts.size() > 0) ? starts.data() : nullptr) >> 2,
-                               gsl::narrow_cast<int32_t>(ends.size()),
-                               JSEP_HEAP_PTR((ends.size() > 0) ? ends.data() : nullptr) >> 2,
-                               gsl::narrow_cast<int32_t>(axes.size()),
-                               JSEP_HEAP_PTR((axes.size() > 0) ? axes.data() : nullptr) >> 2);
+    JSEP_INIT_KERNEL_ATTRIBUTE(Slice, ({"starts" : $1 ? Array.from(HEAP32.subarray($1, $2)) : [],
+                                        "ends" : $3 ? Array.from(HEAP32.subarray($3, $4)) : [],
+                                        "axes" : $5 ? Array.from(HEAP32.subarray($5, $6)) : []}),
+                               JSEP_HEAP32_INDEX_START(starts),
+                               JSEP_HEAP32_INDEX_END(starts),
+                               JSEP_HEAP32_INDEX_START(ends),
+                               JSEP_HEAP32_INDEX_END(ends),
+                               JSEP_HEAP32_INDEX_START(axes),
+                               JSEP_HEAP32_INDEX_END(axes));
   }
 };
 

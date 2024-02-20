@@ -87,14 +87,13 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
   }
 }
 
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
-OVExeNetwork OVCore::LoadNetwork(const std::string& model,
+OVExeNetwork OVCore::LoadNetwork(const std::string onnx_model_path,
                                  std::string& hw_target,
                                  ov::AnyMap& device_config,
                                  std::string name) {
   ov::CompiledModel obj;
   try {
-    obj = oe.compile_model(model, ov::Tensor(), hw_target, device_config);
+    obj = oe.compile_model(onnx_model_path, hw_target, device_config);
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
@@ -103,7 +102,6 @@ OVExeNetwork OVCore::LoadNetwork(const std::string& model,
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
-#endif
 
 void OVCore::SetCache(std::string cache_dir_path) {
   oe.set_property(ov::cache_dir(cache_dir_path));

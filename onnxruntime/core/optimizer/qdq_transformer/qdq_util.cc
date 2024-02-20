@@ -54,9 +54,69 @@ bool IsQDQPairSupported(
   Initializer dq_zp(*dq_zp_tensor_proto, model_path);
   Initializer dq_scale(*dq_scale_tensor_proto, model_path);
 
-  return q_zp.data_type() == dq_zp.data_type() &&
-         SpanEq(q_zp.DataAsByteSpan(), dq_zp.DataAsByteSpan()) &&
-         *q_scale.data<float>() == *dq_scale.data<float>();
+  if (q_zp.data_type() != dq_zp.data_type() ||
+      q_scale.data_type() != q_scale.data_type() ||
+      !SpanEq(q_zp.DataAsByteSpan(), dq_zp.DataAsByteSpan())) {
+    return false;
+  }
+
+  switch (q_scale.data_type()) {
+    case ONNX_NAMESPACE::TensorProto::FLOAT:
+      return *q_scale.data<float>() == *dq_scale.data<float>();
+
+    case ONNX_NAMESPACE::TensorProto::FLOAT16:
+      return *q_scale.data<MLFloat16>() == *dq_scale.data<MLFloat16>();
+
+    case ONNX_NAMESPACE::TensorProto::BFLOAT16:
+      return *q_scale.data<BFloat16>() == *dq_scale.data<BFloat16>();
+
+    default:
+      assert(false);
+      return false;
+  }
+}
+
+bool IsDQQConversion(
+    const Node& dq_node, const Node& q_node,
+    const GetConstantInitializerFn& get_const_initializer,
+    const Path& model_path) {
+  ConstPointerContainer<std::vector<NodeArg*>> dq_input_defs = dq_node.InputDefs();
+  ConstPointerContainer<std::vector<NodeArg*>> q_input_defs = q_node.InputDefs();
+
+  // Q/DQ contains optional input is not supported
+  // non-scalar Q/DQ scale and zero point needs are not supported
+  if (dq_input_defs.size() != InputIndex::TOTAL_COUNT ||
+      q_input_defs.size() != InputIndex::TOTAL_COUNT ||
+      !optimizer_utils::IsScalar(*q_input_defs[InputIndex::SCALE_ID]) ||
+      !optimizer_utils::IsScalar(*q_input_defs[InputIndex::ZERO_POINT_ID]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::SCALE_ID]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::ZERO_POINT_ID])) {
+    return false;
+  }
+
+  // if Q/DQ scale and zero point are not constant, return false
+  const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto =
+      get_const_initializer(dq_input_defs[InputIndex::SCALE_ID]->Name());
+  const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto =
+      get_const_initializer(q_input_defs[InputIndex::SCALE_ID]->Name());
+  const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto =
+      get_const_initializer(dq_input_defs[InputIndex::ZERO_POINT_ID]->Name());
+  const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto =
+      get_const_initializer(q_input_defs[InputIndex::ZERO_POINT_ID]->Name());
+  if (nullptr == q_zp_tensor_proto ||
+      nullptr == dq_zp_tensor_proto ||
+      nullptr == q_scale_tensor_proto ||
+      nullptr == dq_scale_tensor_proto) {
+    return false;
+  }
+
+  // check Q/DQ have same scale type and different zero point type
+  Initializer q_zp(*q_zp_tensor_proto, model_path);
+  Initializer q_scale(*q_scale_tensor_proto, model_path);
+  Initializer dq_zp(*dq_zp_tensor_proto, model_path);
+  Initializer dq_scale(*dq_scale_tensor_proto, model_path);
+
+  return (dq_zp.data_type() != q_zp.data_type()) && (dq_scale.data_type() == q_scale.data_type());
 }
 
 bool IsDQSupported(const Node& dq_node, const GetConstantInitializerFn& get_const_initializer) {

@@ -19,6 +19,12 @@
     flatbuffers::flatbuffers Boost::mp11 safeint_interface
   )
 
+  # TODO fix stringop-overflow warnings
+  # Add compile option to suppress stringop-overflow error in Flatbuffers.
+  if (HAS_STRINGOP_OVERFLOW)
+    target_compile_options(onnxruntime_providers_xnnpack PRIVATE -Wno-error=stringop-overflow)
+  endif()
+
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
 

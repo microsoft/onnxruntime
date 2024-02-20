@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#ifdef USE_CUTLASS
-
 #pragma once
 
 namespace ort_fastertransformer {
@@ -58,5 +56,3 @@ struct CutlassGemmConfig {
 };
 
 }  // namespace ort_fastertransformer
-
-#endif

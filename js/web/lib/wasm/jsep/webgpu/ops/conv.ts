@@ -3,7 +3,7 @@
 
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
+import {AttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
 import {createConv2DMatMulProgramInfo} from './3rd-party/conv2d_mm_webgpu';
@@ -110,7 +110,7 @@ const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inpu
 
   // always return a new object so does not modify the original attributes
   const newAttributes: T = Object.assign({}, attributes);
-  Object.assign(newAttributes, {kernelShape, pads, cacheKey: attributes.cacheKey});
+  Object.assign(newAttributes, {kernelShape, pads});
   return newAttributes;
 };
 
@@ -126,8 +126,18 @@ export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAt
   const strides = attributes.strides as [number, number];
   const wIsConst = (attributes.w_is_const as () => boolean)();
 
-  return createAttributeWithCacheKey(
-      {autoPad, format, dilations, group, kernelShape, pads, strides, wIsConst, ...activationAttributes});
+  return {
+    autoPad,
+    format,
+    dilations,
+    group,
+    kernelShape,
+    pads,
+    strides,
+    wIsConst,
+    ...activationAttributes,
+    cacheKey: `${attributes.format};${activationAttributes.activation};`
+  };
 };
 
 const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): void => {
@@ -138,8 +148,12 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
   if (attributes.group !== 1) {
-    if (isChannelsLast && inputs[1].dims[0] === attributes.group && inputs[1].dims[1] === 1 &&
-        attributes.dilations[0] === 1 && attributes.dilations[1] === 1) {
+    // Temporarily disable createGroupedConvVectorizeProgramInfo path due to bots failures with below two cases:
+    // [webgpu]Conv - conv - vectorize group - B
+    // [webgpu]Conv - conv - vectorize group - D
+    const disableGroupedConvVectorize = true;
+    if (!disableGroupedConvVectorize && isChannelsLast && inputs[1].dims[0] === attributes.group &&
+        inputs[1].dims[1] === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1) {
       const outputShape = calculateOutputShape(
           inputs[0].dims, inputs[1].dims, attributes.dilations, adjustedAttributes.pads, attributes.strides,
           isChannelsLast);

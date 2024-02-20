@@ -75,6 +75,21 @@ struct Category {
   // TODO: What other high level categories are meaningful? Model? Optimizer? Execution?
 };
 
+/// <summary>
+/// ORT TraceLogging keywords for categories of dynamic logging enablement
+/// </summary>
+enum class ORTTraceLoggingKeyword : uint64_t {
+  Session = 0x1,    // ORT Session TraceLoggingWrite
+  Logs = 0x2,       // LOGS() Macro ORT logs. Pair with an appropriate level depending on detail required
+  Reserved1 = 0x4,  // Reserved if we want to add some specific sub-categories instead of just LOGS() or other uses
+  Reserved2 = 0x8,
+  Reserved3 = 0x10,
+  Reserved4 = 0x20,
+  Reserved5 = 0x40,
+  Reserved6 = 0x80,
+  Profiling = 0x100  // Enables profiling. At higher levels >5 can impact inference performance
+};
+
 class ISink;
 class Logger;
 class Capture;
@@ -332,6 +347,18 @@ unsigned int GetThreadId();
    Return the current process id.
 */
 unsigned int GetProcessId();
+
+/**
+   If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then adds to the existing logger.
+*/
+std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity,
+                                            logging::Severity etwSeverity);
+
+/**
+  If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then can override the logging level.
+  But this overrided level only applies to the ETW sink. The original logger(s) retain their original logging level
+*/
+Severity OverrideLevelWithEtw(Severity originalSeverity);
 
 }  // namespace logging
 }  // namespace onnxruntime

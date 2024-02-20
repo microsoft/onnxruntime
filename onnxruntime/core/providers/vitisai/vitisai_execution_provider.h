@@ -9,8 +9,7 @@
 #include <set>
 #include <string>
 
-#include "core/framework/execution_provider.h"
-#include "core/framework/customregistry.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
 
 // we cannot include vaip/vaip.hpp here because header file referred by
@@ -21,7 +20,6 @@ class DllSafe;
 class ExecutionProvider;
 }  // namespace vaip_core
 namespace onnxruntime {
-
 // Logical device representation.
 class VitisAIExecutionProvider : public IExecutionProvider {
  public:
