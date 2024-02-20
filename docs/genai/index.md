@@ -1,10 +1,10 @@
 ---
-title: ONNX Runtime GenAI
+title: Generative AI
 description: Run generative models with ONNX Runtime GenAi
 nav_order: 6
 ---
 
-# Generative AI
+# Generative AI with ONNX Runtime
 
 Run generative AI models with ONNX Runtime.
 
