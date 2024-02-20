@@ -173,7 +173,7 @@ stages:
 
     - template: templates/explicitly-defined-final-tasks.yml
 
-- stages: Linux_Test
+- stage: Linux_Test
   dependsOn:
     - Linux_Build
   jobs:
@@ -189,8 +189,7 @@ stages:
       clean: true
       submodules: none
 
-    - template: templates/download-pipeline-artifact-step.yml
-      parameters:
+    - template: templates/flex-downloadPipelineArtifact.yml
         ArtifactName: 'drop-linux'
         StepName: 'Download Pipeline Artifact - Linux Build'
         TargetPath: '$(Build.BinariesDirectory)/Release'
