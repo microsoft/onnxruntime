@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from collections import OrderedDict
 import numpy as np
 import torch
 from transformers import AutoTokenizer
@@ -24,23 +25,29 @@ class ORTGenerator:
         self.head_size = 80
         self.num_layers = 32
         self.max_sequence_length = 2048
+        self.cuda_inputs = OrderedDict()
 
     def get_initial_inputs_and_outputs(self, encodings_dict):
         self.torch_dtype = torch.float16 if self.use_fp16 else torch.float32
 
         input_ids = torch.tensor(encodings_dict["input_ids"], device=self.device, dtype=torch.int32)
         attention_mask = torch.tensor(encodings_dict["attention_mask"], device=self.device, dtype=torch.int32)
-        step = torch.tensor([0], device=self.device, dtype=torch.int64)
+
+        batch_size, sequence_length = input_ids.shape
+
+        self.cuda_inputs["step"] = torch.tensor([0], device=self.device, dtype=torch.int64)
+        self.cuda_inputs["seqlens_k"] = torch.tensor(batch_size * [0], device=self.device, dtype=torch.int32)
+        total_seq_length = torch.tensor([sequence_length], device=torch.device("cpu"), dtype=torch.int32)
 
         inputs = {
             "input_ids": input_ids.contiguous(),
-            "attention_mask": attention_mask.contiguous(),
+            #"attention_mask": attention_mask.contiguous(),
+            "seqlens_k": self.cuda_inputs["seqlens_k"].contiguous(),
+            "total_sequence_length": total_seq_length.contiguous(),
         }
 
         if self.use_step:
-            inputs["step"] = step.contiguous()
-
-        batch_size, sequence_length = input_ids.shape
+            inputs["step"] = self.cuda_inputs["step"].contiguous()
 
         past_seq_length = self.max_sequence_length if self.use_buffer_share else 0
         past_shape = (
@@ -76,15 +83,32 @@ class ORTGenerator:
         device = None
 
         for k, v in inputs.items():
-            io_binding.bind_input(
-                name=k,
-                device_type=v.device.type,
-                device_id=0 if v.device.type == "cpu" else v.device.index,
-                element_type=pt_to_np[repr(v.dtype)],
-                shape=tuple(v.shape),
-                buffer_ptr=v.data_ptr(),
-            )
-            device = v.device
+            if k in self.cuda_inputs.keys():
+                io_binding.bind_input(
+                    name=k,
+                    device_type=self.cuda_inputs[k].device.type,
+                    device_id=self.cuda_inputs[k].device.index,
+                    element_type=pt_to_np[repr(self.cuda_inputs[k].dtype)],
+                    shape=tuple(self.cuda_inputs[k].shape),
+                    buffer_ptr=self.cuda_inputs[k].data_ptr(),
+                )
+                from cuda import cudart
+                cudart.cudaMemcpy(
+                    self.cuda_inputs[k].data_ptr(),
+                    v.data_ptr(),
+                    v.element_size() * v.nelement(),
+                    cudart.cudaMemcpyKind.cudaMemcpyDeviceToDevice,
+                )              
+            else:
+                io_binding.bind_input(
+                    name=k,
+                    device_type=v.device.type,
+                    device_id=0 if v.device.type == "cpu" else v.device.index,
+                    element_type=pt_to_np[repr(v.dtype)],
+                    shape=tuple(v.shape),
+                    buffer_ptr=v.data_ptr(),
+                )
+                device = v.device
 
         for output in model.get_outputs():
             name = output.name
@@ -113,8 +137,8 @@ class ORTGenerator:
 
     def create_session(self, device_id, use_fp16=True, use_buffer_share=True, packed_kv=False, use_step=False):
         sess_options = ort.SessionOptions()
-        #sess_options.log_verbosity_level = 0
-        #sess_options.log_severity_level = 0
+        # sess_options.log_verbosity_level = 0
+        # sess_options.log_severity_level = 0
         ep = (
             ("CUDAExecutionProvider", {"device_id": device_id, "enable_cuda_graph": True})
             if device_id >= 0
@@ -146,7 +170,7 @@ class ORTGenerator:
         ro_prompt = ort.RunOptions()
         ro_prompt.add_run_config_entry("ep.cuda.cuda_graph_annotation", "-1")
         ro_token = ort.RunOptions()
-        ro_token.add_run_config_entry("ep.cuda.cuda_graph_annotation", "2")
+        ro_token.add_run_config_entry("ep.cuda.cuda_graph_annotation", "1")
         prompt_run = True
         while current_length < max_length:
             io_binding = self.apply_io_binding(self.sess, inputs, outputs)
@@ -177,12 +201,17 @@ class ORTGenerator:
 
             # Update inputs for next inference run
             current_length += 1
+            if "input_ids" not in self.cuda_inputs:
+                # Store static input_ids address in decoding process
+                self.cuda_inputs["input_ids"] = tokens_to_add.to(torch.int32)
             inputs["input_ids"] = tokens_to_add.to(torch.int32)
             if self.use_step:
                 inputs["step"] = torch.tensor([current_length - 1], device=self.device, dtype=torch.int64)
-            inputs["attention_mask"] = torch.cat([inputs["attention_mask"], (~has_eos).reshape(batch_size, 1)], 1).to(
-                torch.int32
-            )
+            # inputs["attention_mask"] = torch.cat([inputs["attention_mask"], (~has_eos).reshape(batch_size, 1)], 1).to(
+            #     torch.int32
+            # )
+            inputs["seqlens_k"] = torch.tensor(batch_size * [current_length - 1], device=self.device, dtype=torch.int32)
+            inputs["total_sequence_length"][0] = current_length
 
             # Set logits to zeros for next inference run and re-use memory buffer
             if outputs["logits"].shape[1] != 1:
@@ -225,7 +254,7 @@ def run_phi2(onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_
 
     generator = ORTGenerator(onnx_model_path)
     generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv, use_step)
-    texts = generator.generate(prompt, max_length=128)
+    texts = generator.generate(prompt, max_length=210)
 
     for i in range(len(texts)):
         print("Prompt: ", prompt[i])
