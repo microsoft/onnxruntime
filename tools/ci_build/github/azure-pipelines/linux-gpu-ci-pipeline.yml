@@ -190,6 +190,7 @@ stages:
       submodules: none
 
     - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
         ArtifactName: 'drop-linux'
         StepName: 'Download Pipeline Artifact - Linux Build'
         TargetPath: '$(Build.BinariesDirectory)/Release'
