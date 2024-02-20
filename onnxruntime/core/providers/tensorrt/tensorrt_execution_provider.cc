@@ -3873,8 +3873,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     }
 
-    bool sync_stream_after_dds_output_copy = false;
-
     // Assign TRT output back to ORT output
     // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
     // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
