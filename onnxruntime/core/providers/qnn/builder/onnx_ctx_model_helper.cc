@@ -151,12 +151,14 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
 Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
                                QnnBackendManager* qnn_backend_manager,
-                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
+                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                               const logging::Logger& logger) {
   Status status = GetEpContextFromMainNode(*graph_viewer.Nodes().begin(), ctx_onnx_model_path, qnn_backend_manager, qnn_models);
 
   // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
   if (!status.IsOK()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContextModel. ", status.ErrorMessage());
+    LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
   }
 
   return Status::OK();
