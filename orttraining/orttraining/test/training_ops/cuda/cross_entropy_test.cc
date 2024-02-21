@@ -324,6 +324,7 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
                                               std::vector<T>& X_data,
                                               std::vector<int64_t>& index_data,
                                               std::vector<T>& weight_data) {
+  ORT_UNUSED_PARAMETER(error_tolerance);
   /**
    * OpTester's atol/rtol check is too strict for our testing cases. Imagine expected value is 4.7683704451628728e-07,
    * real value is 0, even we set rtol=1e-1, atol = 1e-4. The check still fail.

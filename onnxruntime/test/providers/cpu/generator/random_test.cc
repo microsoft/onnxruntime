@@ -381,6 +381,8 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+    ORT_UNUSED_PARAMETER(provider_type);
+
     // Only one output, and mean of output values are near attribute mean.
     ASSERT_EQ(fetches.size(), 1u);
     const auto& output_tensor = fetches[0].Get<Tensor>();
@@ -473,6 +475,8 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+    ORT_UNUSED_PARAMETER(provider_type);
+
     // Only one output. Each value in output tensoer is between low and high.
     // Mean of output values are near attribute mean of low and high.
     ASSERT_EQ(fetches.size(), 1u);

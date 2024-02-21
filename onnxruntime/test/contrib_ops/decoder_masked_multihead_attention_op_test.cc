@@ -469,6 +469,8 @@ std::vector<T> Softmax_QK_Transpose(T* qk_transpose_matrix,
 template <>
 std::vector<float> Softmax_QK_Transpose(float* qk_transpose_matrix,
                                         int batch_size, int num_heads, int sequence_length, int total_sequence_length, int head_size) {
+  ORT_UNUSED_PARAMETER(head_size);
+
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
   }
@@ -508,6 +510,8 @@ std::vector<float> Softmax_QK_Transpose(float* qk_transpose_matrix,
 template <>
 std::vector<MLFloat16> Softmax_QK_Transpose(MLFloat16* qk_transpose_matrix,
                                             int batch_size, int num_heads, int sequence_length, int total_sequence_length, int head_size) {
+  ORT_UNUSED_PARAMETER(head_size);
+
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
   }

@@ -305,8 +305,8 @@ class KernelScope {
     session_scope_.series_.write_flag(kernel_.Node().Name().c_str());
 #endif
 
-#ifdef ENABLE_NVTX_PROFILE
     auto& node = kernel_.Node();
+#ifdef ENABLE_NVTX_PROFILE
     profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
     profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
@@ -335,7 +335,6 @@ class KernelScope {
 #endif
 
     if (session_state_.Profiler().IsEnabled()) {
-      auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
       auto& profiler = session_state_.Profiler();
       auto sync_time_begin = profiler.Start();
