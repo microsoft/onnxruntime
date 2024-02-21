@@ -424,7 +424,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const bool is_whisper_model = (parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper);
   if (step == 1 && is_whisper_model && parameters->no_speech_probs) {
     cuda::LaunchSaveNoSpeechProbs<T>(
-        (T*)parameters->no_speech_probs, Y_data, batch_size, num_beams, vocab_size, parameters->no_speech_token, cuda_stream);
+        (T*)parameters->no_speech_probs, Y_data, batch_size, num_beams, vocab_size, parameters->no_speech_token_id, cuda_stream);
   }
 
   // NOTE: currently we treat extra decoding ids are same
@@ -469,7 +469,15 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
     constexpr int max_initial_timestamp_index = 50;
-    onnxruntime::contrib::transformers::TimestampLogitsProcessor<float> time_logit_processor(parameters->eos_token_id, max_initial_timestamp_index);
+    // Token ids are passed below in the order that they appear in the tokenizer
+    onnxruntime::contrib::transformers::TimestampLogitsProcessor<float> time_logit_processor(parameters->eos_token_id,
+                                                                                             parameters->decoder_start_token_id,
+                                                                                             parameters->translate_token_id,
+                                                                                             parameters->transcribe_token_id,
+                                                                                             parameters->start_of_lm_token_id,
+                                                                                             parameters->no_timestamps_token_id,
+                                                                                             parameters->beginning_timestamp_token_id,
+                                                                                             max_initial_timestamp_index);
     onnxruntime::contrib::transformers::NextTokenScores<float> next_token_scores_timestamp({cpu_next_token_scores_span, batch_beam_size, vocab_size});
 
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));

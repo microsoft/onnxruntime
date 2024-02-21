@@ -21,7 +21,7 @@ def group_norm_kernel(
     eps,
     BLOCK_SIZE: tl.constexpr,
     HW_SIZE: tl.constexpr,
-    ACTIVATION_SWISH: tl.constexpr,
+    ACTIVATION_SILU: tl.constexpr,
 ):
     row_x = tl.program_id(0)
     row_y = tl.program_id(1)
@@ -62,7 +62,7 @@ def group_norm_kernel(
         x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         x_hat = (x - group_mean) * rstd
         y = x_hat * gamma + beta
-        if ACTIVATION_SWISH:
+        if ACTIVATION_SILU:
             y *= tl.sigmoid(y)
         tl.store(y_ptr + offsets, y, mask=mask)
 
@@ -71,7 +71,7 @@ def group_norm_kernel(
 # blocks = [16, 32, 64, 128, 256, 512]
 # hw_sizes = [8, 16, 32, 64, 128, 256, 512]
 # but this will result in too many functions and slow down the compilation.
-with_swish = [True, False]
+with_silu = [True, False]
 dtypes = ["fp32", "fp16"]
 blocks = [16, 32, 64, 128]
 hw_sizes = [8, 16, 32, 64, 128, 256]
@@ -84,14 +84,14 @@ group_pattern = "GroupNormTriton_{}_{}"
 def get_function_table():
     func_table = []
 
-    for swish, dtype, hw_size, warp, b in product(with_swish, dtypes, hw_sizes, warps, blocks):
-        swish_suffix = "Swish" if swish else "Pass"
-        name = name_pattern.format(swish_suffix, dtype, b, hw_size, warp)
-        group = group_pattern.format(swish_suffix, dtype)
+    for silu, dtype, hw_size, warp, b in product(with_silu, dtypes, hw_sizes, warps, blocks):
+        silu_suffix = "Silu" if silu else "Pass"
+        name = name_pattern.format(silu_suffix, dtype, b, hw_size, warp)
+        group = group_pattern.format(silu_suffix, dtype)
         sig = sig_pattern.format(dtype, dtype)
         kwargs = {
             "num_warps": warp,
-            "constants": {"BLOCK_SIZE": b, "HW_SIZE": hw_size, "ACTIVATION_SWISH": int(swish)},
+            "constants": {"BLOCK_SIZE": b, "HW_SIZE": hw_size, "ACTIVATION_SILU": int(silu)},
         }
         func_desc = {"name": name, "group": group, "func": group_norm_kernel, "sig": sig, "kwargs": kwargs}
         func_table.append(func_desc)

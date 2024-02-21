@@ -9,9 +9,9 @@ namespace test {
 
 template <typename T>
 struct PoolOp {
-  const std::string pooling_type;
-  const std::vector<int64_t> input_dims;
-  const std::vector<int64_t> kernel_shape;
+  std::string pooling_type;
+  std::vector<int64_t> input_dims;
+  std::vector<int64_t> kernel_shape;
   int64_t channels;
   int64_t group = 1;
   std::vector<int64_t> strides = {1, 1};
@@ -41,22 +41,21 @@ struct PoolOp {
 };
 
 TYPED_TEST(CudaNhwcTypedTest, AveragePoolNhwc) {
-  auto op = PoolOp<TypeParam>{
-      .pooling_type = "AveragePool",
-      .input_dims = {1, 16, 64, 64},
-      .kernel_shape = {3, 3},
-      .channels = 16,
-  };
+  auto op = PoolOp<TypeParam>{};
+  op.pooling_type = "AveragePool";
+  op.input_dims = {1, 16, 64, 64};
+  op.kernel_shape = {3, 3};
+  op.channels = 16;
+
   MAKE_PROVIDERS()
 }
 
 TYPED_TEST(CudaNhwcTypedTest, MaxPoolNhwc) {
-  auto op = PoolOp<TypeParam>{
-      .pooling_type = "MaxPool",
-      .input_dims = {1, 16, 64, 64},
-      .kernel_shape = {3, 3},
-      .channels = 16,
-  };
+  auto op = PoolOp<TypeParam>{};
+  op.pooling_type = "MaxPool";
+  op.input_dims = {1, 16, 64, 64};
+  op.kernel_shape = {3, 3};
+  op.channels = 16;
   MAKE_PROVIDERS()
 }
 
@@ -72,21 +71,24 @@ TYPED_TEST(CudaNhwcTypedTest, GlobalMaxPoolNhwc) {
   test->AddOutput<TypeParam>("Y", output_dims, output_data);
 
   std::vector<std::shared_ptr<IExecutionProvider>> execution_providers;
-  OrtCUDAProviderOptionsV2 nhwc = {.prefer_nhwc = true};
+  OrtCUDAProviderOptionsV2 nhwc{};
+  nhwc.prefer_nhwc = true;
   execution_providers.push_back(CudaExecutionProviderWithOptions(&nhwc));
 
   double error_tolerance = 1e-3;
-  OrtCUDAProviderOptionsV2 nchw = {.prefer_nhwc = false};
+  OrtCUDAProviderOptionsV2 nchw{};
+  nchw.prefer_nhwc = false;
   auto source_ep = CudaExecutionProviderWithOptions(&nchw);
   test->CompareEPs(std::move(source_ep), execution_providers, error_tolerance);
 }
 
 TYPED_TEST(CudaNhwcTypedTest, AveragePoolNhwcPad) {
-  auto op = PoolOp<TypeParam>{.pooling_type = "AveragePool",
-                              .input_dims = {1, 16, 64, 64},
-                              .kernel_shape = {3, 3},
-                              .channels = 16,
-                              .padding = {2, 2, 2, 2}};
+  auto op = PoolOp<TypeParam>{};
+  op.pooling_type = "AveragePool";
+  op.input_dims = {1, 16, 64, 64};
+  op.kernel_shape = {3, 3};
+  op.channels = 16;
+  op.padding = {2, 2, 2, 2};
 
   MAKE_PROVIDERS()
 }
