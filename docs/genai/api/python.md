@@ -4,7 +4,7 @@ description: Python API reference for ONNX Runtime GenAI
 has_children: false
 parent: API docs
 grand_parent: Generative AI (Preview)
-nav_order: 2
+nav_order: 1
 ---
 
 # Python API
