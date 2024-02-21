@@ -16,14 +16,13 @@ class Gelu final : public UnaryElementwise {
     const CUDAExecutionProvider* cuda_ep =
         static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
 
-    use_half2_ = !cuda_ep->IsGeluHalf2Disabled();
     approximation_algorithm_ = info.GetAttrOrDefault<std::string>("approximate", "none");
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
-  bool use_half2_;
+  const bool use_half2_{true};
 
   std::string approximation_algorithm_;
 };

@@ -38,5 +38,4 @@ struct OrtCUDAProviderOptionsV2 {
   int prefer_nhwc = 0;                                                                                         // make the CUDA EP NHWC preferred
   int use_ep_level_unified_stream = 0;                                                                         // flag specifying if ep level stream is used or not
   int use_tf32 = 1;                                                                                            // use TF32
-  int gelu_disable_half2 = 0;                                                                                  // flag specifying if the half2 version of GELU is disabled.
 };
