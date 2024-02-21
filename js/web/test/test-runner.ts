@@ -15,7 +15,7 @@ import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {Tensor} from '../lib/onnxjs/tensor';
 import {ProtoUtil} from '../lib/onnxjs/util';
 import {createView} from '../lib/wasm/jsep/tensor-view';
-import {Float16ArrayType, getTensorElementSize, isGpuBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
+import {getTensorElementSize, isGpuBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
 
 import {base64toBuffer, createMockGraph, readFile} from './test-shared';
 import {Test} from './test-types';
@@ -421,9 +421,7 @@ export class TensorResultValidator {
       return false;
     }
   }
-  floatEqual(
-      actual: number[]|Float16ArrayType|Float32Array|Float64Array,
-      expected: number[]|Float16ArrayType|Float32Array|Float64Array): boolean {
+  floatEqual(actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array): boolean {
     if (actual.length !== expected.length) {
       return false;
     }
