@@ -362,7 +362,9 @@ stages:
         UpdateDepsTxt: false
 
     - task: DownloadPackage@1
-      displayName: 'Download Meta Llama2 model'
+      # The model data in artifact is downloaded from openai/whisper-large-v3 in huggingface model hub
+      # In order to save size, removed .git directory and pickled files, and keep the safetensors model files
+      displayName: 'Download Whisper Model'
       inputs:
         packageType: upack
         feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
