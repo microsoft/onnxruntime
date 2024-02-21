@@ -404,7 +404,6 @@ def parse_arguments():
 
     parser.add_argument(
         "--macos",
-        default="MacOSX",
         choices=["MacOSX", "Catalyst"],
         help="Specify the target platform for macOS build. Default is MacOSX. Only specify when --build_apple_framework is present.",
     )
@@ -2759,7 +2758,7 @@ def main():
         if is_macOS():
             if (
                 not args.ios
-                and not args.macos == "Catalyst"
+                and not args.macos != "Catalyst"
                 and not args.android
                 and args.osx_arch == "arm64"
                 and platform.machine() == "x86_64"
