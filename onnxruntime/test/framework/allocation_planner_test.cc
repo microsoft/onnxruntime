@@ -1982,8 +1982,8 @@ TEST_F(PlannerTest, TestCpuIf) {
 //                                                 |-----------> Gather
 // Shape ----------------> Reshape --> Shape ------------------> Reshape
 //                           ^                                     ^
-// InstanceNormalization ----|         InstanceNormalization ------| 
-// 
+// InstanceNormalization ----|         InstanceNormalization ------|
+//
 // Python script to create this model:
 // def CreateModelFor19480():
 //    #shape->reshape->shape->reshape, 4 gather
@@ -1998,10 +1998,23 @@ TEST_F(PlannerTest, TestCpuIf) {
 //    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices2'], outputs=['output2']))
 //    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices3'], outputs=['output3']))
 //    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices4'], outputs=['output4']))
-//    g = h.make_graph(graphNodes, 'issue_19480', [h.make_tensor_value_info('shape_input', tp.FLOAT, ['batch', 128, None, None]), h.make_tensor_value_info('in0_input', tp.FLOAT, ['batch', 32, None]), h.make_tensor_value_info('scale0', tp.FLOAT, [32]), h.make_tensor_value_info('B0', tp.FLOAT, [32]), 
-//                                                 h.make_tensor_value_info('in1_input', tp.FLOAT, ['batch', 32, None]), h.make_tensor_value_info('scale1', tp.FLOAT, [32]), h.make_tensor_value_info('B1', tp.FLOAT, [32]), 
-//                                                 h.make_tensor_value_info('indices1', tp.INT32, []), h.make_tensor_value_info('indices2', tp.INT32, []), h.make_tensor_value_info('indices3', tp.INT32, []), h.make_tensor_value_info('indices4', tp.INT32, [])], 
-//                     [h.make_tensor_value_info('output0', tp.FLOAT, None), h.make_tensor_value_info('output1', tp.INT64, None), h.make_tensor_value_info('output2', tp.INT64, None), h.make_tensor_value_info('output3', tp.INT64, None), h.make_tensor_value_info('output4', tp.INT64, None)])
+//    g = h.make_graph(graphNodes, 'issue_19480',
+//                     [h.make_tensor_value_info('shape_input', tp.FLOAT, ['batch', 128, None, None]),
+//                      h.make_tensor_value_info('in0_input', tp.FLOAT, ['batch', 32, None]),
+//                      h.make_tensor_value_info('scale0', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('B0', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('in1_input', tp.FLOAT, ['batch', 32, None]),
+//                      h.make_tensor_value_info('scale1', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('B1', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('indices1', tp.INT32, []),
+//                      h.make_tensor_value_info('indices2', tp.INT32, []),
+//                      h.make_tensor_value_info('indices3', tp.INT32, []),
+//                      h.make_tensor_value_info('indices4', tp.INT32, [])],
+//                     [h.make_tensor_value_info('output0', tp.FLOAT, None),
+//                      h.make_tensor_value_info('output1', tp.INT64, None),
+//                      h.make_tensor_value_info('output2', tp.INT64, None),
+//                      h.make_tensor_value_info('output3', tp.INT64, None),
+//                      h.make_tensor_value_info('output4', tp.INT64, None)])
 //    model = h.make_model(g, opset_imports=[h.make_operatorsetid("", 17)], producer_name='producer_name')
 //    onnx.save(model, 'issue_19480.onnx')
 //

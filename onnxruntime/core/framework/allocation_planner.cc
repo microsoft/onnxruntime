@@ -529,7 +529,7 @@ class PlannerImpl {
 
     // Initialize allocation plan:
     plan_.allocation_plan.resize(num_ml_values);
-    for (size_t i = 0; i < num_ml_values; i++) plan_.allocation_plan[i].reused_buffer = static_cast<OrtValueIndex>(i);
+    for (int i = 0; static_cast<size_t>(i) < num_ml_values; i++) AllocPlan(i).reused_buffer = i;
   }
 
   bool HasExternalOutputs(const Node& node) const {
@@ -1345,7 +1345,7 @@ class PlannerImpl {
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       // compute use count first. TODO(leca): call ComputeReuseCount() only once is enough
       ORT_RETURN_IF_ERROR(ComputeReuseCount());
-      for (size_t j = 0; j < ort_value_info_.size(); j++) Buffer(static_cast<OrtValueIndex>(j)) = static_cast<OrtValueIndex>(j);
+      for (int j = 0; static_cast<size_t>(j) < ort_value_info_.size(); j++) Buffer(j) = j;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       if (i == 0) {
         for (auto ort_value_info : ort_value_info_) {
