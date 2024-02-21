@@ -1,5 +1,5 @@
 ---
-title: Configuration reference
+title: Config reference
 description: Reference for the ONNX Runtime Generative AI configuration file
 has_children: false
 parent: Reference
