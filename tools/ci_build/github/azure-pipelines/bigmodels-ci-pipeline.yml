@@ -317,6 +317,7 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
               popd ; \
@@ -360,9 +361,19 @@ stages:
         Repository: onnxruntimepackagestest
         UpdateDepsTxt: false
 
+    - task: DownloadPackage@1
+      displayName: 'Download Meta Llama2 model'
+      inputs:
+        packageType: upack
+        feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+        version: 1.0.0
+        definition: 'f9767031-38fa-48cd-b7c8-4403afc9395f'
+        downloadPath: $(Agent.TempDirectory)/whisper_large_v3
+
     - script: |
         docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
            onnxruntimepackagestest \
             bash -c '
               set -ex; \
@@ -372,9 +383,10 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format ;\
+              python3 -m models.whisper.convert_to_onnx -m /whisper_large_v3 --output whisperlargev3 --use_external_data_format ; \
               popd ; \
             '
-      displayName: 'Run Whisper Model'
+      displayName: 'Convert Whisper Model'
       workingDirectory: $(Build.SourcesDirectory)
