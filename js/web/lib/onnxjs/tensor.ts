@@ -188,7 +188,7 @@ export class Tensor {
     } else {
       if (cache !== undefined) {
         const constructor = dataviewConstructor(type);
-        if (!(cache instanceof constructor) && !(cache instanceof Float16Array)) {
+        if (!(cache instanceof constructor)) {
           throw new TypeError(`cache should be type ${constructor.name}`);
         }
       }
