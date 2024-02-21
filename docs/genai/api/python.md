@@ -37,8 +37,8 @@ onnxruntime_genai.Model(model_folder: str, device: onnxruntime_genai.DeviceType)
 
 #### Parameters
 
-- `model_folder`: (required) Location of model and configuration on disk
-- `device`: (optional) The device to run on. One of:
+- `model_folder`: Location of model and configuration on disk
+- `device`: The device to run on. One of:
    - onnxruntime_genai.CPU
    - onnxruntime_genai.CUDA
    If not specified, defaults to CPU.
@@ -46,21 +46,6 @@ onnxruntime_genai.Model(model_folder: str, device: onnxruntime_genai.DeviceType)
 #### Returns
 
 `onnxruntime_genai.Model`
-
-### Create tokenizer object
-
-```python
-onnxruntime_genai.Model.create_tokenizer(model: onnxruntime_genai.Model) -> onnxruntime_genai.Tokenizer
-```
-
-#### Parameters
-
-- `model`: (Required) The model that was loaded by the `Model()`
-
-#### Returns
-
-- `Tokenizer`: The tokenizer object
-
 
 ### Generate method
 
@@ -94,7 +79,19 @@ onnxruntime_genai.GeneratorParams(model: onnxruntime_genai.Model) -> onnxruntime
 
 ## Tokenizer class
 
-Tokenizer objects are created from a Model.
+### Create tokenizer object
+
+```python
+onnxruntime_genai.Model.Tokenizer(model: onnxruntime_genai.Model) -> onnxruntime_genai.Tokenizer
+```
+
+#### Parameters
+
+- `model`: (Required) The model that was loaded by the `Model()`
+
+#### Returns
+
+- `Tokenizer`: The tokenizer object
 
 ### Encode
 
@@ -113,7 +110,7 @@ onnxruntime_genai.Tokenizer.encode(text: str) -> numpy.ndarray[numpy.int32]
 ### Decode
 
 ```python
-onnxruntime_genai.Tokenizer.decode(numpy.int32) -> str 
+onnxruntime_genai.Tokenizer.decode(tokens: numpy.ndarry[numpy.int32]) -> str 
 ```
 
 #### Parameters
@@ -189,6 +186,27 @@ onnxruntime_genai.TokenizerStream.decode(token: int32) -> str
 
 `str`: If a displayable string has accumulated, this method returns it. If not, this method returns the empty string.
 
+## Generator Params class
+
+### Create a Generator Params
+
+```python
+onnxruntime_genai.GeneratorParams(model: Model) -> GeneratorParams
+```
+
+### Input_ids member 
+
+```python
+onnxruntime_genai.GeneratorParams.input_ids = numpy.ndarray[numpy.int32, numpy.int32]
+```
+
+### Set search options method
+
+```python
+onnxruntime_genai.GeneratorParams.set_search_options(options: dict[str, Any])
+```
+
+### 
 
 ## Generator class
 
