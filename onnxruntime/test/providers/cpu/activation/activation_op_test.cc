@@ -695,6 +695,9 @@ TEST(LeakyReluGradInferenceTest, Basic) {
 }
 #endif
 
+// Remove DNNL from running this test because DNNL Gelu op seems not check domain for kernel implementation.
+// It will run the DNNL Gelu op which only be part of standard of Gelu-20 op.
+#ifndef USE_DNNL
 TEST_F(ActivationOpTest, ONNX_Gelu) {
   TestActivationOp<float>(
       "Gelu",
@@ -718,6 +721,7 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
       {},
       {{"approximate", "tanh"}}, true, 20);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
