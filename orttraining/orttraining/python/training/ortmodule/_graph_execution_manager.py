@@ -69,7 +69,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._export_mode = export_mode
         self._graph_transition_manager: Optional[GraphTransitionManager] = None
 
-        # Model after inference optimization && gradient building.
+        # Model after inference optimization and then gradient building.
         self._graph_builder = None
         self._graph_info = None
 

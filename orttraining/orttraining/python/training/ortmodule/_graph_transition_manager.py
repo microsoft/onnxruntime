@@ -35,7 +35,14 @@ from .options import DebugOptions, _RuntimeOptions
 
 
 class ExportedModelInfo:
-    """Encapsulates the information of the exported model."""
+    """Encapsulates the information of the exported model.
+
+    After ONNX model export, the model info is collected and encapsulated in this class, including:
+    1. The ONNX graph inputs
+    2. Graph input requiring gradient information.
+    3. The model's forward function signature and args/kwargs schema.
+
+    """
 
     def __init__(
         self,
@@ -59,7 +66,7 @@ class ExportedModelInfo:
 
         # A subset of onnx_graph_input_names.
         # Input names that require gradient parsed and then flatten from the model's forward function signature
-        # This should contain both the user input names, the buffer names, and the parameter names (since we use
+        # This should contain both the user-defined input names, the buffer names, and the parameter names (since we use
         # keep_initializers_as_inputs=True for model export)
         # Be noted: all inputs are used by the model for its compute.
         self.onnx_graph_input_names_require_grad: list[str] = onnx_graph_input_names_require_grad
@@ -87,12 +94,20 @@ class ExportedModelInfo:
             \tmodule_forward_output_schema: {self.module_forward_output_schema}
         """
 
-    def __repro__(self):
+    def __repr__(self):
         return self.__str__()
 
 
 class PostExportProcessedModelInfo:
-    """Encapsulates the information of the post-export processed model."""
+    """Encapsulates the information of the post-export processed model.
+
+    After ONNX model post-export processing, the model info is collected and encapsulated in this class, including:
+    1. The ONNX graph input names, dynamic axes, and input data accessor functions.
+    2. Graph input requiring gradient information.
+    3. The interface to construct the inputs for the ORT forward run, from original given inputs running for PyTorch.
+    4. The interface to restore the outputs from the ORT forward run, back to the original data structure.
+
+    """
 
     def __init__(
         self,
@@ -153,7 +168,7 @@ class PostExportProcessedModelInfo:
             \tbuffer_for_ort_runs.keys(): {self._buffer_for_ort_runs.keys()}
         """
 
-    def __repro__(self):
+    def __repr__(self):
         return self.__str__()
 
     def construct_inputs(
@@ -255,7 +270,7 @@ class GraphTransitionManager:
         # Model info after export and post export processing.
         self._post_export_processed_model_info = None
 
-    def use_cache_or_reconstruct_post_processed_model(
+    def get_post_processed_model(
         self, args: Sequence[ORTModelInputOutputType], kwargs: Mapping[str, ORTModelInputOutputType]
     ) -> tuple[bool, PostExportProcessedModelInfo]:
         """Check if the post-export processed ONNX model can be reused, otherwise, reconstruct the model.

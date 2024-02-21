@@ -253,7 +253,7 @@ class TrainingManager(GraphExecutionManager):
                 (
                     build_gradient_graph,
                     post_export_processed_model_info,
-                ) = self._graph_transition_manager.use_cache_or_reconstruct_post_processed_model(inputs, kwargs)
+                ) = self._graph_transition_manager.get_post_processed_model(inputs, kwargs)
 
                 if build_gradient_graph:
                     self._initialize_graph_builder(post_export_processed_model_info)
