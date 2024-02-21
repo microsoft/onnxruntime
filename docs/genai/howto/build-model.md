@@ -35,58 +35,58 @@ python3 -m onnxruntime_genai.models.builder --help
 python3 builder.py --help
 ```
 
-### Original Model From Hugging Face
-
+### Original PyTorch Model from Hugging Face
 This scenario is where your PyTorch model is not downloaded locally (either in the default Hugging Face cache directory or in a local folder on disk).
-
 ```
 # From wheel:
-python3 -m onnxruntime_genai.models.builder -m model_name -o /path/to/output/folder -p precision -e execution_provider -c cache_dir_to_save_hf_files
+python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_to_save_hf_files
 
 # From source:
-python3 builder.py -m model_name -o /path/to/output/folder -p precision -e execution_provider -c cache_dir_to_save_hf_files
+python3 builder.py -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_to_save_hf_files
 ```
 
-### Original Model From Disk
-
+### Original PyTorch Model from Disk
 This scenario is where your PyTorch model is already downloaded locally (either in the default Hugging Face cache directory or in a local folder on disk).
-
 ```
 # From wheel:
-python3 -m onnxruntime_genai.models.builder -m model_name -o /path/to/output/folder -p precision -e execution_provider -c cache_dir_where_hf_files_are_saved
+python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_where_hf_files_are_saved
 
 # From source:
-python3 builder.py -m model_name -o /path/to/output/folder -p precision -e execution_provider -c cache_dir_where_hf_files_are_saved
+python3 builder.py -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_where_hf_files_are_saved
 ```
 
-### Customized or Finetuned Model
-
+### Customized or Finetuned PyTorch Model
 This scenario is where your PyTorch model has been customized or finetuned for one of the currently supported model architectures and your model can be loaded in Hugging Face.
-
 ```
 # From wheel:
-python3 -m onnxruntime_genai.models.builder -m path_to_local_folder_on_disk -o /path/to/output/folder -p precision -e execution_provider
+python3 -m onnxruntime_genai.models.builder -i path_to_local_folder_on_disk -o path_to_output_folder -p precision -e execution_provider
 
 # From source:
-python3 builder.py -m path_to_local_folder_on_disk -o /path/to/output/folder -p precision -e execution_provider
+python3 builder.py -i path_to_local_folder_on_disk -o path_to_output_folder -p precision -e execution_provider
+```
+
+### GGUF Model
+This scenario is where your float16/float32 GGUF model is already on disk.
+```
+# From wheel:
+python3 -m onnxruntime_genai.models.builder -m model_name -i path_to_gguf_file -o path_to_output_folder -p precision -e execution_provider -c cache_dir_for_hf_files
+
+# From source:
+python3 builder.py -m model_name -i path_to_gguf_file -o path_to_output_folder -p precision -e execution_provider -c cache_dir_for_hf_files
 ```
 
 ### Extra Options
-
 This scenario is for when you want to have control over some specific settings. The below example shows how you can pass key-value arguments to `--extra_options`.
-
 ```
 # From wheel:
-python3 -m onnxruntime_genai.models.builder -m model_name -o /path/to/output/folder -p precision -e execution_provider -c cache_dir_to_save_hf_files --extra_options filename=decoder.onnx
+python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_for_hf_files --extra_options filename=decoder.onnx
 
 # From source:
-python3 builder.py -m model_name -o /path/to/output/folder -p precision -e execution_provider -c cache_dir_to_save_hf_files --extra_options filename=decoder.onnx
+python3 builder.py -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_for_hf_files --extra_options filename=decoder.onnx
 ```
-
 To see all available options through `--extra_options`, please use the `help` commands in the `Full Usage` section above.
 
 ### Unit Testing Models
-
 This scenario is where your PyTorch model is already downloaded locally (either in the default Hugging Face cache directory or in a local folder on disk). If it is not already downloaded locally, here is an example of how you can download it.
 
 ```
@@ -103,15 +103,13 @@ tokenizer.save_pretrained(cache_dir)
 ```
 
 #### Option 1: Use the model builder tool directly
-
 This option is the simplest but it will download another copy of the PyTorch model onto disk to accommodate the change in the number of hidden layers.
-
 ```
 # From wheel:
-python3 -m onnxruntime_genai.models.builder -m model_name -o /path/to/output/folder -p precision -e execution_provider --extra_options num_hidden_layers=4
+python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider --extra_options num_hidden_layers=4
 
 # From source:
-python3 builder.py -m model_name -o /path/to/output/folder -p precision -e execution_provider --extra_options num_hidden_layers=4
+python3 builder.py -m model_name -o path_to_output_folder -p precision -e execution_provider --extra_options num_hidden_layers=4
 ```
 
 #### Option 2: Edit the config.json file on disk and then run the model builder tool
@@ -122,9 +120,8 @@ python3 builder.py -m model_name -o /path/to/output/folder -p precision -e execu
 
 ```
 # From wheel:
-python3 -m onnxruntime_genai.models.builder -m model_name -o /path/to/output/folder -p precision -e execution_provider -c cache_dir_where_hf_files_are_saved
+python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_where_hf_files_are_saved
 
 # From source:
-python3 builder.py -m model_name -o /path/to/output/folder -p precision -e execution_provider -c cache_dir_where_hf_files_are_saved
+python3 builder.py -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_where_hf_files_are_saved
 ```
-
