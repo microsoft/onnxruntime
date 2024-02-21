@@ -100,7 +100,7 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
           element_counts_and_input_dims_gpu.GpuPtr(),
           updates_tensor->DataRaw(),
           input_shape.SizeFromDimension(last_index_dimension)));
-    }break;
+    } break;
     case Reduction::Add: {
       auto element_type = input_tensor->DataType()->AsPrimitiveDataType()->GetDataType();
       ORT_RETURN_IF_ERROR(ScatterNDImplAdd(
@@ -113,7 +113,7 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
           element_counts_and_input_dims_gpu.GpuPtr(),
           updates_tensor->DataRaw(),
           input_shape.SizeFromDimension(last_index_dimension)));
-    }break;
+    } break;
     default:
       ORT_THROW("ScatterND not supported for other reduction than Add, None.");
       break;
