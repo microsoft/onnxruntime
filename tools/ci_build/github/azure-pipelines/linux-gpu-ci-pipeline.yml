@@ -225,8 +225,9 @@ stages:
             /bin/bash -c '
               set -ex; \
               nvidia-smi; \
+              alias python3 /opt/python/cp38-cp38/bin/python3; \
               python3 -m pip install /build/Release/dist/*.whl; \
-              python -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
+              python3 -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
                         ort_device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0); \
                         print(ort_device); print(ort_device.device_type(), C_OrtDevice.cuda()); " \
             '
@@ -256,6 +257,6 @@ stages:
               python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
                 --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
-                --enable_pybind --build_java --ctest_path "" ''
-
+                --enable_pybind --build_java --ctest_path "" ; \
+              '
     - template: templates/clean-agent-build-directory-step.yml
