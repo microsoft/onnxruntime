@@ -5,3 +5,5 @@ parent: Generative AI
 has_children: true
 nav_order: 1
 ---
+
+_Note: this API is in preview and is subject to change._

@@ -1,11 +1,13 @@
 ---
-title: Generative AI
+title: Generative AI (Preview)
 description: Run generative models with ONNX Runtime GenAI
 has_children: true
 nav_order: 6
 ---
 
 # Generative AI with ONNX Runtime
+
+_Note: this API is in preview and is subject to change._
 
 Run generative AI models with ONNX Runtime.
 
