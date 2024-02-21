@@ -19,7 +19,7 @@ _Note: this API is in preview and is subject to change._
 
 ## Overview
 
-## Functions
+## Model API
 
 ### Create model
 
@@ -31,32 +31,55 @@ Creates a model from the given configuration directory and device type.
  * Output:  out The created model.
 
 #### Returns
- OgaResult containing the error message if the model creation failed.
- 
-
-### Destroy model
-
-#### Parameters
+ `OgaResult` containing the error message if the model creation failed.
 
 ```c
 OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateModel(const char* config_path, OgaDeviceType device_type, OgaModel** out);
 ```
 
+### Destroy model
+
+Destroys the given model.
+
+
 #### Parameters
 
-
- Destroys the given model.
- * Input: model The model to be destroyed.
+* Input: model The model to be destroyed.
  
+#### Returns
+`void`
+
 ```c
 OGA_EXPORT void OGA_API_CALL OgaDestroyModel(OgaModel* model);
 ```
 
-### Create Tokenizer
+### Generate
+
+Generates an array of token arrays from the model execution based on the given generator params.
 
 #### Parameters
 
+* Input: model The model to use for generation.
+* Input: generator_params The parameters to use for generation.
+* Output:  out The generated sequences of tokens. The caller is responsible for freeing the sequences using OgaDestroySequences after it is done using the sequences.
+
 #### Returns
+
+OgaResult containing the error message if the generation failed.
+ 
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerate(const OgaModel* model, const OgaGeneratorParams* generator_params, OgaSequences** out);
+```
+
+## Tokenizer API
+
+### Create Tokenizer
+
+#### Parameters
+* Input: model. The model for which the tokenizer should be created
+
+#### Returns
+`OgaResult` containing the error message if the tokenizer creation failed.
 
 ```c
 OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateTokenizer(const OgaModel* model, OgaTokenizer** out);
@@ -64,194 +87,9 @@ OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateTokenizer(const OgaModel* model, Oga
 
 ### Destroy Tokenizer
 
-#### Parameters
-
-#### Returns
-
 ```c
 OGA_EXPORT void OGA_API_CALL OgaDestroyTokenizer(OgaTokenizer*);
 ```
-
-### Encode batch
-
-#### Parameters
-
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerEncodeBatch(const OgaTokenizer*, const char** strings, size_t count, OgaSequences** out);
-```
-
-### Decode batch
-
-#### Parameters
-
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerDecodeBatch(const OgaTokenizer*, const OgaSequences* tokens, const char*** out_strings);
-```
-
-### Destroy tokenizer strings
-
-#### Parameters
-
-```c
-OGA_EXPORT void OGA_API_CALL OgaTokenizerDestroyStrings(const char** strings, size_t count);
-```
-
-### Create tokenizer stream
-
-
-#### Parameters
-
-```c
-OgaTokenizerStream is to decoded token strings incrementally, one token at a time.
-```
-
-#### Parameters
-
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateTokenizerStream(const OgaTokenizer*, OgaTokenizerStream** out);
-```
-
-### Destroy tokenizer stream
-
-#### Parameters
-
-```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyTokenizerStream(OgaTokenizerStream*);
-```
-
-### Decode stream
-
-Decode a single token in the stream. If this results in a word being generated, it will be 
-
-#### Parameters
-
-returned in 'out'.
- * The caller is responsible for concatenating each chunk together to generate the complete result.
- * 'out' is valid until the next call to OgaTokenizerStreamDecode or when the OgaTokenizerStream is destroyed
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerStreamDecode(OgaTokenizerStream*, int32_t token, const char** out);
-```
-
-
-### Create Generator
-
-Creates a generator from the given model and generator params.
-
-#### Parameters
-
- * Input: model The model to use for generation.
- * Input: params The parameters to use for generation.
- * Output:  out The created generator.
-
-#### Returns
-OgaResult containing the error message if the generator creation failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateGenerator(const OgaModel* model, const OgaGeneratorParams* params, OgaGenerator** out);
-```
-
-### Destroy generator
-
-Destroys the given generator.
-
-#### Parameters
-
-* Input: generator The generator to be destroyed.
-
-#### Returns
-`void`
-
-```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyGenerator(OgaGenerator* generator);
-```
-
-### Create generator params
-
-Creates a OgaGeneratorParams from the given model.
-
-#### Parameters
-
-* Input: model The model to use for generation.
-* Output:  out The created generator params.
-
-#### Returns
-
-OgaResult containing the error message if the generator params creation failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateGeneratorParams(const OgaModel* model, OgaGeneratorParams** out);
-```
-
-### Destroy generator params
-
-Destroys the given generator params.
-
-#### Parameters
-
- * Input: generator_params The generator params to be destroyed.
-
-#### Returns
-`void`
-
-```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyGeneratorParams(OgaGeneratorParams* generator_params);
-```
-
-### Set maximum length
-
-Sets the maximum length that the generated sequence can have.
-
-#### Parameters
-
-* Input: params The generator params to set the maximum length on.
-* Input: max_length The maximum length of the generated sequences.
-
-#### Returns
-
-`OgaResult` containing the error message if the setting of the maximum length failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetMaxLength(OgaGeneratorParams* generator_params, size_t max_length);
-```
-
-### Set inputs
-
-Sets the input ids for the generator params. The input ids are used to seed the generation.
-
-#### Parameters
-
- * Input: generator_params The generator params to set the input ids on.
- * Input: input_ids The input ids array of size input_ids_count = batch_size * sequence_length.
- * Input: input_ids_count The total number of input ids.
- * Input: sequence_length The sequence length of the input ids.
- * Input: batch_size The batch size of the input ids.
-
-#### Returns
-
- OgaResult containing the error message if the setting of the input ids failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetInputIDs(OgaGeneratorParams* generator_params, const int32_t* input_ids, size_t input_ids_count, size_t sequence_length, size_t batch_size);
-```
-
-### Set input sequence
-
-Sets the input id sequences for the generator params. The input id sequences are used to seed the generation.
-
-#### Parameters
-
- * Input: generator_params The generator params to set the input ids on.
- * Input: sequences The input id sequences.
-
-#### Returns
-
- OgaResult containing the error message if the setting of the input id sequences failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetInputSequences(OgaGeneratorParams* generator_params, const OgaSequences* sequences);
-```
-
 ### Encode
 
 Encodes a single string and adds the encoded sequence of tokens to the OgaSequences. The OgaSequences must be freed with OgaDestroySequences when it is no longer needed.
@@ -276,26 +114,54 @@ Decode a single token sequence and returns a null terminated utf8 string. out_st
 OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerDecode(const OgaTokenizer*, const int32_t* tokens, size_t token_count, const char** out_string);
 ```
 
+### Encode batch
 
-### Generate
+#### Parameters
+* 
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerEncodeBatch(const OgaTokenizer*, const char** strings, size_t count, TokenSequences** out);
+```
 
-Generates an array of token arrays from the model execution based on the given generator params.
+### Decode batch
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerDecodeBatch(const OgaTokenizer*, const OgaSequences* tokens, const char*** out_strings);
+```
+
+### Destroy tokenizer strings
+
+```c
+OGA_EXPORT void OGA_API_CALL OgaTokenizerDestroyStrings(const char** strings, size_t count);
+```
+
+### Create tokenizer stream
+
+OgaTokenizerStream is used to decoded token strings incrementally, one token at a time.
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateTokenizerStream(const OgaTokenizer*, OgaTokenizerStream** out);
+```
+
+### Destroy tokenizer stream
 
 #### Parameters
 
-* Input: model The model to use for generation.
-* Input: generator_params The parameters to use for generation.
-* Output:  out The generated sequences of tokens. The caller is responsible for freeing the sequences using OgaDestroySequences after it is done using the sequences.
-
-#### Returns
-
-OgaResult containing the error message if the generation failed.
- 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerate(const OgaModel* model, const OgaGeneratorParams* generator_params, OgaSequences** out);
+OGA_EXPORT void OGA_API_CALL OgaDestroyTokenizerStream(OgaTokenizerStream*);
 ```
 
-### Create generator params
+### Decode stream
+
+Decode a single token in the stream. If this results in a word being generated, it will be returned in 'out'. The caller is responsible for concatenating each chunk together to generate the complete result.
+'out' is valid until the next call to OgaTokenizerStreamDecode or when the OgaTokenizerStream is destroyed
+ 
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerStreamDecode(OgaTokenizerStream*, int32_t token, const char** out);
+```
+
+## Generator Params API
+
+### Create Generator Params
 
 Creates a OgaGeneratorParams from the given model.
 
@@ -306,13 +172,13 @@ Creates a OgaGeneratorParams from the given model.
 
 #### Returns
 
-OgaResult containing the error message if the generator params creation failed.
+`OgaResult` containing the error message if the generator params creation failed.
  
 ```c
 OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateGeneratorParams(const OgaModel* model, OgaGeneratorParams** out);
 ```
 
-### Destroy generator params
+### Destroy Generator Params
 
 Destroys the given generator params.
 
@@ -325,6 +191,110 @@ Destroys the given generator params.
 
 ```c
 OGA_EXPORT void OGA_API_CALL OgaDestroyGeneratorParams(OgaGeneratorParams* generator_params);
+```
+
+### Set search option (number)
+
+Set a search option where the option is a number
+
+#### Parameters
+* generator_params: The generator params object to set the parameter on
+* name: the name of the parameter
+* value: the value to set
+
+#### Returns
+`OgaResult` containing the error message if the generator params creation failed.
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetSearchNumber(OgaGeneratorParams* generator_params, const char* name, double value);
+```
+
+### Set search option (bool)
+
+Set a search option where the option is a bool.
+
+#### Parameters
+* generator_params: The generator params object to set the parameter on
+* name: the name of the parameter
+* value: the value to set
+
+#### Returns
+`OgaResult` containing the error message if the generator params creation failed.
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetSearchBool(OgaGeneratorParams* generator_params, const char* name, bool value);
+```
+
+### Set inputs
+
+Sets the input ids for the generator params. The input ids are used to seed the generation.
+
+#### Parameters
+
+ * Input: generator_params The generator params to set the input ids on.
+ * Input: input_ids The input ids array of size input_ids_count = batch_size * sequence_length.
+ * Input: input_ids_count The total number of input ids.
+ * Input: sequence_length The sequence length of the input ids.
+ * Input: batch_size The batch size of the input ids.
+
+#### Returns
+
+`OgaResult` containing the error message if the setting of the input ids failed.
+ 
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetInputIDs(OgaGeneratorParams* generator_params, const int32_t* input_ids, size_t input_ids_count, size_t sequence_length, size_t batch_size);
+```
+
+### Set input sequence
+
+Sets the input id sequences for the generator params. The input id sequences are used to seed the generation.
+
+#### Parameters
+
+ * Input: generator_params The generator params to set the input ids on.
+ * Input: sequences The input id sequences.
+
+#### Returns
+
+ OgaResult containing the error message if the setting of the input id sequences failed.
+ 
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetInputSequences(OgaGeneratorParams* generator_params, const OgaSequences* sequences);
+```
+
+
+## Generator API
+
+### Create Generator
+
+Creates a generator from the given model and generator params.
+
+#### Parameters
+
+ * Input: model The model to use for generation.
+ * Input: params The parameters to use for generation.
+ * Output:  out The created generator.
+
+#### Returns
+`OgaResult` containing the error message if the generator creation failed.
+ 
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateGenerator(const OgaModel* model, const OgaGeneratorParams* params, OgaGenerator** out);
+```
+
+### Destroy generator
+
+Destroys the given generator.
+
+#### Parameters
+
+* Input: generator The generator to be destroyed.
+
+#### Returns
+`void`
+
+```c
+OGA_EXPORT void OGA_API_CALL OgaDestroyGenerator(OgaGenerator* generator);
 ```
 
 ### Check if generation has completed
@@ -563,11 +533,6 @@ OGA_EXPORT const void* OGA_API_CALL OgaBufferGetData(const OgaBuffer*);
 
 ### Create sequences
 
-
-#### Parameters
-
-#### Returns
-
 ```c
 OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateSequences(OgaSequences** out);
 ```
@@ -632,4 +597,3 @@ The pointer to the sequence data at the given index. The pointer is valid until 
 ```c
 OGA_EXPORT const int32_t* OGA_API_CALL OgaSequencesGetSequenceData(const OgaSequences* sequences, size_t sequence_index);
 ```
-
