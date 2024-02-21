@@ -39,6 +39,8 @@ def get_pipeline_names():
         "orttraining-ortmodule-distributed",
         # checks
         "onnxruntime-binary-size-checks-ci-pipeline",
+        # big models
+        "Big Models",
         # not currently required, but running ensures we're hitting all mobile platforms
         "Android CI Pipeline",
         "iOS CI Pipeline",
