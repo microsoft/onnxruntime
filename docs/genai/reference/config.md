@@ -14,7 +14,7 @@ _Note: this API is in preview and is subject to change._
 
 ## Example file for phi-2
 
-```
+```json
 {
     "model": {
         "bos_token_id": 50256,
