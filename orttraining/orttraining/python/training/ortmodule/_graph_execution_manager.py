@@ -144,6 +144,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._runtime_options.enable_zero_stage3_support:
             # Move import to here to avoid circular dependency error
             from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3  # type: ignore[import]
+
             # Cannot toggle feature enabling/disabling after the first time enabled.
 
             configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="ort_output", stats_overwrite=True)
