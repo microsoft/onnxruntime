@@ -8,6 +8,9 @@ nav_order: 1
 ---
 
 # Python API
+
+_Note: this API is in preview and is subject to change._
+
 {: .no_toc }
 
 * TOC placeholder
@@ -186,7 +189,7 @@ onnxruntime_genai.TokenizerStream.decode(token: int32) -> str
 
 `str`: If a displayable string has accumulated, this method returns it. If not, this method returns the empty string.
 
-## Generator Params class
+## GeneratorParams class
 
 ### Create a Generator Params
 

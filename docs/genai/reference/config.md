@@ -9,6 +9,9 @@ nav_order: 1
 
 # Configuration reference 
 
+_Note: this API is in preview and is subject to change._
+
+
 ## Example file for phi-2
 
 ```
