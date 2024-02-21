@@ -121,8 +121,9 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   return nullptr;
 }
 
+#ifdef ENABLE_CUDA_NHWC_OPS
 std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
-#ifdef USE_CUDA
+#if defined(USE_CUDA)
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
   provider_options.prefer_nhwc = true;
@@ -131,6 +132,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
 #endif
   return nullptr;
 }
+#endif
 
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
 #ifdef USE_CUDA

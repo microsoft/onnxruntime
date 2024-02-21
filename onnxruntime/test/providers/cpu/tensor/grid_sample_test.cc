@@ -24,11 +24,9 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(int opset
 }
 
 template <typename T>
-void RunTests(T& test, std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers) {
+void RunTests(T& test, std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers) {
   for (size_t idx = 0; idx < execution_providers.size(); ++idx) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_provider;
-    execution_provider.push_back(std::move(execution_providers[idx]));
-    test.ConfigEps(std::move(execution_provider)).RunWithConfig();
+    test.ConfigEp(std::move(execution_providers[idx])).RunWithConfig();
   }
   execution_providers.clear();
 }
