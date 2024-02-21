@@ -168,6 +168,8 @@ def main():
         container_ops_config_file,
         container_build_settings_file,
         "/workspace/shared/output",
+        "-e",
+        'JAVA_OPTS="-Xms16G -Xmx16G"',
     ]
 
     run(docker_container_build_cmd)
