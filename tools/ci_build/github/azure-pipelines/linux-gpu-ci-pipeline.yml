@@ -225,6 +225,10 @@ stages:
             /bin/bash -c '
               set -ex; \
               nvidia-smi; \
+              python3 -m pip install /build/Release/dist/*.whl; \
+              python -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
+                        ort_device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0); \
+                        print(ort_device); print(ort_device.device_type(), C_OrtDevice.cuda()); " \
             '
       displayName: 'Check GPU'
 
@@ -241,18 +245,17 @@ stages:
             --volume /data/onnx:/data/onnx \
             -e NVIDIA_TF32_OVERRIDE=0 \
             $(Repository) \
-            /bin/bash -c "
+            /bin/bash -c '
               set -ex; \
               cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
-              ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
-              /tmp/python3 -m pip install -r /tmp/requirements.txt; \
-              /tmp/python3 -m pip install /build/Release/dist/*.whl; \
+              alias python3 /opt/python/cp38-cp38/bin/python3; \
+              python3 -m pip install -r /tmp/requirements.txt; \
+              python3 -m pip install /build/Release/dist/*.whl; \
               cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
               cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
-              cd /tmp; \
-              /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
+              python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
                 --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
-                --enable_pybind --build_java --ctest_path '' "
+                --enable_pybind --build_java --ctest_path "" ''
 
     - template: templates/clean-agent-build-directory-step.yml
