@@ -114,14 +114,19 @@ TEST(SkipGroupNormTest, SkipGroupNorm_with_bias) {
 
   int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
 
   std::array<int, 2> channels_last_values = {-1, 1};
 
   for (const int channels_last : channels_last_values) {
-    if (enable_cuda) {
+    if (enable_cuda || enable_rocm) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       if (enable_cuda && channels_last != 0) {
         execution_providers.push_back(DefaultCudaExecutionProvider());
+      }
+
+      if (enable_rocm && channels_last != 0) {
+        execution_providers.push_back(DefaultRocmExecutionProvider());
       }
 
       // Don't run the test if no providers are supported
@@ -230,6 +235,7 @@ TEST(SkipGroupNormTest, SkipGroupNorm_no_bias_broadcast_skip) {
 
   int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
 
   std::array<bool, 2> has_add_out_values = {true, false};
   std::array<int, 2> skip_dims = {2, 4};
@@ -237,10 +243,14 @@ TEST(SkipGroupNormTest, SkipGroupNorm_no_bias_broadcast_skip) {
   constexpr int channels_last = 1;
   for (const int skip_dim : skip_dims) {
     for (const bool has_add_out : has_add_out_values) {
-      if (enable_cuda) {
+      if (enable_cuda || enable_rocm) {
         std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
         if (enable_cuda && channels_last != 0) {
           execution_providers.push_back(DefaultCudaExecutionProvider());
+        }
+
+        if (enable_rocm && channels_last != 0) {
+          execution_providers.push_back(DefaultRocmExecutionProvider());
         }
 
         // Don't run the test if no providers are supported

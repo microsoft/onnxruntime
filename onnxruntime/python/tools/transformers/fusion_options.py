@@ -29,6 +29,13 @@ class AttentionOpType(Enum):
     def __str__(self):
         return self.value
 
+    # Override __eq__ to return string comparison
+    def __hash__(self):
+        return hash(self.value)
+
+    def __eq__(self, other):
+        return other.value == self.value
+
 
 class FusionOptions:
     """Options of fusion in graph optimization"""

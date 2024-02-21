@@ -204,6 +204,7 @@ jobs:
           --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           --volume /data/onnx:/data/onnx \
+          -e NVIDIA_TF32_OVERRIDE=0 \
           $(Repository) \
           /bin/bash -c "
             set -ex; \

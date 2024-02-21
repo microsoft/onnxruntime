@@ -85,6 +85,7 @@ def create_onnxruntime_session(
     num_threads=-1,
     enable_profiling=False,
     verbose=False,
+    enable_mlas_gemm_fastmath_arm64_bfloat16=False,
     provider_options={},  # map execution provider name to its option  # noqa: B006
 ):
     session = None
@@ -135,6 +136,9 @@ def create_onnxruntime_session(
 
         if provider_options:
             providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
+
+        if enable_mlas_gemm_fastmath_arm64_bfloat16:
+            sess_options.add_session_config_entry("mlas.enable_gemm_fastmath_arm64_bfloat16", "1")
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
     except Exception:
