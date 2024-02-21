@@ -1,7 +1,7 @@
 ---
 title: Tutorials
 description: Build your application with ONNX Runtime GenAI
-parent: Generative AI
+parent: Generative AI (Preview)
 has_children: true
 nav_order: 1
 ---
