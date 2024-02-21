@@ -110,7 +110,7 @@ onnxruntime_genai.Tokenizer.encode(text: str) -> numpy.ndarray[numpy.int32]
 ### Decode
 
 ```python
-onnxruntime_genai.Tokenizer.decode(tokens: numpy.ndarry[numpy.int32]) -> str 
+onnxruntime_genai.Tokenizer.decode(tokens: numpy.ndarry[int]) -> str 
 ```
 
 #### Parameters
