@@ -147,6 +147,25 @@ def _test_apple_packages(args):
                 cwd=target_proj_path,
             )
 
+            if args.mac_catalyst_enabled:
+                subprocess.run(
+                    [
+                        "xcrun",
+                        "xcodebuild",
+                        "test",
+                        "-workspace",
+                        "./apple_package_test.xcworkspace",
+                        "-scheme",
+                        "ios_package_test",
+                        "-destination",
+                        "platform=macOS,variant=Mac Catalyst",
+                        "CODE_SIGNING_ALLOWED=NO",
+                    ],
+                    shell=False,
+                    check=True,
+                    cwd=target_proj_path,
+                )
+
             if PackageVariant[args.variant] != PackageVariant.Mobile and not args.skip_macos_test:
                 subprocess.run(
                     [
@@ -213,6 +232,12 @@ def parse_args():
         "--skip_macos_test",
         action="store_true",
         help="Skip macos platform tests. Specify this argument when build targets only contain ios archs. ",
+    )
+
+    parser.add_argument(
+        "--mac_catalyst_enabled",
+        action="store_true",
+        help="Run tests for mac catalyst variants. Specify this argument when build targets contains catalyst archs. ",
     )
 
     return parser.parse_args()

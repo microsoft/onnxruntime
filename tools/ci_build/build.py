@@ -2758,7 +2758,7 @@ def main():
         if is_macOS():
             if (
                 not args.ios
-                and not args.macos != "Catalyst"
+                and args.macos != "Catalyst"
                 and not args.android
                 and args.osx_arch == "arm64"
                 and platform.machine() == "x86_64"
