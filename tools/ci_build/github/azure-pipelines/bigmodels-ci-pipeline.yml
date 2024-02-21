@@ -367,7 +367,7 @@ stages:
         packageType: upack
         feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
         version: 1.0.0
-        definition: 'f9767031-38fa-48cd-b7c8-4403afc9395f'
+        definition: 'b583ce7c-1a8f-4099-ae28-5d5f56c478b1'
         downloadPath: $(Agent.TempDirectory)/whisper_large_v3
 
     - script: |
