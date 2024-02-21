@@ -13,9 +13,6 @@ template <typename T>
 class Gelu final : public UnaryElementwise {
  public:
   Gelu(const OpKernelInfo& info) : UnaryElementwise(info) {
-    const CUDAExecutionProvider* cuda_ep =
-        static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
-
     approximation_algorithm_ = info.GetAttrOrDefault<std::string>("approximate", "none");
   }
 
