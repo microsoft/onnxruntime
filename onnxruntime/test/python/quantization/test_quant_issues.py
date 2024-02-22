@@ -36,8 +36,7 @@ class TestQuantIssues(unittest.TestCase):
     def test_minimal_model(self):
         folder = os.path.join(os.path.dirname(__file__), "..", "..", "testdata")
         onnx_path = os.path.join(folder, "qdq_minimal_model.onnx")
-        if not os.path.exists(onnx_path):
-            raise unittest.SkipTet(f"file {onnx_path!r} is missing")
+        assert os.path.exists(onnx_path), "unable to find {onnx_path!r}"
 
         import onnxruntime.quantization as oq
         import numpy as np
