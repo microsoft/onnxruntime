@@ -213,28 +213,18 @@ stages:
       inputs:
         script: |
           set -e -x
-          mkdir -p $HOME/.onnx
           docker run --gpus all --rm \
-            --volume  $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory)/Release:/build/Release \
-            --volume /data/models:/build/models:ro \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            --volume /data/onnx:/data/onnx \
-            -e NVIDIA_TF32_OVERRIDE=0 \
             $(Repository) \
             /bin/bash -c '
               nvidia-smi; \
-              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libcudart.so; \
-              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libcudnn.so; \
-              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libnvinfer.so; \
-              whereis cudnn; \
-              ls /usr/local/cuda; \
-              cat /usr/include/cudnn.h | grep CUDNN_MAJOR -A 2; \
-              python3() { /opt/python/cp38-cp38/bin/python3; }; \
-              python3 -m pip install /build/Release/dist/*.whl; \
-              python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
+              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so" \
+              cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -A 2; \
+              cat /usr/local/cuda/include/cuda.h | grep -m1 CUDA_VERSION; \
+              /opt/python/cp38-cp38/bin/python3 -m pip install /build/Release/dist/*.whl; \
+              /opt/python/cp38-cp38/bin/python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
                         ort_device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0); \
-                        print(ort_device); print(ort_device.device_type(), C_OrtDevice.cuda()); \
+                        print(ort_device.device_type(), C_OrtDevice.cuda()); \
                         assert(ort_device.device_type()==1); assert(C_OrtDevice.cuda()==1);" \
             '
       displayName: 'Check GPU'
