@@ -408,11 +408,12 @@ stages:
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              ls whisperlargev3; \
               python3 -m models.whisper.benchmark \
                   --benchmark-type ort \
                   --audio-path models/whisper/test/1272-141231-0002.mp3 \
                   --model-name openai/whisper-large-v3 \
-                  --ort-model-path ./whisperlargev3/whisper-large-v3_beamsearch.onnx \
+                  --ort-model-path /workspace/onnxruntime/python/tools/transformers/whisperlargev3/whisper-large-v3_beamsearch.onnx \
                   --precision fp32 \
                   --device cuda > ort_output.txt ; \
               cat ort_output.txt ; \
