@@ -1259,8 +1259,11 @@ endif()
 #Dependencies end. In the next we'll enable "treat warning as error"
 
 #Adjust warning flags
-set_msvc_c_cpp_compiler_warning_level(4)
-
+if (onnxruntime_USE_TENSORRT)
+  set_msvc_c_cpp_compiler_warning_level(3)
+else()
+  set_msvc_c_cpp_compiler_warning_level(4)
+endif()
 set(onnxruntime_DELAYLOAD_FLAGS "")
 
 include_directories(
