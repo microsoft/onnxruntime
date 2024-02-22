@@ -8,7 +8,8 @@
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
 #ifdef USE_ROCM
 #include "contrib_ops/rocm/bert/elementwise.h"
-#else
+#endif
+#ifdef USE_CUDA
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #endif
 
@@ -62,7 +63,8 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(input->Data<T>()), static_cast<int>(input_length),
       (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr, static_cast<int>(bias_length),
       reinterpret_cast<CudaT*>(output->MutableData<T>()));
-#else
+#endif
+#ifdef USE_CUDA
   return LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
                                      Stream(context),
                                      static_cast<int>(input_length),
