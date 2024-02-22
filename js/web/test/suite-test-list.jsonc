@@ -1354,6 +1354,7 @@
       "expand.jsonc",
       "fast-gelu.jsonc",
       "floor.jsonc",
+      "fused-conv.jsonc",
       "gather-elements.jsonc",
       "gemm.jsonc",
       "global-average-pool.jsonc",

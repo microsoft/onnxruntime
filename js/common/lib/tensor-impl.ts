@@ -144,6 +144,7 @@ export class Tensor implements TensorInterface {
           if (Array.isArray(arg1)) {
             if (arg0 === 'float16' && typedArrayConstructor === Uint16Array) {
               // When no Float16Array polyfill is used, we cannot create 'float16' tensor from number array.
+              //
               // Throw error here because when user try to use number array as data,
               // e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
               // Uint16Array.from(arg1) which generates wrong data.
