@@ -236,10 +236,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     zero_seq_count *= num_directions_;
   }
 
-  // The sequence lens buffer is required by the sequence reverse operation on the GPU.
-  if (reverse_) {
-    ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(ctx->GetComputeStream()));
-  }
+  // Prior to cuDNN 8.9.1 the sequence lens buffer must be passed to cudnnRNNForward and thus is must
+  // be copied to the GPU always.
+  ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(ctx->GetComputeStream()));
+  // Starting with cuDNN 8.9.1 the sequence lens buffer is ignored by cudnnRNNForward and thus it must
+  // be copied to the GPU only for the ReverseBySequence kernels.
+  //if (reverse_) {
+  //  ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(ctx->GetComputeStream()));
+  //}
 
   // optional outputs
   TensorShapeVector dims_Y({seq_length, num_directions_, batch_size, hidden_size_});
@@ -331,7 +335,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   CUDNN_RETURN_IF_ERROR(cudnnRNNForward(GetCudnnHandle(ctx),
                                         rnn_desc,
                                         CUDNN_FWD_MODE_INFERENCE,
-                                        sequence_lens_data,  // should be zero starting with cudnn 8.9.1
+                                        sequence_lens_buffer.GpuPtr(),  // should be zero starting with cudnn 8.9.1
                                         x_desc1,
                                         x_data_input,
                                         y_desc1,
