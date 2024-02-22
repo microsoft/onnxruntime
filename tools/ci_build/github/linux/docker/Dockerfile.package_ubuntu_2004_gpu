@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}:${LD_LIBRARY_PATH}
 
 RUN apt-get update &&\
-    apt-get install -y git bash wget diff
+    apt-get install -y git bash wget diffutils
 
 # Install python3
 RUN apt-get install -y --no-install-recommends \
