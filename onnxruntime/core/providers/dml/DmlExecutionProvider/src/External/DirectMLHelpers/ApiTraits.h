@@ -12,7 +12,7 @@ struct EnumTraits
 template <>
 struct EnumTraits<DML_TENSOR_DATA_TYPE>
 {
-    static constexpr auto ValueCount = 12;
+    static constexpr auto ValueCount = 13;
 };
 
 template <>
@@ -1191,6 +1191,18 @@ struct OperatorDescTraits<DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC>
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MULTIHEAD_ATTENTION1;
 };
 
+template <>
+struct OperatorDescTraits<DML_QUANTIZE_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_QUANTIZE;
+};
+
+template <>
+struct OperatorDescTraits<DML_DEQUANTIZE_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_DEQUANTIZE;
+};
+
 template <DML_OPERATOR_TYPE Type>
 struct OperatorTypeTraits
 {
@@ -2210,6 +2222,18 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MULTIHEAD_ATTENTION1>
     using DescType = DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC;
 };
 
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZE>
+{
+    using DescType = DML_QUANTIZE_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_DEQUANTIZE>
+{
+    using DescType = DML_DEQUANTIZE_OPERATOR_DESC;
+};
+
 // Calls a visitor functor, supplying an empty operator desc corresponding to the given DML_OPERATOR_TYPE as
 // the first argument.
 //
@@ -2513,6 +2537,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_MULTIHEAD_ATTENTION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MULTIHEAD_ATTENTION1:
         return std::invoke(std::forward<Visitor>(visitor), DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_QUANTIZE:
+        return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_DEQUANTIZE:
+        return std::invoke(std::forward<Visitor>(visitor), DML_DEQUANTIZE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_CELU:
@@ -2695,6 +2723,9 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_SPACE_TO_DEPTH1: return "DML_OPERATOR_SPACE_TO_DEPTH1";
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1: return "DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1";
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2: return "DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2";
+    case DML_OPERATOR_MULTIHEAD_ATTENTION1: return "DML_OPERATOR_MULTIHEAD_ATTENTION1";
+    case DML_OPERATOR_QUANTIZE: return "DML_OPERATOR_QUANTIZE";
+    case DML_OPERATOR_DEQUANTIZE: return "DML_OPERATOR_DEQUANTIZE";
     case DML_OPERATOR_RESAMPLE1: return "DML_OPERATOR_RESAMPLE1";
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER: return "DML_OPERATOR_MATRIX_MULTIPLY_INTEGER";
     case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY: return "DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY";

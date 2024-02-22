@@ -1528,6 +1528,26 @@ inline std::vector<OperatorField> GetFields(const DML_MULTIHEAD_ATTENTION1_OPERA
         OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[19], ToOperatorFieldType(static_cast<UINT>(desc.MaskType))),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_QUANTIZE_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationParametersType))),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationParametersTensorCount))),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QuantizationParametersTensors), desc.QuantizationParametersTensorCount)),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_DEQUANTIZE_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationParametersType))),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationParametersTensorCount))),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QuantizationParametersTensors), desc.QuantizationParametersTensorCount)),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
 inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_ELU_OPERATOR_DESC& desc)
 {
     return {
@@ -1868,6 +1888,8 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_DIAGONAL_MATRIX1: return DML_DIAGONAL_MATRIX1_OPERATOR_SCHEMA;
     case DML_OPERATOR_MULTIHEAD_ATTENTION: return DML_MULTIHEAD_ATTENTION_OPERATOR_SCHEMA;
     case DML_OPERATOR_MULTIHEAD_ATTENTION1: return DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA;
+    case DML_OPERATOR_QUANTIZE: return DML_QUANTIZE_OPERATOR_SCHEMA;
+    case DML_OPERATOR_DEQUANTIZE: return DML_DEQUANTIZE_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_ELU: return DML_ACTIVATION_ELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_CELU: return DML_ACTIVATION_CELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_HARDMAX: return DML_ACTIVATION_HARDMAX_OPERATOR_SCHEMA;
@@ -2481,6 +2503,14 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_QUANTIZE:
+        return AbstractOperatorDesc(
+            &DML_QUANTIZE_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_QUANTIZE_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_DEQUANTIZE:
+        return AbstractOperatorDesc(
+            &DML_DEQUANTIZE_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_DEQUANTIZE_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_ACTIVATION_ELU:
         return AbstractOperatorDesc(
             &DML_ACTIVATION_ELU_OPERATOR_SCHEMA,

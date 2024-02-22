@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -46,11 +47,11 @@ const createGatherElementsProgramInfo =
       const output = outputVariable('output', inputOutputDataType, outputShape.length);
 
 
-      const programUniforms: ProgramUniform[] =
-          [{type: 'uint32', data: outputSize}, {type: 'int32', data: axisDimLimit}, {type: 'uint32', data: axis}];
-      programUniforms.push(...createTensorShapeVariables(inputShape));
-      programUniforms.push(...createTensorShapeVariables(indicesShape));
-      programUniforms.push(...createTensorShapeVariables(outputShape));
+      const programUniforms: ProgramUniform[] = [
+        {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: axisDimLimit},
+        {type: DataType.uint32, data: axis}
+      ];
+      programUniforms.push(...createTensorShapeVariables(inputShape, indicesShape, outputShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
 
       // int64 indices would be treated as little endian i32 with assumption they fall in i32 limits

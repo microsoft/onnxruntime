@@ -11,6 +11,7 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataTyp
     switch (tensorDataType)
     {
     case MLOperatorTensorDataType::Float: return DML_TENSOR_DATA_TYPE_FLOAT32;
+    case MLOperatorTensorDataType::Int4: return DML_TENSOR_DATA_TYPE_INT4;
     case MLOperatorTensorDataType::UInt8: return DML_TENSOR_DATA_TYPE_UINT8;
     case MLOperatorTensorDataType::Int8: return DML_TENSOR_DATA_TYPE_INT8;
     case MLOperatorTensorDataType::UInt16: return DML_TENSOR_DATA_TYPE_UINT16;
@@ -45,6 +46,7 @@ bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
         case DML_TENSOR_DATA_TYPE_INT32: return true;
         case DML_TENSOR_DATA_TYPE_INT16: return true;
         case DML_TENSOR_DATA_TYPE_INT8: return true;
+        case DML_TENSOR_DATA_TYPE_INT4: return true;
         default:
             assert(false);
             return false;
@@ -69,6 +71,7 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
     switch (tensorDataType)
     {
     case DML_TENSOR_DATA_TYPE_FLOAT32:  return MLOperatorTensorDataType::Float;
+    case DML_TENSOR_DATA_TYPE_INT4:     return MLOperatorTensorDataType::Int4;
     case DML_TENSOR_DATA_TYPE_UINT8:    return MLOperatorTensorDataType::UInt8;
     case DML_TENSOR_DATA_TYPE_INT8:     return MLOperatorTensorDataType::Int8;
     case DML_TENSOR_DATA_TYPE_UINT16:   return MLOperatorTensorDataType::UInt16;
@@ -89,7 +92,14 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
 
 size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType)
 {
-    return ComputeElementCountFromDimensions(dimensions) * GetByteSizeFromMlDataType(tensorDataType);
+    auto byteSize = ComputeElementCountFromDimensions(dimensions) * GetByteSizeFromMlDataType(tensorDataType);
+
+    if (tensorDataType == MLOperatorTensorDataType::Int4)
+    {
+        byteSize /= 2;
+    }
+
+    return byteSize;
 }
 
 size_t ComputeByteSizeFromTensor(IMLOperatorTensor& tensor)

@@ -359,13 +359,18 @@ namespace Dml::GraphDescBuilder
                             // only used for small inputs.
                             uint32_t c_maxConstNodeDataSize = 8;
 
-                            ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
 
                             auto& operatorGraphInputNode = graphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphInputEdge.ToNodeIndex];
                             std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = operatorGraphInputNode->GetInputTensors();
                             DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];
+                            ComPtr<OnnxTensorWrapper> constantInput;
 
-                            if (constantInput && tensorDesc->totalTensorSizeInBytes < c_maxConstNodeDataSize)
+                            if (tensorDesc->totalTensorSizeInBytes < c_maxConstNodeDataSize)
+                            {
+                                constantInput = constantCpuGraphInputGetter(arg->Name());
+                            }
+
+                            if (constantInput)
                             {
                                 // The tensor description's size should be no larger than the constant input unless it was rounded to
                                 // the required alignment.

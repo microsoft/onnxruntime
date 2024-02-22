@@ -87,6 +87,7 @@ enum DML_TENSOR_DATA_TYPE
     DML_TENSOR_DATA_TYPE_FLOAT64,
     DML_TENSOR_DATA_TYPE_UINT64,
     DML_TENSOR_DATA_TYPE_INT64,
+    DML_TENSOR_DATA_TYPE_INT4,
 };
 
 enum DML_TENSOR_TYPE
@@ -338,6 +339,8 @@ enum DML_OPERATOR_TYPE
     DML_OPERATOR_UNFOLD,
     DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2,
     DML_OPERATOR_MULTIHEAD_ATTENTION1,
+    DML_OPERATOR_QUANTIZE,
+    DML_OPERATOR_DEQUANTIZE,
 #endif // DML_TARGET_VERSION >= 0x6300
 };
 
@@ -387,6 +390,10 @@ enum DML_PADDING_MODE
 
 #if DML_TARGET_VERSION >= 0x3000
     DML_PADDING_MODE_SYMMETRIC,
+#endif
+
+#if DML_TARGET_VERSION >= 0x6300
+    DML_PADDING_MODE_WRAP,
 #endif
 };
 
@@ -480,7 +487,18 @@ enum DML_MULTIHEAD_ATTENTION_MASK_TYPE
     DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN,
 };
 
-#endif // DML_TARGET_VERSION >= 0x6100
+#endif // DML_TARGET_VERSION >= 0x6300
+
+#if DML_TARGET_VERSION >= 0x6300
+
+enum DML_QUANTIZATION_PARAMETERS_TYPE
+{
+    DML_QUANTIZATION_PARAMETERS_TYPE_NONE,
+    DML_QUANTIZATION_PARAMETERS_TYPE_SCALE,
+    DML_QUANTIZATION_PARAMETERS_TYPE_SCALE_ZEROPOINT,
+};
+
+#endif // DML_TARGET_VERSION >= 0x6300
 
 // ===================================================================================================================
 //   Operator descriptions
@@ -2143,6 +2161,24 @@ struct DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC
     UINT QueryHeadCount;
     UINT KeyValueHeadCount;
     DML_MULTIHEAD_ATTENTION_MASK_TYPE MaskType;
+};
+
+struct DML_QUANTIZE_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    DML_QUANTIZATION_PARAMETERS_TYPE QuantizationParametersType;
+    UINT QuantizationParametersTensorCount;
+    _Field_size_(QuantizationParametersTensorCount) const DML_TENSOR_DESC* QuantizationParametersTensors;
+    const DML_TENSOR_DESC* OutputTensor;
+};
+
+struct DML_DEQUANTIZE_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    DML_QUANTIZATION_PARAMETERS_TYPE QuantizationParametersType;
+    UINT QuantizationParametersTensorCount;
+    _Field_size_(QuantizationParametersTensorCount) const DML_TENSOR_DESC* QuantizationParametersTensors;
+    const DML_TENSOR_DESC* OutputTensor;
 };
 
 #endif // DML_TARGET_VERSION >= 0x6300

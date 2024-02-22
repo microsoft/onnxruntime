@@ -120,9 +120,53 @@ double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p);
 void ReadScalarTensorData(const MLOperatorTensor& tensor, /*out*/ void* data, size_t dataByteSize);
 int64_t ReadScalarTensorCastToInt64(const MLOperatorTensor& tensor);
 double ReadScalarTensorCastToFloat64(const MLOperatorTensor& tensor);
-
-void ReadCpuLocalTensorIntoInt32(const MLOperatorTensor& tensor, std::vector<int32_t>& result);
 void ReadCpuLocalTensorIntoFloat32(const MLOperatorTensor& tensor, std::vector<float>& result);
+
+template<typename T = int32_t>
+void ReadCpuLocalTensorIntoInt32(
+    const MLOperatorTensor& tensor,
+    std::vector<T>& result
+    )
+{
+    result.clear();
+    ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
+
+    const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+    const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+
+    switch (tensor.GetTensorDataType())
+    {
+    case MLOperatorTensorDataType::Int32:
+        {
+            result.resize(elementCount);
+            const int32_t* data = tensor.GetData<int32_t>();
+            std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<T>(v); });
+        }
+        break;
+
+    case MLOperatorTensorDataType::Int64:
+        {
+            const int64_t* data = tensor.GetData<int64_t>();
+            result.reserve(elementCount);
+
+            // Use clamped cast rather than static_cast/narrow_cast,
+            // because it's not uncommon for a model to specify a
+            // 64-bit INTMAX constant as a sentinel value to mean
+            // the largest possible value (even though the actual
+            // dimension values come nowhere close to that, far
+            // less than 32-bit INTMAX).
+            for (auto d : gsl::make_span(data, data + elementCount))
+            {
+                result.push_back(clamp_cast<T>(d));
+            }
+        }
+        break;
+
+    default:
+        ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
+        break;
+    }
+}
 
 class EdgeShapes
 {
@@ -1547,6 +1591,24 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class MatMulNBitsHelper
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    MatMulNBitsHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+private:
+    void Initialize(const IKernelInformationAdapter& kernelInformation);
+
+    int64_t m_bRowCount;
+    int64_t m_bColCount;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_NhwcConv = NhwcConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
@@ -1612,6 +1674,7 @@ using ShapeInferenceHelper_Pad7 = VersionedOpsetHelper<PaddingHelper, 7>;
 using ShapeInferenceHelper_Pad11 = VersionedOpsetHelper<PaddingHelper, 11>;
 using ShapeInferenceHelper_Pad13 = VersionedOpsetHelper<PaddingHelper, 13>;
 using ShapeInferenceHelper_Pad18 = VersionedOpsetHelper<PaddingHelper, 18>;
+using ShapeInferenceHelper_Pad19 = VersionedOpsetHelper<PaddingHelper, 19>;
 
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1629,11 +1692,14 @@ using ShapeInferenceHelper_Expand = ExpandHelper;
 using ShapeInferenceHelper_Reshape7 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape13 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape14 = ReshapeHelper;
+using ShapeInferenceHelper_Reshape19 = ReshapeHelper;
 using ShapeInferenceHelper_ConstantOfShape = ConstantOfShapeHelper;
 using ShapeInferenceHelper_Tile = TileHelper;
 using ShapeInferenceHelper_Resize10 = VersionedOpsetHelper<ResizeHelper, 10>;
 using ShapeInferenceHelper_Resize11 = VersionedOpsetHelper<ResizeHelper, 11>;
 using ShapeInferenceHelper_Resize13 = VersionedOpsetHelper<ResizeHelper, 13>;
+using ShapeInferenceHelper_Resize18 = VersionedOpsetHelper<ResizeHelper, 18>;
+using ShapeInferenceHelper_Resize19 = VersionedOpsetHelper<ResizeHelper, 19>;
 using ShapeInferenceHelper_OneHot = OneHotHelper;
 
 using ShapeInferenceHelper_Sqrt = GetOutputShapeAsInputShapeHelper;
@@ -1749,6 +1815,7 @@ using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity16 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Identity19 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
@@ -1774,6 +1841,7 @@ using ShapeInferenceHelper_CumSum14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CastLike19 = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_DmlFusedConv = ConvHelper;
 using ShapeInferenceHelper_DmlFusedConvTranspose = ConvTransposeHelper;
@@ -1790,5 +1858,6 @@ using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Shape = ShapeHelper;
 using ShapeInferenceHelper_Size = SizeHelper;
 using ShapeInferenceHelper_BiasSplitGelu = BiasSplitGeluHelper;
+using ShapeInferenceHelper_MatMulNBits = MatMulNBitsHelper;
 
 }  // namespace OperatorHelper

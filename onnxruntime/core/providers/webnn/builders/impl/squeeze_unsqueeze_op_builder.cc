@@ -87,10 +87,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   emscripten::val output = emscripten::val::undefined();
   // Use WebNN's reshape to implement Squeeze/Unsqueeze.
-  std::vector<uint32_t> new_shape;
-  std::transform(
-      input_shape.begin(), input_shape.end(), std::back_inserter(new_shape),
-      [](int64_t data) -> uint32_t { return SafeInt<uint32_t>(data); });
+  std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(input_shape);
   // Sort axes_data in ascending order.
   std::sort(axes_data.begin(), axes_data.end());
   if (op_type == "Squeeze") {
@@ -138,8 +135,8 @@ bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& in
 
   // Squeeze/Unsqueeze opset 13 uses input 1 as axes, it needs to be an initializer.
   if (node.SinceVersion() >= 13) {
-    if (input_defs.size() > 1) {
-      const auto& axes_name = input_defs[1]->Name();
+    const std::string axes_name = GetTensorName(input_defs, 1);
+    if (!axes_name.empty()) {
       if (!Contains(initializers, axes_name)) {
         LOGS(logger, ERROR) << "Input axes of " << op_type << " is not present and constant";
         return false;

@@ -253,7 +253,7 @@ def save_results(results, filename):
     # Save results to csv with standard format
     records = []
     for _, row in df.iterrows():
-        if row["Engine"] == "optimum-ort":
+        if row["Engine"] in ["optimum-ort", "onnxruntime"]:
             record = BenchmarkRecord(
                 row["Model Name"], row["Precision"], "onnxruntime", row["Device"], ort_pkg_name, ort_pkg_version
             )

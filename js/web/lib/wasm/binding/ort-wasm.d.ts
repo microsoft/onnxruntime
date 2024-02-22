@@ -13,6 +13,9 @@ export declare namespace JSEP {
   type ReleaseKernelFunction = (kernel: number) => void;
   type RunFunction =
       (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => number;
+  type CaptureBeginFunction = () => void;
+  type CaptureEndFunction = () => void;
+  type ReplayFunction = () => void;
 }
 
 export interface OrtWasmModule extends EmscriptenModule {
@@ -31,7 +34,7 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
 
-  _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
+  _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): Promise<number>;
   _OrtReleaseSession(sessionHandle: number): void;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
   _OrtGetInputName(sessionHandle: number, index: number): number;
@@ -128,7 +131,8 @@ export interface OrtWasmModule extends EmscriptenModule {
   jsepInit?
       (backend: JSEP.BackendType, alloc: JSEP.AllocFunction, free: JSEP.FreeFunction, upload: JSEP.UploadFunction,
        download: JSEP.DownloadFunction, createKernel: JSEP.CreateKernelFunction,
-       releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction): void;
+       releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction, captureBegin: JSEP.CaptureBeginFunction,
+       captureEnd: JSEP.CaptureEndFunction, replay: JSEP.ReplayFunction): void;
 
   /**
    * [exported from wasm] Specify a kernel's output when running OpKernel::Compute().
@@ -159,12 +163,6 @@ export interface OrtWasmModule extends EmscriptenModule {
    */
   jsepRegisterBuffer: (sessionId: number, index: number, buffer: GPUBuffer, size: number) => number;
   /**
-   * [exported from js_internal_api.js] Unregister all user GPU buffers for a session.
-   *
-   * @param sessionId - specify the session ID.
-   */
-  jsepUnregisterBuffers?: (sessionId: number) => void;
-  /**
    * [exported from js_internal_api.js] Get the GPU buffer by GPU data ID.
    *
    * @param dataId - specify the GPU data ID
@@ -182,6 +180,19 @@ export interface OrtWasmModule extends EmscriptenModule {
   jsepCreateDownloader:
       (gpuBuffer: GPUBuffer, size: number,
        type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
+  /**
+   *  [exported from js_internal_api.js] Called when InferenceSession.run started. This function will be called before
+   * _OrtRun[WithBinding]() is called.
+   * @param sessionId - specify the session ID.
+   */
+  jsepOnRunStart: (sessionId: number) => void;
+  /**
+   * [exported from js_internal_api.js] Release a session. This function will be called before _OrtReleaseSession() is
+   * called.
+   * @param sessionId - specify the session ID.
+   * @returns
+   */
+  jsepOnReleaseSession: (sessionId: number) => void;
   // #endregion
 }
 

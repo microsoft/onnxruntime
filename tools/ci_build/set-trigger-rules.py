@@ -14,6 +14,7 @@ skip_doc_changes = ["web-ci-pipeline.yml"]
 skip_js_changes = [
     "android-arm64-v8a-QNN-crosscompile-ci-pipeline.yml",
     "android-x86_64-crosscompile-ci-pipeline.yml",
+    "bigmodels-ci-pipeline.yml",
     "linux-ci-pipeline.yml",
     "linux-cpu-aten-pipeline.yml",
     "linux-cpu-eager-pipeline.yml",
@@ -31,7 +32,6 @@ skip_js_changes = [
     "orttraining-linux-ci-pipeline.yml",
     "orttraining-linux-gpu-ci-pipeline.yml",
     "orttraining-linux-gpu-ortmodule-distributed-test-ci-pipeline.yml",
-    "orttraining-linux-gpu-training-apis.yml",
     "orttraining-mac-ci-pipeline.yml",
     "win-ci-pipeline.yml",
     "win-gpu-ci-pipeline.yml",
