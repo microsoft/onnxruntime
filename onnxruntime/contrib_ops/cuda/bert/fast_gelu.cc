@@ -6,9 +6,10 @@
 #include "fast_gelu.h"
 #include "core/providers/cuda/tensor/gelu_impl.h"
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
-#include "transformer_common.h"
 #ifdef USE_ROCM
 #include "contrib_ops/rocm/bert/elementwise.h"
+#else
+#include "contrib_ops/cuda/bert/transformer_common.h"
 #endif
 
 namespace onnxruntime {
@@ -34,8 +35,10 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+#ifdef USE_CUDA
   const TransformerOptions* options = TransformerOptions::GetInstance();
   use_half2_ = !options->DisableHalf2();
+#endif
 }
 
 template <typename T>
