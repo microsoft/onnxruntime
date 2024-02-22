@@ -182,7 +182,8 @@ Status ConvTransposeGrad<T>::PrepareConvForwardArgs(const Tensor& X, const Tenso
     ORT_RETURN_IF_ERROR(args.y_tensor.Set(y_dims, args.params.data_type));
     ORT_RETURN_IF_ERROR(args.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                            gsl::narrow_cast<int>(conv_attrs_.group), CUDNN_CROSS_CORRELATION,
-                                           args.params.data_type));
+                                           args.params.data_type,
+                                           UseTF32()));
   }
 
   return Status::OK();
@@ -287,7 +288,8 @@ Status ConvTransposeGrad<T>::PrepareConvBackwardFilterArgs(const Tensor& X, cons
     ORT_RETURN_IF_ERROR(args.y_tensor.Set(y_dims, args.params.data_type));
     ORT_RETURN_IF_ERROR(args.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                            gsl::narrow_cast<int>(conv_attrs_.group), CUDNN_CROSS_CORRELATION,
-                                           args.params.data_type));
+                                           args.params.data_type,
+                                           UseTF32()));
 
     if (dB) {
       const auto& b_shape = dB->Shape();
