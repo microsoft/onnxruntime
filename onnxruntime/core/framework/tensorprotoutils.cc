@@ -783,6 +783,7 @@ static Status GetFileContent(
   }
 
   // first, try to map into memory
+  /*
   {
     Env::MappedMemoryPtr mapped_memory{};
     auto status = env.MapFileIntoMemory(file_path, offset, length, mapped_memory);
@@ -791,7 +792,7 @@ static Status GetFileContent(
       raw_buffer = mapped_memory.release();
       return Status::OK();
     }
-  }
+  }*/
 
   // if that fails, try to copy
   auto buffer = std::make_unique<char[]>(length);
