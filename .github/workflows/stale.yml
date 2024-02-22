@@ -13,7 +13,7 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/stale@v9.0.0
+      - uses: actions/stale@v8
         with:
           # Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
           exempt-issue-labels: contributions welcome, feature request, regression

@@ -233,11 +233,13 @@ bool ConvParamsEqual::operator()(const ConvParams& a, const ConvParams& b) const
 }
 
 template <typename T_Perf>
-Status AlgoIterator<T_Perf>::OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_Perf>& perf_results) {
+Status AlgoIterator<T_Perf>::OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_Perf>& perf_results, bool use_tf32) {
   perf_results.resize(1);
   perf_results[0].algo = AlgoSearch<T_Perf>::DEFAULT_ALGO;
   if (args.params.data_type == CUDNN_DATA_HALF) {
     perf_results[0].mathType = CUDNN_TENSOR_OP_MATH;
+  } else if (args.params.data_type == CUDNN_DATA_FLOAT && !use_tf32) {
+    perf_results[0].mathType = CUDNN_FMA_MATH;
   } else {
     perf_results[0].mathType = CUDNN_DEFAULT_MATH;
   }
@@ -256,7 +258,7 @@ Status AlgoIterator<T_Perf>::TryAll(const CUDAExecutionProvider* provider, const
 
   std::vector<T_Perf> perf_results;
   ORT_RETURN_IF_ERROR(args_.params.algo_mode == OrtCudnnConvAlgoSearchDefault
-                          ? OnlyDefaultAlgorithm(args_, perf_results)
+                          ? OnlyDefaultAlgorithm(args_, perf_results, provider->UseTF32())
                           : AlgoSearch<T_Perf>::FindAlgorithms(args_, provider, allocator, perf_results));
   for (auto& algo_perf : perf_results) {
     if (f(algo_perf) == Status::OK()) {

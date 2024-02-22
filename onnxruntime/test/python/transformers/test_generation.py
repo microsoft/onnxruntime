@@ -381,22 +381,23 @@ class TestBeamSearchWhisper(unittest.TestCase):
 
     @pytest.mark.slow
     def test_cross_qk_overall(self):
-        decoder_input_ids = [
-            "--chain_model",
-            "--collect_cross_qk",
-            "--output_cross_qk",
-            "--use_forced_decoder_ids",
-            "--extra_decoding_ids",
-            "--output_no_speech_probs",
+        cross_qk_input_args = [
             "--use_vocab_mask",
             "--use_prefix_vocab_mask",
+            "--use_forced_decoder_ids",
             "--use_logits_processor",
+            "--collect_cross_qk",
+            "--extra_decoding_ids",
         ]
-        self.run_configs(decoder_input_ids)
+        cross_qk_output_args = [
+            "--output_cross_qk",
+            "--output_no_speech_probs",
+        ]
+        self.run_configs(cross_qk_input_args + cross_qk_output_args)
 
     @pytest.mark.slow
     def test_openai_impl_whisper(self):
-        optional_args = ["--model_impl", "openai", "--chain_model", "--use_whisper_beamsearch"]
+        optional_args = ["--model_impl", "openai"]
         self.run_configs(optional_args)
 
 
