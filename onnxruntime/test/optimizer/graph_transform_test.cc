@@ -5681,7 +5681,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
 }
 
 #ifdef USE_DML
- TEST_F(GraphTransformationTests, MatMulIntegerToFloat16Test) {
+TEST_F(GraphTransformationTests, MatMulIntegerToFloat16Test) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/matmul_integer_to_float16_int8.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -5689,7 +5689,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
 
   for (auto& node : graph.Nodes()) {
     node.SetExecutionProviderType(kDmlExecutionProvider);
-  } 
+  }
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MatMulIntegerToFloatFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
