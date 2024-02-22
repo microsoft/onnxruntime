@@ -30,7 +30,7 @@ const createWhereOpProgramShader =
           const expressionA = `aData[indexA${x}][componentA${x}]`;
           const expressionB = `bData[indexB${x}][componentB${x}]`;
           // eslint-disable-next-line no-bitwise
-          const expressionC = `bool(cData[indexC${x}] & ${0xff000000 >>> ((3 - x) * 8)}u)`;
+          const expressionC = `bool(cData[indexC${x}] & (0xffu << (componentC${x} * 8)))`;
           return `
             let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
             let offsetA${x} = ${a.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
@@ -41,6 +41,7 @@ const createWhereOpProgramShader =
             let indexC${x} = offsetC${x} / 4u;
             let componentA${x} = offsetA${x} % 4u;
             let componentB${x} = offsetB${x} % 4u;
+            let componentC${x} = offsetC${x} % 4u;
             ${resStr}[${x}] = ${typeCast}(${expression(expressionA, expressionB, expressionC)});
           `;
         };
@@ -89,8 +90,6 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
     outputShape = calculatedShape;
     outputSize = ShapeUtil.size(outputShape);
   }
-
-  const vecSize = Math.ceil(outputSize / 4);
 
   return {
     name: 'Where',
