@@ -417,7 +417,7 @@ stages:
                   --precision fp32 \
                   --device cuda > ort_output.txt ; \
               cat ort_output.txt ; \
-              diff ort_output.txt $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/whisper/test/whisper_ort_output.txt && exit 0 || exit 1
+              diff ort_output.txt /workspace/onnxruntime/python/tools/transformers/models/whisper/test/whisper_ort_output.txt && exit 0 || exit 1
               popd ; \
             '
       displayName: 'Test Whisper ONNX Model'
