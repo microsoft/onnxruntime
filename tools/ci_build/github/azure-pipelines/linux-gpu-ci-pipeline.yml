@@ -218,7 +218,7 @@ stages:
             $(Repository) \
             /bin/bash -c '
               nvidia-smi; \
-              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so" \
+              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so"; \
               cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -A 2; \
               cat /usr/local/cuda/include/cuda.h | grep -m1 CUDA_VERSION; \
               /opt/python/cp38-cp38/bin/python3 -m pip install /build/Release/dist/*.whl; \
