@@ -315,7 +315,7 @@ TEST(ScatterElements, AddReduction) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-#if !defined(CUDA_VERSION)
+#if defined(CUDA_VERSION)
 // Operation on float16 (MLFloat16) is not implemented on CPU.
 TEST(ScatterElements, AddReduction_MLFloat16) {
   OpTester test("ScatterElements", 18);
