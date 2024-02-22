@@ -8,6 +8,8 @@ namespace onnxruntime {
 namespace test {
 
 std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(int opset_version) {
+  ORT_UNUSED_PARAMETER(opset_version);
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 
   execution_providers.emplace_back(DefaultCpuExecutionProvider());

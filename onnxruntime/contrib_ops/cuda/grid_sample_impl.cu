@@ -56,7 +56,9 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
   T pixel = 0.0f;
 
   auto PixelOffset = [bIdx, cIdx, N, C, H, W](int64_t x, int64_t y) -> int64_t {
-    return Layout == LAYOUT_NCHW ? (bIdx * C * H * W + cIdx * H * W + y * W + x) : (bIdx * H * W * C + y * W * C + x * C + cIdx);
+    return Layout == LAYOUT_NCHW
+       ? (bIdx * C * H * W + cIdx * H * W + y * W + x)
+       : (bIdx * H * W * C + y * W * C + x * C + cIdx);
   };
 
   if (padding_mode == 0) {  // zeros
@@ -168,8 +170,8 @@ __global__ void _GridSampleKernel(
         grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) { // out of bound
       if (padding_mode == 1) {  // border
         // Clamping must not be done here, see #10607
-        //grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
-        //grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
+        // grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
+        // grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
       } else if (padding_mode == 2) {  // reflection
         grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);
         grid_y_imgSpace = GsReflect(grid_y_imgSpace, y_min, y_max);
@@ -207,7 +209,8 @@ __global__ void _GridSampleKernel(
     if (mode == 1) {  // nearest
       int x_n = grid_x_imgSpace;
       int y_n = grid_y_imgSpace;
-      output_data[outIdx] = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
+      output_data[outIdx] =
+        PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
       return;
     }
     if (mode == 2) {  // bicubic
@@ -216,7 +219,8 @@ __global__ void _GridSampleKernel(
       T p[4][4] = {};  // [H][W]
       for (int64_t h = 0; h < 4; h++) {
         for (int64_t w = 0; w < 4; w++) {
-          p[h][w] = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, N, C, H_in, W_in, border);
+          p[h][w] = 
+            PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, N, C, H_in, W_in, border);
         }
       }
       T dx = grid_x_imgSpace - x0 - 1;
@@ -239,9 +243,12 @@ void GridSampleImpl(
     T* output_data) {
   using Ch = Channels<IsNHWC>;
 
-  int blocksPerGrid = (int)(ceil(static_cast<T>(dims[Ch::N] * dims[Ch::C] * H_out * W_out) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>
+    ceil(static_cast<T>(dims[Ch::N] * dims[Ch::C] * H_out * W_out) / GridDim::maxThreadsPerBlock));
   _GridSampleKernel<T, IsNHWC><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      input_data, grid_data, mode, padding_mode, align_corners, dims[Ch::N], dims[Ch::C], dims[Ch::H], dims[Ch::W], H_out, W_out, output_data);
+      input_data, grid_data, mode, padding_mode, align_corners, 
+      dims[Ch::N], dims[Ch::C], dims[Ch::H], dims[Ch::W],
+      H_out, W_out, output_data);
 }
 
 #define SPECIALIZED_IMPL(T, IsNHWC)                                                                                    \
