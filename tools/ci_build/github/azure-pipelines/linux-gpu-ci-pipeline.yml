@@ -255,9 +255,12 @@ stages:
               python3 -m pip install /build/Release/dist/*.whl; \
               cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
               cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
+              cd /tmp; \
               python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
                 --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
                 --enable_pybind --build_java --ctest_path "" ; \
               '
+      displayName: 'Check GPU'
+
     - template: templates/clean-agent-build-directory-step.yml
