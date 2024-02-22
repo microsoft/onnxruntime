@@ -46,8 +46,6 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
     auto block_size = metadata->constants.at("BLOCK_SIZE");
     auto hw_size = metadata->constants.at("HW_SIZE");
     auto impl = [i, block_size, hw_size](const GroupNormNHWCTunableParams<T>* params) -> Status {
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((params->skip != nullptr || params->bias != nullptr),
-                                                "Input skip or bias is not supported by triton kernel.");
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->channels_per_group > block_size || params->channels_per_group * 2 <= block_size,
           "Arg block_size (", block_size, ") is not the next power of 2 of channels_per_group (",
@@ -61,23 +59,36 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
       }
       // Construct args for launch kernel
       struct {
-        void* X;
-        void* Y;
+        const void* src;
+        const void* skip;
+        const void* bias;
+        void* out;
+        void* add_out;
         const void* gamma;
         const void* beta;
         int hw;
         int c;
         int c_per_group;
         float eps;
+        bool has_skip;
+        bool has_bias;
+        bool broadcast_skip;
       } args = {
-          (void*)params->src,
+          (const void*)params->src,
+          (const void*)params->skip,
+          (const void*)params->bias,
           (void*)params->dst,
+          (void*)params->skip_workspace,
           (const void*)params->gamma,
           (const void*)params->beta,
           params->hw,
           params->c,
           params->channels_per_group,
-          params->epsilon};
+          params->epsilon,
+          params->skip != nullptr,
+          params->bias != nullptr,
+          params->broadcast_skip,
+      };
 
       // Grid dim is (batch_count, groups, 1)
       return LaunchTritonKernel(params->StreamHandle(), i, params->n, params->groups, 1, &args, sizeof(args));
