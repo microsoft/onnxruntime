@@ -65,6 +65,12 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
+    NodeArg* node_output = node.MutableOutputDefs()[0];
+    auto data_type = node_output->TypeAsProto()->tensor_type().elem_type();
+    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      continue;
+    }
+
     Node& gemm_node = node;
     Node& act_node = *graph.GetNode(next_node.Index());  // get mutable reference
 
