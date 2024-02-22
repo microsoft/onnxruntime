@@ -224,13 +224,12 @@ stages:
             $(Repository) \
             /bin/bash -c '
               nvidia-smi; \
-              /sbin/ldconfig -N -v $(sed 's/:/ /' <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libcudart; \
-              /sbin/ldconfig -N -v $(sed 's/:/ /' <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libcudnn; \
-              /sbin/ldconfig -N -v $(sed 's/:/ /' <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libnvinfer; \
+              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libcudart.so; \
+              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libcudnn.so; \
+              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep libnvinfer.so; \
               whereis cudnn; \
-              whereis cuda; \
-              cat /usr/local/cuda/include/cudnn.h | grep CUDNN_MAJOR -A 2; \
-              cat /usr/include/x86_64-linux-gnu/cudnn_v*.h | grep CUDNN_MAJOR -A 2; \
+              ls /usr/local/cuda; \
+              cat /usr/include/cudnn.h | grep CUDNN_MAJOR -A 2; \
               python3() { /opt/python/cp38-cp38/bin/python3; }; \
               python3 -m pip install /build/Release/dist/*.whl; \
               python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
