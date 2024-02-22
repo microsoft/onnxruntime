@@ -343,7 +343,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             if self._runtime_options.enable_sparse_optimizer:
                 detected_device = _utils.get_device_from_module_and_inputs(self._original_module, inputs, kwargs)
 
-                if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
+                if self._runtime_options.enable_zero_stage3_support:
                     self._append_pull_weight_trigger_as_input(kwargs, detected_device)
 
                 prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(

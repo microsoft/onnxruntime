@@ -66,22 +66,24 @@ class ExportedModelInfo:
         # Input names parsed and then flatten from the model's forward function signature + buffers + parameters (since we use
         # keep_initializers_as_inputs=True for model export)
         # Be noted: all inputs are used by the model for its compute.
-        self.onnx_graph_input_names: list[str] = onnx_graph_input_names
+        self.onnx_graph_input_names: list[str] = copy.deepcopy(onnx_graph_input_names)
 
         # A subset of onnx_graph_input_names.
         # Input names that require gradient parsed and then flatten from the model's forward function signature
         # This should contain both the user-defined input names, the buffer names, and the parameter names (since we use
         # keep_initializers_as_inputs=True for model export)
         # Be noted: all inputs are used by the model for its compute.
-        self.onnx_graph_input_names_require_grad: list[str] = onnx_graph_input_names_require_grad
+        self.onnx_graph_input_names_require_grad: list[str] = copy.deepcopy(onnx_graph_input_names_require_grad)
 
         # Input names parsed from the model's forward function signature.
         # Be noted: all inputs are used by the model for its compute.
         # The ONNX graph input names exclude the parameters, and buffers.
-        self.onnx_graph_input_names_user_defined = onnx_graph_input_names_user_defined
+        self.onnx_graph_input_names_user_defined = copy.deepcopy(onnx_graph_input_names_user_defined)
 
         # A subset of onnx_graph_input_names_user_defined.
-        self.onnx_graph_input_names_require_grad_user_defined = onnx_graph_input_names_require_grad_user_defined
+        self.onnx_graph_input_names_require_grad_user_defined = copy.deepcopy(
+            onnx_graph_input_names_require_grad_user_defined
+        )
 
         # Exported model proto.
         self.exported_model: onnx.ModelProto | None = exported_model
@@ -131,19 +133,30 @@ class PostExportProcessedModelInfo:
         # Input names parsed from the model's forward function signature.
         # Be noted: all inputs are used by the model for its compute.
         # The ONNX graph input names exclude the parameters, and buffers.
-        self.onnx_graph_input_names_user_defined = onnx_graph_input_names_user_defined
+        self.onnx_graph_input_names_user_defined = copy.deepcopy(onnx_graph_input_names_user_defined)
 
         # A subset of onnx_graph_input_names_user_defined.
-        self.onnx_graph_input_names_require_grad_user_defined = onnx_graph_input_names_require_grad_user_defined
+        self.onnx_graph_input_names_require_grad_user_defined = copy.deepcopy(
+            onnx_graph_input_names_require_grad_user_defined
+        )
 
         # Input names for the pre-gradient-build graph.
         # This may be different with the one in ExportedGraph since we may modify the graph inputs as needed
         # for example when memory efficient gradient management is enabled.
-        self.onnx_graph_input_names: list[str] = onnx_graph_input_names
+        self.onnx_graph_input_names: list[str] = copy.deepcopy(onnx_graph_input_names)
 
         # A subset of onnx_graph_input_names.
         # Input names that require gradients for the pre-gradient-build graph.
-        self.onnx_graph_input_names_require_grad: list[str] = onnx_graph_input_names_require_grad
+        self.onnx_graph_input_names_require_grad: list[str] = copy.deepcopy(onnx_graph_input_names_require_grad)
+
+        if enable_mem_efficient_grad_management:
+            from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+
+            # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
+            self.onnx_graph_input_names_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+            self.onnx_graph_input_names_require_grad_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+            self.onnx_graph_input_names.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+            self.onnx_graph_input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
 
         # Create symbolic names for each dimension of the graph input (e.g. onnx_graph_input_names).
         # The key is the input name, the value is a dict of {dim_index: symbolic_dim_name}
@@ -609,12 +622,6 @@ class GraphTransitionManager:
                     [name for name, _ in flatten_module.named_parameters()],
                 )
 
-        onnx_graph_input_names_user_defined = copy.deepcopy(exported_model_info.onnx_graph_input_names_user_defined)
-        onnx_graph_input_names_require_grad_user_defined = copy.deepcopy(
-            exported_model_info.onnx_graph_input_names_require_grad_user_defined
-        )
-        onnx_graph_input_names = copy.deepcopy(exported_model_info.onnx_graph_input_names)
-        onnx_graph_input_names_require_grad = copy.deepcopy(exported_model_info.onnx_graph_input_names_require_grad)
         if enable_mem_efficient_grad_management:
             from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
 
@@ -624,15 +631,6 @@ class GraphTransitionManager:
                 post_processed_model,
             ) = post_processing_enable_mem_efficient_training(post_processed_model, flatten_module.named_parameters())
 
-            if enable_custom_autograd_function:
-                from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
-
-                # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
-                onnx_graph_input_names_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
-                onnx_graph_input_names_require_grad_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
-                onnx_graph_input_names.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
-                onnx_graph_input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
-
             if run_symbolic_shape_infer:
                 post_processed_model = SymbolicShapeInference.infer_shapes(
                     post_processed_model, auto_merge=True, guess_output_rank=True
@@ -640,10 +638,10 @@ class GraphTransitionManager:
 
         post_export_processed_model_info = PostExportProcessedModelInfo(
             flatten_module,
-            onnx_graph_input_names_user_defined,
-            onnx_graph_input_names_require_grad_user_defined,
-            onnx_graph_input_names,
-            onnx_graph_input_names_require_grad,
+            exported_model_info.onnx_graph_input_names_user_defined,
+            exported_model_info.onnx_graph_input_names_require_grad_user_defined,
+            exported_model_info.onnx_graph_input_names,
+            exported_model_info.onnx_graph_input_names_require_grad,
             model_info_for_export.onnx_graph_input_dynamic_axes_map,
             exported_model_info.module_forward_output_schema,
             post_processed_model,

@@ -299,7 +299,7 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
-            if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
+            if self._runtime_options.enable_zero_stage3_support:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
             prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(
