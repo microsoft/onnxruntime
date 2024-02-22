@@ -184,9 +184,8 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
   return true;
 }
 
-common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
-    float& scale, int32_t& zero_point) {
+common::Status GetQuantizationScaleAndZeroPoint(const GraphViewer& graph_viewer, const NodeUnitIODef& io_def,
+                                                const Path& model_path, float& scale, int32_t& zero_point) {
   scale = 0.0f;
   zero_point = 0;
 
@@ -198,14 +197,24 @@ common::Status GetQuantizationScaleAndZeroPoint(
   const auto& quant_param = *io_def.quant_param;
   {  // get the scale
     const auto& name = quant_param.scale.Name();
-    Initializer unpacked_tensor(*initializers.at(name), model_path);
+    const auto* s = graph_viewer.GetConstantInitializer(name);
+    if (!s) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, name, " is not a constant initializer");
+    };
+
+    Initializer unpacked_tensor(*s, model_path);
     // The scale should be one or more floats
     scale = unpacked_tensor.DataAsSpan<float>()[0];
   }
 
   if (quant_param.zero_point) {  // get the zero point if it's there
     const auto& name = quant_param.zero_point->Name();
-    Initializer unpacked_tensor(*initializers.at(name), model_path);
+    const auto* zp = graph_viewer.GetConstantInitializer(name);
+    if (!zp) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, name, " is not a constant initializer");
+    };
+
+    Initializer unpacked_tensor(*zp, model_path);
     // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
     zero_point = static_cast<int32_t>(unpacked_tensor.DataAsByteSpan()[0]);
   }
@@ -213,13 +222,13 @@ common::Status GetQuantizationScaleAndZeroPoint(
   return Status::OK();
 }
 
-common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, ArgType arg_type) {
+common::Status GetQuantizationScaleAndZeroPoint(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                                const std::string& name, float& scale, int32_t& zero_point,
+                                                ArgType arg_type) {
   const auto& io_defs = arg_type == ArgType::kInput ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto& io_def : io_defs) {
     if (io_def.node_arg.Name() == name)
-      return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.ModelPath(),
+      return GetQuantizationScaleAndZeroPoint(graph_viewer, io_def, node_unit.ModelPath(),
                                               scale, zero_point);
   }
 
@@ -348,7 +357,7 @@ bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
   }
 
   const auto* op_builder = op_builder_it->second;
-  return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
+  return op_builder->IsOpSupported(graph_viewer, node_unit, params);
 }
 
 bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
@@ -381,11 +390,11 @@ uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx) {
                          SafeInt<uint32_t>{1}, std::multiplies<SafeInt<uint32_t>>{});
 }
 
-bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                        const std::string& input_name, const char* input_description) {
-  if (!Contains(initializers, input_name)) {
+bool CheckIsConstantInitializer(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                const std::string& input_name, const char* input_description) {
+  if (!graph_viewer.GetConstantInitializer(input_name)) {
     LOGS_DEFAULT(VERBOSE) << input_description << " of " << node_unit.Name() << "of type ["
-                          << node_unit.OpType() << "] must be an initializer tensor";
+                          << node_unit.OpType() << "] must be a constant initializer";
     return false;
   }
 

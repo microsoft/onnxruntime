@@ -15,24 +15,28 @@ export interface InternalActivationAttributes {
   readonly beta?: number;
 }
 
-export const getActivationSnippet = (attributes: InternalActivationAttributes, valueType: string): string => {
-  switch (attributes.activation) {
-    case 'Relu':
-      return `value = max(value, ${valueType}(0.0));`;
-    case 'Sigmoid':
-      return `value = (${valueType}(1.0) / (${valueType}(1.0) + exp(-value)));`;
-    case 'Clip':
-      return `value = clamp(value, ${valueType}(uniforms.clip_min), ${valueType}(uniforms.clip_max));`;
-    case 'HardSigmoid':
-      return `value = max(${valueType}(0.0), min(${valueType}(1.0), ${valueType}(uniforms.alpha) * value + ${
-          valueType}(uniforms.beta)));`;
-    case '':
-      return '';
-    // TODO: adding other activations that can be fused.
-    default:
-      throw new Error(`Unsupported activation ${attributes.activation}`);
-  }
-};
+export const getActivationSnippet =
+    (attributes: InternalActivationAttributes, valueType: string, baseType = 'f32'): string => {
+      switch (attributes.activation) {
+        case 'Relu':
+          return `value = max(value, ${valueType}(0.0));`;
+        case 'Sigmoid':
+          return `value = (${valueType}(1.0) / (${valueType}(1.0) + exp(-value)));`;
+        case 'Clip':
+          return `value = clamp(value, ${valueType}(${baseType}(uniforms.clip_min)), ${valueType}(${
+              baseType}(uniforms.clip_max)));`;
+        case 'HardSigmoid':
+          return `value = max(${valueType}(0.0), min(${valueType}(1.0), ${baseType}(uniforms.alpha) * value + ${
+              baseType}(uniforms.beta)));`;
+        case 'LeakyRelu':
+          return `value = select(${baseType}(uniforms.alpha) * value, value, value >= ${valueType}(0.0));`;
+        case '':
+          return '';
+        // TODO: adding other activations that can be fused.
+        default:
+          throw new Error(`Unsupported activation ${attributes.activation}`);
+      }
+    };
 
 export const appendActivationUniformsData =
     (attributes: InternalActivationAttributes, programUniform: ProgramUniform[]) => {
@@ -42,6 +46,8 @@ export const appendActivationUniformsData =
       } else if (attributes.activation === 'HardSigmoid') {
         programUniform.push(
             {type: DataType.float, data: attributes.alpha!}, {type: DataType.float, data: attributes.beta!});
+      } else if (attributes.activation === 'LeakyRelu') {
+        programUniform.push({type: DataType.float, data: attributes.alpha!});
       }
     };
 
@@ -50,6 +56,8 @@ export const appendActivationUniforms = (attributes: InternalActivationAttribute
     uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
   } else if (attributes.activation === 'HardSigmoid') {
     uniforms.push({name: 'alpha', type: 'f32'}, {name: 'beta', type: 'f32'});
+  } else if (attributes.activation === 'LeakyRelu') {
+    uniforms.push({name: 'alpha', type: 'f32'});
   }
 };
 
@@ -62,6 +70,9 @@ export const parseInternalActivationAttributes =
       } else if (activation === 'Clip') {
         const [clipMin, clipMax] = attributes?.activation_params as [number, number] || [MIN_CLIP, MAX_CLIP];
         return {activation, clipMax, clipMin};
+      } else if (activation === 'LeakyRelu') {
+        const [alpha] = attributes?.activation_params as [number] || [0.01];
+        return {activation, alpha};
       }
       return {activation};
     };
