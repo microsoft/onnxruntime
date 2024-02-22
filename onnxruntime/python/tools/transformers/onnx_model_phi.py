@@ -353,20 +353,7 @@ class Phi2PreProcessor(DynamoOnnxHelper):
                     elem_type=TensorProto.INT64,
                     shape=[1],
                 )
-                vi_seqlen_k = helper.make_tensor_value_info(
-                    "seqlens_k",
-                    elem_type=TensorProto.INT32,
-                    shape=["batch_size"],
-                )
-                vi_total_seq_len = helper.make_tensor_value_info(
-                    "total_sequence_length",
-                    elem_type=TensorProto.INT32,
-                    shape=[1],
-                )
-                # new_inputs.extend([vi_iid, vi_step, vi_mask]) if not self.use_vllm else new_inputs.extend(
-                #     [vi_iid, vi_pid, vi_meta]
-                # )
-                new_inputs.extend([vi_iid, vi_step, vi_seqlen_k, vi_total_seq_len]) if not self.use_vllm else new_inputs.extend(
+                new_inputs.extend([vi_iid, vi_step, vi_mask]) if not self.use_vllm else new_inputs.extend(
                     [vi_iid, vi_pid, vi_meta]
                 )
             if self.use_attn:
@@ -821,14 +808,14 @@ class FissionTransformerBlockPhi(Fission):
                         ["attn_out", o_key_cache, o_value_cache],
                     )
                 )
-                # if layer_id == 0:
-                #     gqa_aux_nodes = self.get_gqa_aux_nodes()
-                #     for new_node in gqa_aux_nodes:
-                #         self.nodes_to_add.append(new_node)
-                #         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
-                #     self.model.add_initializer(
-                #         numpy_helper.from_array(np.array([1], dtype="int64"), name="one"), self.this_graph_name
-                #     )
+                if layer_id == 0:
+                    gqa_aux_nodes = self.get_gqa_aux_nodes()
+                    for new_node in gqa_aux_nodes:
+                        self.nodes_to_add.append(new_node)
+                        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+                    self.model.add_initializer(
+                        numpy_helper.from_array(np.array([1], dtype="int64"), name="one"), self.this_graph_name
+                    )
             elif self.attn_op_type == AttentionOpType.PagedAttention:
                 subgraph_nodes.extend(
                     self.paged_attn(

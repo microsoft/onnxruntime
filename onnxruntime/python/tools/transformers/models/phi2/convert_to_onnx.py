@@ -13,6 +13,7 @@ import onnx
 import torch
 from benchmark_helper import Precision
 from fusion_options import AttentionOpType
+from onnx_model import OnnxModel
 from transformers import AutoConfig, AutoModelForCausalLM
 
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
@@ -107,6 +108,8 @@ class ConvertPhi2ToONNX:
         onnx.shape_inference.infer_shapes_path(onnx_path)
 
     def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
+        onnx_path_opt = onnx_path_opt
+
         from fusion_options import FusionOptions
         from optimizer import optimize_model
 
@@ -167,6 +170,58 @@ class ConvertPhi2ToONNX:
             )
             quant.process()
             quant.model.save_model_to_file(onnx_path_opt, use_external_data_format=True)
+
+    # This function currently only works for phi2 model
+    def convert_to_use_cuda_graph(self, in_onnx_path: str = None, out_onnx_path: str = None):
+        onnx_model = OnnxModel(onnx.load(in_onnx_path, load_external_data=True))
+
+        from onnx import helper, TensorProto
+
+        graph = onnx_model.graph()
+        new_inputs = []
+        for vi in graph.input:
+            if "attention_mask" in vi.name:
+                vi_seqlen_k = helper.make_tensor_value_info(
+                    "seqlens_k",
+                    elem_type=TensorProto.INT32,
+                    shape=["batch_size"],
+                )
+                vi_total_seq_len = helper.make_tensor_value_info(
+                    "total_sequence_length",
+                    elem_type=TensorProto.INT32,
+                    shape=[1],
+                )
+                new_inputs.extend([vi_seqlen_k, vi_total_seq_len])
+            else:
+                new_inputs.append(vi)
+
+        graph.ClearField("input")
+        graph.input.extend(new_inputs)
+
+        gqas = onnx_model.get_nodes_by_op_type("GroupQueryAttention")
+        gqa = gqas[0]
+        seqlens_path = onnx_model.match_parent_path(
+            gqa,
+            ["Cast", "Sub", "ReduceSum", "Cast"],
+            [5, 0, 0, 0],
+        )
+        if seqlens_path is None:
+            raise RuntimeError("Failed to find seqlens path for GroupQueryAttention node.")
+        total_seq_len_path = onnx_model.match_parent_path(
+            gqa,
+            ["Cast", "Gather", "Shape"],
+            [6, 0, 0],
+        )
+        if total_seq_len_path is None:
+            raise RuntimeError("Failed to find total_seq_len path for GroupQueryAttention node.")
+        onnx_model.remove_nodes(seqlens_path)
+        onnx_model.remove_nodes(total_seq_len_path)
+
+        for gqa in gqas:
+            gqa.input[5] = "seqlens_k"
+            gqa.input[6] = "total_sequence_length"
+
+        onnx_model.save(onnx_model.model, out_onnx_path, save_as_external_data=True)
 
 
 def parse_arguments():
@@ -233,6 +288,13 @@ def parse_arguments():
         required=False,
         action="store_true",
         help="Generate int4 ONNX model for ORT VLLM",
+    )
+
+    parser.add_argument(
+        "--use_cuda_graph",
+        required=False,
+        action="store_true",
+        help="Use CUDA Graph in decoding process",
     )
 
     parser.add_argument(
@@ -375,6 +437,9 @@ def main():
         ):
             converter.init_attn_type_and_precision(attention_type, precision)
             converter.optimize_phi2_onnx(original_onnx_path, optimized_onnx_path)
+            if args.use_cuda_graph:
+                assert args.fp16_gpu_sm8x or args.int4_gpu_sm8x
+                converter.convert_to_use_cuda_graph(optimized_onnx_path, optimized_onnx_path)
 
         processes = []
         if args.fp32_cpu:
