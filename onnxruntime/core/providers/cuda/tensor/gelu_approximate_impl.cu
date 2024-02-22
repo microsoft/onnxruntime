@@ -121,17 +121,5 @@ Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define SPECIALIZED_FASTGELU_IMPL(T)                                                              \
-  template Status LaunchFastGeluKernel<T>(const cudaDeviceProp& prop,                             \
-                                          cudaStream_t stream, int input_length, int bias_length, \
-                                          const T* input, const T* bias, T* output, bool use_half2);
-
-SPECIALIZED_FASTGELU_IMPL(float);
-SPECIALIZED_FASTGELU_IMPL(half);
-SPECIALIZED_FASTGELU_IMPL(double);
-SPECIALIZED_FASTGELU_IMPL(BFloat16);
-
-#undef SPECIALIZED_FASTGELU_IMPL
-
 }  // namespace cuda
 }  // namespace onnxruntime
