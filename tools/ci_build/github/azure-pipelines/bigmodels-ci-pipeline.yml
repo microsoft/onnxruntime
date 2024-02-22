@@ -414,7 +414,7 @@ stages:
                   --model-name openai/whisper-large-v3 \
                   --ort-model-path ./whisperlargev3/whisper-large-v3_beamsearch.onnx \
                   --precision fp32 \
-                  --device cuda > ort_output.txt \
+                  --device cuda > ort_output.txt ; \
               cat ort_output.txt ; \
               diff ort_output.txt $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/whisper/test/whisper_ort_output.txt && exit 0 || exit 1
               popd ; \
