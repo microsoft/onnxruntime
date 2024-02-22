@@ -55,7 +55,7 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
                          int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, float border[4]) {
   T pixel = 0.0f;
 
-  auto PixelOffset = [bIdx, cIdx, N, C, H, W](int64_t x, int64_t y) -> int64_t {
+  auto PixelOffset = [bIdx, cIdx, C, H, W](int64_t x, int64_t y) -> int64_t {
     return Layout == LAYOUT_NCHW
        ? (bIdx * C * H * W + cIdx * H * W + y * W + x)
        : (bIdx * H * W * C + y * W * C + x * C + cIdx);
