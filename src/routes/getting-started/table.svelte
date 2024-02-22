@@ -1821,10 +1821,10 @@
 		Select the configuration you want to use and run the corresponding installation script.
 	</p>
 	<div>
-		<div class="tabs">
+		<div class="tabs tabs-bordered ">
 			{#each tabs as tab, index}
 				<li
-					class="nav-item tab tab-bordered tab-lg"
+					class="nav-item tab tab-lg"
 					class:tab-active={activeTab == index}
 					on:click={() => (activeTab = index)}
 					on:keypress={() => (activeTab = index)}

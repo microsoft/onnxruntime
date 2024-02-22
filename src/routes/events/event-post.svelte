@@ -38,7 +38,7 @@
 				</p>
 				<div class="card-actions">
 					{#each linkarr as item}
-						<a class="btn btn-secondary" href={item.link} target="_blank">{item.name}</a>
+						<a class="btn btn-secondary rounded-sm" href={item.link} target="_blank">{item.name}</a>
 					{/each}
 				</div>
 			</div>
