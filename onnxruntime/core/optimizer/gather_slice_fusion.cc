@@ -9,7 +9,7 @@
 namespace onnxruntime {
 
 bool GatherSliceToSplitFusion::IsSupportedGather(const Graph& graph, const Node& node, int64_t& index,
-                                                 int64_t& axis, int64_t& indices_n_dims) const {
+                                                 int64_t& axis) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gather", {1, 11, 13}) ||
       !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
     return false;
@@ -23,7 +23,7 @@ bool GatherSliceToSplitFusion::IsSupportedGather(const Graph& graph, const Node&
 
   if (!indices_init) return false;
 
-  if (indices_init->data_type() != ONNX_NAMESPACE::TensorProto::INT64) return false;
+  if (indices_init->data_type() != ONNX_NAMESPACE::TensorProto::INT64 || indices_init->dims_size() != 1) return false;
 
   // get the index value
   Initializer init_const(*indices_init, graph.ModelPath());
@@ -36,8 +36,6 @@ bool GatherSliceToSplitFusion::IsSupportedGather(const Graph& graph, const Node&
     auto& axis_attr = attrs.at("axis");
     if (utils::HasInt(axis_attr)) axis = axis_attr.i();
   }
-
-  indices_n_dims = indices_init->dims_size();
   return true;
 }
 
@@ -204,7 +202,6 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     bool can_fuse = true;
     bool first_edge = true;
     int64_t split_axis = 0;
-    int64_t indices_n_dims = -1;
 
     // Fuse 2 Gathers and 1 slice to Split
     // Get those outputs as Split outputs
@@ -215,10 +212,10 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
 
     // find the nodes to be merged
     for (auto consumer : consumers) {
-      int64_t index, axis, dims;
+      int64_t index, axis;
       InlinedVector<int64_t> starts, ends, axes, steps;
 
-      bool IsSupportedGatherOps = IsSupportedGather(graph, *consumer, index, axis, dims);
+      bool IsSupportedGatherOps = IsSupportedGather(graph, *consumer, index, axis);
       bool IsSupportedSliceOps = IsSupportedSlice(graph, *consumer, starts, ends, axes, steps);
 
       if ((!consumer || consumer->InputDefs()[0] != node_arg) ||
@@ -227,14 +224,6 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
       }
 
       if (IsSupportedGatherOps) {
-        if (indices_n_dims == -1) {
-          indices_n_dims = dims;
-        } else if (indices_n_dims != dims) {
-          // Not the same number of dimensions (0 or 1) for all scalar indices.
-          can_fuse = false;
-          break;
-        }
-
         if (axis < 0) axis += rank;
 
         if (first_edge) {

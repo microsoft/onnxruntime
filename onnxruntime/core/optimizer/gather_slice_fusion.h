@@ -14,8 +14,7 @@ Fuse (2 Gather nodes + 1 Slice) to 1 split node.
 
 class GatherSliceToSplitFusion : public GraphTransformer {
  private:
-  bool IsSupportedGather(const Graph& graph, const Node& node, int64_t& index, int64_t& axis,
-                         int64_t& indices_n_dims) const;
+  bool IsSupportedGather(const Graph& graph, const Node& node, int64_t& index, int64_t& axis) const;
 
   bool IsSupportedSlice(const Graph& graph, const Node& node,
                         InlinedVector<int64_t>& starts,
