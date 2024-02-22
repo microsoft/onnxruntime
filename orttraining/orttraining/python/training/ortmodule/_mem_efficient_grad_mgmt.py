@@ -32,7 +32,7 @@ def get_params_not_connected_to_pull_param_trigger(
 ):
     # Be noted, some parameters might not in graph input because they are not used in forward, so we filtered them also.
     onnx_initializer_names = {p.name for p in exported_model.graph.input}
-    return [v for k, v in named_params if not v.requires_grad and k in onnx_initializer_names]
+    return {k: v for k, v in named_params if not v.requires_grad and k in onnx_initializer_names}
 
 
 def post_processing_enable_mem_efficient_training(

@@ -22,6 +22,7 @@ from onnxruntime.training.utils import (
     ORTModelInputOutputSchemaType,
     ORTModelInputOutputType,
     PrimitiveType,
+    onnx_dtype_to_pytorch_dtype,
     unflatten_data_using_schema,
 )
 
@@ -38,9 +39,12 @@ class ExportedModelInfo:
     """Encapsulates the information of the exported model.
 
     After ONNX model export, the model info is collected and encapsulated in this class, including:
-    1. The ONNX graph inputs
+    1. The ONNX graph input names.
     2. Graph input requiring gradient information.
-    3. The model's forward function signature and args/kwargs schema.
+    3. The model's forward function signature and args/kwargs schema, used as a cache key to compare with the current
+         inputs to see if the model needs to be re-exported.
+
+    This data structure is returned by the GraphTransitionManager._export_model method.
 
     """
 
@@ -120,6 +124,7 @@ class PostExportProcessedModelInfo:
         module_forward_output_schema: ORTModelInputOutputSchemaType,
         post_export_processed_model: onnx.ModelProto,
         onnx_graph_input_data_accessor: dict[str, callable],
+        enable_mem_efficient_grad_management: bool,
     ):
         self._flattened_module = flatten_module
 
@@ -152,11 +157,13 @@ class PostExportProcessedModelInfo:
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
         self.onnx_graph_input_data_accessor: dict[str, callable] | None = onnx_graph_input_data_accessor
 
+        self._enable_mem_efficient_grad_management = enable_mem_efficient_grad_management
+
         # Used for unflattening the outputs from the ORT forward run.
         self.module_forward_output_schema: ORTModelInputOutputSchemaType | None = module_forward_output_schema
 
         # A buffer to hold the inputs for the ORT forward run. For performance, we reuse the same buffer for each run.
-        self._buffer_for_ort_runs: dict[str, torch.Tensor] = OrderedDict()
+        self._buffer_for_ort_runs: dict[str, torch.Tensor] | None = None
 
     def __str__(self):
         return f"""PostExportProcessedModelInfo class:
@@ -165,7 +172,7 @@ class PostExportProcessedModelInfo:
             \tonnx_graph_input_dynamic_axes_map: {self.onnx_graph_input_dynamic_axes_map}
             \tonnx_graph_input_names_user_defined: {self.onnx_graph_input_names_user_defined}
             \tonnx_graph_input_names_require_grad_user_defined: {self.onnx_graph_input_names_require_grad_user_defined}
-            \tbuffer_for_ort_runs.keys(): {self._buffer_for_ort_runs.keys()}
+            \tbuffer_for_ort_runs.keys(): {self._buffer_for_ort_runs.keys() if self._buffer_for_ort_runs else None}
         """
 
     def __repr__(self):
@@ -182,12 +189,27 @@ class PostExportProcessedModelInfo:
 
         The inputs are constructed in the order they appear in the model's forward function signature
         """
+        from ._mem_efficient_grad_mgmt import (
+            MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
+            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
+            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+        )
 
         # First time construct the buffer for the ORT forward run.
-        if len(self._buffer_for_ort_runs) == 0:
+        if self._buffer_for_ort_runs is None:
+            self._buffer_for_ort_runs = OrderedDict()
+
             # Create the buffers for the inputs that are either parameters or buffers in the original module.
             # For user inputs, fill with None for now, and will be filled dynamically during the forward run.
-            parameter_names = {k: v for k, v in self._flattened_module.named_parameters()}
+
+            if self._enable_mem_efficient_grad_management:
+                from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
+
+                parameter_names = get_params_not_connected_to_pull_param_trigger(
+                    self._flattened_module.named_parameters(), self._post_export_processed_model
+                )
+            else:
+                parameter_names = {k: v for k, v in self._flattened_module.named_parameters()}
             buffer_names = {k: v for k, v in self._flattened_module.named_buffers()}
             for input_name in self.onnx_graph_input_names:
                 if input_name in parameter_names:
@@ -198,6 +220,14 @@ class PostExportProcessedModelInfo:
                     self._buffer_for_ort_runs[input_name] = None
 
         for name in self.onnx_graph_input_names_user_defined:
+            if self._enable_mem_efficient_grad_management and name == MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME:
+                self._buffer_for_ort_runs[name] = torch.zeros(
+                    MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+                    dtype=onnx_dtype_to_pytorch_dtype(MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE),
+                    device=device,
+                ).requires_grad_()
+                continue
+
             if name in self.onnx_graph_input_data_accessor:
                 assert name in self._buffer_for_ort_runs, f"{name} is not in buffer_for_ort_runs"
                 data = self.onnx_graph_input_data_accessor[name](args, kwargs)
@@ -316,11 +346,11 @@ class GraphTransitionManager:
             #
             # The _io.FlattenedModule serves as a module wrapper designed to support tuple inputs and outputs for
             # PyTorch run during ONNX export. (Remember the PyTorch exporter handles tuple inputs and outputs better.)
-            # Internally, it facilitates the acceptance of tuple inputs and generation of tuple outputs by invoking
+            # Internally, it facilitates the acceptance of tuple inputs and the generation of tuple outputs by invoking
             # the original module's forward function. The workflow involves the following steps:
 
-            # 1. Prior to export, both args and kwargs are flattened into a 1-D tensor list, and a schema for the
-            #    flattened args and kwargs is generated. This schema is essential for the subsequent unflattening
+            # 1. Prior to export, both args and kwargs are flattened into a 1-D tensor list, and schemas for the
+            #    flattened args and kwargs are generated. This schemas are essential for the subsequent un-flattening
             #    process.
 
             # 2. The flattened inputs (args + kwargs) are passed to the _io.FlattenedModule's forward run.
@@ -328,14 +358,14 @@ class GraphTransitionManager:
             # 3. The args schema and kwargs schema, etc are conveyed to the _io.FlattenedModule by setting the
             #    corresponding attributes.
 
-            # 4. Within the _io.FlattenedModule's forward run, the inputs are unflattened to the original args and
+            # 4. Within the _io.FlattenedModule's forward run, the inputs are un-flattened to the original args and
             #    kwargs using the associated schemas, and then they are passed to the original module's forward function.
 
             # 5. Upon the completion of the forward function, the outputs from the original module are flattened and
             # returned to the caller.
 
             # 6. The 1-D flattened output tensors retain the same order as the outputs from the ONNX Runtime (ORT)
-            #    forward run. To facilitate unflattening during subsequent ORT runs, the output schema is saved as
+            #    forward run. To facilitate un-flattening during subsequent ORT runs, the output schema is saved as
             #    an attribute named `_output_schema` in the _io.FlattenedModule.
 
             copied_args = copy.copy(args)
@@ -446,6 +476,8 @@ class GraphTransitionManager:
                 enable_zero_stage3_support=self._runtime_options.enable_zero_stage3_support,
                 run_symbolic_shape_infer=self._runtime_options.run_symbolic_shape_infer,
                 stage3_param_handle=self,
+                enable_mem_efficient_grad_management=self._export_mode != torch.onnx.TrainingMode.EVAL
+                and self._runtime_options.enable_mem_efficient_grad_management,
                 logger=self._logger,
             )
 
@@ -465,7 +497,7 @@ class GraphTransitionManager:
 
     @staticmethod
     def _export_check(
-        prev_exported_model_info: ExportedModelInfo,
+        prev_exported_model_info: ExportedModelInfo | None,
         original_model_has_changed: bool,
         cur_args_schema: ORTModelInputOutputSchemaType,
         cur_kwargs_schema: ORTModelInputOutputSchemaType,
@@ -549,13 +581,12 @@ class GraphTransitionManager:
         enable_zero_stage3_support: bool,
         run_symbolic_shape_infer: bool,
         stage3_param_handle: type,
+        enable_mem_efficient_grad_management: bool,
         logger: logging.Logger,
     ):
         """Post process the exported model, generate the processed model which will be used for initializing graph builder."""
 
         # Deepcopy the exported model, in case modification affects the exported model.
-
-        # TODO(): Do pre-grad graph modification as needed, for memory-efficient gradient management, etc.
         post_processed_model = copy.deepcopy(exported_model_info.exported_model)
 
         if enable_custom_autograd_function:
@@ -578,16 +609,46 @@ class GraphTransitionManager:
                     [name for name, _ in flatten_module.named_parameters()],
                 )
 
+        onnx_graph_input_names_user_defined = copy.deepcopy(exported_model_info.onnx_graph_input_names_user_defined)
+        onnx_graph_input_names_require_grad_user_defined = copy.deepcopy(
+            exported_model_info.onnx_graph_input_names_require_grad_user_defined
+        )
+        onnx_graph_input_names = copy.deepcopy(exported_model_info.onnx_graph_input_names)
+        onnx_graph_input_names_require_grad = copy.deepcopy(exported_model_info.onnx_graph_input_names_require_grad)
+        if enable_mem_efficient_grad_management:
+            from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
+
+            # Override the options if model is not modified.
+            (
+                enable_mem_efficient_grad_management,
+                post_processed_model,
+            ) = post_processing_enable_mem_efficient_training(post_processed_model, flatten_module.named_parameters())
+
+            if enable_custom_autograd_function:
+                from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+
+                # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
+                onnx_graph_input_names_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+                onnx_graph_input_names_require_grad_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+                onnx_graph_input_names.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+                onnx_graph_input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+
+            if run_symbolic_shape_infer:
+                post_processed_model = SymbolicShapeInference.infer_shapes(
+                    post_processed_model, auto_merge=True, guess_output_rank=True
+                )
+
         post_export_processed_model_info = PostExportProcessedModelInfo(
             flatten_module,
-            exported_model_info.onnx_graph_input_names_user_defined,
-            exported_model_info.onnx_graph_input_names_require_grad_user_defined,
-            exported_model_info.onnx_graph_input_names,
-            exported_model_info.onnx_graph_input_names_require_grad,
+            onnx_graph_input_names_user_defined,
+            onnx_graph_input_names_require_grad_user_defined,
+            onnx_graph_input_names,
+            onnx_graph_input_names_require_grad,
             model_info_for_export.onnx_graph_input_dynamic_axes_map,
             exported_model_info.module_forward_output_schema,
             post_processed_model,
             model_info_for_export.onnx_graph_input_data_accessor,
+            enable_mem_efficient_grad_management,
         )
 
         logger.info(
