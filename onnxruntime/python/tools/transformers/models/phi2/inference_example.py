@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from collections import OrderedDict
+from cuda import cudart
 import numpy as np
 import torch
 from transformers import AutoTokenizer
@@ -26,6 +27,7 @@ class ORTGenerator:
         self.num_layers = 32
         self.max_sequence_length = 2048
         self.cuda_inputs = OrderedDict()
+        self.use_cuda_graph = False
 
     def get_initial_inputs_and_outputs(self, encodings_dict):
         self.torch_dtype = torch.float16 if self.use_fp16 else torch.float32
@@ -41,13 +43,16 @@ class ORTGenerator:
 
         inputs = {
             "input_ids": input_ids.contiguous(),
-            #"attention_mask": attention_mask.contiguous(),
-            "seqlens_k": self.cuda_inputs["seqlens_k"].contiguous(),
-            "total_sequence_length": total_seq_length.contiguous(),
+            "attention_mask": attention_mask.contiguous(),
         }
 
         if self.use_step:
             inputs["step"] = self.cuda_inputs["step"].contiguous()
+
+        if self.use_cuda_graph:
+            inputs["seqlens_k"] = self.cuda_inputs["seqlens_k"].contiguous()
+            inputs["total_sequence_length"] = total_seq_length.contiguous()
+            del inputs["attention_mask"]
 
         past_seq_length = self.max_sequence_length if self.use_buffer_share else 0
         past_shape = (
@@ -92,13 +97,12 @@ class ORTGenerator:
                     shape=tuple(self.cuda_inputs[k].shape),
                     buffer_ptr=self.cuda_inputs[k].data_ptr(),
                 )
-                from cuda import cudart
                 cudart.cudaMemcpy(
                     self.cuda_inputs[k].data_ptr(),
                     v.data_ptr(),
                     v.element_size() * v.nelement(),
                     cudart.cudaMemcpyKind.cudaMemcpyDeviceToDevice,
-                )              
+                )
             else:
                 io_binding.bind_input(
                     name=k,
@@ -135,12 +139,15 @@ class ORTGenerator:
 
         return io_binding
 
-    def create_session(self, device_id, use_fp16=True, use_buffer_share=True, packed_kv=False, use_step=False):
+    def create_session(
+        self, device_id, use_fp16=True, use_buffer_share=True, packed_kv=False, use_step=False, use_cuda_graph=False
+    ):
         sess_options = ort.SessionOptions()
         # sess_options.log_verbosity_level = 0
         # sess_options.log_severity_level = 0
+        self.use_cuda_graph = use_cuda_graph
         ep = (
-            ("CUDAExecutionProvider", {"device_id": device_id, "enable_cuda_graph": True})
+            ("CUDAExecutionProvider", {"device_id": device_id, "enable_cuda_graph": self.use_cuda_graph})
             if device_id >= 0
             else "CPUExecutionProvider"
         )
@@ -167,20 +174,23 @@ class ORTGenerator:
         has_eos = torch.zeros(batch_size, device=self.device, dtype=torch.bool)
 
         # bugbug: move outside
-        ro_prompt = ort.RunOptions()
-        ro_prompt.add_run_config_entry("ep.cuda.cuda_graph_annotation", "-1")
-        ro_token = ort.RunOptions()
-        ro_token.add_run_config_entry("ep.cuda.cuda_graph_annotation", "1")
+        ro = ort.RunOptions()
         prompt_run = True
         while current_length < max_length:
             io_binding = self.apply_io_binding(self.sess, inputs, outputs)
 
             io_binding.synchronize_inputs()
             if prompt_run:
-                self.sess.run_with_iobinding(io_binding, ro_prompt)
+                if self.use_cuda_graph:
+                    # Disable CUDA graph for the prompt run
+                    ro.add_run_config_entry("ep.cuda.cuda_graph_annotation", "-1")
+                self.sess.run_with_iobinding(io_binding, ro)
+                if self.use_cuda_graph:
+                    # Enable CUDA graph for the decoding run
+                    ro.add_run_config_entry("ep.cuda.cuda_graph_annotation", "1")
                 prompt_run = False
             else:
-                self.sess.run_with_iobinding(io_binding, ro_token)
+                self.sess.run_with_iobinding(io_binding, ro)
             io_binding.synchronize_outputs()
 
             # Sample with argmax (greedy search)
@@ -207,11 +217,15 @@ class ORTGenerator:
             inputs["input_ids"] = tokens_to_add.to(torch.int32)
             if self.use_step:
                 inputs["step"] = torch.tensor([current_length - 1], device=self.device, dtype=torch.int64)
-            # inputs["attention_mask"] = torch.cat([inputs["attention_mask"], (~has_eos).reshape(batch_size, 1)], 1).to(
-            #     torch.int32
-            # )
-            inputs["seqlens_k"] = torch.tensor(batch_size * [current_length - 1], device=self.device, dtype=torch.int32)
-            inputs["total_sequence_length"][0] = current_length
+            if self.use_cuda_graph:
+                inputs["seqlens_k"] = torch.tensor(
+                    batch_size * [current_length - 1], device=self.device, dtype=torch.int32
+                )
+                inputs["total_sequence_length"][0] = current_length
+            else:
+                inputs["attention_mask"] = torch.cat(
+                    [inputs["attention_mask"], (~has_eos).reshape(batch_size, 1)], 1
+                ).to(torch.int32)
 
             # Set logits to zeros for next inference run and re-use memory buffer
             if outputs["logits"].shape[1] != 1:
@@ -238,12 +252,13 @@ class ORTGenerator:
                         {f"present_key_{i}": present.contiguous(), f"present_value_{i}": present.clone().contiguous()}
                     ) if not self.packed_kv else outputs.update({f"present_{i}": present.contiguous()})
 
-        print(all_token_ids)
         texts = self.tokenizer.batch_decode(all_token_ids, skip_special_tokens=True)
         return texts
 
 
-def run_phi2(onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_fp16=True, use_step=False):
+def run_phi2(
+    onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_fp16=True, use_step=False, use_cuda_graph=False
+):
     prompt = [
         '''```python
     def print_prime(n):
@@ -253,7 +268,7 @@ def run_phi2(onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_
     ]
 
     generator = ORTGenerator(onnx_model_path)
-    generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv, use_step)
+    generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv, use_step, use_cuda_graph)
     texts = generator.generate(prompt, max_length=210)
 
     for i in range(len(texts)):

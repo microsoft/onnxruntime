@@ -522,6 +522,7 @@ def main():
                 use_buffer_share=True,
                 device_id=args.device_id,
                 use_step=True,
+                use_cuda_graph=args.use_cuda_graph,
             )
         if args.int4_gpu_sm8x:
             logging.info("Running int4_gpu_sm8x example...")
@@ -530,6 +531,7 @@ def main():
                 use_buffer_share=True,
                 device_id=args.device_id,
                 use_step=True,
+                use_cuda_graph=args.use_cuda_graph,
             )
         if args.fp32_gpu:
             logging.info("Running fp32_gpu example...")
