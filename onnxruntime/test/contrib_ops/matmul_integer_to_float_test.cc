@@ -39,12 +39,8 @@ static void CalculateMatMulIntegerToFloat(const int64_t M, const int64_t N, cons
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
-        float A_dequantized = has_zp ?
-                              (static_cast<int>(A_data[m * K + k]) - static_cast<int>(A_zero_point[0])) * A_scale[0] :
-                              A_data[m * K + k] * A_scale[0];
-        float B_dequantized = has_zp ?
-                              (static_cast<int>(B_data[k * N + n]) - static_cast<int>(B_zero_point[n])) * B_scale[n] :
-                              B_data[k * N + n] * B_scale[n];
+        float A_dequantized = has_zp ? (static_cast<int>(A_data[m * K + k]) - static_cast<int>(A_zero_point[0])) * A_scale[0] : A_data[m * K + k] * A_scale[0];
+        float B_dequantized = has_zp ? (static_cast<int>(B_data[k * N + n]) - static_cast<int>(B_zero_point[n])) * B_scale[n] : B_data[k * N + n] * B_scale[n];
 
         sum += A_dequantized * B_dequantized;
       }
@@ -81,8 +77,7 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
 
   std::vector<WType> tmp_B_data;
   tmp_B_data = random.Uniform<WType>(B_dims,
-                                     (constexpr(std::is_same_v<WType, int8_t>)) ?
-                                     std::numeric_limits<int8_t>::lowest()/2 : std::numeric_limits<uint8_t>::lowest(),
+                                     (constexpr(std::is_same_v<WType, int8_t>)) ? std::numeric_limits<int8_t>::lowest() / 2 : std::numeric_limits<uint8_t>::lowest(),
                                      std::numeric_limits<WType>::max() / 2);
   std::transform(tmp_B_data.begin(), tmp_B_data.end(), std::back_inserter(B_data), [](int32_t v) -> WType {
     return static_cast<WType>(v);
@@ -148,7 +143,6 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
   } else {
     test.Run();
   }
-
 }
 
 template <typename IType, typename WType, typename OType, bool HasZeroPoint, bool HasBias>
@@ -161,13 +155,6 @@ void RunMatMulIntegerToFloatTest() {
   );
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         true,         /*is_matrix_b_constant*/
-                                         false,        /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
       true,         /*is_matrix_b_constant*/
       false,        /*per_column*/
       HasZeroPoint, /*has_zp*/
