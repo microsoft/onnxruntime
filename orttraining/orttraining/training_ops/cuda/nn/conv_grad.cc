@@ -114,7 +114,8 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
     ORT_RETURN_IF_ERROR(args_.y_tensor.Set(dy_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                             gsl::narrow_cast<int>(conv_attrs_.group), CUDNN_CROSS_CORRELATION,
-                                            args_.params.data_type));
+                                            args_.params.data_type,
+                                            UseTF32()));
 
     if (dB) {
       const TensorShape& db_shape = dB->Shape();
