@@ -1343,7 +1343,7 @@ class PlannerImpl {
     ort_value_usecount.reserve(ort_value_info_.size());
 #endif
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
-      // compute use count first. TODO(leca): call ComputeReuseCount() only once is enough
+      // compute use count first. TODO(leca): call ComputeReuseCount() only once is enough!
       ORT_RETURN_IF_ERROR(ComputeReuseCount());
       for (int j = 0; static_cast<size_t>(j) < ort_value_info_.size(); j++) Buffer(j) = j;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
