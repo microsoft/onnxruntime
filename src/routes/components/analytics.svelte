@@ -1,7 +1,20 @@
 <script>
 	import '@beyonk/gdpr-cookie-consent-banner/banner.css'; // optional, you can also define your own styles
 	import GdprBanner from '@beyonk/gdpr-cookie-consent-banner';
-
+	let choices = {
+		marketing: false,
+		tracking: false,
+		analytics: {
+			label: 'Analytics',
+			description: 'We use analytics cookies to track visits, helping create a better experience for you!',
+			value: true
+		}, 
+		necessary: {
+			label: 'Necessary',
+			description: 'Used for cookie control.',
+			value: true
+		}
+	}
 	function initAnalytics() {
 		// Google Analytics
 		gtag('consent', 'update', {
@@ -12,7 +25,7 @@
 	}
 </script>
 
-<GdprBanner cookieName="foo" description="bar" on:analytics={initAnalytics} />
+<GdprBanner heading="Your Cookie Settings" cookieName="analytics" description="Your cookies are your choice! At ONNX Runtime, we use analytics cookies solely to track visits, helping create a better experience for you!" on:analytics={initAnalytics} showEditIcon={false} choices={choices}/>
 
 <svelte:head>
 	<!-- Google Analytics -->
