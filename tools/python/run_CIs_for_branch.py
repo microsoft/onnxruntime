@@ -18,8 +18,8 @@ def _parse_args():
         os.path.basename(__file__),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""Run the CIs used to validate PRs for the specified branch.
-        
-        If specified, the `--include` filter is applied first, followed by any `--exclude` filter.  
+
+        If specified, the `--include` filter is applied first, followed by any `--exclude` filter.
 
         Requires the Azure CLI with DevOps extension to be installed.
           Azure CLI: https://learn.microsoft.com/en-us/cli/azure/install-azure-cli
