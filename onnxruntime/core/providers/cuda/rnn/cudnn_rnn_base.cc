@@ -241,9 +241,9 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(ctx->GetComputeStream()));
   // Starting with cuDNN 8.9.1 the sequence lens buffer is ignored by cudnnRNNForward and thus it must
   // be copied to the GPU only for the ReverseBySequence kernels.
-  //if (reverse_) {
+  // if (reverse_) {
   //  ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(ctx->GetComputeStream()));
-  //}
+  // }
 
   // optional outputs
   TensorShapeVector dims_Y({seq_length, num_directions_, batch_size, hidden_size_});
