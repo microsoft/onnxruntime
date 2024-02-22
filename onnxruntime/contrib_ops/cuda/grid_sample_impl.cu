@@ -243,7 +243,7 @@ void GridSampleImpl(
     T* output_data) {
   using Ch = Channels<IsNHWC>;
 
-  int blocksPerGrid = static_cast<int>
+  int blocksPerGrid = static_cast<int>(
     ceil(static_cast<T>(dims[Ch::N] * dims[Ch::C] * H_out * W_out) / GridDim::maxThreadsPerBlock));
   _GridSampleKernel<T, IsNHWC><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_data, grid_data, mode, padding_mode, align_corners, 
