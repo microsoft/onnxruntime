@@ -29,6 +29,7 @@ union __half2_uint32_t_union {
 
 void set_alpha_fp16(uint32_t& alpha, float norm) {
   __half2_uint32_t_union temp;
+  temp.u32 = 0;
   temp.fp162 = __float2half2_rn(norm);
   alpha = temp.u32;
 }
@@ -100,7 +101,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     // The number of xmmas in the M dimension. We use one uint32_t per XMMA in the M dimension.
     xmmas_m = (S + 16 * warps_m - 1) / (16 * warps_m);
 
-    const float scale_bmm1 = interface->mRsqrtHeadSize;
+    const float scale_bmm1 = interface->mScale;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
     const float scale_bmm2 = 1.f;
 
@@ -121,7 +122,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
   }
 
   void setup_causal_masked_fmha(const int S, const int B) {
-    const float scale_bmm1 = interface->mRsqrtHeadSize;
+    const float scale_bmm1 = interface->mScale;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
     const float scale_bmm2 = 1.f;
 
@@ -219,8 +220,16 @@ class FusedMHARunnerFP16v2::mhaImpl {
   bool has_causal_mask = false;
 };
 
-FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads, const int headSize, const int sm, bool causal_mask, bool enable_flash_attention)
-    : MHARunner(numHeads, headSize, 2, causal_mask), mSm(sm), mEnableFlashAttention(enable_flash_attention), pimpl(new mhaImpl(this)) {
+FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads,
+                                           const int headSize,
+                                           const int sm,
+                                           bool causal_mask,
+                                           bool enable_flash_attention,
+                                           const float scale)
+    : MHARunner(numHeads, headSize, 2, causal_mask, scale),
+      mSm(sm),
+      mEnableFlashAttention(enable_flash_attention),
+      pimpl(new mhaImpl(this)) {
 }
 
 void FusedMHARunnerFP16v2::setup(const int S, const int B) {
@@ -289,6 +298,22 @@ bool FusedMHARunnerFP16v2::isValid(int s) const {
 
 int FusedMHARunnerFP16v2::getSFromMaxSeqLen(const int max_seq_len) const {
   return pimpl->getSFromMaxSeqLen(max_seq_len);
+}
+
+std::unique_ptr<MHARunner> FusedMHARunnerFP16v2::Create(const int numHeads,
+                                                                   const int headSize,
+                                                                   const int sm,
+                                                                   bool causal_mask,
+                                                                   bool enable_flash_attention,
+                                                                   const float scale) {
+#ifdef _MSC_VER
+  return std::make_unique<FusedMHARunnerFP16v2>(numHeads, headSize, sm, causal_mask, enable_flash_attention, scale);
+#else
+  // Linux build has error using make_unique: invalid application of ‘sizeof’ to incomplete type ‘onnxruntime::contrib::cuda::FusedMHARunnerFP16v2::mhaImpl
+  std::unique_ptr<MHARunner> runner;
+  runner.reset(new FusedMHARunnerFP16v2(numHeads, headSize, sm, causal_mask, enable_flash_attention, scale));
+  return runner;
+#endif
 }
 
 }  // namespace cuda

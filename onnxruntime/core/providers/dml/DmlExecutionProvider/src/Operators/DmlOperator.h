@@ -55,6 +55,20 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             );
 
+        void InitializeInputsWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
+        void InitializeOutputsWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
         bool AllowHalfPrecisionComputation() const;
         DML_EXECUTION_FLAGS GetExecutionFlags() const;
 
@@ -115,6 +129,16 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;
 
+        TensorSequenceDesc CreateTensorSequenceDescFromInput(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            uint32_t index,
+            int32_t coerceAxis = TensorAxis::DoNotCoerce,
+            int32_t placement = TensorAxis::W,
+            int32_t leftAlignedDimensionCount = TensorAxis::RightAligned,
+            std::optional<gsl::span<const uint32_t>> tensorShape = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            ) const;
+
         TensorDesc CreateTensorDescFromOutput(
             const MLOperatorKernelCreationContext& kernelInfo,
             uint32_t index,
@@ -124,6 +148,11 @@ namespace Dml
             std::optional<gsl::span<const uint32_t>> tensorShape = std::nullopt,
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;
+
+        static void TryConvertTensorToBroadcastScalar(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const DML_TENSOR_DESC* tensor,
+            uint32_t kernelInputIndex);
 
     private:
         // For each input or output of the DML kernel, the corresponding input or output of the original
@@ -140,6 +169,7 @@ namespace Dml
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
 
+        static const uint32_t zeroArray[8];
     };
 
 } // namespace Dml

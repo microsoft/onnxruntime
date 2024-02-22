@@ -5,6 +5,7 @@
 
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -20,10 +21,18 @@ class T5DecoderSubgraph : public Subgraph {
                                         has_hidden_state_(false),
                                         use_sequence_as_input_ids_(true) {
     first_present_output_index_ = 1;
+
+    // Currently just using parent node's attribute. Maybe better to find it purely in subgraph.
+    const auto& attributes = node_in.GetAttributes();
+    if (attributes.find("decoder_output_cross_qk") != attributes.end()) {
+      auto& attr = attributes.at("decoder_output_cross_qk");
+      output_cross_qk_ = (attr.i() != 0LL);
+    }
   }
 
   // Create inputs for first inference of decoder subgraph.
   Status CreateInitialFeeds(
+      AllocatorPtr cpu_allocator,
       gsl::span<const int32_t> beam_next_tokens,
       const std::vector<const OrtValue*>& implicit_inputs,
       const std::vector<OrtValue>& encoder_feeds,
@@ -37,7 +46,9 @@ class T5DecoderSubgraph : public Subgraph {
       Stream* stream,
       bool use_sequence_as_input_ids,
       int cur_len,
-      transformers::Sequences& sequences);
+      transformers::Sequences& sequences,
+      int past_present_share_buffer_max_seq_len = -1,
+      bool need_cache_indir = false);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
@@ -59,11 +70,11 @@ class T5DecoderSubgraph : public Subgraph {
     return first_present_output_index_;
   }
 
-  bool UseSequenceAsInputIds() const {
+  inline bool UseSequenceAsInputIds() const {
     return use_sequence_as_input_ids_;
   }
 
- private:
+ protected:
   int first_past_input_index_;
   int first_present_output_index_;
   bool has_hidden_state_;

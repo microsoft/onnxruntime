@@ -21,7 +21,7 @@ class QLinearGlobalAveragePool final : public OpKernel {
   bool channels_last_;
 };
 
-template<typename T8Bits>
+template <typename T8Bits>
 Status ComputeQLinearGlobalAvgPool(
     const T8Bits* x,
     float x_scale,

@@ -17,6 +17,51 @@ namespace training {
 
 using namespace ONNX_NAMESPACE;
 
+namespace {
+
+// TODO(pengwa): remove this once customized PythonOp shape inference is supported.
+constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
+
+std::array<TensorShapeProto::Dimension, 6> GetRNNDimensions(InferenceContext& ctx) {
+  TensorShapeProto::Dimension num_directions, sequence_length, batch_size,
+      hidden_size, hidden_size_x_num_gates, input_size;
+
+  const auto direction = getAttribute(ctx, "direction", "forward");
+  if ((direction == "forward") || (direction == "reverse"))
+    num_directions.set_dim_value(1);
+  else if (direction == "bidirectional")
+    num_directions.set_dim_value(2);
+  else
+    fail_shape_inference("Attribute direction must be one of forward, reverse, or bidirectional. Actual: ", direction);
+
+  const auto hidden_size_value = ctx.getAttribute("hidden_size");
+  if (!hidden_size_value) {
+    fail_shape_inference("Attribute hidden size not provided.");
+  }
+
+  if (hasInputShape(ctx, 0)) {
+    const auto& x_shape = getInputShape(ctx, 0);
+    if (x_shape.dim_size() != 3) {
+      fail_shape_inference("Input tensor must have rank 3. Actual: ", x_shape.dim_size());
+    }
+    sequence_length = x_shape.dim(0);
+    batch_size = x_shape.dim(1);
+    input_size = x_shape.dim(2);
+  }
+
+  if (hasInputShape(ctx, 1)) {
+    const auto& weight_shape = getInputShape(ctx, 1);
+    if (weight_shape.dim_size() != 3) {
+      fail_shape_inference("Weight tensor must have rank 3. Actual: ", weight_shape.dim_size());
+    }
+    hidden_size_x_num_gates = weight_shape.dim(1);
+  }
+
+  return {num_directions, sequence_length, batch_size, hidden_size, hidden_size_x_num_gates, input_size};
+}
+}  // namespace
+
 void AddRepeatedInputs(
     OpSchema& op_schema,
     const int start,
@@ -149,6 +194,44 @@ TensorProto ToDimensionOneTensor(T value) {
   return t;
 }
 
+struct InputOutputAdaptorInfo {
+  bool need_adapt_input = false;
+  int64_t input_target_elem_type{-1};
+
+  bool need_adapt_output = false;
+  int64_t output_target_elem_type{-1};
+};
+
+void HandleDifferedInputOutputDataType(const int64_t input_elem_type,
+                                       const int64_t output_elem_type,
+                                       InputOutputAdaptorInfo& adaptor_info) {
+  if (input_elem_type == output_elem_type) {
+    return;
+  }
+
+  static std::unordered_map<::ONNX_NAMESPACE::TensorProto_DataType, int> bytes_for_elem_type = {
+      {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16, 2},
+      {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16, 2},
+      {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, 4},
+      {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE, 8},
+  };
+
+  // Use a larger type for computation if the input and output types are different.
+  bool use_input_elem_type_for_compute =
+      bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_elem_type)] >=
+      bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(output_elem_type)];
+
+  if (use_input_elem_type_for_compute) {
+    // Compute in input type and cast to output type before return result.
+    adaptor_info.need_adapt_output = true;
+    adaptor_info.output_target_elem_type = output_elem_type;
+  } else {
+    // Cast input to output_elem_type, and compute in output_elem_type, return result.
+    adaptor_info.need_adapt_input = true;
+    adaptor_info.input_target_elem_type = output_elem_type;
+  }
+}
+
 bool SCELossInternalFunBuilder(
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
@@ -156,32 +239,75 @@ bool SCELossInternalFunBuilder(
   bool hasWeight = ctx.hasInput(2);
   bool hasIgnoreIndex = ctx.hasInput(3);
 
+  InputOutputAdaptorInfo adaptor_info;
+
+  // Handle the adaptor only when output_type is specified in attribute.
+  auto output_type_attr = ctx.getAttribute("output_type");
+  if (output_type_attr != nullptr) {
+    const TypeProto* first_input_type_proto = ctx.getInputType(0);
+    auto output_elem_type = output_type_attr->i();
+    if (first_input_type_proto != nullptr) {
+      HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
+                                        output_elem_type,
+                                        adaptor_info);
+    } else {
+      // If the input type is not specified, we add input cast to make sure type check successful.
+      adaptor_info.need_adapt_input = true;
+      adaptor_info.input_target_elem_type = output_elem_type;
+    }
+  }
+
   FunctionBuilder builder(functionProto);
+
+  if (adaptor_info.need_adapt_input) {
+    builder.Add("scores_casted = Cast(scores)", "to", adaptor_info.input_target_elem_type);
+
+    if (hasWeight) {
+      builder.Add("weights_casted = Cast(weights)", "to", adaptor_info.input_target_elem_type);
+    }
+  } else {
+    builder.Add("scores_casted = Identity (scores)");
+    if (hasWeight) {
+      builder.Add("weights_casted = Identity (weights)");
+    }
+  }
 
   builder
       .Const("Shape3D", std::vector<int64_t>({0, 0, -1}))
       .Add(R"(
-        X_NCD = Reshape (scores, Shape3D)
+        X_NCD = Reshape (scores_casted, Shape3D)
         X_NDC = Transpose <perm = [0, 2, 1]> (X_NCD)
         X_LogSM = LogSoftmax <axis = 2> (X_NDC)
         X_LogSM_NCD = Transpose <perm = [0, 2, 1]> (X_LogSM)
-        X_shape = Shape (scores)
+        X_shape = Shape (scores_casted)
         X_Log = Reshape (X_LogSM_NCD, X_shape)
       )");
 
   if (ctx.hasOutput(1)) {
-    builder.Add("log_prob = Identity (X_Log)");
+    builder.Add("intermediate_log_prob = Identity (X_Log)");
   }
 
   if (hasWeight)
     if (hasIgnoreIndex)
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
+      builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights_casted, ignore_index)");
     else
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights)");
+      builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights_casted)");
   else if (hasIgnoreIndex)
-    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
+    builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
   else
-    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
+    builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
+
+  if (adaptor_info.need_adapt_output) {
+    builder.Add("output = Cast(intermediate_output)", "to", adaptor_info.output_target_elem_type);
+    if (ctx.hasOutput(1)) {
+      builder.Add("log_prob = Cast(intermediate_log_prob)", "to", adaptor_info.output_target_elem_type);
+    }
+  } else {
+    builder.Add("output = Identity (intermediate_output)");
+    if (ctx.hasOutput(1)) {
+      builder.Add("log_prob = Identity(intermediate_log_prob)");
+    }
+  }
 
   schema.BuildFunction(functionProto);
   return true;
@@ -198,6 +324,24 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
       ignore_index_as_attr ? (ctx.getAttribute("ignore_index") != nullptr) : ctx.hasInput(4);
   bool has_weight = ctx.hasInput(3);
 
+  InputOutputAdaptorInfo adaptor_info;
+
+  // Handle the adaptor only when output_type is specified in attribute.
+  auto output_type_attr = ctx.getAttribute("output_type");
+  if (output_type_attr != nullptr) {
+    const TypeProto* first_input_type_proto = ctx.getInputType(0);
+    auto output_elem_type = output_type_attr->i();
+    if (first_input_type_proto != nullptr) {
+      HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
+                                        output_elem_type,
+                                        adaptor_info);
+    } else {
+      // If the input type is not specified, we add input cast to make sure type check successful.
+      adaptor_info.need_adapt_input = true;
+      adaptor_info.input_target_elem_type = output_elem_type;
+    }
+  }
+
   FunctionBuilder builder(functionProto);
 
   // Inputs:
@@ -205,6 +349,28 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
   // log_prob : [B, C, d1, d2, ...]
   // weight : [C]
   // label : [B, d1, d2, ...]
+
+  if (adaptor_info.need_adapt_input) {
+    builder.Add("dY_casted = Cast(dY)", "to", adaptor_info.input_target_elem_type);
+    builder.Add("log_prob_casted = Cast(log_prob)", "to", adaptor_info.input_target_elem_type);
+
+    if (has_weight) {
+      builder.Add("weight_casted = Cast(weight)", "to", adaptor_info.input_target_elem_type);
+    }
+
+    if (ctx.hasInput(5)) {
+      builder.Add("bias_casted = Cast(bias)", "to", adaptor_info.input_target_elem_type);
+    }
+  } else {
+    builder.Add("dY_casted = Identity (dY)");
+    builder.Add("log_prob_casted = Identity (log_prob)");
+    if (has_weight) {
+      builder.Add("weight_casted = Identity (weight)");
+    }
+    if (ctx.hasInput(5)) {
+      builder.Add("bias_casted = Identity (bias)");
+    }
+  }
 
   // We decompose the forward propagation into two steps, for doing the backward prop.
   // Step 1: loss = Neg(Logsoftmax(prediction-for-true-label))
@@ -231,55 +397,55 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
       // adj_label_BD is used so we can safely index into tensor-dimensions of size [C]
       builder.Add(R"(
                     adj_label_BD = Where (ignored_BD, zero_label, label)
-                    weight_BD = Gather (weight, adj_label_BD)
-                    zero_weight = CastLike (zero_int64, weight)
+                    weight_BD = Gather (weight_casted, adj_label_BD)
+                    zero_weight = CastLike (zero_int64, weight_casted)
                     adj_weight_BD = Where (ignored_BD, zero_weight, weight_BD)
                 )");
       if (mean_reduction) {
         builder.Add(R"(
                       sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
                       grad = Div (adj_weight_BD, sum_weights)
-                      d_loss = Mul (grad, dY)
+                      d_loss = Mul (grad, dY_casted)
                   )");
       } else {
-        builder.Add("d_loss = Mul (adj_weight_BD, dY)");
+        builder.Add("d_loss = Mul (adj_weight_BD, dY_casted)");
       }
     } else {
       builder.Add(R"(
                     not_ignored_BD = Not (ignored_BD)
-                    adj_weight_BD = CastLike (not_ignored_BD, dY)
+                    adj_weight_BD = CastLike (not_ignored_BD, dY_casted)
                 )");
       if (mean_reduction) {
         builder.Add(R"(
                       sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
                       grad = Div (adj_weight_BD, sum_weights)
-                      d_loss = Mul (grad, dY)
+                      d_loss = Mul (grad, dY_casted)
                   )");
       } else {
-        builder.Add("d_loss = Mul (adj_weight_BD, dY)");
+        builder.Add("d_loss = Mul (adj_weight_BD, dY_casted)");
       }
     }
   } else {
     if (has_weight) {
-      builder.Add("elt_weight = Gather (weight, label)");
+      builder.Add("elt_weight = Gather (weight_casted, label)");
       if (mean_reduction) {
         // backward-prop for y = ReduceSum (loss * elt_weight) / ReduceSum(elt_weight)
         builder.Add(R"(
                       sum_weights = ReduceSum <keepdims = 0> (elt_weight)
                       grad = Div (elt_weight, sum_weights)
-                      d_loss = Mul(grad, dY)
+                      d_loss = Mul(grad, dY_casted)
                   )");
       } else {
         // common backward-prop for y = ReduceSum(loss * elt_weight) and y = loss * elt_weight
-        builder.Add("d_loss = Mul(elt_weight, dY)");
+        builder.Add("d_loss = Mul(elt_weight, dY_casted)");
       }
     } else {
       if (mean_reduction) {
         // backward-prop for y = ReduceSum (loss) / Size(label)
         builder.Add(R"(
                       count = Size(label)
-                      count_T = CastLike (count, dY)
-                      d_div = Div (dY, count_T)
+                      count_T = CastLike (count, dY_casted)
+                      d_div = Div (dY_casted, count_T)
                       BD = Shape (label)
                       d_loss = Expand (d_div, BD)
                   )");
@@ -287,7 +453,7 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
         // common backward-prop for y = ReduceSum(loss) and y = loss
         builder.Add(R"(
                       BD = Shape (label)
-                      d_loss = Expand (dY, BD)
+                      d_loss = Expand (dY_casted, BD)
                   )");
       }
     }
@@ -300,8 +466,8 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
                 d_loss_B1Dopt = Unsqueeze (d_loss, axes1)
                 reshape_arg = Constant < value = int64[3] {0, 0, -1} > ()
                 d_loss_B1D = Reshape (d_loss_B1Dopt, reshape_arg)
-                orig_shape = Shape (log_prob)
-                log_prob_BCD = Reshape (log_prob, reshape_arg)
+                orig_shape = Shape (log_prob_casted)
+                log_prob_BCD = Reshape (log_prob_casted, reshape_arg)
                 prob_BCD = Exp (log_prob_BCD)
             )");
 
@@ -341,13 +507,19 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
   if (ctx.hasInput(5)) {
     builder.Add(R"(
                 d_logits_without_bias = Reshape (d_logits_BCD, orig_shape)
-                bias_shaped = Reshape (bias, orig_shape)
-                d_logits = Add(d_logits_without_bias, bias_shaped)
+                bias_shaped = Reshape (bias_casted, orig_shape)
+                intermediate_d_logits = Add(d_logits_without_bias, bias_shaped)
               )");
   } else {
     builder.Add(R"(
-                d_logits = Reshape (d_logits_BCD, orig_shape)
+                intermediate_d_logits = Reshape (d_logits_BCD, orig_shape)
               )");
+  }
+
+  if (adaptor_info.need_adapt_output) {
+    builder.Add("d_logits = Cast(intermediate_d_logits)", "to", adaptor_info.output_target_elem_type);
+  } else {
+    builder.Add("d_logits = Identity (intermediate_d_logits)");
   }
 
   schema.BuildFunction(functionProto);
@@ -1365,7 +1537,7 @@ void RegisterTrainingOpSchemas() {
              "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
              " in mixed precision training. ",
              "T_BOOL", OpSchema::Optional)
-      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T_BOOL")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
       .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
@@ -1559,7 +1731,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain input and output gradient types to float tensors.")
       .TypeConstraint(
           "T2",
-          OpSchema::all_tensor_types_with_bfloat(),
+          OpSchema::all_tensor_types_ir4(),
           "reset_signal can be of any tensor type.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
@@ -1579,7 +1751,7 @@ void RegisterTrainingOpSchemas() {
       .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types_with_bfloat(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
@@ -2021,7 +2193,7 @@ Example 4:
               OpSchema::Variadic)
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain input and output types to all tensor types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         for (int i = 0; i < static_cast<int>(ctx.getNumOutputs()); ++i) {
@@ -2098,7 +2270,7 @@ Example 4:
               OpSchema::Optional)
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain output types to any tensor type.")
       .TypeConstraint(
           "Tint",
@@ -2728,6 +2900,19 @@ Example 4:
             return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {});
           });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LeakyReluGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Gradient operator for LeakyRelu.")
+      .Attr("alpha", "Alpha (negative slope) value.", AttributeProto::FLOAT, 0.01f)
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "Y", "The output tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2927,7 +3112,7 @@ Example 4:
       .SetDoc("if all the inputs are available, the output will be true")
       .Input(0, "input_tensors", "list of dependency tensors", "T", OpSchema::Variadic, false)
       .Output(0, "done", "all the dependency tensors are ready", "B")
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All Tensor types")
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "All Tensor types")
       .TypeConstraint("B", {"tensor(bool)"}, "Only bool")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
@@ -2940,7 +3125,7 @@ Example 4:
       .SetDoc("Barrier op with value pass through, outputs = inputs")
       .Input(0, "inputs", "input tensors", "T", OpSchema::Variadic, false)
       .Output(0, "outputs", "output tensors", "T", OpSchema::Variadic, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All Tensor types")
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i, i);
@@ -3123,13 +3308,13 @@ Return true if all elements are true and false otherwise.
 
         Dim num_channels;
 
-        // Add support for 1D input X, in which case num_channels should default to 1.
-        auto& input_shape = getInputShape(ctx, 0);
-        if (input_shape.dim_size() <= 1) {
-          num_channels.set_dim_value(1);
-        } else {
-          unifyInputDim(ctx, 0, 1, num_channels);
+        if (hasInputShape(ctx, 0)) {
+          if (getInputShape(ctx, 0).dim_size() > 1)
+            unifyInputDim(ctx, 0, 1, num_channels);
+          else
+            unifyDim(num_channels, 1);
         }
+
         unifyInputDim(ctx, 1, 0, num_channels);
         unifyInputDim(ctx, 2, 0, num_channels);
         unifyInputDim(ctx, 3, 0, num_channels);
@@ -3319,7 +3504,7 @@ Return true if all elements are true and false otherwise.
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types_with_bfloat(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "Tind",
@@ -3521,19 +3706,19 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Yield Op.")
-      .Input(0, "module_outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
+      .Input(0, "module_outputs", "Module outputs to be returned to PyTorch.", "T", OpSchema::Variadic,
              /*is_homogeneous*/ false,
              /*min_arity*/ 1)
       /*
       For a situation where there are no trainable parameters in a model, the YieldOp minimum
       number of arguments expected for module_output_grad should be 0.
       */
-      .Output(0, "module_outputs_grad", "Gradient of module outputs returned from pytorch.", "T", OpSchema::Variadic,
+      .Output(0, "module_outputs_grad", "Gradient of module outputs returned from PyTorch.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 0)
       .Attr("non_differentiable_outputs", "The indices of the module outputs that doesn't have a gradient.", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("full_shape_outputs", "The indices of the module outputs that must have full shape.", AttributeProto::INTS)
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto non_differentiable_outputs = ctx.getAttribute("non_differentiable_outputs");
         std::unordered_set<size_t> non_differentiable_outputs_indices{};
@@ -3575,11 +3760,11 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Wrapper of Pytorch's autograd.Function implementation.")
+      .SetDoc("Wrapper of PyTorch's autograd.Function implementation.")
       .Input(
           0,
           "inputs",
-          "Module outputs to be returned to pytorch.",
+          "Module outputs to be returned to PyTorch.",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3592,13 +3777,13 @@ Return true if all elements are true and false otherwise.
       .Output(
           1,
           "outputs",
-          "Outputs returned from pytorch.",
+          "Outputs returned from PyTorch.",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Attr(
-          "name",
+          "func_name",
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
@@ -3612,7 +3797,7 @@ Return true if all elements are true and false otherwise.
           "which means all inputs don't require grad. Frontend needs this info to call into torch correctly.",
           AttributeProto::INTS,
           false)
-      // Input Pytorch tensors.
+      // Input PyTorch tensors.
       .Attr(
           "input_tensor_types",
           "Input types of autograd.Function.apply.",
@@ -3621,6 +3806,17 @@ Return true if all elements are true and false otherwise.
           "input_tensor_ranks",
           "Input tensors' ranks of autograd.Function.apply.",
           AttributeProto::INTS)
+      // Input bool scalars.
+      .Attr(
+          "input_bool_scalars",
+          "Python bool arguments.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_scalar_positions",
+          "",
+          AttributeProto::INTS,
+          false)
       // Input int scalars.
       .Attr(
           "input_int_scalars",
@@ -3640,6 +3836,22 @@ Return true if all elements are true and false otherwise.
           false)
       .Attr(
           "input_float_scalar_positions",
+          "",
+          AttributeProto::INTS,
+          false)
+      // Input bool tuple.
+      .Attr(
+          "input_bool_tuples",
+          "Python bool-tuple arguments.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_tuple_positions",
+          "",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_bool_tuple_begins",
           "",
           AttributeProto::INTS,
           false)
@@ -3696,15 +3908,45 @@ Return true if all elements are true and false otherwise.
           AttributeProto::INTS)
       // Other attributes.
       .Attr(
-          "inplace",
-          "Indicate if the output should reuse input memory.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
+          "tensor_reuse_map",
+          "A int array indicating whether output at each index is reusing specific input or not."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 2 tensor inputs and 3 tensor outputs (including ctx), "
+          "tensor_reuse_map = [-1, 1, 0] means"
+          "- the output 0 (ctx) don't reuse any input buffer."
+          "- the output 1 reuses the input 1."
+          "- the output 2 reuses the input 0.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "bw_tensor_reuse_map",
+          "Used for backward op only."
+          "A int array indicating whether output at each index is reusing specific input or now."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 3 inputs (including ctx) and 2 outputs, tensor_reuse_map = [2, 1] means"
+          "- the output 0 reuses the input 2."
+          "- the output 1 reuses the input 1."
+          "Be noted: the input 0 is ctx.",
+          AttributeProto::INTS,
+          false)
       .Attr(
           "training_mode",
           "Indicate if the model is exported in training_mode, by default, False.",
           AttributeProto::INT,
           static_cast<int64_t>(0))
+      .Attr(
+          "comment",
+          "comment only for debugging purposes.",
+          AttributeProto::STRING, false)
+      .Attr(
+          "safe_run_mode",
+          "Indicate if the function is running in safe mode or not. "
+          "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
+          "or materialize gradient. In this mode, inplace operation is detected on the fly. "
+          "Unsafe mode is used to run the function faster not considering the above ctx usage."
+          "Additional requirement running in this mode: provide correct input alias map.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -3725,16 +3967,16 @@ Return true if all elements are true and false otherwise.
                     "PythonOp's input list and \"input_tensor_types\" attribute should have the same length.");
         for (auto i = 0; i < input_tensor_types_count; ++i) {
           const auto inferred_input_type = ctx.getInputType(i);
-          ORT_ENFORCE(inferred_input_type, "PythonOp's ", i, "th input type is missing.");
+          ORT_ENFORCE(inferred_input_type, "PythonOp's ", i, "-th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
-                      "PythonOp's ", i, "th input type must be a tensor.");
+                      "PythonOp's ", i, "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i),
-                      "PythonOp's ", i, "th input type must be ",
+                      "PythonOp's ", i, "-th input type must be ",
                       TensorProto_DataType_Name(input_tensor_types_proto->ints().at(i)), " but got ",
                       TensorProto_DataType_Name(inferred_input_type->tensor_type().elem_type()));
         }
 
-        // The first output is a pointer which points to
+        // The first output is a pointer that points to
         // a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it (the 1st input of PythonOpGrad)
         // in PythonOpGrad's implementation.
@@ -3747,22 +3989,40 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
-        size_t rank_count = 0;
-        // Set inferred output types.
-        for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
-
-          // Create symbolic shape.
-          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
-          ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
-          for (int64_t j = 0; j < output_tensor_ranks->ints().at(i - 1); ++j) {
-            std::stringstream ss;
-            ss << "PythonOp_unknown_rank_" << rank_count++;
-            rank_only_shape.add_dim()->set_dim_param(ss.str());
+        std::string func_name = getAttribute(ctx, "func_name", "");
+        // TODO(pengwa): allow custom PythonOp shape inference.
+        if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
+          // PythonOp with the name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly the
+          // same as a normal PythonOp when execution. The only difference is that:
+          // 1). those ops having the same number of tensor inputs and tensor outputs;
+          // 2). and the i-th output tensor's shape is the same as i-th input tensor's shape.
+          // Be noted, the count of custom autograd function might be bigger than the output count, because there might
+          // be other non-tensor constant inputs (string, object, int, tuple, etc). But we did not make those constant
+          // inputs as ONNX op's input, instead they are stored in the attributes.
+          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);  // The output contains one extra context info.
+          // Set inferred output types.
+          for (size_t i = 1; i < static_cast<size_t>(ctx.getNumOutputs()); ++i) {
+            size_t input_idx = i - static_cast<size_t>(1);
+            propagateElemTypeFromInputToOutput(ctx, input_idx, i);
+            propagateShapeFromInputToOutput(ctx, input_idx, i);
           }
+        } else {
+          size_t rank_count = 0;
+          // Create a symbolic shape.
+          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks")->ints();
+          // Set inferred output types.
+          for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
+            updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
+            ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
+            for (int64_t j = 0; j < output_tensor_ranks.at(i - 1); ++j) {
+              std::stringstream ss;
+              ss << "PythonOp_unknown_rank_" << rank_count++;
+              rank_only_shape.add_dim()->set_dim_param(ss.str());
+            }
 
-          // Assign symbolic shape.
-          updateOutputShape(ctx, i, rank_only_shape);
+            // Assign symbolic shape.
+            updateOutputShape(ctx, i, rank_only_shape);
+          }
         }
       });
 
@@ -3770,7 +4030,7 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Wrapper of Pytorch's autograd.Function's backward implementaiton.")
+      .SetDoc("Wrapper of PyTorch's autograd.Function's backward implementation.")
       .Input(
           0,
           "context",
@@ -3779,7 +4039,10 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "The gradient inputs (as inputs of autograd.Function.backward).",
+          "The gradient inputs (as inputs of autograd.Function.backward)."
+          "Be noted: input name will be empty when its grad input is not needed by the autograd.Function.backward."
+          "In PyTorch, if a forward tensor doesn't require gradient, then it's corresponding grad will be all zeros "
+          "or None (depending on the value of ctx.set_materialize_grads is true or false).",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3787,24 +4050,19 @@ Return true if all elements are true and false otherwise.
       .Output(
           0,
           "outputs",
-          "Outputs returned from pytorch.",
+          "Outputs returned from PyTorch.",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Attr(
-          "name",
+          "func_name",
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
-          "inplace",
-          "Indicate if the output should reuse input memory. Todo(pengwa): do we really need it?",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
           "input_tensor_types",
           "Input types of autograd.Function.backward (including only tensor inputs)."
-          "This attribute is mostly used for input checks for better robustnes.",
+          "This attribute is mostly used for input checks for better robustness.",
           AttributeProto::INTS,
           false)
       .Attr(
@@ -3832,6 +4090,30 @@ Return true if all elements are true and false otherwise.
           "A string inidicating autograd.Function.backward outputs's type."
           "value 'c' - non-tensor output; value 'd' - tensor output.",
           AttributeProto::STRING)
+      .Attr(
+          "tensor_reuse_map",
+          "A int array indicating whether output at each index is reusing specific input or not."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 3 inputs (including ctx) and 2 outputs, tensor_reuse_map = [2, 1] means"
+          "- the output 0 reuses the input 2."
+          "- the output 1 reuses the input 1."
+          "Be noted: the input 0 is ctx.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "comment",
+          "comment only for debugging purposes.",
+          AttributeProto::STRING,
+          false)
+      .Attr(
+          "safe_run_mode",
+          "Indicate if the function is running in safe mode or not. "
+          "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
+          "or materialize gradient. In this mode, inplace operation is detected on the fly. "
+          "Unsafe mode is used to run the function faster not considering the above ctx usage."
+          "Additional requirement running in this mode: provide correct input alias map.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -3845,22 +4127,25 @@ Return true if all elements are true and false otherwise.
         const auto input_tensor_types_proto = ctx.getAttribute("input_tensor_types");
         // This is a required field.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOpGrad's must have \"input_tensor_types\" attribute.");
-        // Check if the inferred input types match those described in the
-        // "input_tensor_types" attributes.
+        // Check if the inferred input types match those described in the "input_tensor_types" attributes.
         // Expected input schema: [ctx, grad_input_1, ..., grad_input_N]
         // Other variables are used to invoke autograd.Function.backward(ctx, grad_input1, ..., grad_input_N).
         // The "input_count" here means 1 + N.
         const auto input_count = input_tensor_types_proto->ints().size() + 1;
-        // The first input is a pointer which points to
-        // a Python object created by torch.autograd.Function.apply.
+        // The first input is a pointer which points to a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it in PythonOpGrad implementation.
         for (auto i = 1; i < input_count; ++i) {
+          if (!ctx.hasInput(i)) {
+            continue;
+          }
+
           const auto inferred_input_type = ctx.getInputType(i);
-          ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "th input type is missing.");
+          ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
-                      "PythonOpGrad's ", i, "th input type must be a tensor.");
+                      "PythonOpGrad's ", i, "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                      "PythonOpGrad's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1),
+                      ", but inferred to be ", inferred_input_type->tensor_type().elem_type());
         }
 
         // Load expected output types.
@@ -3869,27 +4154,77 @@ Return true if all elements are true and false otherwise.
                     "PythonOpGrad's output list and \"output_tensor_types\" attribute should have the same length.");
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
-        // Set inferred output types.
-        size_t rank_count = 0;
-        for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
-          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
-          ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
-          for (int64_t j = 0; j < output_tensor_ranks->ints().at(i); ++j) {
-            std::stringstream ss;
-            ss << "PythonOpGrad_unknown_rank_" << rank_count++;
-            rank_only_shape.add_dim()->set_dim_param(ss.str());
-          }
 
-          // Assign symbolic shape.
-          updateOutputShape(ctx, i, rank_only_shape);
+        std::string func_name = getAttribute(ctx, "func_name", "");
+        // TODO(pengwa): allow custom PythonOp shape inference.
+        if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
+          // PythonOpGrad with name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly
+          // the same as a normal PythonOpGrad when execution. The only difference is that:
+          // 1). those ops having the same number of tensor inputs and tensor outputs;
+          // 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
+          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);  // inputs contains one extra context input
+          for (size_t i = 0; i < static_cast<size_t>(ctx.getNumOutputs()); ++i) {
+            size_t input_idx = i + static_cast<size_t>(1);
+            propagateElemTypeFromInputToOutput(ctx, input_idx, i);
+            propagateShapeFromInputToOutput(ctx, input_idx, i);
+          }
+        } else {
+          // Set inferred output types.
+          size_t rank_count = 0;
+          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks")->ints();
+          for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
+            updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
+
+            ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
+            for (int64_t j = 0; j < output_tensor_ranks.at(i); ++j) {
+              std::stringstream ss;
+              ss << "PythonOpGrad_unknown_rank_" << rank_count++;
+              rank_only_shape.add_dim()->set_dim_param(ss.str());
+            }
+
+            // Assign symbolic shape.
+            updateOutputShape(ctx, i, rank_only_shape);
+          }
         }
       });
+
+#ifdef ENABLE_TRITON
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TritonOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Calling an existing Python Triton kernel by function name, "
+          "or compute an ONNX graph through Python code to codegen, compile and execute Triton kernels.")
+      .Attr("func_name", "Function name of the Python Triton kernel.", AttributeProto::STRING, std::string(""))
+      .Attr("onnx_key", "The hash key for the ONNX graph.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("onnx_string", "The onnx string of the triton kernel.", AttributeProto::STRING, std::string(""))
+      .AllowUncheckedAttributes()
+      .Input(0, "inputs",
+             "Input tensors. If to call an existing Python Triton kernel, "
+             "the input count and order should match the arguments of the function. If to compute an ONNX graph, "
+             "the input count and order should match the input count and order of the ONNX graph.",
+             "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 0)
+      .Output(0, "outputs",
+              "Output tensors. If to compute an ONNX graph, "
+              "the output count and order should match the output count and order of the ONNX graph.",
+              "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(),
+                      "Allow inputs and outputs to be any kind of tensor.");
+#endif  // ENABLE_TRITON
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternal)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
+      .Attr("output_type",
+            "(Optional) The data type for the output tensor. "
+            "If not provided, output tensor has the same type as input tensor."
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT, OPTIONAL_VALUE)
       .Input(0, "scores",
              "The predicted outputs with shape [batch_size, class_size], or "
              "[batch_size, class_size, D1, D2 , ..., Dk], where K is the number of dimensions.",
@@ -3913,14 +4248,26 @@ Return true if all elements are true and false otherwise.
               "Weighted loss float Tensor. If reduction is 'none', this has the "
               "shape of [batch_size], or [batch_size, D1, D2, ..., Dk] in case of "
               "K-dimensional loss. Otherwise, it is a scalar.",
-              "T")
-      .Output(1, "log_prob", "Log probability tensor. If the output of softmax is prob, its value is log(prob).", "T")
+              "TOut")
+      .Output(1, "log_prob",
+              "Log probability tensor. If the output of softmax is prob, its value is log(prob).",
+              "TOut")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain input and output types to float tensors.")
+                      "Constrain input types to float tensors.")
+      .TypeConstraint("TOut", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto output_type_attr = ctx.getAttribute("output_type");
+        if (output_type_attr) {
+          propagateElemTypeFromAttributeToOutput(ctx, "output_type", 0);
+          propagateElemTypeFromAttributeToOutput(ctx, "output_type", 1);
+        } else {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        }
+
         std::string reduction = getAttribute(ctx, "reduction", "mean");
         if (reduction.compare("none") == 0) {
           if (hasInputShape(ctx, 1)) {
@@ -3929,11 +4276,7 @@ Return true if all elements are true and false otherwise.
         } else {
           updateOutputShape(ctx, 0, TensorShapeProto());
         }
-
-        if (ctx.getNumOutputs() == 2) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 1);
-          propagateShapeFromInputToOutput(ctx, 0, 1);
-        }
+        propagateShapeFromInputToOutput(ctx, 0, 1);
       })
       .SetContextDependentFunctionBodyBuilder(SCELossInternalFunBuilder)
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternal)DOC");
@@ -3942,6 +4285,11 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
+      .Attr("output_type",
+            "(Optional) The data type for the output tensor. "
+            "If not provided, output tensor has the same type as input tensor."
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT, OPTIONAL_VALUE)
       .Input(0, "dY", "gradient of Y", "T")
       .Input(1, "log_prob", "logsoftmax(logits), (N+1)-D input of shape (batch_size).", "T")
       .Input(2, "label",
@@ -3953,14 +4301,22 @@ Return true if all elements are true and false otherwise.
       .Input(4, "ignore_index",
              "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
              "I", OpSchema::Optional)
-      .Input(5, "bias", "data to be non-broadcasting added to the gradient.", "T", OpSchema::Optional)
-      .Output(0, "d_logits", "gradient of logits", "T")
+      .Input(5, "bias", "data to be non-broadcasting added to the gradient.", "TOut", OpSchema::Optional)
+      .Output(0, "d_logits", "gradient of logits", "TOut")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-                      "Constrain to float, float16 and double tensors.")
+                      "Constrain input types to float tensors.")
+      .TypeConstraint("TOut", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        auto output_type_attr = ctx.getAttribute("output_type");
+        if (output_type_attr) {
+          propagateElemTypeFromAttributeToOutput(ctx, "output_type", 0);
+        } else {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        }
+
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(
@@ -4090,6 +4446,618 @@ Return true if all elements are true and false otherwise.
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "LSTMTraining operator is adapted from LSTM operator (https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LSTM-14)."
+          "The difference between the two operators is that LSTMTraining generates two additional outputs:"
+          "a) all cell states over all sequence steps. b) intermediate iofc gate outputs."
+          "These extra outputs are needed for the gradient computation while training.")
+      .Attr(
+          "activations",
+          "A list of 3 (or 6 if bidirectional) activation functions "
+          "for input, output, forget, cell, and hidden gates. The activation functions must "
+          "be one of the activation functions specified above. Optional: See the equations "
+          "for default if not specified.",
+          AttributeProto::STRINGS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_alpha",
+          "Optional scaling values used by some activation functions. The values are consumed "
+          "in the order of activation functions, for example (f, g, h) in LSTMTraining. Default values "
+          "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
+          "default alpha is 0.01.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "Optional scaling values used by some activation functions. The values are consumed in "
+          "the order of activation functions, for example (f, g, h) in LSTMTraining. Default values are "
+          "the same as of corresponding ONNX operators.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "clip",
+          "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
+          "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
+          "specified.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "input_forget",
+          "Couple the input and forget gates if 1, default 0.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "hidden_size",
+          "Number of neurons in the hidden layer.",
+          AttributeProto::INT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "direction",
+          "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "
+          "forward (default), reverse, or bidirectional.",
+          AttributeProto::STRING,
+          std::string("forward"))
+      .Input(0, "X", "Original input to the LSTM cell.", "T")
+      .Input(1, "W", "Input weight parameters to the LSTM cell.", "T")
+      .Input(2, "R", "Input recurrence weight parameters to the LSTM cell.", "T")
+      .Input(3, "B", "Input bias parameters to the LSTM cell.", "T", OpSchema::Optional)
+      .Input(4, "SL", "Sequence lengths of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(5, "Ht0", "Initial hidden state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(6, "Ct0", "Initial cell state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(7, "P", "Input peephole weight parameters to the LSTM cell.", "T", OpSchema::Optional)
+      .Output(0, "HAll", "Hidden states over all sequence steps.", "T", OpSchema::Optional)
+      .Output(1, "HFinal", "Final hidden state.", "T", OpSchema::Optional)
+      .Output(2, "CFinal", "Final cell state.", "T", OpSchema::Optional)
+      .Output(3, "CAll", "Cell states over all sequence steps.", "T", OpSchema::Optional)
+      .Output(4, "iofc", "Intermediate gate computations for all sequence steps.", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "TSize",
+          {"tensor(int32)"},
+          "Constrain the length types to int32 tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto lstm_dimensions = GetRNNDimensions(ctx);
+        const auto& num_directions = lstm_dimensions[0];
+        const auto& sequence_length = lstm_dimensions[1];
+        const auto& batch_size = lstm_dimensions[2];
+        const auto& hidden_size = lstm_dimensions[3];
+        const auto& hidden_size_x4 = lstm_dimensions[4];
+
+        const auto num_outputs = ctx.getNumOutputs();
+        for (size_t i = 0; i < num_outputs; ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+
+        if (num_outputs > 0)
+          // All hidden states
+          updateOutputShape(ctx, 0, {sequence_length, num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 1)
+          // Final hidden state
+          updateOutputShape(ctx, 1, {num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 2)
+          // Final cell state
+          updateOutputShape(ctx, 2, {num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 3) {
+          // All cell states
+          updateOutputShape(ctx, 3, {sequence_length, num_directions, batch_size, hidden_size});
+        }
+
+        if (num_outputs > 4)
+          // IOFC gate computations
+          updateOutputShape(ctx, 4, {sequence_length, num_directions, batch_size, hidden_size_x4});
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ScaledSum)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Compute scaled sum of multiple tensors in same shape (no broadcasting)."
+          "Formula: output = (input_0 * scale_0) + (input_1 * scale_1) + (input_2 * scale_2)")
+      .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
+      .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
+      .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input_0", "input tensor", "T")
+      .Input(1, "input_1", "input tensor", "T")
+      .Input(2, "input_2", "input tensor", "T", OpSchema::Optional)
+      .Output(0, "output", "output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() == 3 && nullptr == ctx.getAttribute("scale_2"))
+          fail_shape_inference("Input count must be equal with scale count.");
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchScale)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Compute scaled input into outputs with different scaling factors (no broadcasting)."
+          "Formula:"
+          "    output_0 = input * scale_0"
+          "    output_1 = input * scale_1"
+          "    output_2 = input * scale_2")
+      .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
+      .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
+      .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input", "input tensor", "T")
+      .Output(0, "output_0", "output tensor", "T")
+      .Output(1, "output_1", "output tensor", "T")
+      .Output(2, "output_2", "output tensor", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumOutputs() == 3 && nullptr == ctx.getAttribute("scale_2"))
+          fail_shape_inference("Output count must be equal with scale count.");
+
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+          if (hasInputShape(ctx, 0)) {
+            propagateShapeFromInputToOutput(ctx, 0, i);
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "LSTMGrad operator that computes the partial derivative of the loss with respect to LSTM inputs: "
+          "a) The input sequence, b) Weight parameters, c) Recurrence weight parameters, d) Bias parameters, "
+          "e) Peephole weight parameters, f) Previous cell state, g) Previous hidden state."
+          "This operator computes the gradient of the LSTM operator from opset version 14: "
+          "https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LSTM-14")
+      .Attr(
+          "activations",
+          "A list of 3 (or 6 if bidirectional) activation functions "
+          "for input, output, forget, cell, and hidden. The activation functions must "
+          "be one of the activation functions specified above. Optional: See the equations "
+          "for default if not specified.",
+          AttributeProto::STRINGS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_alpha",
+          "Optional scaling values used by some activation functions. The values are consumed "
+          "in the order of activation functions, for example (f, g, h) in LSTM. Default values "
+          "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
+          "default alpha is 0.01.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "Optional scaling values used by some activation functions. The values are consumed in "
+          "the order of activation functions, for example (f, g, h) in LSTM. Default values are "
+          "the same as of corresponding ONNX operators.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "clip",
+          "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
+          "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
+          "specified.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "input_forget",
+          "Couple the input and forget gates if 1, default 0.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "hidden_size",
+          "Number of neurons in the hidden layer.",
+          AttributeProto::INT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "direction",
+          "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "
+          "forward (default), reverse, or bidirectional.",
+          AttributeProto::STRING,
+          std::string("forward"))
+      .Input(0, "X", "Original input to the LSTM cell.", "T")
+      .Input(1, "W", "Input weight parameters to the LSTM cell.", "T")
+      .Input(2, "R", "Input recurrent weight parameters to the LSTM cell.", "T")
+      .Input(3, "SL", "Input sequence length of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(4, "Ht0", "Initial hidden state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(5, "Ct0", "Initial cell state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(6, "HAll", "Hidden states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(7, "CAll", "Cell states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(8, "iofc", "Intermediate gate computations for all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(9, "dHAll", "Gradient of loss with respect to the output Y of the LSTM cell", "T", OpSchema::Optional)
+      .Input(10, "dHFinal", "Gradient of loss with respect to the output Y_h of the LSTM cell", "T", OpSchema::Optional)
+      .Input(11, "dCFinal", "Gradient of loss with respect to the output Y_c of the LSTM cell", "T", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of loss with respect to the input (to the LSTM cell).", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of loss with respect to the weight parameters (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(2, "dR", "Gradient of loss with respect to the recurrence weight parameters (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(3, "dB", "Gradient of loss with respect to the bias parameters (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(4, "dH0", "Gradient of loss with respect to the previous hidden state (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(5, "dC0", "Gradient of loss with respect to the previous cell state (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(6, "dP", "Gradient of loss with respect to the peephole parameters (of the LSTM cell).", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "TSize",
+          {"tensor(int32)"},
+          "Constrain the length types to int32 tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto lstm_dimensions = GetRNNDimensions(ctx);
+        const auto& num_directions = lstm_dimensions[0];
+        const auto& sequence_length = lstm_dimensions[1];
+        const auto& batch_size = lstm_dimensions[2];
+        const auto& hidden_size = lstm_dimensions[3];
+        const auto& hidden_size_x4 = lstm_dimensions[4];
+        const auto& input_size = lstm_dimensions[5];
+
+        const auto num_outputs = ctx.getNumOutputs();
+        for (size_t i = 0; i < num_outputs; ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+
+        if (num_outputs > 0)
+          // Gradient with respect to the input tensor
+          updateOutputShape(ctx, 0, {sequence_length, batch_size, input_size});
+
+        if (num_outputs > 1)
+          // Gradient with respect to the weight tensor
+          updateOutputShape(ctx, 1, {num_directions, hidden_size_x4, input_size});
+
+        if (num_outputs > 2)
+          // Gradient with respect to the recurrence weight tensor
+          updateOutputShape(ctx, 2, {num_directions, hidden_size_x4, hidden_size});
+
+        if (num_outputs > 3) {
+          TensorShapeProto::Dimension eight;
+          eight.set_dim_value(8);
+          // Gradient with respect to the bias tensor
+          updateOutputShape(ctx, 3, {num_directions, eight * hidden_size});
+        }
+
+        if (num_outputs > 4) {
+          if (hasInputShape(ctx, 5)) {
+            // Gradient with respect to the initial hidden state
+            updateOutputShape(ctx, 4, {num_directions, batch_size, hidden_size});
+          }
+        }
+
+        if (num_outputs > 5) {
+          if (hasInputShape(ctx, 6)) {
+            // Gradient with respect to the initial cell state
+            updateOutputShape(ctx, 5, {num_directions, batch_size, hidden_size});
+          }
+        }
+
+        if (num_outputs > 6) {
+          TensorShapeProto::Dimension three;
+          three.set_dim_value(3);
+          // Gradient with respect to the peephole weight tensor
+          updateOutputShape(ctx, 6, {num_directions, three * hidden_size});
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PadAndUnflatten)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "PadAndUnflatten operator pads zero on the first axis, and unflatten the axis into two axes according"
+          "to given unflatten_dims. This is used by padding elimination graph transformers."
+          "For each index in indices, the corresponding value in output comes from input."
+          "For other indices,  the corresponding value in output will be padded to zero."
+
+          "The indices don't allow duplicated index values, otherwise, though there is no runtime check"
+          "(in case of performance concern), the behavior of output is undefined."
+
+          "An example:"
+          "  input: [[1, 2, 3, 4], [5, 6, 7, 8]], shape is [2, 4]"
+          "  indices: [0, 5], shape is [2]"
+          "  unflatten_dims: [2, 3], shape is [2]"
+
+          "  output: [[[1, 2, 3, 4], [0, 0, 0, 0], [0, 0, 0, 0]], [[0, 0, 0, 0], [0, 0, 0, 0], [5, 6, 7, 8]]],"
+          "  shape is [2, 3, 4]")
+      .Input(0, "input", "input data of rank N, shape is [d1, d2, ..., dN]", "T")
+      .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
+             "T_INDEX")
+      .Input(2, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
+      .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
+      .TypeConstraint(
+          "T_INT",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T_INDEX",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FlattenAndUnpad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "FlattenAndUnpad operator flattens the first two dims of input tensor, and unpad according to given indices."
+          "This is used by padding elimination graph transformer.")
+      .Input(0, "input", "input data of rank N + 1, shape is [M1, M2, d2, ..., dN]", "T")
+      .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
+             "T_INT")
+      .Output(0, "output", "output data of rank N, [d1, d2, ..., dN]", "T")
+      .Output(1, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
+      .TypeConstraint(
+          "T_INT",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices and shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(int32)", "tensor(int64)", "tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GRUTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "GRUTraining operator is adapted from GRU operator (https://github.com/onnx/onnx/blob/main/docs/Changelog.md#GRU-14)."
+          "The difference between the two operators is that GRUTraining generates an additional output:"
+          "the intermediate zrh gate outputs."
+          "This extra output is needed for the gradient computation while training.")
+      .Attr(
+          "activations",
+          "A list of 2 (or 4 if bidirectional) activation functions "
+          "for update, reset, and hidden gates. The activation functions must "
+          "be one of the activation functions specified above. Optional: See the equations "
+          "for default if not specified.",
+          AttributeProto::STRINGS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_alpha",
+          "Optional scaling values used by some activation functions. The values are consumed "
+          "in the order of activation functions, for example (f, g) in GRUTraining. Default values "
+          "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
+          "default alpha is 0.01.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "Optional scaling values used by some activation functions. The values are consumed in "
+          "the order of activation functions, for example (f, g) in GRUTraining. Default values are "
+          "the same as of corresponding ONNX operators.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "clip",
+          "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
+          "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
+          "specified.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "linear_before_reset",
+          "When computing the output of the hidden gate, apply the linear transformation "
+          "before multiplying by the output of the reset gate.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "hidden_size",
+          "Number of neurons in the hidden layer.",
+          AttributeProto::INT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "direction",
+          "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "
+          "forward (default), reverse, or bidirectional.",
+          AttributeProto::STRING,
+          std::string("forward"))
+      .Input(0, "X", "Original input to the GRU cell.", "T")
+      .Input(1, "W", "Input weight parameters to the GRU cell.", "T")
+      .Input(2, "R", "Input recurrence weight parameters to the GRU cell.", "T")
+      .Input(3, "B", "Input bias parameters to the GRU cell.", "T", OpSchema::Optional)
+      .Input(4, "SL", "Sequence lengths of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(5, "Ht0", "Initial hidden state input to the GRU cell", "T", OpSchema::Optional)
+      .Output(0, "HAll", "Hidden states over all sequence steps.", "T", OpSchema::Optional)
+      .Output(1, "HFinal", "Final hidden state.", "T", OpSchema::Optional)
+      .Output(2, "ZRH", "Intermediate gate computations for all sequence steps.", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "TSize",
+          {"tensor(int32)"},
+          "Constrain the length types to int32 tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto gru_dimensions = GetRNNDimensions(ctx);
+        const auto& num_directions = gru_dimensions[0];
+        const auto& sequence_length = gru_dimensions[1];
+        const auto& batch_size = gru_dimensions[2];
+        const auto& hidden_size = gru_dimensions[3];
+        const auto& hidden_size_x3 = gru_dimensions[4];
+
+        const auto num_outputs = ctx.getNumOutputs();
+        for (size_t i = 0; i < num_outputs; ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+
+        if (num_outputs > 0)
+          // All hidden states
+          updateOutputShape(ctx, 0, {sequence_length, num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 1)
+          // Final hidden state
+          updateOutputShape(ctx, 1, {num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 2)
+          // ZRH gate computations
+          updateOutputShape(ctx, 2, {sequence_length, num_directions, batch_size, hidden_size_x3});
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GRUGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "GRUGrad operator that computes the partial derivative of the loss with respect to GRU inputs: "
+          "a) The input sequence, b) Weight parameters, c) Recurrence weight parameters, d) Bias parameters, "
+          "e) Previous hidden state."
+          "This operator computes the gradient of the GRU operator from opset version 14: "
+          "https://github.com/onnx/onnx/blob/main/docs/Changelog.md#GRU-14")
+      .Attr(
+          "activations",
+          "A list of 2 (or 4 if bidirectional) activation functions "
+          "for update, reset, and hidden gates. The activation functions must "
+          "be one of the activation functions specified above. Optional: See the equations "
+          "for default if not specified.",
+          AttributeProto::STRINGS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_alpha",
+          "Optional scaling values used by some activation functions. The values are consumed "
+          "in the order of activation functions, for example (f, g) in GRUTraining. Default values "
+          "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
+          "default alpha is 0.01.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "Optional scaling values used by some activation functions. The values are consumed in "
+          "the order of activation functions, for example (f, g) in GRUTraining. Default values are "
+          "the same as of corresponding ONNX operators.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "clip",
+          "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
+          "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
+          "specified.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "linear_before_reset",
+          "When computing the output of the hidden gate, apply the linear transformation "
+          "before multiplying by the output of the reset gate.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "hidden_size",
+          "Number of neurons in the hidden layer.",
+          AttributeProto::INT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "direction",
+          "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "
+          "forward (default), reverse, or bidirectional.",
+          AttributeProto::STRING,
+          std::string("forward"))
+      .Input(0, "X", "Original input to the GRU cell.", "T")
+      .Input(1, "W", "Input weight parameters to the GRU cell.", "T")
+      .Input(2, "R", "Input recurrent weight parameters to the GRU cell.", "T")
+      .Input(3, "B", "Input bias parameters to the GRU cell.", "T", OpSchema::Optional)
+      .Input(4, "SL", "Input sequence length of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(5, "Ht0", "Initial hidden state input to the GRU cell", "T", OpSchema::Optional)
+      .Input(6, "HAll", "Hidden states over all sequence steps output from GRUTraining.", "T", OpSchema::Optional)
+      .Input(7, "ZRH", "Intermediate gate computations for all sequence steps output from GRUTraining.", "T", OpSchema::Optional)
+      .Input(8, "dHAll", "Gradient of loss with respect to the output Y of the GRU cell", "T", OpSchema::Optional)
+      .Input(9, "dHFinal", "Gradient of loss with respect to the output Y_h of the GRU cell", "T", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of loss with respect to the input (to the GRU cell).", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of loss with respect to the weight parameters (of the GRU cell).", "T", OpSchema::Optional)
+      .Output(2, "dR", "Gradient of loss with respect to the recurrence weight parameters (of the GRU cell).", "T", OpSchema::Optional)
+      .Output(3, "dB", "Gradient of loss with respect to the bias parameters (of the GRU cell).", "T", OpSchema::Optional)
+      .Output(4, "dH0", "Gradient of loss with respect to the previous hidden state (of the GRU cell).", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "TSize",
+          {"tensor(int32)"},
+          "Constrain the length types to int32 tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto gru_dimensions = GetRNNDimensions(ctx);
+        const auto& num_directions = gru_dimensions[0];
+        const auto& sequence_length = gru_dimensions[1];
+        const auto& batch_size = gru_dimensions[2];
+        const auto& hidden_size = gru_dimensions[3];
+        const auto& hidden_size_x3 = gru_dimensions[4];
+        const auto& input_size = gru_dimensions[5];
+
+        const auto num_outputs = ctx.getNumOutputs();
+        for (size_t i = 0; i < num_outputs; ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+
+        if (num_outputs > 0)
+          // Gradient with respect to the input tensor
+          updateOutputShape(ctx, 0, {sequence_length, batch_size, input_size});
+
+        if (num_outputs > 1)
+          // Gradient with respect to the weight tensor
+          updateOutputShape(ctx, 1, {num_directions, hidden_size_x3, input_size});
+
+        if (num_outputs > 2)
+          // Gradient with respect to the recurrence weight tensor
+          updateOutputShape(ctx, 2, {num_directions, hidden_size_x3, hidden_size});
+
+        if (num_outputs > 3) {
+          TensorShapeProto::Dimension six;
+          six.set_dim_value(6);
+          // Gradient with respect to the bias tensor
+          updateOutputShape(ctx, 3, {num_directions, six * hidden_size});
+        }
+
+        if (num_outputs > 4) {
+          if (hasInputShape(ctx, 4)) {
+            // Gradient with respect to the initial hidden state
+            updateOutputShape(ctx, 4, {num_directions, batch_size, hidden_size});
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Input(2, "W", "Weight tensor", "T")
+      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
+      .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ResizeGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y.", "T")
+      .Input(1, "X", "Input tensor to the Resize operator.", "T")
+      .Input(2, "roi", "The roi input to the Resize operator.", "T", OpSchema::Optional)
+      .Input(3, "scales", "The scales input to the Resize operator.", "tensor(float)", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of the input X.", "T")
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasInputShape(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 1, 0);
+        }
+      });
 }
 
 }  // namespace training
@@ -4102,6 +5070,7 @@ void RegisterOrtOpSchemas() {
   }
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
+  domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kPytorchAtenDomain, 1, 1);
 
   onnxruntime::contrib::RegisterContribSchemas();
   onnxruntime::training::RegisterTrainingOpSchemas();

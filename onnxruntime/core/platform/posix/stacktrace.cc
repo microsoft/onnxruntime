@@ -19,7 +19,7 @@ std::vector<std::string> GetStackTrace() {
   void* array[kCallstackLimit];
   char** strings = nullptr;
 
-  size_t size = backtrace(array, kCallstackLimit);
+  int size = backtrace(array, kCallstackLimit);
   stack.reserve(size);
   strings = backtrace_symbols(array, size);
 
@@ -34,8 +34,8 @@ std::vector<std::string> GetStackTrace() {
   // >addr2line -f -C -e /home/me/src/github/onnxruntime/build/Linux/Debug/onnxruntime_test_all  +0x3f46cc
 
   // hide GetStackTrace so the output starts with the 'real' location
-  constexpr size_t start_frame = 1;
-  for (size_t i = start_frame; i < size; i++) {
+  constexpr int start_frame = 1;
+  for (int i = start_frame; i < size; i++) {
     stack.push_back(strings[i]);
   }
 

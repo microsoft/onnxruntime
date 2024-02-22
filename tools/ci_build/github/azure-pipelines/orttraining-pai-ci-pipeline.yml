@@ -1,380 +1,375 @@
 trigger: none
 
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
+
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
+
+variables:
+  - name: video
+    value: 44
+  - name: render
+    value: 109
+  - name: RocmVersion
+    value: 6.0
+  - name: BuildConfig
+    value: Release
+
 jobs:
-- job: AMD_CI
+- job: Linux_Build_manylinux
+  variables:
+    skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
-  pool: 'AMD-GPU'
-  timeoutInMinutes: 150
-
-  # gid of video and render group on gcramdrr1-mi100-085 and -86
-  variables:
-    - name: video
-      value: 44
-    - name: render
-      value: 109
-    - name: onnxruntimeBuildSucceeded
-      value: false
-    - name: RocmVersion
-      value: 5.4
-
-  # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
-  container:
-    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm$(RocmVersion)
-    endpoint: onnxruntimecibuildenvironmentforamd
-    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
+  timeoutInMinutes: 120
 
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
+    submodules: recursive
 
-  - script: |-
-      echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
-    displayName: 'Initialize environment'
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: >-
+        --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+        --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
+        --build-arg BUILD_UID=$(id -u)
+        --build-arg ROCM_VERSION=$(RocmVersion)
+        --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
+        --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
+        --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-manylinux-build
+
+  - task: Cache@2
+    inputs:
+      key: '"manylinux" | "$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+      restoreKeys: |
+        "manylinux" | "$(TODAY)" | "$(Build.SourceBranch)"
+        "manylinux" | "$(TODAY)" |
+    displayName: Cache Task
+
+  - script: mkdir -p $(CCACHE_DIR)
+    condition: ne(variables.CACHE_RESTORED, 'true')
+    displayName: Create Cache Dir
+
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        export ROCM_HOME=/opt/rocm
+        docker run --rm \
+          --ipc=host \
+          --network=host \
+          --cap-add=SYS_PTRACE \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --user $UID:$(id -g $USER) \
+          -e CC=/opt/rh/gcc-toolset-12/root/usr/bin/cc -e CXX=/opt/rh/gcc-toolset-12/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+          -e CCACHE_DIR=/cache \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(CCACHE_DIR):/cache \
+          --workdir /onnxruntime_src \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-manylinux-build \
+          /bin/bash -c "
+            set -ex; \
+            ccache -s; \
+            /opt/python/cp39-cp39/bin/python3 tools/ci_build/build.py \
+              --config $(BuildConfig) \
+              --enable_training \
+              --mpi_home /opt/ompi \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
+                onnxruntime_BUILD_UNIT_TESTS=OFF \
+                FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER \
+              --use_cache \
+              --use_rocm \
+              --use_migraphx \
+              --rocm_version=$(RocmVersion) \
+              --rocm_home ${ROCM_HOME} \
+              --nccl_home ${ROCM_HOME}\
+              --update \
+              --build_dir /build \
+              --build \
+              --parallel \
+              --build_wheel \
+              --skip_submodule_sync \
+              --skip_tests; \
+            ccache -sv; \
+            ccache -z"
+    displayName: 'Build onnxruntime'
+
+  - template: templates/explicitly-defined-final-tasks.yml
+
+- job: Linux_Build_ubuntu
+  variables:
+    skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  workspace:
+    clean: all
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
+  timeoutInMinutes: 120
+
+  steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build
 
   #- script: |-
   #    sed -i 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g' \
   #       orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
   #  displayName: 'Toggle ON deterministic compute mode for ORTModule'
 
-  - task: CmdLine@2
-    displayName: 'Check ROCm Environment'
+  - task: Cache@2
     inputs:
-      script: |-
-        echo $(Agent.Name)
-        bash ./tools/ci_build/github/pai/pai_get_thread.sh $(Agent.Name)
-    target: host
+      key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+      restoreKeys: |
+        "$(TODAY)" | "$(Build.SourceBranch)"
+        "$(TODAY)" |
+    displayName: Cache Task
+
+  - script: mkdir -p $(CCACHE_DIR)
+    condition: ne(variables.CACHE_RESTORED, 'true')
+    displayName: Create Cache Dir
 
   - task: CmdLine@2
     inputs:
       script: |-
         export ROCM_HOME=/opt/rocm
-        python tools/ci_build/build.py \
-          --config Release \
-          --enable_training \
-          --mpi_home /opt/ompi \
-          --cmake_extra_defines \
-              CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
-              onnxruntime_BUILD_KERNEL_EXPLORER=ON \
-          --use_rocm \
-          --rocm_version=$(RocmVersion) \
-          --rocm_home ${ROCM_HOME} \
-          --nccl_home ${ROCM_HOME}\
-          --update \
-          --build_dir ./build \
-          --build \
-          --parallel 32 \
-          --build_wheel \
-          --skip_tests
+        docker run --rm \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(CCACHE_DIR):/cache \
+          -e CCACHE_DIR=/cache \
+          --workdir /onnxruntime_src \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build \
+          /bin/bash -c "
+            set -ex; \
+            ccache -s; \
+            python tools/ci_build/build.py \
+              --config $(BuildConfig) \
+              --enable_training \
+              --mpi_home /opt/ompi \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
+                onnxruntime_BUILD_KERNEL_EXPLORER=ON \
+              --use_cache \
+              --use_rocm \
+              --rocm_version=$(RocmVersion) \
+              --rocm_home ${ROCM_HOME} \
+              --nccl_home ${ROCM_HOME}\
+              --update \
+              --build_dir /build \
+              --build \
+              --parallel \
+              --build_wheel \
+              --skip_submodule_sync \
+              --skip_tests; \
+            ccache -sv; \
+            ccache -z"
     displayName: 'Build onnxruntime'
 
-  - bash: |-
-      echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"
-    displayName: 'Set Onnxruntime Build Succeeded'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/Release'
+
+  - template: templates/explicitly-defined-final-tasks.yml
+
+- job: Linux_Test_ubuntu
+  workspace:
+    clean: all
+  pool: AMD-GPU
+  dependsOn:
+  - Linux_Build_ubuntu
+  timeoutInMinutes: 120
+
+  steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/Release'
+
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg ROCM_VERSION=$(RocmVersion)"
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test
+
+  - task: Bash@3
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh
+      arguments: -n $(Agent.Name) -d $HIP_VISIBLE_DEVICES -r $DRIVER_RENDER
+    displayName: 'Check ROCm Environment'
 
   - task: CmdLine@2
     inputs:
       script: |-
-        cd ./build/Release &&\
-        ../../tools/ci_build/github/pai/pai_test_launcher.sh
+        docker run --rm \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri/renderD$DRIVER_RENDER \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user onnxruntimedev \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /build/$(BuildConfig) \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
+          /bin/bash -c "
+            set -ex; \
+            chmod a+x /build/Release/onnxruntime_test_all; \
+            /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
+    condition: succeeded()
 
   - task: CmdLine@2
     inputs:
       script: |-
-        export KERNEL_EXPLORER_BUILD_DIR=./build/Release
-        pytest ./onnxruntime/python/tools/kernel_explorer/ -n 16 --reruns 1
+        docker run --rm \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri/renderD$DRIVER_RENDER \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user onnxruntimedev \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e OPENBLAS_NUM_THREADS=1 \
+          -e OPENMP_NUM_THREADS=1 \
+          -e MKL_NUM_THREADS=1 \
+          -e KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig) \
+          -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
+          -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
+            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeededOrFailed()
 
   - task: CmdLine@2
     inputs:
       script: |-
-        cd ./build/Release
-        export PYTHONPATH=$PWD
-        python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
-    displayName: 'Compile torch extensions into build directory'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        cd ./build/Release
-        export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=15
-        python \
-          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
-          --model_name_or_path bert-large-uncased \
-          --dataset_name wikitext \
-          --dataset_config_name wikitext-2-raw-v1 \
-          --do_train \
-          --max_steps 260 \
-          --logging_steps 20 \
-          --output_dir ./test-mlm-bbu \
-          --overwrite_output_dir \
-          --per_device_train_batch_size 8 \
-          --fp16 \
-          --dataloader_num_workers 1 \
-          --ort \
-          --skip_memory_metrics
-        python ../../orttraining/tools/ci_test/compare_huggingface.py \
-          ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm$(RocmVersion).json
+        docker run --rm \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri/renderD$DRIVER_RENDER \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user onnxruntimedev \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /build/$(BuildConfig) \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
+            /bin/bash -c "
+              set -ex; \
+              export PYTHONPATH=/build/$(BuildConfig); \
+              python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
+              bash /onnxruntime_src/tools/ci_build/github/pai/pai_huggingface_bert_large_test.sh -v $(RocmVersion)"
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run Python Hugging-Face BERT-L test'
-    retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        cd ./build/Release
-        export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=15
-        python \
-          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
-          --model_name_or_path gpt2 \
-          --dataset_name wikitext \
-          --dataset_config_name wikitext-2-raw-v1 \
-          --do_train \
-          --label_smoothing 0.1 \
-          --max_steps 260 \
-          --logging_steps 20 \
-          --overwrite_output_dir \
-          --output_dir ./test-clm \
-          --per_device_train_batch_size 8 \
-          --fp16 \
-          --dataloader_num_workers 1 \
-          --ort \
-          --skip_memory_metrics
-        python ../../orttraining/tools/ci_test/compare_huggingface.py \
-          ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm$(RocmVersion).json
-    displayName: 'Run Python Hugging-Face GPT2 test'
-    retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-
-#  - script: |-
-#      cd ./build/Release
-#      export PYTHONPATH=$PWD
-#      python \
-#        /stage/huggingface-transformers/examples/pytorch/translation/run_translation.py \
-#        --dataset_name wmt16 \
-#        --dataset_config ro-en \
-#        --model_name_or_path facebook/bart-large \
-#        --output_dir ./tst-translation \
-#        --do_train \
-#        --label_smoothing 0.1 \
-#        --logging_steps 20 \
-#        --overwrite_output_dir \
-#        --per_device_train_batch_size 16 \
-#        --predict_with_generate \
-#        --source_lang en --target_lang ro \
-#        --warmup_steps 5 \
-#        --fp16 \
-#        --max_steps 260 \
-#        --dataloader_num_workers 1 \
-#        --ort \
-#        --skip_memory_metrics
-#      python ../../orttraining/tools/ci_test/compare_huggingface.py \
-#        ci-pipeline-actual.json \
-#        ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bart-large-rocm5.2.json
-#    displayName: 'Run Python Hugging-Face BART-L test'
-#    condition: succeededOrFailed() # ensure all tests are run
-
-  # todo: investigate RoBERTa high run variability on ROCm 5.2
-  #- script: |-
-  #    cd ./build/Release
-  #    export PYTHONPATH=$PWD
-  #    python \
-  #      /stage/huggingface-transformers/examples/pytorch/question-answering/run_qa.py \
-  #      --model_name_or_path roberta-large \
-  #      --dataset_name squad \
-  #      --do_train \
-  #      --per_device_train_batch_size 16 \
-  #      --learning_rate 3e-5 \
-  #      --max_steps 260 \
-  #      --max_seq_length 384 \
-  #      --doc_stride 128 \
-  #      --output_dir ./roberta_res \
-  #      --overwrite_output_dir \
-  #      --logging_steps 20 \
-  #      --fp16 \
-  #      --dataloader_num_workers 1 \
-  #      --ort \
-  #      --skip_memory_metrics
-  #    python ../../orttraining/tools/ci_test/compare_huggingface.py \
-  #      ci-pipeline-actual.json \
-  #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.roberta-large-rocm5.2.json
-  #  displayName: 'Run Python Hugging-Face RoBERTa-L test'
-  #  condition: succeededOrFailed() # ensure all tests are run
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        cd ./build/Release
-        export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=15
-        python \
-          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
-          --model_name_or_path distilbert-base-uncased \
-          --dataset_name wikitext \
-          --dataset_config_name wikitext-2-raw-v1 \
-          --do_train \
-          --max_steps 260 \
-          --logging_steps 20 \
-          --output_dir ./test-mlm-bbu \
-          --overwrite_output_dir \
-          --per_device_train_batch_size 32 \
-          --fp16 \
-          --dataloader_num_workers 1 \
-          --ort \
-          --skip_memory_metrics
-        python ../../orttraining/tools/ci_test/compare_huggingface.py \
-          ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm$(RocmVersion).json
-    displayName: 'Run Python Hugging-Face DistilBERT test'
-    retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-
-  #- script: |-
-  #    cd ./build/Release
-  #    export PYTHONPATH=$PWD
-  #    python \
-  #      /stage/huggingface-transformers/examples/pytorch/text-classification/run_glue.py \
-  #      --model_name_or_path microsoft/deberta-v2-xxlarge \
-  #      --task_name MRPC \
-  #      --do_train \
-  #      --max_seq_length 128 \
-  #      --per_device_train_batch_size 4 \
-  #      --learning_rate 3e-6 \
-  #      --max_steps 260 \
-  #      --output_dir ./deberta_res \
-  #      --overwrite_output_dir \
-  #      --logging_steps 20 \
-  #      --fp16 \
-  #      --dataloader_num_workers 1 \
-  #      --ort \
-  #      --skip_memory_metrics
-  #  displayName: 'Run Python Hugging-Face DeBERTa-XXL v2 test'
-  #  condition: succeededOrFailed() # ensure all tests are run
-
-  #- script: |-
-  #    cd ./build/Release
-  #    export PYTHONPATH=$PWD
-  #    python \
-  #      /stage/huggingface-transformers/examples/pytorch/translation/run_translation.py \
-  #      --source_prefix '"translate English to Romanian:"' \
-  #      --dataset_name wmt16 \
-  #      --dataset_config ro-en \
-  #      --model_name_or_path t5-large \
-  #      --output_dir ./tst-translation \
-  #      --do_train \
-  #      --label_smoothing 0.1 \
-  #      --logging_steps 20 \
-  #      --overwrite_output_dir \
-  #      --per_device_train_batch_size 16 \
-  #      --predict_with_generate \
-  #      --source_lang en \
-  #      --target_lang ro \
-  #      --warmup_steps 5 \
-  #      --fp16 \
-  #      --max_steps 260 \
-  #      --dataloader_num_workers 1 \
-  #      --ort \
-  #      --skip_memory_metrics
-  #    python ../../orttraining/tools/ci_test/compare_huggingface.py \
-  #      ci-pipeline-actual.json \
-  #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.t5-large.json
-  #  displayName: 'Run Python Hugging-Face T5-L test'
-  #  condition: succeededOrFailed() # ensure all tests are run
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        export AZURE_BLOB_SAS_TOKEN="$(onnxruntimetestdata-storage-training-container-sas-token)"
-        python orttraining/tools/ci_test/download_azure_blob_archive.py \
-          --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip \
-          --target_dir training_e2e_test_data \
-          --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-    retryCountOnTaskFailure: 2
-    displayName: 'Download onnxruntime_training_data.zip data'
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        python orttraining/tools/ci_test/run_batch_size_test.py \
-          --binary_dir build/Release \
-          --model_root training_e2e_test_data/models \
-          --gpu_sku MI100_32G
-    displayName: 'Run C++ BERT-L batch size test'
-    retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        python orttraining/tools/ci_test/run_bert_perf_test.py \
-          --binary_dir build/Release \
-          --model_root training_e2e_test_data/models \
-          --training_data_root training_e2e_test_data/data \
-          --gpu_sku MI100_32G
-    displayName: 'Run C++ BERT-L performance test'
-    retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        python orttraining/tools/ci_test/run_convergence_test.py \
-          --binary_dir build/Release \
-          --model_root training_e2e_test_data/models \
-          --training_data_root training_e2e_test_data/data \
-          --gpu_sku MI100_32G
-    displayName: 'Run C++ BERT-L convergence test'
-    retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-
-  - script: |
-      sudo apt-get update
-      sudo apt install -y cifs-utils
-    displayName: 'Install filesystems util'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-    displayName: 'Mount MNIST'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-    displayName: 'Mount bert-data'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-    displayName: 'Mount hf-models-cache'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeededOrFailed()
 
 
   # Entry point for all ORTModule tests
   # The onnxruntime folder is deleted in the build directory
   # to enforce use of the onnxruntime wheel
-  #
-  # For every upgrade, we should enable it to test it once, and disable it.
-  #
-  # TODO - we may consider to cherry pick subset of the UTs to reduce the CI time.
-  # We can re-enable this part again when it's done.
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        rm -rf $(Build.BinariesDirectory)/$(BuildConfig)/onnxruntime/
+        files=($(Build.BinariesDirectory)/$(BuildConfig)/dist/*.whl)
+        echo ${files[0]}
+        whlfilename=$(basename ${files[0]})
+        echo $whlfilename
+        docker run --rm \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri/renderD$DRIVER_RENDER \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user onnxruntimedev \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --workdir /build/$(BuildConfig) \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
+            /bin/bash -c "
+              set -ex; \
+              unset PYTHONPATH; \
+              pip install /build/$(BuildConfig)/dist/$whlfilename; \
+              python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
+              mkdir /home/onnxruntimedev/mnist /home/onnxruntimedev/bert_data; \
+              export ORTMODULE_DISABLE_CPU_TRAINING_TEST=1; \
+              export ORTMODULE_ROCM_TEST=1; \
+              python orttraining_ortmodule_tests.py \
+                --mnist /home/onnxruntimedev/mnist \
+                --bert_data /home/onnxruntimedev/bert_data/hf_data/glue_data/CoLA/original/raw"
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Run orttraining_ortmodule_tests.py'
+    condition: succeededOrFailed()
 
-  # - task: CmdLine@2
-  #   inputs:
-  #     script: |-
-  #       cd ./build/Release
-  #       unset PYTHONPATH
-  #       rm -rf onnxruntime
-  #       pip install ./dist/onnxruntime*.whl
-  #       python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
-  #       python orttraining_ortmodule_tests.py \
-  #         --mnist /mnist \
-  #         --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
-  #         --transformers_cache /hf_models_cache/huggingface/transformers
-  #   displayName: 'Run orttraining_ortmodule_tests.py'
-  #   condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+
+  - task: Bash@3
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh
+      arguments: -n $(Agent.Name) -d $HIP_VISIBLE_DEVICES -r $DRIVER_RENDER
+    displayName: 'Clean ROCm Environment'
+    condition: always()
+
+  - template: templates/clean-agent-build-directory-step.yml

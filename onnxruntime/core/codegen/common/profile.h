@@ -4,7 +4,7 @@
 #pragma once
 
 // uncomment this line or use -DCODEGEN_ENABLE_PROFILER in compiler options to enable profiler events in codegen
-//#define CODEGEN_ENABLE_PROFILER
+// #define CODEGEN_ENABLE_PROFILER
 
 #ifdef CODEGEN_ENABLE_PROFILER
 #include "core/common/profiler.h"

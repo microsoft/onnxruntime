@@ -2,27 +2,37 @@
 # Licensed under the MIT License.
 # _torch_module_ort.py
 
+from collections import OrderedDict
+from logging import Logger
+from typing import Callable, Iterator, Optional, Tuple, TypeVar
+
+import torch
+
 from . import _io, _utils
-from .debug_options import DebugOptions
+from ._fallback import ORTModuleTorchModelException, _FallbackManager, wrap_exception
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
-from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exception
-from collections import OrderedDict
-import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Callable
-
+from .options import DebugOptions
 
 T = TypeVar("T", bound="torch.nn.Module")
 
 
 class TorchModuleORT(TorchModuleInterface):
-    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(
+        self,
+        module: torch.nn.Module,
+        debug_options: DebugOptions,
+        fallback_manager: _FallbackManager,
+        logger: Logger,
+    ):
         super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)
 
         _utils.patch_torch_module_ort_forward_method(self)
 
-        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options, fallback_manager)
+        self._execution_manager = GraphExecutionManagerFactory(
+            self._flattened_module, debug_options, fallback_manager, logger
+        )
 
     def _apply(self, fn):
         """Override original method to delegate execution to the flattened PyTorch user module"""
@@ -145,7 +155,7 @@ class TorchModuleORT(TorchModuleInterface):
             ),
         )
 
-    def add_module(self, name: str, module: Optional["Module"]) -> None:
+    def add_module(self, name: str, module: Optional["Module"]) -> None:  # noqa: F821
         raise wrap_exception(
             ORTModuleTorchModelException, NotImplementedError("ORTModule does not support adding modules to it.")
         )

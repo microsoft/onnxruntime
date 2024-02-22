@@ -52,11 +52,11 @@ class BaseOpBuilder : public IOpBuilder {
 
   // Operator support related
  public:
-  bool IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupported(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                      const OpSupportCheckParams& params) const override;
 
  protected:
-  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& /* node_unit */,
+  virtual bool IsOpSupportedImpl(const GraphViewer& /* graph_viewer */, const NodeUnit& /* node_unit */,
                                  const OpSupportCheckParams& /* params */) const {
     return true;
   }
@@ -68,12 +68,11 @@ class BaseOpBuilder : public IOpBuilder {
     return ANEURALNETWORKS_FEATURE_LEVEL_1;
   }
 
-  virtual bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const;
+  virtual bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                            const OpSupportCheckParams& params) const;
 
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 18; }
+  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 19; }
 
   // Check if this node_unit's type is supported
   // SingleNode type NodeUnit is supported
@@ -82,7 +81,7 @@ class BaseOpBuilder : public IOpBuilder {
 
  private:
   bool HasSupportedOpSet(const NodeUnit& node_unit) const;
-  bool HasSupportedInputOutputs(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool HasSupportedInputOutputs(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                 const OpSupportCheckParams& params) const;
 };
 

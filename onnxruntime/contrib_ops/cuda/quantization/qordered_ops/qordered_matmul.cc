@@ -33,7 +33,6 @@ ONNX_OPERATOR_KERNEL_EX(
     QOrderedMatMul);
 
 QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
   ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
@@ -49,19 +48,11 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
   const_scale_A_ = const_scale_B_ = const_scale_C_ = const_scale_Y_ = 0.0;
   origin_scale_B_vector_ = nullptr;
   const_bias_size_ = 0;
-
-#else
-
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 }
 
 Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /* prepacked_weights */) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   is_packed = false;
   if (order_B_ == CUBLASLT_ORDER_COL) {
     if (input_idx == QOrderedMatMulScaleA) {
@@ -104,22 +95,10 @@ Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
     }
   }
 
-#else
-
-  ORT_UNUSED_PARAMETER(tensor);
-  ORT_UNUSED_PARAMETER(input_idx);
-  ORT_UNUSED_PARAMETER(alloc);
-  ORT_UNUSED_PARAMETER(is_packed);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
-
   return Status::OK();
 }
 
 Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   ORT_ENFORCE(order_B_ == CUBLASLT_ORDER_COL, "COL32 related order processing will be implemented later!");
 
   int64_t rowsA = 0, colsA = 0, batchA = 1, elementsA = 0;
@@ -151,7 +130,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
   TensorShape shapeY(tensor_A.Shape());
   shapeY[shapeY.NumDimensions() - 1] = colsB;
 
-  const float zero = 0.0f;
+  constexpr float zero = 0.0f;
   const int8_t* C = nullptr;
   const float* scaleC = &zero;
   const Tensor* tensor_C = context->Input<Tensor>(6);
@@ -187,14 +166,6 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
                                       bias, &beta, C, gsl::narrow<int32_t>(batchC),
                                       tensor_Y->MutableData<int8_t>(), (cublasLtOrder_t)order_B_,
                                       pointer_mode));
-
-#else
-
-  ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
-
   return Status::OK();
 }
 

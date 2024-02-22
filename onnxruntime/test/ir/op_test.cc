@@ -30,7 +30,7 @@ TEST(FormalParamTest, Success) {
   EXPECT_EQ("desc: integer input", p.GetDescription());
 #endif
   // TODO: change onnx to make formal parameter construction self-contain.
-  //EXPECT_EQ(Utils::DataTypeUtils::ToType("tensor(int32)"), *p.GetTypes().begin());
+  // EXPECT_EQ(Utils::DataTypeUtils::ToType("tensor(int32)"), *p.GetTypes().begin());
 }
 
 #ifndef DISABLE_ML_OPS

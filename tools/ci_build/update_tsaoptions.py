@@ -11,7 +11,7 @@ REPO_DIR = SCRIPT_DIR.parent.parent
 with (REPO_DIR / ".config" / "tsaoptions.json").open() as f:
     data = json.load(f)
 
-buildNumber = os.getenv("BUILD_BUILDNUMBER")
+buildNumber = os.getenv("BUILD_BUILDNUMBER")  # noqa: N816
 if buildNumber is not None:
     data["buildNumber"] = buildNumber
 

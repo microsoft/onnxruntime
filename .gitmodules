@@ -1,19 +1,10 @@
-[submodule "cmake/external/protobuf"]
-	path = cmake/external/protobuf
-	url = https://github.com/protocolbuffers/protobuf.git
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
 	url = https://github.com/onnx/onnx.git
-[submodule "cmake/external/eigen"]
-	path = cmake/external/eigen
-	url = https://gitlab.com/libeigen/eigen.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
-	branch = 3.1.19
-[submodule "cmake/external/onnxruntime-extensions"]
-	path = cmake/external/onnxruntime-extensions
-	url = https://github.com/microsoft/onnxruntime-extensions.git
+	branch = 3.1.51

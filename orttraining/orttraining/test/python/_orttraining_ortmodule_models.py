@@ -14,7 +14,7 @@ class MyCustomClassInputNet(torch.nn.Module):
 
 class NeuralNetSinglePositionalArgument(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetSinglePositionalArgument, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -28,14 +28,14 @@ class NeuralNetSinglePositionalArgument(torch.nn.Module):
 
 
 class NeuralNetCustomClassOutput(torch.nn.Module):
-    class CustomClass(object):
+    class CustomClass:
         def __init__(self, out1, out2, out3):
             self.out1 = out1
             self.out2 = out2
             self.out3 = out3
 
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetCustomClassOutput, self).__init__()
+        super().__init__()
 
         self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
         self.relu1 = torch.nn.ReLU()

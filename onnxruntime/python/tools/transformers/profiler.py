@@ -179,7 +179,7 @@ def run_profile(onnx_model_path, use_gpu, provider, basic_optimization, thread_n
 def load_profile_json(profile_file):
     print(f"loading profile output {profile_file} ...")
 
-    with open(profile_file, "r") as opened_file:
+    with open(profile_file) as opened_file:
         sess_time = json.load(opened_file)
 
     assert isinstance(sess_time, list)
@@ -256,7 +256,7 @@ def parse_kernel_results(sess_time, threshold=0):
         else:
             op_time[op_name] = duration
 
-    lines.append(f"\nGroup kernel time by operator:")
+    lines.append("\nGroup kernel time by operator:")
     lines.append("-" * 64)
     lines.append("Total(μs)\tTime%\tOperator")
     for op_name, duration in sorted(op_time.items(), key=lambda x: x[1], reverse=True):
@@ -329,7 +329,7 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
         calls = node_freq[node_name]
         avg_time = duration / float(calls)
         percentage = (duration / total) * 100.0
-        provider = node_provider[node_name] if node_name in node_provider else ""
+        provider = node_provider.get(node_name, "")
         before_percentage += percentage
         lines.append(
             f"{duration:10d}\t{percentage:5.2f}\t{before_percentage:5.2f}\t{avg_time:8.1f}\t{calls:5d}\t{provider:8s}\t{node_name}"
@@ -347,7 +347,7 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
         calls = node_freq[node_name]
         avg_time = duration / float(calls)
         percentage = (duration / total) * 100.0
-        provider = node_provider[node_name] if node_name in node_provider else ""
+        provider = node_provider.get(node_name, "")
         lines.append(f"{duration:10d}\t{percentage:5.2f}\t{avg_time:8.1f}\t{calls:5d}\t{provider:8s}\t{node_name}")
 
     return lines
@@ -393,7 +393,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
                     total_fence_time += item["dur"]
                 continue
 
-            provider = item["args"]["provider"] if "provider" in item["args"] else ""
+            provider = item["args"].get("provider", "")
             if provider in provider_counter:
                 provider_counter[provider] += 1
             else:
@@ -425,7 +425,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
     lines.append("-" * 64)
     lines.append("Total(μs)\tTime%\tKernel(μs)\tKernel%\tCalls\tAvgKernel(μs)\tFence(μs)\tOperator")
     for op_name, kernel_time in sorted(op_kernel_time.items(), key=lambda x: x[1], reverse=True):
-        fence_time = op_fence_time[op_name] if op_name in op_fence_time else 0
+        fence_time = op_fence_time.get(op_name, 0)
         kernel_time_ratio = kernel_time / total_kernel_time
         total_time = kernel_time + fence_time
         time_ratio = total_time / (total_kernel_time + total_fence_time)
@@ -454,7 +454,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
 
 
 def get_dim_from_type_proto(dim):
-    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) == str else None
+    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) == str else None  # noqa: E721
 
 
 def get_shape_from_type_proto(type_proto):
@@ -573,7 +573,7 @@ def create_gpt2_inputs(onnx_model, batch_size, sequence_length, past_sequence_le
         shape = get_shape_from_type_proto(graph_input.type)
         for i, dim in enumerate(shape):
             if isinstance(dim, str):
-                if dim not in symbols.keys():
+                if dim not in symbols:
                     raise RuntimeError(f"symbol is not supported: {dim}")
                 else:
                     shape[i] = symbols[dim]
@@ -615,7 +615,7 @@ def create_longformer_inputs(onnx_model, batch_size, sequence_length, global_len
         shape = get_shape_from_type_proto(graph_input.type)
         for i, dim in enumerate(shape):
             if isinstance(dim, str):
-                if dim not in symbols.keys():
+                if dim not in symbols:
                     raise RuntimeError(f"symbol is not supported: {dim}")
                 else:
                     shape[i] = symbols[dim]

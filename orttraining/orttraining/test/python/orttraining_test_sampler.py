@@ -2,9 +2,11 @@
 # Licensed under the MIT License.
 # orttraining_test_sampler.py
 
-import torch
-from onnxruntime.training.utils.data import sampler
 import random
+
+import torch
+
+from onnxruntime.training.utils.data import sampler
 
 
 class MyDataset(torch.utils.data.Dataset):
@@ -45,7 +47,7 @@ def test_load_balancing_data_sampler_balances_load():
 
 def test_load_balancing_data_sampler_shuffles_and_balances_load():
     complexities = []
-    for i in range(50):
+    for _i in range(50):
         c = torch.randint(0, 100, (1,)).item()
         complexities.append(c)
         complexities.append(c)

@@ -19,7 +19,8 @@ common::Status GraphTransformerManager::GetSteps(unsigned& steps) const {
   return Status::OK();
 }
 
-common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const {
+common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, TransformerLevel level,
+                                                          const logging::Logger& logger) const {
   const auto& transformers = level_to_transformer_map_.find(level);
   if (transformers == level_to_transformer_map_.end()) {
     return Status::OK();
@@ -43,7 +44,8 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
   return Status::OK();
 }
 
-common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level) {
+common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer,
+                                                 TransformerLevel level) {
   const auto& name = transformer->Name();
   if (transformers_info_.find(name) != transformers_info_.end()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);

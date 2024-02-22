@@ -4,7 +4,6 @@
 #include "core/platform/Barrier.h"
 #include "core/platform/threadpool.h"
 
-
 #include "gtest/gtest.h"
 
 #include <atomic>
@@ -26,16 +25,16 @@ static void TestBarrier(int num_threads, uint64_t per_thread_count, bool spin) {
           counter++;
         }
         barrier.Notify();
-      }  else {
+      } else {
         // Main thread; wait on the barrier, and then check the count seen.
         barrier.Wait();
         ASSERT_EQ(counter, per_thread_count * num_threads);
-      } 
+      }
     }));
   }
 
   // Wait for the threads to finish
-  for (auto &t : threads) {
+  for (auto& t : threads) {
     t.join();
   }
 }

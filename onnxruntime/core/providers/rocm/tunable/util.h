@@ -11,9 +11,9 @@ namespace onnxruntime {
 namespace rocm {
 namespace tunable {
 
-class Timer : public ::onnxruntime::tunable::Timer<hipStream_t> {
+class Timer : public ITimer<hipStream_t> {
  public:
-  using TimerBase = ::onnxruntime::tunable::Timer<hipStream_t>;
+  using TimerBase = ITimer<hipStream_t>;
 
   explicit Timer(hipStream_t stream);
 

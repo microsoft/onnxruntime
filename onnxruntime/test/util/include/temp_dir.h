@@ -20,8 +20,10 @@ class TemporaryDirectory {
    * Currently, the provided path is used directly as the temporary directory.
    *
    * @param path The temporary directory path.
+   * @param delete_if_exists If true and the temporary directory exists, delete and re-create it.
+   *                         If false, fail if the directory exists.
    */
-  explicit TemporaryDirectory(const PathString& path);
+  explicit TemporaryDirectory(const PathString& path, bool delete_if_exists = true);
 
   /**
    * Destructor. Deletes the temporary directory.

@@ -25,7 +25,7 @@ class ITensorAllocator {
                                                   const SessionState& session_state,
                                                   InlinedVector<BufferUniquePtr>& weights_buffers);
 
-  AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info);
+  AllocatorPtr GetAllocator(const OrtDevice& device);
 
   /**
    *
@@ -34,7 +34,7 @@ class ITensorAllocator {
    * When there is no more tensor to trace, call this function to finalize the
    * allocation.
    */
-  virtual common::Status FinalizePlan(InlinedHashMap<std::string, size_t>& planned_memory_sizes_in_byte) = 0;
+  virtual common::Status FinalizePlan(InlinedHashMap<OrtDevice, size_t>& planned_memory_sizes_in_byte) = 0;
 
   /**
    * Handing out buffers reserved in @see #Trace() via parameter buf_out,

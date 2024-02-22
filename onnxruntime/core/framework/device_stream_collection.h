@@ -14,13 +14,13 @@ class DeviceStreamCollectionImpl;
 // this collection may be cached and reused for future iterations.
 class DeviceStreamCollection {
  public:
-  DeviceStreamCollection(size_t num_streams, const SessionState& sess_state);
+  DeviceStreamCollection(size_t num_streams, const AllocatorMap& allocators, bool is_main_graph);
   ~DeviceStreamCollection();
   // Add the device stream instance to given index.
   // and set the current collection as the owner of the device stream.
   void AddDeviceStream(size_t stream_idx, std::unique_ptr<Stream> stream);
 
-  // user an external device stream instance at given index.
+  // Use an external device stream instance at given index.
   // the current collection is not the owner.
   // this is mainly used in subgraph execution, when we want the
   // subgraph nodes execute on the same stream as parent node.
@@ -33,9 +33,6 @@ class DeviceStreamCollection {
   // logic sequence doesn't support Stream.
   Stream* GetStream(size_t stream_idx) const;
 
-  // Get the index device stream instances.
-  gsl::span<Stream*> GetStreams() const;
-
   // get the number of device stream instances.
   size_t NumStreams() const;
 
@@ -43,8 +40,22 @@ class DeviceStreamCollection {
   // This API is used to cleanup some resources at the end of an iteration.
   Status CleanUp(bool sync_streams);
 
+  Stream* GetRootStream() const;
+
  private:
   std::unique_ptr<DeviceStreamCollectionImpl> impl_;
 };
+
+struct DeviceStreamCollectionHolder {
+  DeviceStreamCollectionHolder(const SessionState* session_state);
+  DeviceStreamCollectionHolder() = delete;
+  DeviceStreamCollectionHolder(const DeviceStreamCollectionHolder&) = delete;
+
+  ~DeviceStreamCollectionHolder();
+
+  const SessionState* session_state_;
+  std::unique_ptr<DeviceStreamCollection> p_;
+};
+
 }  // namespace onnxruntime
 #endif

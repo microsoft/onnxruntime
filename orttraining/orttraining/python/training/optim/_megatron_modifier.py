@@ -48,7 +48,7 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
                 fp32_params = []
                 for param_group in target.optimizer.param_groups:
                     for param in param_group["params"]:
-                        fp32_params.append(param)
+                        fp32_params.append(param)  # noqa: PERF402
                 #### THIS IS THE ORIGINAL IMPLEMENTATION ####
                 # return self.clip_grad_norm(fp32_params, max_norm, norm_type)
                 #### END OF THE ORIGINAL IMPLEMENTATION ####
@@ -69,10 +69,10 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
             params = []
             for group in target.fp16_groups:
                 for param in group:
-                    params.append(param)
+                    params.append(param)  # noqa: PERF402
             for group in target.fp32_from_fp32_groups:
                 for param in group:
-                    params.append(param)
+                    params.append(param)  # noqa: PERF402
             #### THIS IS THE ORIGINAL IMPLEMENTATION ####
             # self.overflow = self.loss_scaler.has_overflow(params)
             #### END OF THE ORIGINAL IMPLEMENTATION ####

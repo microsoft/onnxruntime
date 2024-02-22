@@ -32,7 +32,7 @@ class IdentityOp final : public CudaKernel {
 
       const void* source = X->DataRaw(X_type);
       void* target = Y->MutableDataRaw(X_type);
-      //If source and target pointers are not equal, we need to copy the data.
+      // If source and target pointers are not equal, we need to copy the data.
       if (target != source) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, X->Shape().Size() * X->DataType()->Size(), cudaMemcpyDeviceToDevice, Stream(context)));
       }
@@ -68,6 +68,7 @@ class IdentityOp final : public CudaKernel {
                       "IdentityOp cuda: unable to get an allocator.");
       }
       auto X_size = X->Size();
+      Y->Reserve(X_size);
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),

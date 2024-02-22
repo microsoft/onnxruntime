@@ -1,0 +1,64 @@
+parameters:
+- name: job_name
+  type: string
+
+- name: itemPattern
+  type: string
+  default: '**'
+
+- name: machine_pool
+  type: object
+
+- name: python_arch
+  type: string
+  default: 'x64'
+
+jobs:
+- job: ${{ parameters.job_name }}
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+  pool:
+    ${{ parameters.machine_pool }}
+  strategy:
+    matrix:
+      Python38:
+        PythonVersion: '3.8'
+      Python39:
+        PythonVersion: '3.9'
+      Python310:
+        PythonVersion: '3.10'
+      Python311:
+        PythonVersion: '3.11'
+      Python312:
+        PythonVersion: '3.12'
+  steps:
+  - checkout: none
+
+  - task: UsePythonVersion@0
+    displayName: 'Use Python'
+    inputs:
+      versionSpec: $(PythonVersion)
+      architecture: ${{ parameters.python_arch }}
+
+  - download: build   # pipeline resource identifier.
+    artifact: 'onnxruntime'
+
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: |
+        set -ex
+        files=(*.whl)
+        FILE_NAME="${files[0]}"
+        FILE_NAME=$(basename $FILE_NAME)
+        PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
+        python3 -m pip install --find-links "$(Pipeline.Workspace)/build/onnxruntime" $PYTHON_PACKAGE_NAME
+        python3 -m pip show $PYTHON_PACKAGE_NAME
+        python3 -c "import onnxruntime as ort; print(ort.__version__)"
+      workingDirectory: $(Pipeline.Workspace)/build/onnxruntime
+    displayName: Test Package Installation
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

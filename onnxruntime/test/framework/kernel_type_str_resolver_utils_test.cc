@@ -5,7 +5,7 @@
 
 #include <iostream>
 #include <sstream>
-
+#include <iomanip>
 #include "gtest/gtest.h"
 
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -49,11 +49,13 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
-// run this test manually to output a hard-coded byte array
+// run this test manually to output a hard-coded byte array.
+// update AddLayoutTransformationRequiredOpsToKernelTypeStrResolver in
+// onnxruntime/core/framework/kernel_type_str_resolver_utils.cc
 TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedLayoutTransformationRequiredOpsResolverByteArray) {
 #if defined(DISABLE_CONTRIB_OPS)
   FAIL() << "Contrib ops must be enabled.";
-#endif  // defined(DISABLE_CONTRIB_OPS)
+#else   // defined(DISABLE_CONTRIB_OPS)
   KernelTypeStrResolver expected_resolver;
   ASSERT_STATUS_OK(LoadLayoutTransformationRequiredOpsFromOpSchemas(expected_resolver));
 
@@ -75,6 +77,7 @@ TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedLayoutTransformationR
   os << "\n  };\n";
 
   std::cout << os.str();
+#endif  // defined(DISABLE_CONTRIB_OPS)
 }
 
 }  // namespace onnxruntime::test

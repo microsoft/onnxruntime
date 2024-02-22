@@ -1,10 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #include "command_args_parser.h"
 
 #include <string.h>
 #include <iostream>
+#include <sstream>
+#include <string_view>
+#include <unordered_map>
 
 // Windows Specific
 #ifdef _WIN32
@@ -33,8 +37,8 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|snpe|rocm|migraphx|xnnpack]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'snpe', 'rocm', 'migraphx' or 'xnnpack'. "
+      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack' or 'vitisai'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -53,19 +57,40 @@ namespace perftest {
       "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
-      "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
-      "\t-q: [CUDA only] use separate stream for copy. \n"
+      "\t-d [CUDA only][cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
+      "\t-q [CUDA only] use separate stream for copy. \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
+      "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
+      "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
+      "\t    [Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
+      "\t    [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
+      "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
+      "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"
+      "\t    [DML only] [enable_dynamic_graph_fusion]: Options: 'true', 'false', \n"
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
-      "\t    [OpenVINO only] [enable_vpu_fast_compile]: Optionally enabled to speeds up the model's compilation on VPU device targets.\n"
+      "\t    [OpenVINO only] [enable_npu_fast_compile]: Optionally enabled to speeds up the model's compilation on NPU device targets.\n"
       "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
-      "\t    [OpenVINO only] [use_compiled_network]: Can be enabled to directly import pre-compiled blobs(VPU) or cl_cache files(iGPU) if exists else dump one. This feature is supported on MyriadX(VPU) hardware device target. Starting from OpenVINO 2021.4 version, this feature also works with iGPU with cl_cache.\n"
-      "\t    [OpenVINO only] [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs or cl_cache files for the use_compiled_network(Model caching) feature. This overrides the default path.\n"
+      "\t    [OpenVINO only] [cache_dir]: Explicitly specify the path to dump and load the blobs(Model caching) or cl_cache (Kernel Caching) files feature. If blob files are already present, it will be directly loaded.\n"
       "\t    [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device(Reduces the CPU Utilization while using GPU) \n"
+      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [profiling_level]: QNN profiling level, options: 'basic', 'detailed', default 'off'.\n"
+      "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
+      "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
+      "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
+      "\t    'high_power_saver', 'low_balanced', 'extreme_power_saver', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
+      "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
+      "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
+      "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
+      "\t    '0', '1', '2', '3', default is '0'.\n"
+      "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
+      "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
+      "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
+      "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
-      "\t [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5 enable_opencl_throttling|true use_compiled_network|true blob_dump_path|\"<path>\"\"\n"
+      "\t [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_npu_fast_compile|true num_of_threads|5 enable_opencl_throttling|true cache_dir|\"<path>\"\"\n"
+      "\t [Example] [For QNN EP] -e qnn -i \"backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
       "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"
       "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"
@@ -78,6 +103,7 @@ namespace perftest {
       "\t    [TensorRT only] [trt_dump_subgraphs]: Dump TRT subgraph to onnx model.\n"
       "\t    [TensorRT only] [trt_engine_cache_enable]: Enable engine caching.\n"
       "\t    [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.\n"
+      "\t    [TensorRT only] [trt_engine_cache_prefix]: Customize engine cache prefix when trt_engine_cache_enable is true.\n"
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
       "\t    [TensorRT only] [trt_context_memory_sharing_enable]: Enable TensorRT context memory sharing between subgraphs.\n"
       "\t    [TensorRT only] [trt_layer_norm_fp32_fallback]: Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow.\n"
@@ -92,13 +118,17 @@ namespace perftest {
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
+      "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
       "\t-T [Set intra op thread affinities]: Specify intra op thread affinity string\n"
-      "\t [Example]: -T 1,2;3,4;5,6 or -T 1-2;3-4;5-6' \n"
+      "\t [Example]: -T 1,2;3,4;5,6 or -T 1-2;3-4;5-6 \n"
       "\t\t Use semicolon to separate configuration between threads.\n"
       "\t\t E.g. 1,2;3,4;5,6 specifies affinities for three threads, the first thread will be attached to the first and second logical processor.\n"
       "\t\t The number of affinities must be equal to intra_op_num_threads - 1\n\n"
+      "\t-D [Disable thread spinning]: disable spinning entirely for thread owned by onnxruntime intra-op thread pool.\n"
+      "\t-Z [Force thread to stop spinning between runs]: disallow thread from spinning during runs to reduce cpu usage.\n"
+      "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -126,9 +156,42 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   return true;
 }
 
+static bool ParseSessionConfigs(const std::string& configs_string,
+                                std::unordered_map<std::string, std::string>& session_configs) {
+  std::istringstream ss(configs_string);
+  std::string token;
+
+  while (ss >> token) {
+    if (token == "") {
+      continue;
+    }
+
+    std::string_view token_sv(token);
+
+    auto pos = token_sv.find("|");
+    if (pos == std::string_view::npos || pos == 0 || pos == token_sv.length()) {
+      // Error: must use a '|' to separate the key and value for session configuration entries.
+      return false;
+    }
+
+    std::string key(token_sv.substr(0, pos));
+    std::string value(token_sv.substr(pos + 1));
+
+    auto it = session_configs.find(key);
+    if (it != session_configs.end()) {
+      // Error: specified duplicate session configuration entry: {key}
+      return false;
+    }
+
+    session_configs.insert(std::make_pair(std::move(key), std::move(value)));
+  }
+
+  return true;
+}
+
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqzn"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -181,6 +244,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.run_config.optimization_level = ORT_DISABLE_ALL;
         } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
@@ -199,6 +264,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("vitisai"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
         } else {
           return false;
         }
@@ -294,6 +361,21 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         break;
       case 'T':
         test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
+        break;
+      case 'C': {
+        if (!ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries)) {
+          return false;
+        }
+        break;
+      }
+      case 'D':
+        test_config.run_config.disable_spinning = true;
+        break;
+      case 'Z':
+        test_config.run_config.disable_spinning_between_run = true;
+        break;
+      case 'n':
+        test_config.run_config.exit_after_session_creation = true;
         break;
       case '?':
       case 'h':

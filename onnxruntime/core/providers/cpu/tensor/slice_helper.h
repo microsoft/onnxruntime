@@ -4,10 +4,12 @@
 // This file contains the functions compute the starts, steps (strides) and output shape
 // for Slice op, which can be called from other ops or EPs.
 #pragma once
-#include "core/providers/cpu/tensor/slice_compute_metadata.h"
+
 #include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/framework/ort_stl_allocator.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/tensor/slice_compute_metadata.h"
 
 namespace onnxruntime {
 
@@ -21,7 +23,7 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
   // Initialize axes to the provided axes attribute or to the default sequence
   TensorShapeVector axes;
   if (raw_axes.empty()) {
-    //axes are omitted, they are set to[0, ..., ndim - 1]
+    // axes are omitted, they are set to[0, ..., ndim - 1]
     axes.reserve(raw_starts.size());
     for (int64_t i = 0, limit = raw_starts.size(); i < limit; ++i) {
       axes.push_back(i);
@@ -81,7 +83,7 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
   // Initialize axes to the provided axes attribute or to the default sequence
   TensorShapeVector axes;
   if (raw_axes.empty()) {
-    //axes are omitted, they are set to[0, ..., ndim - 1]
+    // axes are omitted, they are set to[0, ..., ndim - 1]
     axes.reserve(raw_starts.size());
     for (int64_t i = 0, limit = raw_starts.size(); i < limit; ++i) {
       axes.push_back(i);

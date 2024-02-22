@@ -79,7 +79,7 @@ TensorDesc::TensorDesc(
             dimension0 *= dimensions[i];
         }
 
-        for (size_t i = coerceAxis + 1, ci = dimensions.size(); i < ci; ++i)
+        for (size_t i = static_cast<int64_t>(coerceAxis) + 1, ci = dimensions.size(); i < ci; ++i)
         {
             dimension1 *= dimensions[i];
         }
@@ -314,4 +314,40 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
         std::fill(&m_strides[fillOffset], &m_strides[fillOffset] + fillCount, 0u);
     }
     m_bufferTensorDesc.DimensionCount = newDimensionCount;
+}
+
+// Uses dimensionMapping to reorder m_sizes and m_strides to match specific Tensor layout
+void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, const TensorAxis alignment)
+{
+    EnsureStridesExist();
+    SetDimensionCount(static_cast<uint32_t>(dimensionMapping.size()), alignment);
+
+    // Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping
+    std::vector<uint32_t> tempSizes{m_sizes, m_sizes + MaximumDimensionCount};
+    std::vector<uint32_t> tempStrides{m_strides, m_strides + MaximumDimensionCount};
+
+    for (size_t i = 0; i < dimensionMapping.size(); i++)
+    {
+        m_sizes[i] = tempSizes[dimensionMapping[i]];
+        m_strides[i] = tempStrides[dimensionMapping[i]];
+    }
+
+    m_bufferTensorDesc.Sizes = m_sizes;
+    m_bufferTensorDesc.Strides = m_strides;
+}
+
+void TensorDesc::EnsureStridesExist()
+{
+    if (m_bufferTensorDesc.Strides != nullptr)
+    {
+        // Strides are populated
+        return;
+    }
+
+    uint32_t stride = 1;
+    for (uint32_t i = m_bufferTensorDesc.DimensionCount; i-- > 0;)
+    {
+        m_strides[i] = stride;
+        stride *= m_sizes[i];
+    }
 }

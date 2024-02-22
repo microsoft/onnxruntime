@@ -10,18 +10,20 @@ namespace ONNX_NAMESPACE {
 class TypeProto;
 }
 
+struct OrtTypeInfo;
+
 struct OrtMapTypeInfo {
  public:
   ONNXTensorElementDataType map_key_type_ = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-  std::unique_ptr<OrtTypeInfo, decltype(OrtApi::ReleaseTypeInfo)> map_value_type_;
+  std::unique_ptr<OrtTypeInfo> map_value_type_;
 
-  static OrtStatus* FromTypeProto(const ONNX_NAMESPACE::TypeProto*, OrtMapTypeInfo** out); 
+  static std::unique_ptr<OrtMapTypeInfo> FromTypeProto(const ONNX_NAMESPACE::TypeProto&);
 
-  OrtStatus* Clone(OrtMapTypeInfo** out);
+  std::unique_ptr<OrtMapTypeInfo> Clone() const;
 
- private:
-  OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, OrtTypeInfo* map_value_type)noexcept;
+  OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, std::unique_ptr<OrtTypeInfo> map_value_type) noexcept;
+  ~OrtMapTypeInfo();
+
   OrtMapTypeInfo(const OrtMapTypeInfo& other) = delete;
   OrtMapTypeInfo& operator=(const OrtMapTypeInfo& other) = delete;
-
 };

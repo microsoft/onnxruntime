@@ -1,10 +1,9 @@
 /*
- * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
-import static ai.onnxruntime.InferenceTest.getResourcePath;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,13 +24,14 @@ public class SparseTensorTest {
 
   @Test
   public void testCSRC() throws OrtException {
-    String modelPath = getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
+    String modelPath =
+        TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
         Map<String, OnnxTensorLike> inputMap = new HashMap<>();
 
-        OnnxTensor denseIdMatrix = makeIdentityMatrix(env, 3);
+        OnnxTensor denseIdMatrix = TestHelpers.makeIdentityMatrix(env, 3);
         long[] shape = new long[] {3, 3};
         /*
          * Sparse matrix:
@@ -152,7 +152,7 @@ public class SparseTensorTest {
         inputMap.clear();
         denseIdMatrix.close();
 
-        denseIdMatrix = makeIdentityMatrix(env, 4);
+        denseIdMatrix = TestHelpers.makeIdentityMatrix(env, 4);
         long[] vectorShape = new long[] {1, 4};
         /*
          * Sparse matrix:
@@ -205,13 +205,14 @@ public class SparseTensorTest {
 
   @Test
   public void testCOO() throws OrtException {
-    String modelPath = getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
+    String modelPath =
+        TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
         Map<String, OnnxTensorLike> inputMap = new HashMap<>();
 
-        OnnxTensor denseIdMatrix = makeIdentityMatrix(env, 3);
+        OnnxTensor denseIdMatrix = TestHelpers.makeIdentityMatrix(env, 3);
         long[] shape = new long[] {3, 3};
         /*
          * Sparse matrix:
@@ -340,7 +341,7 @@ public class SparseTensorTest {
         inputMap.clear();
         denseIdMatrix.close();
 
-        denseIdMatrix = makeIdentityMatrix(env, 4);
+        denseIdMatrix = TestHelpers.makeIdentityMatrix(env, 4);
         long[] vectorShape = new long[] {1, 4};
         /*
          * Sparse matrix:
@@ -391,7 +392,7 @@ public class SparseTensorTest {
 
   @Test
   public void testCOOOutput() throws OrtException {
-    String modelPath = getResourcePath("/sparse_initializer_as_output.onnx").toString();
+    String modelPath = TestHelpers.getResourcePath("/sparse_initializer_as_output.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
@@ -437,14 +438,5 @@ public class SparseTensorTest {
             new float[] {1.764052391052246f, 0.40015721321105957f, 0.978738009929657f}, data);
       }
     }
-  }
-
-  private static OnnxTensor makeIdentityMatrix(OrtEnvironment env, int size) throws OrtException {
-    float[][] values = new float[size][size];
-    for (int i = 0; i < values.length; i++) {
-      values[i][i] = 1.0f;
-    }
-
-    return OnnxTensor.createTensor(env, values);
   }
 }

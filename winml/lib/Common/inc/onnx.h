@@ -27,7 +27,7 @@
 #endif USE_DML
 
 #include "core/framework/customregistry.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/common/logging/logging.h"

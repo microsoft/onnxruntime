@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -15,9 +16,11 @@ import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.logging.Logger;
 
 /** Util code for interacting with Java arrays. */
 public final class OrtUtil {
+  private static final Logger logger = Logger.getLogger(OrtUtil.class.getName());
 
   /** Private constructor for static util class. */
   private OrtUtil() {}
@@ -41,9 +44,9 @@ public final class OrtUtil {
     int[] newShape = new int[shape.length];
     for (int i = 0; i < shape.length; i++) {
       long curDim = shape[i];
-      if (curDim < 1 || curDim > Integer.MAX_VALUE) {
+      if (curDim < 0 || curDim > Integer.MAX_VALUE) {
         throw new IllegalArgumentException(
-            "Invalid shape for a Java array, expected positive entries smaller than Integer.MAX_VALUE. Found "
+            "Invalid shape for a Java array, expected non-negative entries smaller than Integer.MAX_VALUE. Found "
                 + Arrays.toString(shape));
       } else {
         newShape[i] = (int) curDim;
@@ -85,8 +88,6 @@ public final class OrtUtil {
   /**
    * Creates a new primitive boolean array of up to 8 dimensions, using the supplied shape.
    *
-   * <p>
-   *
    * @param shape The shape of array to create.
    * @return A boolean array.
    */
@@ -97,8 +98,6 @@ public final class OrtUtil {
 
   /**
    * Creates a new primitive byte array of up to 8 dimensions, using the supplied shape.
-   *
-   * <p>
    *
    * @param shape The shape of array to create.
    * @return A byte array.
@@ -111,8 +110,6 @@ public final class OrtUtil {
   /**
    * Creates a new primitive short array of up to 8 dimensions, using the supplied shape.
    *
-   * <p>
-   *
    * @param shape The shape of array to create.
    * @return A short array.
    */
@@ -123,8 +120,6 @@ public final class OrtUtil {
 
   /**
    * Creates a new primitive int array of up to 8 dimensions, using the supplied shape.
-   *
-   * <p>
    *
    * @param shape The shape of array to create.
    * @return A int array.
@@ -137,8 +132,6 @@ public final class OrtUtil {
   /**
    * Creates a new primitive long array of up to 8 dimensions, using the supplied shape.
    *
-   * <p>
-   *
    * @param shape The shape of array to create.
    * @return A long array.
    */
@@ -149,8 +142,6 @@ public final class OrtUtil {
 
   /**
    * Creates a new primitive float array of up to 8 dimensions, using the supplied shape.
-   *
-   * <p>
    *
    * @param shape The shape of array to create.
    * @return A float array.
@@ -163,8 +154,6 @@ public final class OrtUtil {
   /**
    * Creates a new primitive double array of up to 8 dimensions, using the supplied shape.
    *
-   * <p>
-   *
    * @param shape The shape of array to create.
    * @return A double array.
    */
@@ -175,8 +164,6 @@ public final class OrtUtil {
 
   /**
    * Creates a new String array of up to 8 dimensions, using the supplied shape.
-   *
-   * <p>
    *
    * @param shape The shape of array to create.
    * @return A double array.
@@ -345,20 +332,23 @@ public final class OrtUtil {
   /**
    * Counts the number of elements stored in a Tensor of this shape.
    *
-   * <p>Multiplies all the elements together if they are positive, throws an {@link
+   * <p>Multiplies all the elements together if they are non-negative, throws an {@link
    * IllegalArgumentException} otherwise.
    *
    * @param shape The shape to use.
    * @return The number of elements.
    */
   public static long elementCount(long[] shape) {
+    // Java side tensors must be less than Integer.MAX_VALUE,
+    // tensors created in native code can be larger, but are not usable in Java.
+    // Tensors should not be able to be created which will overflow a 64-bit long.
     long count = 1;
     for (int i = 0; i < shape.length; i++) {
-      if (shape[i] > 0) {
+      if (shape[i] >= 0) {
         count *= shape[i];
       } else {
         throw new IllegalArgumentException(
-            "Received non-positive value in shape " + Arrays.toString(shape) + " .");
+            "Received negative value in shape " + Arrays.toString(shape) + " .");
       }
     }
     return count;
@@ -490,6 +480,9 @@ public final class OrtUtil {
    * @return The prepared buffer tuple.
    */
   static BufferTuple prepareBuffer(Buffer data, OnnxJavaType type) {
+    if (type == OnnxJavaType.STRING || type == OnnxJavaType.UNKNOWN) {
+      throw new IllegalStateException("Cannot create a " + type + " tensor from a buffer");
+    }
     int bufferPos;
     long bufferSizeLong = data.remaining() * (long) type.size;
     if (bufferSizeLong > (Integer.MAX_VALUE - (8 * type.size))) {
@@ -519,12 +512,15 @@ public final class OrtUtil {
         case DOUBLE:
           tmp = buffer.asDoubleBuffer().put((DoubleBuffer) data);
           break;
+        case BOOL:
         case UINT8:
         case INT8:
           // buffer is already a ByteBuffer, no cast needed.
           tmp = buffer.put((ByteBuffer) data);
           break;
         case INT16:
+        case FLOAT16:
+        case BFLOAT16:
           tmp = buffer.asShortBuffer().put((ShortBuffer) data);
           break;
         case INT32:
@@ -533,12 +529,10 @@ public final class OrtUtil {
         case INT64:
           tmp = buffer.asLongBuffer().put((LongBuffer) data);
           break;
-        case BOOL:
-        case STRING:
-        case UNKNOWN:
         default:
           throw new IllegalStateException(
-              "Impossible to reach here, managed to cast a buffer as an incorrect type");
+              "Impossible to reach here, managed to cast a buffer as an incorrect type, found "
+                  + type);
       }
       data.position(origPosition);
       tmp.rewind();

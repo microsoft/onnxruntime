@@ -5,7 +5,7 @@
 from abc import ABC
 
 
-class GraphExecutionInterface(ABC):
+class GraphExecutionInterface(ABC):  # noqa: B024
     def __init__(self, module):
         self._original_module = module
         self._validate_module_type(module)

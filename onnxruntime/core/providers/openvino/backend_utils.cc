@@ -1,23 +1,18 @@
 // Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include <map>
-#include <string>
-#include <memory>
+#include <algorithm>
 #include <sstream>
 #include <fstream>
 
 #include "ov_interface.h"
-#include <ngraph/pass/convert_fp32_to_fp16.hpp>
-#include <ngraph/pass/constant_folding.hpp>
+#include "openvino/pass/convert_fp32_to_fp16.hpp"
+#include "openvino/pass/constant_folding.hpp"
 #include "core/providers/shared_library/provider_api.h"
 #include "backend_utils.h"
 
-#if defined (OV_API_20)
+#if defined(OV_API_20)
 using Exception = ov::Exception;
-#elif defined (OPENVINO_2021_4)
-using Exception = InferenceEngine::Exception;
-using WaitMode = InferenceEngine::InferRequest::WaitMode;
 #else
 using Exception = InferenceEngine::details::InferenceEngineException;
 using WaitMode = InferenceEngine::IInferRequest::WaitMode;
@@ -45,37 +40,6 @@ bool IsCILogEnabled() {
   return false;
 }
 
-bool UseCompiledNetwork() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("OV_USE_COMPILED_NETWORK");
-  if (!env_name.empty()) {
-    return true;
-  }
-  return false;
-}
-
-std::string GetCurrentWorkingDir() {
-  std::string curr_dir;
-  ORT_UNUSED_PARAMETER(curr_dir);
-  char buff[FILENAME_MAX];
-  curr_dir = GetCurrentDir(buff, FILENAME_MAX);
-  std::string current_working_dir(buff);
-  return current_working_dir;
-}
-
-bool IsDirExists(const std::string& pathname) {
-  struct stat info;
-  if(stat(pathname.c_str(), &info) != 0) {
-    LOGS_DEFAULT(INFO) << log_tag << "cannot access pathname: " << pathname;
-	  return false;
-  } else if(info.st_mode & S_IFDIR) {
-      LOGS_DEFAULT(INFO) << log_tag << "pathname exists: " << pathname;
-	    return true;
-  } else {
-      LOGS_DEFAULT(INFO) << log_tag << "pathname: " << pathname << ": doesn't contain the directory 'ov_compiled_blobs' ";
-  }
-  return false;
-}
-
 struct static_cast_int64 {
   template <typename T1>  // T1 models type statically convertible to T
   int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }
@@ -83,38 +47,38 @@ struct static_cast_int64 {
 
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
-              const SubGraphContext& subgraph_context, 
-              std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
-  if(IsCILogEnabled()) {
+              const SubGraphContext& subgraph_context,
+              std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
+  if (IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
   const std::string model = model_proto.SerializeAsString();
   try {
-    auto cnn_network = global_context.ie_core.ReadModel(model);
-    if ((subgraph_context.precision == InferenceEngine::Precision::FP16) &&
-        (global_context.device_type.find("MYRIAD") == std::string::npos)) {
-      //FP16 transformations
+    auto cnn_network = global_context.ie_core.ReadModel(model, global_context.onnx_model_path_name);
+    if ((subgraph_context.precision == "FP16") &&
+        (global_context.device_type.find("NPU") == std::string::npos)) {
+      // FP16 transformations
       ov::pass::ConvertFP32ToFP16 pass_obj;
       pass_obj.run_on_model(cnn_network);
       cnn_network->validate_nodes_and_infer_types();
 
       auto proc = ov::preprocess::PrePostProcessor(cnn_network);
-      for (size_t i=0; i < cnn_network->inputs().size(); i++) {
-        if(cnn_network->inputs()[i].get_element_type() == ov::element::f16) {
+      for (size_t i = 0; i < cnn_network->inputs().size(); i++) {
+        if (cnn_network->inputs()[i].get_element_type() == ov::element::f16) {
           proc.input(i).tensor().set_element_type(ov::element::f32);
           proc.input(i).preprocess().convert_element_type(ov::element::f16);
         }
       }
 
-      for (size_t i=0; i < cnn_network->outputs().size(); i++) {
-        if(cnn_network->outputs()[i].get_element_type() == ov::element::f16) {
+      for (size_t i = 0; i < cnn_network->outputs().size(); i++) {
+        if (cnn_network->outputs()[i].get_element_type() == ov::element::f16) {
           proc.output(i).postprocess().convert_element_type(ov::element::f32);
         }
       }
       cnn_network = proc.build();
     }
 
-    //Check for Constant Folding
+    // Check for Constant Folding
     if (!global_context.is_wholly_supported_graph) {
       ov::pass::ConstantFolding pass_const_obj;
       pass_const_obj.run_on_model(cnn_network);
@@ -122,7 +86,8 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       size_t index = results.size() - 1;
 
       for (auto it = results.rbegin(); it != results.rend(); ++it) {
-        if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+        if (auto const_node =
+                std::dynamic_pointer_cast<ov::op::v0::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
           const_outputs_map[(*it)->get_friendly_name()] = const_node;
           results.erase(results.begin() + index);
         }
@@ -130,47 +95,15 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       }
     }
 #ifndef NDEBUG
-#if defined OPENVINO_2022_3
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();
       ov::pass::Serialize serializer(name + ".xml", name + ".bin");
       serializer.run_on_model(cnn_network);
-      ngraph::plot_graph(cnn_network, name+"_executable" + ".dot");
     }
-#endif
 #endif
     return cnn_network;
-  }catch (std::string const & msg) {
-      throw msg;
-  }
-}
-
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device) {
-  ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
-  if (*type_string == "float" || *type_string == "tensor(float)") {
-    return InferenceEngine::Precision::FP32;
-  } else if (*type_string == "float16" || *type_string == "tensor(float16)") {
-    return InferenceEngine::Precision::FP16;
-  } else if (*type_string == "int32" || *type_string == "tensor(int32)") {
-    return InferenceEngine::Precision::I32;
-  } else if (*type_string == "int16" || *type_string == "tensor(int16)") {
-    return InferenceEngine::Precision::I16;
-  } else if (*type_string == "int8" || *type_string == "tensor(int8)") {
-    return InferenceEngine::Precision::I8;
-  } else if (*type_string == "uint16" || *type_string == "tensor(uint16)") {
-    return InferenceEngine::Precision::U16;
-  } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
-    return InferenceEngine::Precision::U8;
-  } else if (*type_string == "bool" || *type_string == "tensor(bool)") {
-    if (device == "MYRIAD") {
-      return InferenceEngine::Precision::I32;
-    } else {
-      return InferenceEngine::Precision::U8;
-    }
-  } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
-    return InferenceEngine::Precision::I32;
-  } else {
-    throw std::string(log_tag + "Unsupported Data type");
+  } catch (std::string const& msg) {
+    throw msg;
   }
 }
 
@@ -179,7 +112,6 @@ GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
                 OVInferRequestPtr infer_request,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names) {
-
   auto graph_output_blob = infer_request->GetTensor(output_name);
 
   auto graph_output_dims = graph_output_blob->get_shape();
@@ -205,12 +137,11 @@ Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names,
-                std::shared_ptr<ngraph::Node> node) {
-
+                std::shared_ptr<ov::Node> node) {
   // Find position of '/' in the output_name
   int pos = output_name.find("/");
   // Copy the substring from start to pos
-  output_name = output_name.substr(0 , pos);
+  output_name = output_name.substr(0, pos);
 
   auto it = output_names.find(output_name);
   if (it == output_names.end()) {
@@ -229,7 +160,7 @@ GetOutputTensor(Ort::KernelContext& context,
 
 int GetFirstAvailableDevice(GlobalContext& global_context) {
   int i = 0;
-  //Get the first available VAD-M device and set the device to busy
+  // Get the first available VAD-M device and set the device to busy
   while (i < 8) {
     bool device = global_context.deviceAvailableList[i];
     if (device) {
@@ -238,8 +169,8 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
     }
     i++;
   }
-  //If all of the devices are busy, assign the first device and
-  //make all remaining devices free
+  // If all of the devices are busy, assign the first device and
+  // make all remaining devices free
   if (i == 8) {
     i = 0;
     global_context.deviceAvailableList[i] = false;
@@ -250,25 +181,25 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   return i;
 }
 
-void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor) {
+void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedValue& out_tensor) {
   switch (node->get_element_type()) {
-    case ngraph::element::Type_t::f32: {
+    case ov::element::Type_t::f32: {
       FillOutputHelper<float>(out_tensor, node);
       break;
     }
-    case ngraph::element::Type_t::boolean: {
+    case ov::element::Type_t::boolean: {
       FillOutputHelper<char>(out_tensor, node);
       break;
     }
-    case ngraph::element::Type_t::i32: {
+    case ov::element::Type_t::i32: {
       FillOutputHelper<int32_t>(out_tensor, node);
       break;
     }
-    case ngraph::element::Type_t::i64: {
+    case ov::element::Type_t::i64: {
       FillOutputHelper<int64_t>(out_tensor, node);
       break;
     }
-    case ngraph::element::Type_t::f16: {
+    case ov::element::Type_t::f16: {
       FillOutputHelper<float>(out_tensor, node);
       break;
     }
@@ -277,29 +208,36 @@ void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::Unowne
   }
 }
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4127)
+#endif
+
 template <typename T>
-void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Node> node) {
-  auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
+void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> node) {
+  auto const_node = std::dynamic_pointer_cast<ov::op::v0::Constant>(node);
   auto res = const_node->cast_vector<T>();
   T* tensor_data = out_tensor.GetTensorMutableData<T>();
   std::copy(res.begin(), res.end(), tensor_data);
 }
 
+#if defined(_MSC_VER)
+#pragma warning(default : 4127)
+#endif
+
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::KernelContext& context,
                    const SubGraphContext& subgraph_context) {
-
-    size_t input_data_size = inputBlob->get_byte_size();
-    auto input_data = inputBlob->data();
-    auto tensor = context.GetInput(subgraph_context.input_names.at(input_name));
-    auto mem_info = tensor.GetTensorMemoryInfo();
-    if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-        throw std::string(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
-    }
-    // Copy input data into OpenVINO's input buffer
-    const char* tensor_data = tensor.GetTensorData<char>();
-    const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
-    std::memcpy(input_data, batch_memory_offset, input_data_size);
+  size_t input_data_size = inputBlob->get_byte_size();
+  auto input_data = inputBlob->data();
+  auto tensor = context.GetInput(subgraph_context.input_names.at(input_name));
+  auto mem_info = tensor.GetTensorMemoryInfo();
+  if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+    throw std::string(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
+  }
+  // Copy input data into OpenVINO's input buffer
+  const char* tensor_data = tensor.GetTensorData<char>();
+  const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
+  std::memcpy(input_data, batch_memory_offset, input_data_size);
 }
 
 void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
@@ -313,7 +251,7 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName) {
-  long long totalTime = 0;
+  int64_t totalTime = 0;
   // Print performance counts
   stream << std::endl
          << "performance counts:" << std::endl

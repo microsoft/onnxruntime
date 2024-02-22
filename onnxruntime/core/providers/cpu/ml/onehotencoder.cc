@@ -73,7 +73,7 @@ common::Status OneHotEncoderOp<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
 
-  auto output_shape=input_shape.AsShapeVector();
+  auto output_shape = input_shape.AsShapeVector();
   output_shape.push_back(num_categories_);
 
   Tensor* Y = context->Output(0, TensorShape(output_shape));

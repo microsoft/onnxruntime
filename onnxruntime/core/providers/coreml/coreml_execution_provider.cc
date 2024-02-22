@@ -2,41 +2,47 @@
 // Licensed under the MIT License.
 
 #include "core/providers/coreml/coreml_execution_provider.h"
+#include "core/providers/coreml/coreml_provider_factory.h"  // defines flags
 
-#include "core/framework/allocatormgr.h"
+#include <algorithm>
+
+#include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/providers/coreml/builders/helper.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/coreml/builders/helper.h"
 
-#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/model.h"
-#endif
+#include "core/providers/coreml/shape_utils.h"
 
 namespace onnxruntime {
 
 constexpr const char* COREML = "CoreML";
 
 CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
-    : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider, true},
-      coreml_flags_(coreml_flags) {
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator));
-      });
+    : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider},
+      coreml_flags_(coreml_flags),
+      coreml_version_(coreml::util::CoreMLVersion()) {
+  if (coreml_version_ < MINIMUM_COREML_VERSION) {
+    LOGS_DEFAULT(ERROR) << "CoreML EP is not supported on this platform.";
+  }
 
-  InsertAllocator(CreateAllocator(device_info));
-
-  AllocatorCreationInfo cpu_memory_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      });
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (coreml_version_ < MINIMUM_COREML_MLPROGRAM_VERSION &&
+      (coreml_flags_ & COREML_FLAG_CREATE_MLPROGRAM) != 0) {
+    LOGS_DEFAULT(WARNING) << "ML Program is not supported on this OS version. Falling back to NeuralNetwork.";
+    coreml_flags_ ^= COREML_FLAG_CREATE_MLPROGRAM;
+  }
+#else
+  if ((coreml_flags_ & COREML_FLAG_CREATE_MLPROGRAM) != 0) {
+    LOGS_DEFAULT(WARNING) << "ML Program is not supported in this build. Falling back to NeuralNetwork.";
+    coreml_flags_ ^= COREML_FLAG_CREATE_MLPROGRAM;
+  }
+#endif
 }
 
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
@@ -46,27 +52,34 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // We do not run CoreML EP on subgraph, instead we cover this in the control flow nodes
-  // TODO investigate whether we want to support subgraph using CoreML EP
-  if (graph_viewer.IsSubgraph() && !(coreml_flags_ & COREML_FLAG_ENABLE_ON_SUBGRAPH)) {
+  if (coreml_version_ < MINIMUM_COREML_VERSION) {
     return result;
   }
 
   const auto& logger = *GetLogger();
 
-  const bool has_neural_engine = coreml::HasNeuralEngine(logger);
-  if ((coreml_flags_ & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) && !has_neural_engine) {
-    LOGS(logger, VERBOSE) << "The current system does not have Apple Neural Engine";
+  // We do not run CoreML EP on subgraph, instead we cover this in the control flow nodes
+  // TODO investigate whether we want to support subgraph using CoreML EP. May simply require processing the
+  // implicit inputs of the control flow node that contains the subgraph as inputs to the CoreML model we generate.
+  if (graph_viewer.IsSubgraph() && !(coreml_flags_ & COREML_FLAG_ENABLE_ON_SUBGRAPH)) {
     return result;
   }
 
-  const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, logger);
+  const bool has_neural_engine = coreml::HasNeuralEngine(logger);
+  if ((coreml_flags_ & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) && !has_neural_engine) {
+    LOGS(logger, WARNING) << "The current system does not have Apple Neural Engine. CoreML EP will not be used.";
+    return result;
+  }
 
-  const auto gen_metadef_name = [&]() {
-    HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
-    return MakeString(COREML, "_", model_hash, "_", metadef_id);
-  };
+  const auto builder_params = coreml::MakeOpBuilderParams(graph_viewer, coreml_version_, coreml_flags_);
+  const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, builder_params, logger);
+
+  const auto gen_metadef_name =
+      [&]() {
+        HashValue model_hash;
+        int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+        return MakeString(COREML, "_", model_hash, "_", metadef_id);
+      };
 
   result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
                                             gen_metadef_name, COREML, kCoreMLExecutionProvider);
@@ -96,17 +109,16 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   return result;
 }
 
-#ifdef __APPLE__
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    coreml::ModelBuilder builder(graph_viewer, *GetLogger(), coreml_flags_);
     std::unique_ptr<coreml::Model> coreml_model;
-    const std::string coreml_model_file_path = coreml::util::GetTemporaryFilePath();
-    ORT_RETURN_IF_ERROR(builder.Compile(coreml_model, coreml_model_file_path));
+    ORT_RETURN_IF_ERROR(coreml::ModelBuilder::Build(graph_viewer, *GetLogger(), coreml_version_, coreml_flags_,
+                                                    coreml_model));
 
     {
       const auto& input_defs = fused_node.InputDefs();
@@ -114,7 +126,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
         onnx_input_names[i] = input_defs[i]->Name();
       }
-      coreml_model->SetInputs(std::move(onnx_input_names));
+      coreml_model->SetOnnxInputs(std::move(onnx_input_names));
     }
 
     {
@@ -123,7 +135,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
         onnx_output_names[i] = output_defs[i]->Name();
       }
-      coreml_model->SetOutputs(std::move(onnx_output_names));
+      coreml_model->SetOnnxOutputs(std::move(onnx_output_names));
     }
 
     coreml_models_.emplace(fused_node.Name(), std::move(coreml_model));
@@ -146,8 +158,8 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       const size_t num_outputs = ctx.GetOutputCount();
 
       coreml::Model* model = reinterpret_cast<coreml::Model*>(state);
-      const auto& model_inputs = model->GetInputs();
-      const auto& model_outputs = model->GetOutputs();
+      const auto& model_inputs = model->GetOnnxInputs();
+      const auto& model_outputs = model->GetOnnxOutputs();
 
       ORT_RETURN_IF_NOT(model_inputs.size() <= num_inputs, "Inconsistent input sizes");
       ORT_RETURN_IF_NOT(model_outputs.size() == num_outputs, "Inconsistent output sizes");
@@ -156,9 +168,28 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       inputs.reserve(model_inputs.size());
       for (size_t i = 0; i < model_inputs.size(); i++) {
         const auto& input_name = model_inputs[i];
+        const auto* input_info = model->TryGetInputOutputInfo(input_name);
+        if (input_info == nullptr) {
+          // The CoreML model may not have an actual input that corresponds to this one.
+          // E.g., when the input is an initializer that already got copied to the CoreML model.
+          // If there's no CoreML model input, we don't need to provide this input to CoreML.
+          continue;
+        }
+
         auto input_tensor = ctx.GetInput(i);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
+
+        // Disallow inputs with dynamic shape which actually have zero elements.
+        // CoreML doesn't consistently handle this well (e.g., there may be runtime errors).
+        {
+          const auto& inferred_shape = input_info->shape;
+          ORT_RETURN_IF(!coreml::IsStaticShape(inferred_shape) && coreml::DoesShapeSpecifyZeroElements(shape),
+                        "Input (", input_name, ") has a dynamic shape (", coreml::Shape2String(inferred_shape),
+                        ") but the runtime shape (", coreml::Shape2String(shape),
+                        ") has zero elements. This is not supported by the CoreML EP.");
+        }
+
         // If we have an empty shape, this is a scalar input,
         // Since all the input output of CoreML EP is MultiArray, we will make the scalar input as a {1} MultiArray
         if (shape.empty())
@@ -180,8 +211,30 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       // TODO, investigate concurrent runs for different executions from the same model
       {
         std::unique_lock<OrtMutex> lock(model->GetMutex());
-        std::unordered_map<std::string, coreml::OnnxTensorData> outputs;
+        std::unordered_map<std::string, coreml::OnnxTensorInfo> outputs;
         outputs.reserve(model_outputs.size());
+
+        coreml::GetOutputTensorMutableRawDataFn get_output_tensor_mutable_raw_data_fn =
+            [&ctx, &model_outputs](
+                const std::string& name,
+                int32_t requested_onnx_tensor_element_type,
+                gsl::span<const int64_t> static_shape) -> void* {
+          const auto model_output_it = std::find(model_outputs.begin(), model_outputs.end(), name);
+          ORT_ENFORCE(model_output_it != model_outputs.end(), "Failed to find CoreML model output name: ", name);
+          const auto output_idx = gsl::narrow_cast<size_t>(std::distance(model_outputs.begin(), model_output_it));
+
+          auto output_tensor = ctx.GetOutput(output_idx, static_shape.data(), static_shape.size());
+
+          const auto type_and_shape_info = output_tensor.GetTensorTypeAndShapeInfo();
+          const auto actual_element_type = type_and_shape_info.GetElementType();
+          ORT_ENFORCE(utils::CApiElementTypeFromProtoType(requested_onnx_tensor_element_type) == actual_element_type,
+                      "Requested and actual output tensor element types do not match. Requested: ",
+                      utils::CApiElementTypeFromProtoType(requested_onnx_tensor_element_type),
+                      ", actual: ", actual_element_type);
+
+          return output_tensor.GetTensorMutableRawData();
+        };
+
         for (size_t i = 0; i < model_outputs.size(); i++) {
           const auto& output_name = model_outputs[i];
           const auto& output_info = model->GetInputOutputInfo(output_name);
@@ -198,34 +251,10 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           if (model->IsInt64Output(output_name))
             output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
 
-          auto output_tensor =
-              ctx.GetOutput(i, output_shape.data(), output_shape.size());
-
-          void* output_buffer;
-          switch (output_type) {
-            case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-              output_buffer = output_tensor.GetTensorMutableData<float>();
-              break;
-            case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-              output_buffer = output_tensor.GetTensorMutableData<int32_t>();
-              break;
-            case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-              output_buffer = output_tensor.GetTensorMutableData<int64_t>();
-              break;
-            default:
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                     "Unsupported type: ", output_type, " for output: ", output_name);
-              break;
-          }
-
-          outputs.emplace(output_name,
-                          coreml::OnnxTensorData{
-                              coreml::OnnxTensorInfo{output_type, output_shape},
-                              output_buffer,
-                          });
+          outputs.emplace(output_name, coreml::OnnxTensorInfo{output_type, output_shape});
         }
 
-        return model->Predict(inputs, outputs);
+        return model->Predict(inputs, outputs, get_output_tensor_mutable_raw_data_fn);
       }
     };
 
@@ -234,22 +263,6 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
   return Status::OK();
 }
-#else
-common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
-    ORT_UNUSED_PARAMETER(fused_node_and_graph);
-    NodeComputeInfo compute_info;
-    compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
-    compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtApi* /* api */,
-                                   OrtKernelContext* /* context */) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
-    };
-    node_compute_funcs.push_back(compute_info);
-  }
-  return Status::OK();
-}
-#endif //__APPLE__
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace onnxruntime

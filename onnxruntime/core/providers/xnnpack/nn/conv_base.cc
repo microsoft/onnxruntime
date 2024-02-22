@@ -23,7 +23,8 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
                            const std::optional<std::pair<float, float>>& clip_min_max,
                            const Tensor& Weight, const Tensor* Bias,
                            XnnpackOperator& op_uptr,
-                           xnn_caches_t caches_t,
+                           xnn_code_cache_t code_cache,
+                           xnn_weights_cache_t weights_cache,
                            const OpQuantParam& quant_param,
                            OpComputeType conv_type,
                            bool is_transpose = false) {
@@ -75,7 +76,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         C, M,                                         // input channel stride, output channel stride
         Weight.Data<float>(), B_data,
         foutput_min, foutput_max, flags,
-        caches_t,
+        code_cache, weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
     const float output_scale = quant_param[2].first[0];
@@ -99,7 +100,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        caches_t,
+        code_cache, weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -107,7 +108,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
     const int8_t output_zero_point = quant_param[2].second;
     const int8_t output_min = xnn_u8s8_quantize<int8_t>(foutput_min, output_scale, output_zero_point);
     const int8_t output_max = xnn_u8s8_quantize<int8_t>(foutput_max, output_scale, output_zero_point);
-    status = xnn_create_convolution2d_nhwc_qc8(
+    status = xnn_create_convolution2d_nhwc_qs8_qc8w(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
         subsampling_height, subsampling_width,
@@ -123,7 +124,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        caches_t,
+        code_cache, weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
     const auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -148,15 +149,17 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        caches_t,
+        code_cache, weights_cache,
         &p);
   }
+
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Failed to create xnnpack kernel. xnn_create_",
                            is_transpose ? "deconvolution2d" : "convolution2d", "_nhwc_",
                            OpTypeToString(conv_type), " returned ", status);
   }
+
   op_uptr.reset(p);
   return Status::OK();
 }
@@ -296,6 +299,11 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
+    // Internal NHWC domain starts at opset 11
+    if (node_unit.SinceVersion() < 11) {
+      break;
+    }
+
     // Conv has at least 2 inputs.
     const auto& inputs = node_unit.Inputs();
     const auto& x_arg = inputs[0].node_arg;
@@ -367,7 +375,7 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 }
 
 ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
-    : XnnpackKernel(info),
+    : XnnpackKernel(info, /*enable_caches*/ true),
       conv_attrs_(info),
       conv_transpose_attrs_(info),
       convbase_attrs_ref_(is_transpose ? conv_transpose_attrs_ : conv_attrs_),
@@ -383,16 +391,7 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
       }
     }
   }
-  // xnnpack cache_code, unfortunately these definitions are only available in xnnpack/cache.h,
-#ifdef XNN_CACHE_ENABLE
-#if XNN_PLATFORM_JIT
-  xnn_init_code_cache(&code_cache_);
-  xnn_caches_.code_cache = &code_cache_;
-#endif
-  // TODO(Jicwen) enable weight-cache and code-cache
-  xnn_init_weights_cache(&weights_cache_);
-  xnn_caches_.weights_cache = &weights_cache_;
-#endif
+
   const auto& node{Node()};
   const auto& input_defs = node.InputDefs();
   const NodeArg& X = *input_defs[0];
@@ -477,11 +476,7 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
 Status ConvBase::CreateKernel() {
   auto ret = CreateXnnpackKernel(&convbase_attrs_ref_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
                                  B_, op0_,
-#ifdef XNN_CACHE_ENABLE
-                                 &xnn_caches_,
-#else
-                                 0,
-#endif
+                                 GetCodeCache(), GetWeightsCache(),
                                  quant_param_, conv_type_, is_transpose_);
   return ret;
 }

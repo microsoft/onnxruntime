@@ -1,6 +1,5 @@
 black>=22.3
 cerberus
-codecov
 flatbuffers
 isort
 jinja2
@@ -18,4 +17,4 @@ scikit-learn
 scipy
 sympy
 wheel
-setuptools>=41.4.0
+setuptools>=61.0.0

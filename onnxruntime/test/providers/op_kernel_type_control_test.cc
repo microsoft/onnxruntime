@@ -17,7 +17,7 @@ namespace {
 // test types to match op_kernel_type_control::TypesHolder
 template <typename... T>
 struct TestTypesHolder {
-    using types = TypeList<T...>;
+  using types = TypeList<T...>;
 };
 
 struct TestTypesHolderUnspecified {

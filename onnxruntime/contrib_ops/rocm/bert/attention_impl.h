@@ -5,11 +5,14 @@
 
 #include <hip/hip_fp16.h>
 #include <rocblas/rocblas.h>
+#include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
+
 size_t GetAttentionScratchSize(
     size_t element_size,
     int batch_size,
@@ -24,57 +27,6 @@ size_t GetAttentionWorkspaceSize(
     int head_size,
     int sequence_length,
     int past_sequence_length);
-
-Status LaunchAttentionKernel(
-    const hipDeviceProp_t& prop,               // Device Properties
-    bool tuning,                               // Whether to enable tuning
-    hipStream_t stream,                        // Hip stream
-    rocblas_handle& rocblas,                   // Rocblas handle
-    const size_t element_size,                 // Element size of input tensor
-    int batch_size,                            // Batch size (B)
-    int sequence_length,                       // Sequence length (S)
-    int num_heads,                             // Number of attention heads (N)
-    int head_size,                             // Hidden layer size per head (H)
-    int past_sequence_length,                  // Sequence length in past state
-    bool is_unidirectional,                    // Whether there is unidirectional mask.
-    const void* input,                         // Input tensor
-    const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
-    gsl::span<const int64_t> mask_index_dims,  // Mask index shape
-    const float mask_filter_value,             // Mask value for filtered out positions
-    const void* past,                          // Past state input
-    const void* extra_add_qk,                  // Additional Add
-    void* workspace,                           // Temporary buffer
-    void* output,                              // Output tensor
-    void* present                              // Present state output
-);
-
-Status LaunchDecoderAttentionKernel(
-    const hipDeviceProp_t& prop,      // Device Properties
-    bool tuning,                      // Whether to enable tuning
-    hipStream_t stream,               // Hip stream
-    rocblas_handle& rocblas,          // Rocblas handle
-    const size_t element_size,        // Element size of input tensor
-    const int batch_size,             // Batch size (B)
-    const int sequence_length,        // Sequence length (S)
-    const int kv_sequence_length,     // Key/Value/Cache sequence length
-    const int num_heads,              // Number of attention heads (N)
-    const int head_size,              // Hidden layer size per head (H)
-    const bool static_kv,             // Whether cross attention or not
-    const bool use_past,              // Whether use cache or not
-    const bool has_layer_state,       // Whether output cache or not
-    const bool has_key_padding_mask,  // Whether use key_padding_mask or not
-    const float mask_filter_value,    // Mask filter value
-    const void* gemm_query_buffer,    // Query buffer
-    const void* gemm_kv_buffer,       // Key and value buffer
-    const bool* key_padding_mask,     // Key padding mask
-    const void* key_cache,            // Input key cache
-    const void* value_cache,          // Input value cache
-    void* qkv_buffer,                 // Temporary buffer
-    void* workspace_buffer,           // Temporary buffer
-    void* output,                     // Output tensor
-    void* new_key_cache,              // New_key_cache tensor
-    void* new_value_cache             // New_value_cache tensor
-);
 
 Status LaunchTransCtx(hipStream_t stream,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
@@ -117,28 +69,6 @@ Status LaunchConcatTensorToTensor(hipStream_t stream,
                                   const half* tensor_in,
                                   const half* tensor_add,
                                   half* tensor_out);
-
-Status LaunchConcatPastToPresent(hipStream_t stream,
-                                 const int all_sequence_length,
-                                 const int sequence_length,
-                                 const int batch_size,
-                                 const int head_size,
-                                 const int num_heads,
-                                 const int max_threads_per_block,
-                                 const float* past,
-                                 const float* k_v,
-                                 float* present);
-
-Status LaunchConcatPastToPresent(hipStream_t stream,
-                                 const int all_sequence_length,
-                                 const int sequence_length,
-                                 const int batch_size,
-                                 const int head_size,
-                                 const int num_heads,
-                                 const int max_threads_per_block,
-                                 const half* past,
-                                 const half* k_v,
-                                 half* present);
 
 inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle handle,
                                                               rocblas_operation transa,
@@ -202,6 +132,48 @@ class CompatRocblasMathModeSetter {
   }
 };
 
+enum AttentionType {
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
+};
+
+enum AttentionMode {
+  // Q,K,V,PastK,PastV,PresentK,PresentV
+  QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE,
+  QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE,
+  QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE,
+  QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE,
+  QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE,
+  BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE,
+  BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE,
+  BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH,
+  BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH,
+  BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH,
+  BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH,
+  BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH,
+  BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH,
+  BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH,
+  BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH,
+  BLN3H_NONE_NONE_NONE_NONE_NONE_NONE,
+  BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE,
+};
+
+struct RocmAttentionParameters : AttentionParameters {
+  AttentionMode mode;
+};
+
+Status ClassifyAttentionMode(AttentionType type,
+                             RocmAttentionParameters* attn,
+                             const std::vector<const Tensor*>& qkv,
+                             const std::vector<const Tensor*>& past,
+                             const std::vector<Tensor*>& present);
+
+template <typename T>
+Status LaunchStridedCopy(hipStream_t stream,
+                         const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
+                         T* out, longlong4 out_strides,                     // coord (b,n,s,h)
+                         int max_threads_per_block);
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

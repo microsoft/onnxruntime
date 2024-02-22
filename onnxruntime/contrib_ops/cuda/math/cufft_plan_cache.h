@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-//key
+// key
 struct FFTState {
   int64_t signal_ndim;
   int64_t signal_dims[5];
@@ -22,7 +22,7 @@ struct FFTState {
   cudaDataType exec_type;
 };
 
-//value
+// value
 struct CufftPlanInfo {
   cufftHandle plan;
   size_t ws_size_t;

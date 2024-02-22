@@ -52,7 +52,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
                                                  mask_index, past_tensor,
-                                                 nullptr,  // extra_add_qk
+                                                 nullptr,  // relative_position_bias
                                                  parameters,
                                                  device_prop.maxThreadsPerBlock));
 
@@ -106,6 +106,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_tensor = context->Input<Tensor>(8);
 
   AttentionParameters parameters;
+  parameters.use_tf32 = UseTF32();
+
   ORT_RETURN_IF_ERROR(CheckInputs(input,
                                   weights,
                                   bias,
@@ -174,6 +176,9 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present = context->Output(1, present_shape);
 
   void* fused_runner = nullptr;  // TODO(tianleiwu): use fused kernel to speed up
+  constexpr bool use_fused_cross_attention = false;
+  constexpr bool use_memory_efficient_attention = false;
+  constexpr bool use_flash_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
                                                    parameters.num_heads,
@@ -182,28 +187,33 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    sequence_length,
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
-                                                   fused_runner);
+                                                   fused_runner,
+                                                   use_flash_attention,
+                                                   use_fused_cross_attention,
+                                                   use_memory_efficient_attention);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
-  data.bias = nullptr;  // bias has been added
-  data.query = nullptr;
-  data.key = nullptr;
-  data.value = nullptr;
-  data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
-  data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
-  data.past = (nullptr == past_tensor) ? nullptr : reinterpret_cast<const CudaT*>(past_tensor->Data<T>());
-  data.extra_add_qk = nullptr;  // add_qk is not supported in quantized attention
+  if (nullptr != mask_index) {
+    data.mask_index = mask_index->Data<int>();
+    data.mask_index_dims = mask_index->Shape().GetDims();
+  }
+
+  if (nullptr != past_tensor) {
+    data.past = reinterpret_cast<const CudaT*>(past_tensor->Data<T>());
+  }
+
+  data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
-  data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
-  data.fused_runner = fused_runner;
-  data.fused_cross_attention_kernel = nullptr;
+  if (nullptr != present) {
+    data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());
+  }
 
-  return QkvToContext<CudaT>(GetDeviceProp(), cublas, Stream(context), parameters, data);
+  return QkvToContext<CudaT>(GetDeviceProp(), cublas, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda

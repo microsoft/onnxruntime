@@ -47,8 +47,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_Values_Gemm),
     QOrderedAttention);
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
 Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index, cudaStream_t cuda_stream) {
   ++qkv_weight_const_count_;
   ORT_ENFORCE(tensor.Shape().NumDimensions() == 2, "QKV weight must be 2d tensors!");
@@ -155,10 +153,7 @@ inline void debug_print([[maybe_unused]] const T* arr,
 #endif
 }
 
-#endif
-
 QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   input_hidden_size_ = 0;
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
@@ -183,17 +178,9 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
 
   qkv_weight_const_count_ = scale_qkv_weight_const_count_ = qkv_bias_const_cout_ = 0;
   const_scale_input_ = const_scale_qkv_layer_[0] = const_scale_qkv_layer_[1] = const_scale_qkv_layer_[2] = 0.0f;
-
-#else
-
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 }
 
 Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   ORT_ENFORCE(qkv_bias_const_cout_ == 3 && scale_qkv_weight_const_count_ == 3 && qkv_weight_const_count_ == 3,
               "qkv gemm weight and their scales, qkv gemm bias must all be constant!");
   ORT_ENFORCE(const_scale_input_ > 0.0f, "input scale must be constant");
@@ -212,7 +199,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
                                   mask_index,
                                   nullptr,  // past
-                                  nullptr,  // extra_add_qk
+                                  nullptr,  // relative_position_bias
                                   nullptr,  // parameters
                                   device_prop.maxThreadsPerBlock));
 
@@ -306,13 +293,6 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, sequence_length, batch_size, head_size / 4, num_heads_, device_prop.maxThreadsPerBlock,
                                      false, (const float*)context_layer, (float*)output->MutableData<int8_t>()));
   // debug_print(output->Data<int8_t>(), m * n / 3, head_size, "attention output");
-
-#else
-
-  ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 
   return Status::OK();
 }

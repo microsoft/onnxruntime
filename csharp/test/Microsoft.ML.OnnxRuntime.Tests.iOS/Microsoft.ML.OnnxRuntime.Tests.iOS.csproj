@@ -99,11 +99,11 @@
     <PackageReference Include="xunit">
       <Version>2.4.1</Version>
     </PackageReference>
-    <PackageReference Include="Google.Protobuf" Version="3.17.3" />
+    <PackageReference Include="Google.Protobuf" Version="3.21.12" />
     <PackageReference Include="Xamarin.Forms">
       <Version>5.0.0.2083</Version>
     </PackageReference>
-    <PackageReference Include="System.Memory" Version="4.5.3" IncludeAssets="None" />
+    <PackageReference Include="System.Memory" Version="4.5.5" IncludeAssets="None" />
     <PackageReference Include="Xamarin.TestCloud.Agent">
       <Version>0.22.2</Version>
     </PackageReference>

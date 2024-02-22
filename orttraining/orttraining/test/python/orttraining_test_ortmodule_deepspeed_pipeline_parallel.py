@@ -1,13 +1,11 @@
-import torch
-from torch import nn, optim
-import torch.distributed as dist
-import deepspeed
-from deepspeed.pipe import PipelineModule, LayerSpec
-from deepspeed.utils import RepeatingLoader
-
-from onnxruntime.training.ortmodule import ORTModule, _utils
-
 import argparse
+
+import deepspeed
+import torch
+from deepspeed.pipe import PipelineModule
+from torch import nn
+
+from onnxruntime.training.ortmodule import ORTModule
 
 # USAGE:
 # pip install deepspeed
@@ -56,7 +54,8 @@ else:
     print("Running deepspeed pipeline parallel module with ORTModule")
 
 
-dist.init_process_group(backend=args.backend)
+# dist.init_process_group(backend=args.backend)
+deepspeed.init_distributed(dist_backend=args.backend)
 torch.manual_seed(args.seed)
 # Model.
 

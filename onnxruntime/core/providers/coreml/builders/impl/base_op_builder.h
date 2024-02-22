@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/common/span_utils.h"
+#include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/providers/coreml/builders/op_builder.h"
 
 namespace onnxruntime {
@@ -14,43 +16,40 @@ class BaseOpBuilder : public IOpBuilder {
  public:
   virtual ~BaseOpBuilder() = default;
 
-  // Add operator related
+  // does the operator implementation support creating an ML Program
+  bool SupportsMLProgram() const override { return false; }
 
-#ifdef __APPLE__
- public:
-  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
-  [[nodiscard]] Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+  bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
+                     const logging::Logger& logger) const override final;
+
+  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                            const logging::Logger& logger) const override final;
 
- protected:
-  [[nodiscard]] virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                       const logging::Logger& logger) const = 0;
-
-  static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer>
-  CreateNNLayer(ModelBuilder& model_builder, const Node& node);
-
-  static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> CreateNNLayer(const std::string& layer_name);
-#endif
-
-  // Operator support related
- public:
-  bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
-                     const logging::Logger& logger) const override;
+  void AddInitializersToSkip(ModelBuilder& /*model_builder*/, const Node& /*node*/) const override {}
 
  protected:
-  virtual bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
-                                 const logging::Logger& /* logger */) const {
+  // check if the first input's data type is supported.
+  static bool IsInput0Supported(const Node& node, const OpBuilderInputParams& input_params,
+                                const logging::Logger& logger);
+
+ private:
+  virtual bool IsOpSupportedImpl(const Node& /*node*/, const OpBuilderInputParams& /*input_params*/,
+                                 const logging::Logger& /*logger*/) const {
     return true;
   }
 
-  virtual bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const;
+  virtual bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                      const logging::Logger& logger) const;
 
-  virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 18; }
+  virtual int GetMinSupportedOpSet(const Node& /*node*/) const { return 1; }
+  virtual int GetMaxSupportedOpSet(const Node& /*node*/) const { return 20; }
 
- private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;
-  bool HasSupportedInputs(const Node& node, const logging::Logger& logger) const;
+  bool HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
+                          const logging::Logger& logger) const;
+
+  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                                       const logging::Logger& logger) const = 0;
 };
 
 }  // namespace coreml

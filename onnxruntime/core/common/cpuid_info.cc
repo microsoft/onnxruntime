@@ -22,9 +22,21 @@
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
-#endif // ARM
+#ifndef HWCAP2_I8MM
+#define HWCAP2_I8MM (1 << 13)
+#endif
 
-#endif // Linux
+#ifndef HWCAP2_SVEI8MM
+#define HWCAP2_SVEI8MM (1 << 9)
+#endif
+
+#ifndef HWCAP2_BF16
+#define HWCAP2_BF16 (1 << 14)
+#endif
+
+#endif  // ARM
+
+#endif  // Linux
 
 #if _WIN32
 
@@ -36,14 +48,13 @@
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
 
-#endif // _WIN32
+#endif  // _WIN32
 
 #if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
 #else
 #include "core/common/cpuid_uarch.h"
 #endif  // CPUINFO_SUPPORTED
-
 
 namespace onnxruntime {
 
@@ -66,7 +77,7 @@ static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 
 static inline void GetCPUID(int function_id, int sub_leaf, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)
-    __cpuidex(reinterpret_cast<int*>(data), function_id, sub_leaf);
+  __cpuidex(reinterpret_cast<int*>(data), function_id, sub_leaf);
 #elif defined(__GNUC__)
   __cpuid_count(function_id, sub_leaf, data[0], data[1], data[2], data[3]);
 #endif
@@ -136,42 +147,50 @@ void CPUIDInfo::ArmLinuxInit() {
     LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
     return;
   }
+  is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+  has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+  has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
+  has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+  has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
+  has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+
+  const uint32_t core_cnt = cpuinfo_get_cores_count();
+  core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
+  is_armv8_narrow_ld_.resize(core_cnt, false);
+  for (uint32_t c = 0; c < core_cnt; c++) {
+    const struct cpuinfo_processor* proc = cpuinfo_get_processor(c);
+    if (proc == nullptr) {
+      continue;
+    }
+    const struct cpuinfo_core* corep = proc->core;
+    if (corep == nullptr) {
+      continue;
+    }
+    auto coreid = proc->linux_id;
+    auto uarch = corep->uarch;
+    core_uarchs_[coreid] = uarch;
+    if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
+        uarch == cpuinfo_uarch_cortex_a55) {
+      is_armv8_narrow_ld_[coreid] = true;
+    }
+  }
 #else
   pytorch_cpuinfo_init_ = false;
-#endif
+  has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+  has_fp16_ |= has_arm_neon_dot_;
 
-  if (pytorch_cpuinfo_init_) {
-    is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
-    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
-    const uint32_t core_cnt = cpuinfo_get_cores_count();
-    core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
-    is_armv8_narrow_ld_.resize(core_cnt, false);
-    for (uint32_t c = 0; c < core_cnt; c++) {
-      const struct cpuinfo_processor* proc = cpuinfo_get_processor(c);
-      if (proc == nullptr) {
-        continue;
-      }
-      const struct cpuinfo_core* corep = proc->core;
-      if (corep == nullptr) {
-        continue;
-      }
-      auto coreid = proc->linux_id;
-      auto uarch = corep->uarch;
-      core_uarchs_[coreid] = uarch;
-      if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
-          uarch == cpuinfo_uarch_cortex_a55) {
-        is_armv8_narrow_ld_[coreid] = true;
-      }
-    }
-  } else {
-    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
-  }
+  has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+  has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
+
+  has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
+#endif
 }
 
 #elif defined(_WIN32)
 
 void CPUIDInfo::ArmWindowsInit() {
-
+// ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
+#ifndef _M_ARM
 #pragma region Application Family or OneCore Family
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
   // Read MIDR from windows registry
@@ -220,9 +239,52 @@ void CPUIDInfo::ArmWindowsInit() {
       lastUarch = uarch;
     }
   }
+
+  switch (lastUarch) {
+    case cpuinfo_uarch_cortex_a55:
+    case cpuinfo_uarch_cortex_a55r0:
+    case cpuinfo_uarch_cortex_a76:
+    case cpuinfo_uarch_neoverse_n1:
+    case cpuinfo_uarch_cortex_a77:
+    case cpuinfo_uarch_exynos_m4:
+    case cpuinfo_uarch_exynos_m5:
+      has_fp16_ = true;
+      break;
+    default:
+      break;
+  }
+  if (!has_fp16_) {
+    /*
+     * Detecting fp16 support. Different cores should have the same instruction set.
+     * So we just check the first ID_AA64PFR0_EL1
+     *  Op0(0b11), Op1(0b000), CRn(0b0000), CRm(0b0100), Op2(0b000),
+     */
+    uint64_t ID_AA64PFR0_EL1;
+    unsigned long valsize = sizeof(uint64_t);
+    auto retCode = ::RegGetValueA(
+        HKEY_LOCAL_MACHINE,
+        "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+        "CP 4020", RRF_RT_REG_QWORD, nullptr,
+        &ID_AA64PFR0_EL1, &valsize);
+    if (retCode == ERROR_SUCCESS) {
+      // AdvSIMD, bits [23:20]
+      auto advSimd = ID_AA64PFR0_EL1 >> 20;
+      if ((advSimd & 0xfULL) == 1) {
+        has_fp16_ = true;
+      }
+    }
+  }
 #endif /* Application Family or OneCore Family */
 
   has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+#else
+  has_arm_neon_dot_ = false;
+#endif
+  has_fp16_ |= has_arm_neon_dot_;
+  /* TODO: implement them when hw+sw is available for testing these features */
+  has_arm_neon_i8mm_ = false;
+  has_arm_sve_i8mm_ = false;
+  has_arm_neon_bf16_ = false;
 }
 
 #endif /* (arm or arm64) and windows */

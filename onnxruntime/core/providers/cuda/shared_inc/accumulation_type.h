@@ -13,13 +13,21 @@ namespace cuda {
 template <typename T>
 struct AccumulationType;
 template <>
-struct AccumulationType<half> { using type = float; };
+struct AccumulationType<half> {
+  using type = float;
+};
 template <>
-struct AccumulationType<float> { using type = float; };
+struct AccumulationType<float> {
+  using type = float;
+};
 template <>
-struct AccumulationType<double> { using type = double; };
+struct AccumulationType<double> {
+  using type = double;
+};
 template <>
-struct AccumulationType<BFloat16> { using type = float; };
+struct AccumulationType<BFloat16> {
+  using type = float;
+};
 
 template <typename T>
 using AccumulationType_t = typename AccumulationType<T>::type;

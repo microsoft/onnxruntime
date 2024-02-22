@@ -1,6 +1,6 @@
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", 128])
 unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
@@ -13,7 +13,7 @@ Y2 = helper.make_tensor_value_info("output2", TensorProto.FLOAT, ["batch", "dyna
 nodes = []
 
 # case 1
-divisor_np_val = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+divisor_np_val = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 divisor_initializer = numpy_helper.from_array(divisor_np_val, "divisor")
 div1 = helper.make_node("Div", ["input", "divisor"], ["div_1"], name="div_1")
 nodes.append(div1)
@@ -28,7 +28,7 @@ gathernd1 = helper.make_node(
 nodes.append(gathernd1)
 
 # case 2
-divisor2_np_val = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+divisor2_np_val = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 divisor2_initializer = numpy_helper.from_array(divisor2_np_val, "divisor2")
 div2 = helper.make_node("Div", ["divisor2", "input"], ["div_2"], name="div_2")
 nodes.append(div2)

@@ -242,7 +242,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
                                   token_len, utf8_chars);
             if (!valid) {
               return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Match contains invalid utf8 chars: " + submatch.as_string());
+                            "Match contains invalid utf8 chars: " + std::string{submatch});
             }
             if (utf8_chars >= size_t(mincharnum_)) {
               tokens.emplace_back(text.data() + start_pos, token_len);
@@ -384,7 +384,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
         utf8_chars = 0;
         if (!utf8_len(reinterpret_cast<const unsigned char*>(submatch.data()), token_len, utf8_chars)) {
           return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Match contains invalid utf8 chars: " + submatch.as_string());
+                        "Match contains invalid utf8 chars: " + std::string{submatch});
         }
         if (utf8_chars >= size_t(mincharnum_)) {
           row.push_back(submatch);

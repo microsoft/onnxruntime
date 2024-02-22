@@ -1,30 +1,73 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 jobs:
 - job: iOS_CI_on_Mac
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-13'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
+    PROTO_CACHE_DIR: $(Pipeline.Workspace)/proto_ccache
+    ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
   steps:
-    - script: |
-        $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh \
-          -p $(Build.BinariesDirectory)/protobuf_install -d $(Build.SourcesDirectory)/cmake/deps.txt
-      displayName: Install protobuf
-
-    - script: |
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync \
-          --build_dir $(Build.BinariesDirectory)/iOS \
-          --build_shared \
-          --use_coreml \
-          --use_xnnpack \
-          --ios \
-          --ios_sysroot iphonesimulator  \
-          --osx_arch x86_64 \
-          --apple_deploy_target 11.0 \
-          --use_xcode \
-          --config RelWithDebInfo \
-          --build_apple_framework \
-          --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
-          --parallel
-      displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+    - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: 14.3
+    - template: templates/mac-build-step-with-cache.yml
+      parameters:
+        WithCache: true
+        Today: $(TODAY)
+        AdditionalKey: onnxruntime
+        CacheDir: $(ORT_CACHE_DIR)
+        ChangeEveryCommit: true
+        BuildStep:
+          - script: |
+              python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+                --skip_submodule_sync \
+                --build_dir $(Build.BinariesDirectory)/iOS \
+                --build_shared \
+                --use_coreml \
+                --use_xnnpack \
+                --ios \
+                --apple_sysroot iphonesimulator  \
+                --osx_arch x86_64 \
+                --apple_deploy_target 12.0 \
+                --use_xcode \
+                --config RelWithDebInfo \
+                --build_apple_framework \
+                --parallel --use_binskim_compliant_compile_flags
+            displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+            env:
+              CC: clang
+              CXX: clang++
+              CCACHE_CPP2: 1
+              CCACHE_DEPEND: 1
+              CCACHE_SLOPPINESS: modules
+              CCACHE_DIR: $(ORT_CACHE_DIR)

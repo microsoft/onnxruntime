@@ -11,7 +11,6 @@
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
 
-
 namespace onnxruntime {
 
 using ConvPadVector = ConvAttributes::ConvPadVector;
@@ -78,7 +77,8 @@ class QLinearConv : public OpKernel {
     W_zero_point_value = W_zero_point_data[0];
     for (int64_t i = 1; i < W_zero_point_size; i++) {
       ORT_ENFORCE(W_zero_point_data[i] == W_zero_point_value,
-                  "QLinearConv : zero point of per-channel filter must be same");
+                  "QLinearConv : zero point of per-channel filter must be same. "
+                  "This happens by design if the quantization is symmetric.");
     }
   }
 
@@ -123,7 +123,7 @@ class QLinearConv : public OpKernel {
    * @param kernel_dim             Dimension of a filter
    * @param comp_kernel_stride     Best stride to fully utilize hand tuned computing kernel.
    * @return
-  */
+   */
   static int32_t ComputeOutputStride(int32_t degree_of_parallelism,
                                      int64_t output_image_size,
                                      int64_t group_output_channels,
@@ -159,9 +159,9 @@ class QLinearConv : public OpKernel {
     // We need a better partiton when we have a big filter tensor and very small activation tensor
     // TODO!! we should partition the weight tensor instead
     constexpr int64_t BIG_WEIGHT = 1024 * 1024;
-    if (weights >= BIG_WEIGHT && task_count < (degree_of_parallelism / 8) ) {
-        int32_t s1 = static_cast<int32_t>((output_image_size + degree_of_parallelism - 1) / degree_of_parallelism);
-        output_stride = std::max(s1, min_stride);
+    if (weights >= BIG_WEIGHT && task_count < (degree_of_parallelism / 8)) {
+      int32_t s1 = static_cast<int32_t>((output_image_size + degree_of_parallelism - 1) / degree_of_parallelism);
+      output_stride = std::max(s1, min_stride);
     }
 
     return output_stride;
@@ -291,9 +291,9 @@ class QLinearConv : public OpKernel {
 
   ConvAttributes conv_attrs_;
   TensorShape W_shape_;
-  BufferUniquePtr packed_W_buffer_;
+  IAllocatorUniquePtr<void> packed_W_buffer_;
   size_t packed_W_size_{0};
-  BufferUniquePtr reordered_W_buffer_;
+  IAllocatorUniquePtr<void> reordered_W_buffer_;
   bool is_W_signed_{false};
   bool is_W_packed_{false};
   bool is_symmetric_conv_{false};
@@ -422,22 +422,21 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
                                        is_W_signed_);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
-      auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_W_data_size));
+      packed_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_W_data_size, true);
+      auto* packed_W = static_cast<uint8_t*>(packed_W_buffer_.get());
 
       // Initialize memory to 0 as there could be some padding associated with pre-packed
       // buffer memory and we don not want it uninitialized and generate different hashes
       // if and when we try to cache this pre-packed buffer for sharing between sessions.
       memset(packed_W, 0, packed_W_data_size);
 
-      packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
-
       // Allocate a temporary buffer to hold the reordered oihw->hwio filter for
       // a single group.
       //
       // Note: The size of this buffer is less than or equal to the size of the original
       // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-      auto* group_reordered_W = static_cast<uint8_t*>(alloc->Alloc(group_output_channels * group_input_channels * kernel_size));
-      BufferUniquePtr group_reordered_W_buffer(group_reordered_W, BufferDeleter(alloc));
+      auto group_reordered_W_buffer = IAllocator::MakeUniquePtr<void>(alloc, group_output_channels * group_input_channels * kernel_size, true);
+      auto* group_reordered_W = static_cast<uint8_t*>(group_reordered_W_buffer.get());
 
       const size_t W_offset = group_output_channels * kernel_dim;
 
@@ -471,14 +470,13 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
   }
 
   size_t reordered_w_data_size = SafeInt<size_t>(sizeof(uint8_t)) * output_channels * group_input_channels * kernel_size;
-  auto* reordered_W = static_cast<uint8_t*>(alloc->Alloc(reordered_w_data_size));
+  reordered_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, reordered_w_data_size, true);
+  uint8_t* reordered_W = static_cast<uint8_t*>(reordered_W_buffer_.get());
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(reordered_W, 0, reordered_w_data_size);
-
-  reordered_W_buffer_ = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
 
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
 
@@ -673,7 +671,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     // the im2col transform.
     ind_buf_length = SafeInt<size_t>(sizeof(const ActType*)) * kernel_size * output_image_size;
     if (parallel_batch)
-      ind_buf_length *= SafeInt<size_t>(N); // ind buffer per each image in the batch
+      ind_buf_length *= SafeInt<size_t>(N);  // ind buffer per each image in the batch
     auto* indirection_data = alloc->Alloc(ind_buf_length);
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
     padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
@@ -682,16 +680,16 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   /*************************************
-  * Thread partition idea: we are essentially partition a GEMM A[M,K] x B[K,N].
-  * Here B contains the conv filters, which are usually not big, so we assume
-  * it can be in cache entirely. Then we simply partition A horizontally into
-  * thin slices along M dimension. This would ensure that the slice of A fits
-  * into the cache and reduce the chance of kernel waiting for memory.
-  *
-  * The thickness of A slice should be multiple of kernel stride M. Since
-  * we have to choose from many different kernels, the logic of finding
-  * the stride M is hacky.
-  */
+   * Thread partition idea: we are essentially partition a GEMM A[M,K] x B[K,N].
+   * Here B contains the conv filters, which are usually not big, so we assume
+   * it can be in cache entirely. Then we simply partition A horizontally into
+   * thin slices along M dimension. This would ensure that the slice of A fits
+   * into the cache and reduce the chance of kernel waiting for memory.
+   *
+   * The thickness of A slice should be multiple of kernel stride M. Since
+   * we have to choose from many different kernels, the logic of finding
+   * the stride M is hacky.
+   */
 
   // The following convoluted branches must match the kernel selection logic
   // in conv_worker.
@@ -716,7 +714,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   const int32_t stride_m = ComputeOutputStride(degree_of_par, output_image_size, group_output_channels, kernel_dim, compute_stride);
   const int64_t task_count = (output_image_size + stride_m - 1) / stride_m;
 
-  if (parallel_batch) // process all batch images in the same parallel section
+  if (parallel_batch)  // process all batch images in the same parallel section
   {
     auto conv_worker = [&](ptrdiff_t batch) {
       int64_t image_id = batch / task_count;
@@ -732,19 +730,19 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         worker_indirection_buffer = static_cast<ActType const**>(indirection_buffer.get()) + offset;
 
         math::Im2col<ActType, StorageOrder::NHWC>()(
-          worker_input_image,
-          C,
-          input_shape.GetDims().data(),
-          output_shape.GetDims().data(),
-          kernel_shape.data(),
-          strides.data(),
-          dilations.data(),
-          pads.data(),
-          static_cast<ptrdiff_t>(kernel_rank),
-          output_start,
-          output_count,
-          worker_indirection_buffer,
-          padding_data.data());
+            worker_input_image,
+            C,
+            input_shape.GetDims().data(),
+            output_shape.GetDims().data(),
+            kernel_shape.data(),
+            strides.data(),
+            dilations.data(),
+            pads.data(),
+            static_cast<ptrdiff_t>(kernel_rank),
+            output_start,
+            output_count,
+            worker_indirection_buffer,
+            padding_data.data());
       }
 
       auto* worker_output = Ydata + Y_offset * image_id + output_start * M;
@@ -808,14 +806,14 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             strides.data(),
             dilations.data(),
             pads.data(),
-            static_cast<int64_t>(kernel_rank),
+            static_cast<ptrdiff_t>(kernel_rank),
             static_cast<ActType*>(col_buffer.get()) + group_id * col_buffer_size,
             X_zero_point_value);
       }
     }
 
     auto conv_worker = [&](ptrdiff_t batch) {
-      int64_t output_start = batch * stride_m;
+      int64_t output_start = (int64_t)batch * (int64_t)stride_m;
       int64_t output_count = std::min((int64_t)stride_m, output_image_size - output_start);
 
       ActType const** worker_indirection_buffer = nullptr;

@@ -381,7 +381,7 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
   return Status::OK();
 }
 
-#endif  //ORT_MINIMAL_BUILD
+#endif  // ORT_MINIMAL_BUILD
 
 template <typename T, typename ValueRecorder>
 void ScanAndRecordCoo(gsl::span<const T> src_span,

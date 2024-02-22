@@ -56,9 +56,13 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
 };
 
 struct MyCustomOpSecondInputOnCpu : Ort::CustomOpBase<MyCustomOpSecondInputOnCpu, MyCustomKernelSecondInputOnCpu> {
-  explicit MyCustomOpSecondInputOnCpu(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+  explicit MyCustomOpSecondInputOnCpu(const char* provider, void* compute_stream)
+      : provider_(provider), compute_stream_(compute_stream) {}
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernelSecondInputOnCpu(info, compute_stream_); };
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
+    return new MyCustomKernelSecondInputOnCpu(info, compute_stream_);
+  };
+
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -69,7 +73,9 @@ struct MyCustomOpSecondInputOnCpu : Ort::CustomOpBase<MyCustomOpSecondInputOnCpu
   };
 
   OrtMemType GetInputMemoryType(size_t i) const {
-    if (i == 1) { return OrtMemTypeCPUInput; }
+    if (i == 1) {
+      return OrtMemTypeCPUInput;
+    }
     return OrtMemTypeDefault;
   };
 
@@ -92,7 +98,8 @@ struct MyCustomKernelMultipleDynamicInputs {
   const OrtApi& ort_;
 };
 
-struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDynamicInputs, MyCustomKernelMultipleDynamicInputs> {
+struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDynamicInputs,
+                                                           MyCustomKernelMultipleDynamicInputs> {
   explicit MyCustomOpMultipleDynamicInputs(const char* provider) : provider_(provider) {}
   void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
     return new MyCustomKernelMultipleDynamicInputs(api, info);
@@ -123,7 +130,10 @@ struct MyCustomKernelWithOptionalInput {
 struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInput, MyCustomKernelWithOptionalInput> {
   explicit MyCustomOpWithOptionalInput(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernelWithOptionalInput(info); };
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
+    return new MyCustomKernelWithOptionalInput(info);
+  };
+
   const char* GetName() const { return "FooBar"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -179,11 +189,15 @@ struct TemplatedCustomOp : Ort::CustomOpBase<TemplatedCustomOp<T>, T> {
                     bool input_homogeneity, std::vector<ONNXTensorElementDataType> output_types,
                     std::vector<OrtCustomOpInputOutputCharacteristic> output_characs, int output_min_arity,
                     bool output_homogeneity)
-      : op_name_(op_name), input_types_(std::move(input_types)),
-      input_characs_(std::move(input_characs)), input_min_arity_(input_min_arity),
-      input_homogeneity_(input_homogeneity), output_types_(std::move(output_types)),
-      output_characs_(std::move(output_characs)), output_min_arity_(output_min_arity),
-      output_homogeneity_(output_homogeneity) {}
+      : op_name_(op_name),
+        input_types_(std::move(input_types)),
+        input_characs_(std::move(input_characs)),
+        input_min_arity_(input_min_arity),
+        input_homogeneity_(input_homogeneity),
+        output_types_(std::move(output_types)),
+        output_characs_(std::move(output_characs)),
+        output_min_arity_(output_min_arity),
+        output_homogeneity_(output_homogeneity) {}
 
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
     return new T(info);
@@ -268,7 +282,10 @@ struct MyCustomKernelWithAttributes {
 struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, MyCustomKernelWithAttributes> {
   explicit MyCustomOpWithAttributes(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MyCustomKernelWithAttributes(info); };
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const {
+    return new MyCustomKernelWithAttributes(info);
+  };
+
   const char* GetName() const { return "FooBar_Attr"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -325,6 +342,7 @@ struct StandaloneCustomKernel {
   void Compute(OrtKernelContext* context);
 
  private:
+#if !defined(REDUCED_OPS_BUILD)
   void InitTopK();
   void InvokeTopK(OrtKernelContext* context);
 
@@ -333,10 +351,12 @@ struct StandaloneCustomKernel {
 
   void InitInvokeConv(OrtKernelContext* context);  // create Conv and invoke in Compute(...)
 
-  Ort::KernelInfo info_copy_{nullptr};
-  Ort::Op op_add_{nullptr};
   Ort::Op op_topk_{nullptr};
   Ort::Op op_gru_{nullptr};
+#endif
+
+  Ort::KernelInfo info_copy_{nullptr};
+  Ort::Op op_add_{nullptr};
 };
 
 struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCustomKernel> {
@@ -356,4 +376,92 @@ struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCust
 
  private:
   const char* provider_;
+};
+
+/////////////// structures to test multi-kernls-single-schema ///////////////
+
+struct MulTopKernelFloat {
+  MulTopKernelFloat(const OrtKernelInfo*){};
+  ~MulTopKernelFloat() = default;
+  void Compute(OrtKernelContext*){};
+};
+
+struct MulTopOpFloat : Ort::CustomOpBase<MulTopOpFloat, MulTopKernelFloat> {
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelFloat(info); }
+  const char* GetName() const { return "MulTop"; }
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
+  size_t GetInputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+  size_t GetOutputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+};
+
+struct MulTopKernelInt32 {
+  MulTopKernelInt32(const OrtKernelInfo*){};
+  ~MulTopKernelInt32() = default;
+  void Compute(OrtKernelContext*){};
+};
+
+struct MulTopOpInt32 : Ort::CustomOpBase<MulTopOpInt32, MulTopKernelInt32> {
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelInt32(info); }
+  const char* GetName() const { return "MulTop"; }
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
+  size_t GetInputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; }
+  size_t GetOutputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; }
+};
+
+struct MulTopKernelDouble {
+  MulTopKernelDouble(const OrtKernelInfo*){};
+  ~MulTopKernelDouble() = default;
+  void Compute(OrtKernelContext*){};
+};
+
+// MulTopOpDouble and MulTopOpFloat has input count mismatch
+struct MulTopOpDouble : Ort::CustomOpBase<MulTopOpDouble, MulTopKernelDouble> {
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelDouble(info); }
+  const char* GetName() const { return "MulTop"; }
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
+  size_t GetInputTypeCount() const { return 2; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; }
+  size_t GetOutputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; }
+};
+
+struct MulTopKernelInt16 {
+  MulTopKernelInt16(const OrtKernelInfo*){};
+  ~MulTopKernelInt16() = default;
+  void Compute(OrtKernelContext*){};
+};
+
+// MulTopOpInt16 and MulTopOpFloat has output count mismatch
+struct MulTopOpInt16 : Ort::CustomOpBase<MulTopOpInt16, MulTopKernelInt16> {
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelInt16(info); }
+  const char* GetName() const { return "MulTop"; }
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
+  size_t GetInputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16; }
+  size_t GetOutputTypeCount() const { return 2; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16; }
+};
+
+// MulTopKernelFloat16 and MulTopOpFloat has input characteristic mismatch
+struct MulTopKernelFloat16 {
+  MulTopKernelFloat16(const OrtKernelInfo*){};
+  ~MulTopKernelFloat16() = default;
+  void Compute(OrtKernelContext*){};
+};
+
+struct MulTopOpFloat16 : Ort::CustomOpBase<MulTopOpFloat16, MulTopKernelFloat16> {
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MulTopKernelFloat16(info); }
+  const char* GetName() const { return "MulTop"; }
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; }
+  size_t GetInputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; }
+  size_t GetOutputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; }
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;
+  }
 };

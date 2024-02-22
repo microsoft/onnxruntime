@@ -1,0 +1,5 @@
+{
+    "name": "onnxruntime-training-objc",
+    "summary": "ONNX Runtime Objective-C Pod",
+    "description": "A pod for the ONNX Runtime Objective-C training API."
+}

@@ -58,8 +58,26 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),
         init_greedy_state_func_(init_greedy_state_func),
-        update_feeds_func_(update_feeds_func) {
+        update_feeds_func_(update_feeds_func) {}
+
+#ifdef USE_CUDA
+  Status InitializeCuda(
+      const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
+      const void* cuda_device_prop,
+      int cuda_device_arch) {
+    reorder_past_state_func_ = reorder_past_state_func;
+    cuda_device_prop_ = cuda_device_prop;
+    cuda_device_arch_ = cuda_device_arch;
+    if (gpt_subgraph_.has_decoder_masked_attention_) {
+      ORT_RETURN_IF_NOT(cuda_device_arch_ >= 530,
+                        "Decoder masked self attention can only be used on "
+                        "GPU cards of compute capability 5.3 or higher. "
+                        "This card has compute capability ",
+                        cuda_device_arch_);
+    }
+    return Status::OK();
   }
+#endif
 
   // Execute beam search in iterations util stopping criteria is reached.
   // In each iteration, GPT subgraph is called, and next token for each sequence is generated.
@@ -91,14 +109,20 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
   GenerationDeviceHelper::CreateGptInputsFunc create_inputs_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitGreedyStateFunc<T> init_greedy_state_func_;
+#ifdef USE_CUDA
+  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
+#endif
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
+
+  const void* cuda_device_prop_ = nullptr;
+  int cuda_device_arch_ = 0;
 };
 
 template <typename T, typename ParametersT>
 Status GreedySearchGpt<T, ParametersT>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths,
-                                              OrtValue& expanded_input_ids,
-                                              std::vector<OrtValue>& feeds,
-                                              IAllocatorUniquePtr<char>& buffer) {
+                                                           OrtValue& expanded_input_ids,
+                                                           std::vector<OrtValue>& feeds,
+                                                           IAllocatorUniquePtr<char>& buffer) {
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
   const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(6);
@@ -153,12 +177,14 @@ Status GreedySearchGpt<T, ParametersT>::UpdateFeeds(
                             increase_position,
                             next_tokens,
                             place_holder,
+                            place_holder,
                             this->parameters_->num_beams,
                             gpt_subgraph_.GetFirstPastInputIndex(),
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
                             gpt_subgraph_.past_present_share_buffer_,
-                            past_sequence_length
-                            );
+                            past_sequence_length,
+                            -1,  // Input sequence length needn't be passed in for GreedySearch
+                            false);
 }
 
 template <typename T, typename ParametersT>
@@ -181,8 +207,12 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                     static_cast<int>(parameters->BatchBeamSize()),
                     static_cast<int>(parameters->vocab_size),
                     static_cast<int>(parameters->sequence_length),
-                    parameters->max_length,
-                    this->IsCuda());
+                    static_cast<int>(parameters->max_length),
+                    static_cast<int>(parameters->num_heads),
+                    static_cast<int>(parameters->head_size),
+                    gpt_subgraph_.has_decoder_masked_attention_,
+                    this->IsCuda(),
+                    this->ort_stream_);
 
   SamplingState<T> sampling_state;
   if (std::is_same<ParametersT, SamplingParameters>::value) {
@@ -192,15 +222,16 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                         static_cast<int>(parameters->vocab_size),
                         static_cast<int>(parameters->max_length - parameters->sequence_length),
                         parameters->seed,
-                        this->IsCuda());
+                        this->IsCuda(),
+                        this->ort_stream_);
   }
 
   IAllocatorUniquePtr<char> buffer;
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(greedy_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
 
-  if (gpt_subgraph_.past_present_share_buffer_) { // Reuse past and present
-    fetches.reserve((int64_t)gpt_subgraph_.GetFirstPresentOutputIndex() + gpt_subgraph_.num_layers);
+  if (gpt_subgraph_.past_present_share_buffer_) {  // Reuse past and present
+    fetches.reserve(static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
     fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
     for (int layer = 0; layer < gpt_subgraph_.num_layers; layer++) {
       int feed_idx = gpt_subgraph_.GetFirstPastInputIndex() + layer;
@@ -307,6 +338,25 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     // Increase sequence length after a new token is generated.
     ++current_length;
 
+#ifdef USE_CUDA
+    // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
+    // contains DecoderMaskedSelfAttention nodes
+    if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_attention_) {
+      size_t offset = static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
+      // We will use the same staging buffer while transposing all the layers' past state
+      // and this is okay because we use the same stream to do the staging copy and the transpose
+      // operations.
+      // If we ever do them in different streams, we must use different staging buffers to avoid data
+      // races.
+      for (size_t i = 0; i < static_cast<size_t>(gpt_subgraph_.num_layers); ++i) {
+        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                     *fetches[offset + i].GetMutable<Tensor>(),
+                                                     greedy_state.staging_for_past_state_reorder,
+                                                     this->ort_stream_));
+      }
+    }
+#endif
+
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
       bool increase_position = (iteration_counter > 1);
@@ -340,16 +390,16 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   // Debug the one step filtered logits for sampling
   int64_t filtered_logits_dims[] = {parameters->batch_size, parameters->vocab_size};
   TensorShape filtered_logits_shape(&filtered_logits_dims[0],
-                                 sizeof(filtered_logits_dims) / sizeof(filtered_logits_dims[0]));
+                                    sizeof(filtered_logits_dims) / sizeof(filtered_logits_dims[0]));
   Tensor* filtered_logits = this->context_.Output(1, filtered_logits_shape);
   if (filtered_logits != nullptr) {
     gsl::span<float> filtered_logits_span = filtered_logits->MutableDataAsSpan<float>();
     for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {
       auto batch_output = filtered_logits_span.subspan(
-        static_cast<size_t>(batch_id) * parameters->vocab_size,
-        parameters->vocab_size);
+          static_cast<size_t>(batch_id) * parameters->vocab_size,
+          parameters->vocab_size);
       gsl::span<const float> batch_filtered_logits = gsl::make_span(sampling_state.h_softmaxed_score.data() +
-                                                                    batch_id * parameters->vocab_size,
+                                                                        batch_id * parameters->vocab_size,
                                                                     parameters->vocab_size);
 
       gsl::copy(batch_filtered_logits, batch_output);

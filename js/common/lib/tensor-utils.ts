@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TensorToImageDataOptions, TypedTensor} from './tensor';
+import {ConversionUtils} from './tensor-conversion.js';
+import {Tensor, TypedTensor} from './tensor.js';
 
 interface Properties {
   /**
@@ -19,14 +20,12 @@ export interface TypedShapeUtils<T extends Tensor.Type> {
   reshape(dims: readonly number[]): TypedTensor<T>;
 }
 
-// TODO: add more tensor utilities
-export interface TypedTensorUtils<T extends Tensor.Type> extends Properties, TypedShapeUtils<T> {
-  /**
-   * creates an ImageData instance from tensor
-   *
-   * @param tensorFormat - Interface describing tensor instance - Defaults: RGB, 3 channels, 0-255, NHWC
-   * 0-255, NHWC
-   * @returns An ImageData instance which can be used to draw on canvas
-   */
-  toImageData(options?: TensorToImageDataOptions): ImageData;
-}
+/**
+ * interface `TensorUtils` includes all utility members that does not use the type parameter from their signature.
+ */
+export interface TensorUtils extends Properties, ConversionUtils {}
+
+/**
+ * interface `TypedShapeUtils` includes all utility members that uses the type parameter from their signature.
+ */
+export interface TypedTensorUtils<T extends Tensor.Type> extends TensorUtils, TypedShapeUtils<T> {}

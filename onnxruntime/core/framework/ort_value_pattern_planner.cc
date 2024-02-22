@@ -53,7 +53,6 @@ common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index) {
 }
 
 common::Status OrtValuePatternPlanner::GeneratePatterns(MemoryPatternGroup& out) {
-
   out.locations.reserve(planner_map_.size());
   out.patterns.reserve(planner_map_.size());
   for (auto& it : planner_map_) {

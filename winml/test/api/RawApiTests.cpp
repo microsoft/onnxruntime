@@ -11,16 +11,15 @@
 
 namespace ml = Microsoft::AI::MachineLearning;
 
-auto CreateModelAsBuffer(const wchar_t* model_path)
-{
-    std::ifstream input_stream(model_path, std::ios::binary | std::ios::ate);
-    std::streamsize size = input_stream.tellg();
-    input_stream.seekg(0, std::ios::beg);
+auto CreateModelAsBuffer(const wchar_t* model_path) {
+  std::ifstream input_stream(model_path, std::ios::binary | std::ios::ate);
+  std::streamsize size = input_stream.tellg();
+  input_stream.seekg(0, std::ios::beg);
 
-    std::vector<char> buffer(static_cast<std::vector<char>::size_type>(size));
-    input_stream.read(buffer.data(), size);
+  std::vector<char> buffer(static_cast<std::vector<char>::size_type>(size));
+  input_stream.read(buffer.data(), size);
 
-    return std::make_pair(buffer, size);
+  return std::make_pair(buffer, size);
 }
 
 static void RawApiTestsApiTestsClassSetup() {
@@ -96,13 +95,13 @@ static void EvaluateFromModelFromBuffer() {
 
 const RawApiTestsApi& getapi() {
   static constexpr RawApiTestsApi api = {
-      RawApiTestsApiTestsClassSetup,
-      CreateModelFromFilePath,
-      CreateCpuDevice,
-      Evaluate,
-      EvaluateNoInputCopy,
-      EvaluateManyBuffers,
-      EvaluateFromModelFromBuffer,
+    RawApiTestsApiTestsClassSetup,
+    CreateModelFromFilePath,
+    CreateCpuDevice,
+    Evaluate,
+    EvaluateNoInputCopy,
+    EvaluateManyBuffers,
+    EvaluateFromModelFromBuffer,
   };
   return api;
 }

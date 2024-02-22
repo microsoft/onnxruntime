@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <gtest/gtest.h>
@@ -31,7 +31,6 @@ static void TestModelInfo(const Ort::Session& session, bool is_input, const std:
   ASSERT_EQ(real_dims, dims);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 // onnx format models are not supported in a minimal build
 TEST(CApiTest, input_output_type_info) {
   constexpr const ORTCHAR_T* model_uri = ORT_TSTR("../models/opset8/test_squeezenet/model.onnx");

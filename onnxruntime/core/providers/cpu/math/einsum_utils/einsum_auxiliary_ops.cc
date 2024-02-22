@@ -192,7 +192,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
         permutation[SafeInt<size_t>(rank) - 2] = onnxruntime::narrow<size_t>(first_dim);
         first_dim_axis = rank - 2;
       } else {  // If rank - 2 is occupied by second_dim, then put first_dim in rank - 1
-        permutation[SafeInt<size_t>(rank)  - 1] = onnxruntime::narrow<size_t>(first_dim);
+        permutation[SafeInt<size_t>(rank) - 1] = onnxruntime::narrow<size_t>(first_dim);
         first_dim_axis = rank - 1;
         preserve_innermost_dim_val = true;  // We always want to preserve the dim value of the first_dim
       }
@@ -200,7 +200,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
     // Put the second_dim in the dim not occupied by the first_dim
     if (first_dim_axis != rank - 1) {
-      permutation[SafeInt<size_t>(rank)  - 1] = onnxruntime::narrow<size_t>(second_dim);
+      permutation[SafeInt<size_t>(rank) - 1] = onnxruntime::narrow<size_t>(second_dim);
     } else {
       permutation[SafeInt<size_t>(rank) - 2] = onnxruntime::narrow<size_t>(second_dim);
     }

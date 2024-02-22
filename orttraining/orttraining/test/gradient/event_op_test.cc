@@ -25,7 +25,7 @@ void run_provider_specific_optest(OpTester& tester) {
 #ifdef USE_CUDA
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
-#else 
+#else
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
 #endif

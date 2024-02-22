@@ -44,7 +44,7 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.
 // "0": enable. ORT does fusion logic for QDQ format.
 // "1": disable. ORT doesn't do fusion logic for QDQ format.
-// Its default value is "0"
+// Its default value is "0" unless the DirectML execution provider is registered, in which case it defaults to "1".
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
 // It controls whether to enable Double QDQ remover and Identical Children Consolidation
@@ -67,20 +67,30 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+// This setting controls whether to enable AheadOfTime function inlining.
+// AOT function inlining examines the graph and attempts to inline as many locally defined functions in the model
+// as possible with the help of enabled execution providers.
+// This can reduce the number of function calls and improve performance because it is done before
+// Level1 optimizers and constant folding. However, under some circumstances, when the EPs are not available,
+// one can disable the AOT inlining, produce an optimized model and postpone AOT until run time.
+// "0": enable; "1": disable.
+// Its default value is "0".
+static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
+
 #ifdef ENABLE_TRAINING
 // Specifies a list of op types for memory footprint reduction.
 // The value should be a ","-delimited list of pair of
-// <subgraph string : optimization strategy : number of subgraph to apply>.
+// <subgraph string: optimization strategy: number of subgraph to apply>.
 // For example, "Gelu+Cast+:1:0,Dropout+:1:1".
 //   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
 //   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
 //   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
 //   the memory.
-static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.enable_memory_optimizer";
+static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.memory_optimizer_config";
 
-// Specifies the level for detecting subgraphs for memory footprint reduction.
-// The value should be an integer. The default value is 0.
-static const char* const kOrtSessionOptionsMemoryOptimizerProbeLevel = "optimization.enable_memory_probe_recompute_level";
+// Specifies the config for detecting subgraphs for memory footprint reduction.
+// The value should be a string contains int separated using commas. The default value is "0:0".
+static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimization.enable_memory_probe_recompute_config";
 #endif
 
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
@@ -165,6 +175,11 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
 
+// "1": every model using a more recent opset than the latest released one will fail
+// "0": the model may or may not work if onnxruntime cannot find an implementation, this option
+// is used for development purpose.
+static const char* const kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly = "session.allow_released_opsets_only";
+
 // The file saves configuration for partitioning node among logic streams
 static const char* const kNodePartitionConfigFile = "session.node_partition_config_file";
 
@@ -184,3 +199,60 @@ static const char* const kNodePartitionConfigFile = "session.node_partition_conf
 //    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
 //    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
 static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "session.intra_op_thread_affinities";
+
+// This option will dump out the model to assist debugging any issues with layout transformation,
+// and is primarily intended for developer usage. It is only relevant if an execution provider that requests
+// NHWC layout is enabled such as NNAPI, XNNPACK or QNN.
+//
+// Default is off. Set to "1" to enable.
+//
+// If modified by layout transformation the model will be dumped after these steps:
+//   1) insertion of the layout transformation Transpose nodes
+//   2) after those are optimized using the transpose optimizer,
+//   3) after the L1 transformers are applied to the updated graph.
+// The model will be saved to filename post_layout_transform_step_<step_number>.onnx.
+static const char* const kDebugLayoutTransformation = "session.debug_layout_transformation";
+
+// Graph nodes that are not supported by the execution providers (EPs) explicitly added to the session are
+// assigned (i.e., "fallback") to the CPU EP by default.
+//
+// This option allows the user to disable the fallback of unsupported graph nodes to the CPU EP.
+// If this option is set to "1", session creation will fail if the execution providers other than the CPU EP cannot
+// fully support all of the nodes in the graph.
+//
+// It is invalid to set this option and explicitly add the CPU EP to the session. In this case, session creation
+// will also fail with an error.
+//
+// Option values:
+// - "0": CPU EP fallback is not disabled. [DEFAULT]
+// - "1": CPU EP fallback is disabled.
+static const char* const kOrtSessionOptionsDisableCPUEPFallback = "session.disable_cpu_ep_fallback";
+
+// Use this config when serializing a large model after optimization to specify an external initializers file
+static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFileName =
+    "session.optimized_model_external_initializers_file_name";
+
+// Use this config to control the minimum size of the initializer when externalizing it during serialization
+static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
+    "session.optimized_model_external_initializers_min_size_in_bytes";
+
+// Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
+// The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
+// "0": disable. (default)
+// "1": enable.
+static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
+
+// Specify the file path for the Onnx model which has EP context.
+// Default to original_file_name_ctx.onnx if not specified
+static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
+
+// Flag to specify whether to dump the EP context into the Onnx model.
+// "0": dump the EP context into separate file, keep the file name in the Onnx model.
+// "1": dump the EP context into the Onnx model. (default).
+static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
+
+// Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
+// Option values:
+// - "0": Gemm FastMath mode is not enabled. [DEFAULT]
+// - "1": Gemm FastMath mode is enabled.
+static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";

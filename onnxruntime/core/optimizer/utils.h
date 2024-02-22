@@ -103,6 +103,10 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
+template <typename T>
+bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, T& value,
+                               bool is_constant);
+
 #endif  // !#if !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

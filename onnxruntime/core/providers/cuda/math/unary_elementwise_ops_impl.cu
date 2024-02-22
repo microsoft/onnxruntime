@@ -6,6 +6,10 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+#include "cuda_fp8.h"
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -49,13 +53,14 @@ UNARY_OPS()
 // F: float
 // D: double
 // O: bool
+// X: BFloat16
 
 #define SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(name) \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, half)     \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, float)    \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, double)
 
-#define SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDB(name) \
+#define SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(name) \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(name)        \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, BFloat16)
 
@@ -64,7 +69,7 @@ UNARY_OPS()
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, int16_t)      \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, int32_t)      \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, int64_t)      \
-  SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(name)
+  SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(name)
 
 #define SPECIALIZED_UNARY_ELEMENTWISE_IMPL_BWUZCSILHFD(name) \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, uint8_t)          \
@@ -78,14 +83,15 @@ SPECIALIZED_UNARY_ELEMENTWISE_IMPL_CSILHFD(Neg)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Floor)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Ceil)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Reciprocal)
-SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Sqrt)
-SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDB(Log)
-SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDB(Exp)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Sqrt)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Log)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFDX(Exp)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Erf)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Round)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Sin)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Cos)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL(Not, bool)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL_BWUZCSILHFD(Sign)
 
 // When casting, half needs to be converted via float type from most other types
 template <typename T>
@@ -115,50 +121,168 @@ struct OP_Cast {
   }
 };
 
+#define IMPL_CAST_IMPL(InT, OutT)                                                                        \
+  void Explicit_Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) { \
+    UnaryElementWiseImpl(stream, input_data, output_data, OP_Cast<InT, OutT>(), count);                  \
+  }
+
+#define IMPL_CAST_IMPL_THROW(InT, OutT)                                                                  \
+  void Explicit_Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) { \
+    ORT_THROW("Cast from " #InT " to " #OutT " must define saturate.");                                  \
+  }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+#define IMPL_CAST_IMPL_FROM(T)            \
+  IMPL_CAST_IMPL(T, half)                 \
+  IMPL_CAST_IMPL(T, float)                \
+  IMPL_CAST_IMPL(T, double)               \
+  IMPL_CAST_IMPL(T, int8_t)               \
+  IMPL_CAST_IMPL(T, int16_t)              \
+  IMPL_CAST_IMPL(T, int32_t)              \
+  IMPL_CAST_IMPL(T, int64_t)              \
+  IMPL_CAST_IMPL(T, uint8_t)              \
+  IMPL_CAST_IMPL(T, uint16_t)             \
+  IMPL_CAST_IMPL(T, uint32_t)             \
+  IMPL_CAST_IMPL(T, uint64_t)             \
+  IMPL_CAST_IMPL(T, bool)                 \
+  IMPL_CAST_IMPL(T, BFloat16)             \
+  IMPL_CAST_IMPL_THROW(T, Float8E4M3FN)   \
+  IMPL_CAST_IMPL_THROW(T, Float8E5M2)     \
+  IMPL_CAST_IMPL_THROW(T, Float8E4M3FNUZ) \
+  IMPL_CAST_IMPL_THROW(T, Float8E5M2FNUZ)
+
+#else
+
+#define IMPL_CAST_IMPL_FROM(T) \
+  IMPL_CAST_IMPL(T, half)      \
+  IMPL_CAST_IMPL(T, float)     \
+  IMPL_CAST_IMPL(T, double)    \
+  IMPL_CAST_IMPL(T, int8_t)    \
+  IMPL_CAST_IMPL(T, int16_t)   \
+  IMPL_CAST_IMPL(T, int32_t)   \
+  IMPL_CAST_IMPL(T, int64_t)   \
+  IMPL_CAST_IMPL(T, uint8_t)   \
+  IMPL_CAST_IMPL(T, uint16_t)  \
+  IMPL_CAST_IMPL(T, uint32_t)  \
+  IMPL_CAST_IMPL(T, uint64_t)  \
+  IMPL_CAST_IMPL(T, bool)      \
+  IMPL_CAST_IMPL(T, BFloat16)
+
+#endif
+
+IMPL_CAST_IMPL_FROM(half)
+IMPL_CAST_IMPL_FROM(float)
+IMPL_CAST_IMPL_FROM(double)
+IMPL_CAST_IMPL_FROM(int8_t)
+IMPL_CAST_IMPL_FROM(int16_t)
+IMPL_CAST_IMPL_FROM(int32_t)
+IMPL_CAST_IMPL_FROM(int64_t)
+IMPL_CAST_IMPL_FROM(uint8_t)
+IMPL_CAST_IMPL_FROM(uint16_t)
+IMPL_CAST_IMPL_FROM(uint32_t)
+IMPL_CAST_IMPL_FROM(uint64_t)
+IMPL_CAST_IMPL_FROM(bool)
+IMPL_CAST_IMPL_FROM(BFloat16)
+#if !defined(DISABLE_FLOAT8_TYPES)
+IMPL_CAST_IMPL_FROM(Float8E4M3FN)
+IMPL_CAST_IMPL_FROM(Float8E5M2)
+#endif
+
 template <typename InT, typename OutT>
-void Impl_Cast(
-    cudaStream_t stream,
-    const InT* input_data,
-    OutT* output_data,
-    size_t count) {
-  UnaryElementWiseImpl(stream,
-                       input_data,
-                       output_data,
-                       OP_Cast<InT, OutT>(),
-                       count);
-}
+struct OP_CastSat {
+  __device__ __inline__ OutT operator()(const InT& a) const;
+};
 
-#define SPECIALIZED_CAST_IMPL2(InT, OutT) \
-  template void Impl_Cast<InT, OutT>(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count);
+template <typename InT, typename OutT>
+struct OP_CastNoSat {
+  __device__ __inline__ OutT operator()(const InT& a) const;
+};
 
-#define SPECIALIZED_CAST_FROM(T)      \
-  SPECIALIZED_CAST_IMPL2(T, half)     \
-  SPECIALIZED_CAST_IMPL2(T, float)    \
-  SPECIALIZED_CAST_IMPL2(T, double)   \
-  SPECIALIZED_CAST_IMPL2(T, int8_t)   \
-  SPECIALIZED_CAST_IMPL2(T, int16_t)  \
-  SPECIALIZED_CAST_IMPL2(T, int32_t)  \
-  SPECIALIZED_CAST_IMPL2(T, int64_t)  \
-  SPECIALIZED_CAST_IMPL2(T, uint8_t)  \
-  SPECIALIZED_CAST_IMPL2(T, uint16_t) \
-  SPECIALIZED_CAST_IMPL2(T, uint32_t) \
-  SPECIALIZED_CAST_IMPL2(T, uint64_t) \
-  SPECIALIZED_CAST_IMPL2(T, bool)     \
-  SPECIALIZED_CAST_IMPL2(T, BFloat16)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
-SPECIALIZED_CAST_FROM(half)
-SPECIALIZED_CAST_FROM(float)
-SPECIALIZED_CAST_FROM(double)
-SPECIALIZED_CAST_FROM(int8_t)
-SPECIALIZED_CAST_FROM(int16_t)
-SPECIALIZED_CAST_FROM(int32_t)
-SPECIALIZED_CAST_FROM(int64_t)
-SPECIALIZED_CAST_FROM(uint8_t)
-SPECIALIZED_CAST_FROM(uint16_t)
-SPECIALIZED_CAST_FROM(uint32_t)
-SPECIALIZED_CAST_FROM(uint64_t)
-SPECIALIZED_CAST_FROM(bool)
-SPECIALIZED_CAST_FROM(BFloat16)
+#define OP_CAST(T, NVT)                                                                                     \
+  template <>                                                                                               \
+  struct OP_CastSat<half, T> {                                                                              \
+    __device__ __inline__ T operator()(const half& v) const {                                               \
+      return T(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v, __NV_SATFINITE, NVT)), T::FromBits()); \
+    }                                                                                                       \
+  };                                                                                                        \
+  template <>                                                                                               \
+  struct OP_CastNoSat<half, T> {                                                                            \
+    __device__ __inline__ T operator()(const half& v) const {                                               \
+      return T(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v, __NV_NOSAT, NVT)), T::FromBits());     \
+    }                                                                                                       \
+  };                                                                                                        \
+  template <>                                                                                               \
+  struct OP_CastSat<float, T> {                                                                             \
+    __device__ __inline__ T operator()(const float& v) const {                                              \
+      return T(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v, __NV_SATFINITE, NVT)), T::FromBits());   \
+    }                                                                                                       \
+  };                                                                                                        \
+  template <>                                                                                               \
+  struct OP_CastNoSat<float, T> {                                                                           \
+    __device__ __inline__ T operator()(const float& v) const {                                              \
+      return T(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v, __NV_NOSAT, NVT)), T::FromBits());       \
+    }                                                                                                       \
+  };
+
+#else
+
+#define OP_CAST(T, NVT)                                        \
+  template <>                                                  \
+  struct OP_CastSat<half, T> {                                 \
+    __device__ __inline__ T operator()(const half& v) const {  \
+      return T(__half2float(v), true);                         \
+    }                                                          \
+  };                                                           \
+  template <>                                                  \
+  struct OP_CastNoSat<half, T> {                               \
+    __device__ __inline__ T operator()(const half& v) const {  \
+      return T(__half2float(v), false);                        \
+    }                                                          \
+  };                                                           \
+  template <>                                                  \
+  struct OP_CastSat<float, T> {                                \
+    __device__ __inline__ T operator()(const float& v) const { \
+      return T(v, true);                                       \
+    }                                                          \
+  };                                                           \
+  template <>                                                  \
+  struct OP_CastNoSat<float, T> {                              \
+    __device__ __inline__ T operator()(const float& v) const { \
+      return T(v, false);                                      \
+    }                                                          \
+  };
+
+#endif
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+OP_CAST(Float8E4M3FN, __NV_E4M3)
+OP_CAST(Float8E5M2, __NV_E5M2)
+
+#define EXPLICIT_IMPL_CASTSAT(InT, OutT)                                                                                   \
+  void Explicit_Impl_CastSat(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count, bool saturate) { \
+    if (saturate) {                                                                                                        \
+      UnaryElementWiseImpl(stream, input_data, output_data, OP_CastSat<InT, OutT>(), count);                               \
+    } else {                                                                                                               \
+      UnaryElementWiseImpl(stream, input_data, output_data, OP_CastNoSat<InT, OutT>(), count);                             \
+    }                                                                                                                      \
+  }
+
+EXPLICIT_IMPL_CASTSAT(float, Float8E4M3FN)
+EXPLICIT_IMPL_CASTSAT(half, Float8E4M3FN)
+EXPLICIT_IMPL_CASTSAT(float, Float8E5M2)
+EXPLICIT_IMPL_CASTSAT(half, Float8E5M2)
+
+// TODO: enable bfloat16 in another PR.
+/*
+EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E4M3FN)
+EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E5M2)
+*/
+
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

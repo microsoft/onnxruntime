@@ -39,7 +39,7 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 1. Usually some newly introduced tests will fail. Then you may need to update
 - [onnxruntime/test/onnx/main.cc](/onnxruntime/test/onnx/main.cc)
 - [onnxruntime/test/providers/cpu/model_tests.cc](/onnxruntime/test/providers/cpu/model_tests.cc)
-- [csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs](/csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs)
+- [csharp/test/Microsoft.ML.OnnxRuntime.Tests.NetCoreApp/InferenceTest.netcore.cs](/csharp/test/Microsoft.ML.OnnxRuntime.Tests.NetCoreApp/InferenceTest.netcore.cs)
 - [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
 - [onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc)
 

@@ -24,12 +24,12 @@ ONNX_OPERATOR_KERNEL_EX(GatherNDGrad, kMSDomain, 1, kCpuExecutionProvider,
 template <typename InputT>
 struct GatherNDGradComputeImpl {
   void operator()(GatherNDBase::Prepare& p, const Tensor* update_tensor) const {
-    const int64_t grad_size = update_tensor->Shape().Size();
-    const int64_t slice_size = p.element_count_per_slice;
+    const size_t grad_size = narrow<size_t>(update_tensor->Shape().Size());
+    const size_t slice_size = narrow<size_t>(p.element_count_per_slice);
     const InputT* input_base_casted = reinterpret_cast<const InputT*>(p.input_base);
     InputT* output_base_casted = reinterpret_cast<InputT*>(p.output_base);
 
-    for (int64_t i = 0; i < grad_size; i++) {
+    for (size_t i = 0; i < grad_size; i++) {
       uint64_t slice_offset = p.slice_offsets[i / slice_size];
       size_t j = i % slice_size;
       output_base_casted[slice_offset + j] += input_base_casted[i];

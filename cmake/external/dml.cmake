@@ -20,6 +20,7 @@
 
 set(onnxruntime_USE_CUSTOM_DIRECTML OFF CACHE BOOL "Depend on a custom/internal build of DirectML.")
 set(dml_EXTERNAL_PROJECT OFF CACHE BOOL "Build DirectML as a source dependency.")
+set(DML_SHARED_LIB DirectML.dll)
 
 if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   if (NOT(MSVC) OR NOT(WIN32))
@@ -40,8 +41,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
   get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
-  set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.1.10.0)
-  set(DML_SHARED_LIB DirectML.dll)
+  set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.1.13.1)
 
   # Restore nuget packages, which will pull down the DirectML redist package.
   add_custom_command(
@@ -72,12 +72,11 @@ else()
   if (dml_EXTERNAL_PROJECT)
     set(dml_preset_config $<IF:$<CONFIG:Debug>,debug,release>)
     set(dml_preset_name ${onnxruntime_target_platform}-win-redist-${dml_preset_config})
-
     include(ExternalProject)
     ExternalProject_Add(
         directml_repo
         GIT_REPOSITORY https://dev.azure.com/microsoft/WindowsAI/_git/DirectML
-        GIT_TAG 2290bd6495fdf8c35822816213516d13f3742cc9
+        GIT_TAG a5312f72c51864b4d705ac62d25d08bcd88c4fb1
         GIT_SHALLOW OFF # not allowed when GIT_TAG is a commit SHA, which is preferred (it's stable, unlike branches)
         GIT_PROGRESS ON
         BUILD_IN_SOURCE ON
@@ -89,11 +88,14 @@ else()
 
     # Target that consumers can use to link with the internal build of DirectML.
     set(directml_install_path ${CMAKE_BINARY_DIR}/directml_repo-prefix/src/directml_repo/build/${dml_preset_name}/install)
+    set(DML_PACKAGE_DIR ${directml_install_path})
     add_library(DirectML INTERFACE)
     target_link_libraries(DirectML INTERFACE ${directml_install_path}/lib/DirectML.lib)
     add_dependencies(DirectML directml_repo-install)
     include_directories(BEFORE ${directml_install_path}/include)
+    target_compile_definitions(DirectML INTERFACE DML_TARGET_VERSION_USE_LATEST=1)
   else()
-    include_directories(${dml_INCLUDE_DIR})
+    include_directories(BEFORE ${dml_INCLUDE_DIR})
+    set(DML_PACKAGE_DIR ${dml_INCLUDE_DIR}/..)
   endif()
 endif()

@@ -16,6 +16,6 @@ OrtStlAllocator<T> GetAllocator(const OpKernelContext& context) {
 }
 
 template <typename T>
-using FastAllocVector = std::vector<T,OrtStlAllocator<T>>;
+using FastAllocVector = std::vector<T, OrtStlAllocator<T>>;
 
-} // namespace onnxruntime
+}  // namespace onnxruntime

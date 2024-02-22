@@ -4,9 +4,10 @@
 # --------------------------------------------------------------------------
 
 import torch
+from torch._C._onnx import OperatorExportTypes
 
 TrainingMode = torch.onnx.TrainingMode
-from packaging.version import Version
+from packaging.version import Version  # noqa: E402
 
 
 def torch_onnx_export(
@@ -18,7 +19,7 @@ def torch_onnx_export(
     training=TrainingMode.EVAL,
     input_names=None,
     output_names=None,
-    operator_export_type=None,
+    operator_export_type=OperatorExportTypes.ONNX,
     opset_version=None,
     _retain_param_name=None,
     do_constant_folding=True,

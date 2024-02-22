@@ -10,9 +10,8 @@ import pathlib
 import sys
 
 import onnx
-from onnx import shape_inference
 
-from ..onnx_model_utils import get_opsets_imported
+from ..onnx_model_utils import ModelProtoWithShapeInfo, get_opsets_imported
 from ..reduced_build_config_parser import parse_config
 
 cpp_to_tensorproto_type = {
@@ -106,7 +105,7 @@ def check_graph(graph, opsets, required_ops, global_types, special_types, unsupp
 
         # some models don't have complete imports. use 1 as a default as that's valid for custom domains and should
         # result in an error for any others. not sure why ONNX or ORT validation allows this though.
-        opset = opsets[domain] if domain in opsets else 1
+        opset = opsets.get(domain, 1)
         if (
             domain not in required_ops
             or opset not in required_ops[domain]
@@ -216,7 +215,7 @@ def run_check_with_model(
 
     unsupported_ops = set()
     logger.debug(
-        "Checking if the data types and operators used in the model are supported " "in the pre-built ORT package..."
+        "Checking if the data types and operators used in the model are supported in the pre-built ORT package..."
     )
     unsupported = check_graph(
         model_with_type_info.graph,
@@ -236,7 +235,7 @@ def run_check_with_model(
     if unsupported:
         logger.info("\nModel is not supported by the pre-built package due to unsupported types and/or operators.")
         logger.info(
-            "Please see https://onnxruntime.ai/docs/reference/mobile/prebuilt-package/ for information "
+            "Please see https://onnxruntime.ai/docs/install/#install-on-web-and-mobile for information "
             "on what is supported in the pre-built package."
         )
         logger.info(
@@ -265,15 +264,13 @@ def run_check(model_path: pathlib.Path, mobile_pkg_build_config: pathlib.Path, l
     )
 
     model_file = model_path.resolve(strict=True)
-    model = onnx.load(str(model_file))
 
     # we need to run shape inferencing to populate that type info for node outputs.
     # we will get warnings if the model uses ORT contrib ops (ONNX does not have shape inferencing for those),
     # and shape inferencing will be lost downstream of those.
     # TODO: add support for checking ORT format model as it will have full type/shape info for all nodes
-    model_with_type_info = shape_inference.infer_shapes(model)
-
-    return run_check_with_model(model_with_type_info, mobile_pkg_build_config, logger)
+    model_wrapper = ModelProtoWithShapeInfo(model_file)
+    return run_check_with_model(model_wrapper.model_with_shape_info, mobile_pkg_build_config, logger)
 
 
 def main():
@@ -284,7 +281,7 @@ def main():
 
     parser.add_argument(
         "--config_path",
-        help="Path to required operators and types configuration used to build " "the pre-built ORT mobile package.",
+        help="Path to required operators and types configuration used to build the pre-built ORT mobile package.",
         required=False,
         type=pathlib.Path,
         default=get_default_config_path(),

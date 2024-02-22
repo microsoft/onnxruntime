@@ -95,7 +95,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         if (condition == target) {
           // Transform the output to the correct value from LookupTable
           std::transform(value.cbegin(), value.cend(), output.begin(),
-                         [condition, target, &look_up_table,is_copy](const T& value_element) {
+                         [condition, target, &look_up_table, is_copy](const T& value_element) {
                            return is_copy ? value_element : look_up_table[value_element];
                          });
         } else {
@@ -112,7 +112,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto output = per_iter_bh.OutputSpan<T>();
         // Transform the output to the correct value from LookupTable
         std::transform(condition.begin(), condition.end(), output.begin(),
-                       [target, &value,&look_up_table,is_copy](bool condition_element) {
+                       [target, &value, &look_up_table, is_copy](bool condition_element) {
                          return condition_element == target ? is_copy ? value : look_up_table[value] : T{};
                        });
       },
@@ -126,7 +126,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto output = per_iter_bh.OutputSpan<T>();
         // Transform the output to the correct value from LookupTable
         std::transform(condition.begin(), condition.end(), value.cbegin(), output.begin(),
-                       [target,&look_up_table,is_copy](bool condition_element, const T& value_element) {
+                       [target, &look_up_table, is_copy](bool condition_element, const T& value_element) {
                          return condition_element == target ? is_copy ? value_element : look_up_table[value_element] : T{};
                        });
       }};
@@ -310,16 +310,16 @@ QLinearWhere::QLinearWhere(const OpKernelInfo& info) : OpKernel(info) {
 }
 
 Status QLinearWhere::Compute(OpKernelContext* ctx) const {
-//  const auto* tensor_condition = ctx->Input<Tensor>(0);
-//  const auto* tensor_x_input = ctx->Input<Tensor>(1);
+  //  const auto* tensor_condition = ctx->Input<Tensor>(0);
+  //  const auto* tensor_x_input = ctx->Input<Tensor>(1);
   const auto* tensor_x_scale = ctx->Input<Tensor>(2);
   const auto* tensor_x_zero_point = ctx->Input<Tensor>(3);
-//  const auto* tensor_y_input = ctx->Input<Tensor>(4);
+  //  const auto* tensor_y_input = ctx->Input<Tensor>(4);
   const auto* tensor_y_scale = ctx->Input<Tensor>(5);
   const auto* tensor_y_zero_point = ctx->Input<Tensor>(6);
   const auto* tensor_z_scale = ctx->Input<Tensor>(7);
   const auto* tensor_z_zero_point = ctx->Input<Tensor>(8);
-//  auto* tensor_output = ctx->Output(0, tensor_condition->Shape());
+  //  auto* tensor_output = ctx->Output(0, tensor_condition->Shape());
   ORT_ENFORCE(tensor_x_scale->IsDataType<float>(), "Input scale is not float for quantized input x @ 2");
   ORT_ENFORCE(tensor_y_scale->IsDataType<float>(), "Input scale is not float for quantized input y @ 5");
   ORT_ENFORCE(tensor_z_scale->IsDataType<float>(), "Input scale is not float for quantized output z @ 7");
@@ -377,7 +377,7 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
   if (!is_y_copy) {
     std::copy(y_lookup_table.begin(), y_lookup_table.end(), y_user_data.begin() + 2);
   }
-  //Allocator, Allocation, and SelectBroadcastFuncs are the same implementation from where_op.cc
+  // Allocator, Allocation, and SelectBroadcastFuncs are the same implementation from where_op.cc
   const auto typed_tensor_allocation = [](const TensorAllocator& allocator,
                                           const TensorShape& shape) {
     return allocator.Allocate<uint8_t>(shape);

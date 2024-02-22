@@ -96,11 +96,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                    If);
 
 // optional type is supported starting opset-16
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   16, 18,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
+                                   If);
+
+// float 8 support was added.
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         16,
+                         19,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
                          If);
 
 If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
@@ -212,7 +220,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   std::vector<OrtDevice> feed_locations;
   ORT_RETURN_IF_ERROR(controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations));
 
-  std::vector<const OrtMemoryInfo*> fetch_locations;
+  std::vector<const OrtDevice*> fetch_locations;
   fetch_locations.reserve(info->num_outputs);
 
   // we need the allocator info for each output from the If node
@@ -220,7 +228,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   const auto& outputs = node.OutputDefs();
   for (int i = 0, end = info->num_outputs; i < end; ++i) {
     // const auto& alloc_info = controlflow::detail::FindMemoryInfoForValue(session_state, outputs[i]->Name());
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, outputs[i]->Name());
+    const auto& alloc_info = utils::FindDeviceForValue(session_state, outputs[i]->Name());
     fetch_locations.push_back(&alloc_info);
   }
 
@@ -240,7 +248,12 @@ Status If::Compute(OpKernelContext* ctx) const {
 
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
 
-  auto condition = *ctx->Input<Tensor>(0)->Data<bool>();
+  const auto& condition_tensor = *ctx->Input<Tensor>(0);
+
+  ORT_RETURN_IF_NOT(condition_tensor.Shape().Size() == 1,
+                    "If nodes condition input must have exactly one element");
+
+  auto condition = *condition_tensor.Data<bool>();
 
   auto attribute = condition ? "then_branch" : "else_branch";
   auto* session_state = ctx_internal->SubgraphSessionState(attribute);
@@ -384,7 +397,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
     if (outputs_[i].first == AllocationType::Delayed) {
       // functor to forward the allocation request from the subgraph to the If node's context so that the
       // allocation plan for the If node's output is used.
-      fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
+      fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtDevice& location,
                                                 OrtValue& ort_value, bool& allocated) {
         // if the device the If output is allocated on does not match the required device for the subgraph output
         // we don't update the provided OrtValue and return false for 'allocated'.
@@ -397,7 +410,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
 
         const OrtValue& value = *context_.GetOutputMLValue(i);
 
-        if (tensor->Location().device == location.device) {
+        if (tensor->Location().device == location) {
           // return OrtValue for allocated tensor
           ort_value = value;
           allocated = true;

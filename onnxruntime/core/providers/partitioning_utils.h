@@ -40,7 +40,7 @@ using OnGroupClosedFn = std::function<bool(const std::vector<const Node*>& group
 
 /**
 Called to create a metadef name.
-Most likely should call IExecutionProvider::GenerateMetaDefId.
+Most likely should call ModelMetadefIdGenerator.GenerateId.
 See onnxruntime/test/providers/internal_testing/internal_testing_execution_provider.cc for example usage.
 
 @return The metadef name.
@@ -70,7 +70,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_type,
                           bool debug_output = false);
 
-/** 
+/**
 Create the supported partitions for the execution provider.
 
 @param graph_viewer GraphViewer that IExecutionProvider::GetCapability is called with.

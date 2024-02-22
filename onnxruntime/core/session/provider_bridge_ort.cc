@@ -5,7 +5,8 @@
 // It implements onnxruntime::ProviderHost
 
 #include "core/common/inlined_containers.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
+#include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_transfer_manager.h"
@@ -29,6 +30,7 @@
 #include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
 #include "core/framework/murmurhash3.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -42,12 +44,12 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
 #endif
-#if defined(ORT_USE_NCCL)
+#if defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
 #include "orttraining/training_ops/rocm/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
@@ -55,6 +57,8 @@
 namespace ONNX_NAMESPACE {
 // We use these names in the provider API because we don't have the protobuf definitions of the RepeatedField* types
 using int64s = google::protobuf::RepeatedField<int64_t>;
+using float32s = google::protobuf::RepeatedField<float>;
+using StringStringEntryProtos = google::protobuf::RepeatedPtrField<StringStringEntryProto>;
 using TensorProtos = google::protobuf::RepeatedPtrField<TensorProto>;
 using TensorShapeProto_Dimensions = google::protobuf::RepeatedPtrField<TensorShapeProto_Dimension>;
 using ValueInfoProtos = google::protobuf::RepeatedPtrField<ValueInfoProto>;
@@ -75,6 +79,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
+#include "core/providers/vitisai/vitisai_provider_factory_creator.h"
 
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cann/cann_provider_factory.h"
@@ -86,6 +91,11 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cann/cann_provider_options.h"
+#include "core/providers/dnnl/dnnl_provider_options.h"
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -107,11 +117,16 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
+ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
 ProviderInfo_CANN* TryGetProviderInfo_CANN();
 ProviderInfo_CANN& GetProviderInfo_CANN();
+ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl();
+ProviderInfo_Dnnl& GetProviderInfo_Dnnl();
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
 ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
+ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
 
@@ -160,6 +175,22 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
 
   Node::EdgeConstIterator v_;
 };
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_name) {
+  const auto& platform_env = onnxruntime::Env::Default();
+  void* library_handle = nullptr;
+
+  ORT_RETURN_IF_ERROR(platform_env.LoadDynamicLibrary(library_name, false, &library_handle));
+  if (!library_handle) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load dynamic library ",
+                           onnxruntime::PathToUTF8String(library_name));
+  }
+
+  return onnxruntime::Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -193,7 +224,7 @@ struct ProviderHostImpl : ProviderHost {
 
 #ifdef USE_CUDA
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(name); }
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(); }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
@@ -202,13 +233,13 @@ struct ProviderHostImpl : ProviderHost {
   void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
   void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
 
-  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
-  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
+  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg, file, line); }
+  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg, file, line); }
 #endif
 
 #ifdef USE_ROCM
   std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_ROCM().CreateROCMAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_ROCM().CreateROCMPinnedAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) override { return GetProviderInfo_ROCM().CreateROCMPinnedAllocator(name); }
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_ROCM().CreateGPUDataTransfer(); }
 
   void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
@@ -217,8 +248,8 @@ struct ProviderHostImpl : ProviderHost {
   void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
   void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
 
-  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_false(retCode, exprString, libName, successCode, msg); }
-  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { GetProviderInfo_ROCM().RocmCall_true(retCode, exprString, libName, successCode, msg); }
+  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_ROCM().RocmCall_false(retCode, exprString, libName, successCode, msg, file, line); }
+  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_ROCM().RocmCall_true(retCode, exprString, libName, successCode, msg, file, line); }
 #endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
@@ -247,7 +278,10 @@ struct ProviderHostImpl : ProviderHost {
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
-
+  Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                               /*out*/ std::vector<uint8_t>& unpacked_tensor) override {
+    return utils::UnpackInitializerData(tensor, model_path, unpacked_tensor);
+  }
   uint16_t math__floatToHalf(float f) override { return math::floatToHalf(f); }
   float math__halfToFloat(uint16_t h) override { return math::halfToFloat(h); }
 
@@ -281,8 +315,6 @@ struct ProviderHostImpl : ProviderHost {
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
 
   // IExecutionProvider (direct)
-  AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(id, mem_type); }
-  void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
       const IExecutionProvider::IKernelLookup& kernel_lookup) override {
@@ -291,14 +323,6 @@ struct ProviderHostImpl : ProviderHost {
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
     return p->IExecutionProvider::Compile(fused_nodes_and_graphs, node_compute_funcs);
-  }
-
-  int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) override {
-    return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
-  }
-
-  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) override {
-    return p->IExecutionProvider::RegisterAllocator(allocator_manager);
   }
 
   // Status (direct)
@@ -335,12 +359,32 @@ struct ProviderHostImpl : ProviderHost {
   void logging__Capture__operator_delete(logging::Capture* p) noexcept override { delete p; }
   std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept override { return p->Stream(); }
 
+  // Env
+  Env& Env__Default() override { return Env::Default(); }
+
   // Utils::DataTypeUtils (wrapped)
   const std::string* Utils__DataTypeUtils__ToType(const ONNX_NAMESPACE::TypeProto& type_proto) override { return ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(type_proto); }
 
   // int64s (wrapped)
   int int64s__size(const ONNX_NAMESPACE::int64s* p) override { return p->size(); }
   const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) override { return p->Get(index); }
+  void int64s__Reserve(ONNX_NAMESPACE::int64s* p, int size) override { p->Reserve(size); };
+  const int64_t* int64s__data(const ONNX_NAMESPACE::int64s* p) override { return p->data(); }
+
+  // float32s
+  void float32s__Reserve(ONNX_NAMESPACE::float32s* p, int size) override { p->Reserve(size); };
+  const float* float32s__data(const ONNX_NAMESPACE::float32s* p) override { return p->data(); }
+  int float32s__size(const ONNX_NAMESPACE::float32s* p) override { return p->size(); }
+
+  // StringStringEntryProto
+  std::string* StringStringEntryProto__mutable_key(ONNX_NAMESPACE::StringStringEntryProto* p) override { return p->mutable_key(); }
+  std::string* StringStringEntryProto__mutable_value(ONNX_NAMESPACE::StringStringEntryProto* p) override { return p->mutable_value(); }
+
+  // StringStringEntryProtos
+  void StringStringEntryProtos__Clear(ONNX_NAMESPACE::StringStringEntryProtos* p) override { p->Clear(); };
+  ONNX_NAMESPACE::StringStringEntryProto* StringStringEntryProtos__Add(ONNX_NAMESPACE::StringStringEntryProtos* p) override { return p->Add(); }
+  int StringStringEntryProtos__size(ONNX_NAMESPACE::StringStringEntryProtos* p) override { return p->size(); }
+  ONNX_NAMESPACE::StringStringEntryProto& StringStringEntryProtos__at(ONNX_NAMESPACE::StringStringEntryProtos* p, int index) override { return p->at(index); };
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
   // TypeProto_Optional (wrapped)
@@ -357,6 +401,7 @@ struct ProviderHostImpl : ProviderHost {
   const ONNX_NAMESPACE::TensorShapeProto& TypeProto_Tensor__shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->shape(); }
   ONNX_NAMESPACE::TensorShapeProto* TypeProto_Tensor__mutable_shape(ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->mutable_shape(); }
   int32_t TypeProto_Tensor__elem_type(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->elem_type(); }
+  void TypeProto_Tensor__set_elem_type(ONNX_NAMESPACE::TypeProto_Tensor* p, int32_t value) override { p->set_elem_type(value); };
 
   // TypeProto_SparseTensor (wrapped)
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -409,9 +454,19 @@ struct ProviderHostImpl : ProviderHost {
   float AttributeProto__floats(const ONNX_NAMESPACE::AttributeProto* p, int i) override { return p->floats(i); }
   const std::string& AttributeProto__strings(const ONNX_NAMESPACE::AttributeProto* p, int i) override { return p->strings(i); }
   const ONNX_NAMESPACE::int64s& AttributeProto__ints(const ONNX_NAMESPACE::AttributeProto* p) override { return p->ints(); }
+  const ONNX_NAMESPACE::float32s& AttributeProto__floats(const ONNX_NAMESPACE::AttributeProto* p) override { return p->floats(); }
+  ONNX_NAMESPACE::int64s* AttributeProto__mutable_ints(ONNX_NAMESPACE::AttributeProto* p) override { return p->mutable_ints(); }
+  ONNX_NAMESPACE::float32s* AttributeProto__mutable_floats(ONNX_NAMESPACE::AttributeProto* p) override { return p->mutable_floats(); }
+  void AttributeProto__add_ints(ONNX_NAMESPACE::AttributeProto* p, int64_t value) override { p->add_ints(value); };
+  void AttributeProto__add_floats(ONNX_NAMESPACE::AttributeProto* p, float value) override { p->add_floats(value); };
+  void AttributeProto__add_strings(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) override { p->add_strings(value); };
+
   int64_t AttributeProto__i(const ONNX_NAMESPACE::AttributeProto* p) override { return p->i(); }
   float AttributeProto__f(const ONNX_NAMESPACE::AttributeProto* p) override { return p->f(); }
+  const ONNX_NAMESPACE::TensorProto& AttributeProto__t(const ONNX_NAMESPACE::AttributeProto* p) override { return p->t(); }
   void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) override { return p->set_s(value); }
+  void AttributeProto__set_f(ONNX_NAMESPACE::AttributeProto* p, const float& value) override { return p->set_f(value); }
+  void AttributeProto__set_i(ONNX_NAMESPACE::AttributeProto* p, int64_t value) override { return p->set_i(value); }
   const ::std::string& AttributeProto__s(const ONNX_NAMESPACE::AttributeProto* p) override { return p->s(); }
   void AttributeProto__set_name(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) override { return p->set_name(value); }
   void AttributeProto__set_type(ONNX_NAMESPACE::AttributeProto* p, ONNX_NAMESPACE::AttributeProto_AttributeType value) override { return p->set_type(value); }
@@ -432,6 +487,8 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::ValueInfoProtos* GraphProto__mutable_value_info(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_value_info(); }
   ONNX_NAMESPACE::TensorProtos* GraphProto__mutable_initializer(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_initializer(); }
   ONNX_NAMESPACE::NodeProto* GraphProto__add_node(ONNX_NAMESPACE::GraphProto* p) override { return p->add_node(); }
+  std::string* GraphProto__mutable_name(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_name(); }
+  ONNX_NAMESPACE::NodeProto* GraphProto__mutable_node(ONNX_NAMESPACE::GraphProto* p, int index) override { return p->mutable_node(index); }
 
   void GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) override { *p = v; }
 
@@ -448,6 +505,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::GraphProto* ModelProto__mutable_graph(ONNX_NAMESPACE::ModelProto* p) override { return p->mutable_graph(); }
 
   void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) override { p->set_ir_version(value); }
+  ONNX_NAMESPACE::StringStringEntryProtos* ModelProto__mutable_metadata_props(ONNX_NAMESPACE::ModelProto* p) override { return p->mutable_metadata_props(); };
 
   // NodeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::NodeProto>(); }
@@ -455,25 +513,41 @@ struct ProviderHostImpl : ProviderHost {
   void NodeProto__operator_assign(ONNX_NAMESPACE::NodeProto* p, const ONNX_NAMESPACE::NodeProto& v) override { *p = v; }
   int NodeProto__attribute_size(ONNX_NAMESPACE::NodeProto* p) override { return p->attribute_size(); }
   const ONNX_NAMESPACE::AttributeProto& NodeProto__attribute(const ONNX_NAMESPACE::NodeProto* p, int index) const override { return p->attribute(index); }
+  ONNX_NAMESPACE::AttributeProto* NodeProto__mutable_attribute(ONNX_NAMESPACE::NodeProto* p, int index) override { return p->mutable_attribute(index); }
 
   // TensorProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() override { return std::make_unique<ONNX_NAMESPACE::TensorProto>(); }
   void TensorProto__operator_delete(ONNX_NAMESPACE::TensorProto* p) override { delete p; }
   void TensorProto__operator_assign(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto& v) override { *p = v; }
   bool TensorProto__has_name(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_name(); }
+  void TensorProto__set_name(ONNX_NAMESPACE::TensorProto* p, const ::std::string& name) override { p->set_name(name); }
+  const ::std::string& TensorProto__name(const ONNX_NAMESPACE::TensorProto* p) override { return p->name(); }
   int TensorProto__dims_size(const ONNX_NAMESPACE::TensorProto* p) override { return p->dims_size(); }
   const ONNX_NAMESPACE::int64s& TensorProto__dims(const ONNX_NAMESPACE::TensorProto* p) override { return p->dims(); }
+  void TensorProto__add_dims(ONNX_NAMESPACE::TensorProto* p, int64_t value) override { p->add_dims(value); }
   bool TensorProto__has_data_location(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_data_location(); }
   int TensorProto__data_location(const ONNX_NAMESPACE::TensorProto* p) override { return p->data_location(); }
   bool TensorProto__has_raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_raw_data(); }
   const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->raw_data(); }
+  std::string* TensorProto__mutable_raw_data(ONNX_NAMESPACE::TensorProto* p) override { return p->mutable_raw_data(); }
+
   int32_t TensorProto__data_type(const ONNX_NAMESPACE::TensorProto* p) override { return p->data_type(); }
+  void TensorProto__set_data_type(ONNX_NAMESPACE::TensorProto* p, int32_t type) override { p->set_data_type(type); }
 
   bool TensorProto_DataType_IsValid(int value) override { return ONNX_NAMESPACE::TensorProto::DataType_IsValid(value); }
   void TensorProto__CopyFrom(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto* other) override { p->CopyFrom(*other); }
+  ONNX_NAMESPACE::StringStringEntryProtos* TensorProto__mutable_external_data(ONNX_NAMESPACE::TensorProto* p) override { return p->mutable_external_data(); };
+  void TensorProto__clear_float_data(ONNX_NAMESPACE::TensorProto* p) override { p->clear_float_data(); }
+  void TensorProto__clear_int32_data(ONNX_NAMESPACE::TensorProto* p) override { p->clear_int32_data(); }
+  void TensorProto__clear_string_data(ONNX_NAMESPACE::TensorProto* p) override { p->clear_string_data(); }
+  void TensorProto__clear_int64_data(ONNX_NAMESPACE::TensorProto* p) override { p->clear_int64_data(); }
+  void TensorProto__clear_double_data(ONNX_NAMESPACE::TensorProto* p) override { p->clear_double_data(); }
+  void TensorProto__clear_uint64_data(ONNX_NAMESPACE::TensorProto* p) override { p->clear_uint64_data(); }
 
   // TensorProtos (wrapped)
   ONNX_NAMESPACE::TensorProto* TensorProtos__Add(ONNX_NAMESPACE::TensorProtos* p) override { return p->Add(); }
+  int TensorProtos__size(ONNX_NAMESPACE::TensorProtos* p) override { return p->size(); }
+  ONNX_NAMESPACE::TensorProto& TensorProtos__at(ONNX_NAMESPACE::TensorProtos* p, int index) override { return p->at(index); };
 
   // TensorShapeProto_Dimension (wrapped)
   int TensorShapeProto_Dimension__value_case(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) override { return p->value_case(); }
@@ -483,6 +557,8 @@ struct ProviderHostImpl : ProviderHost {
   void TensorShapeProto_Dimension__set_dim_value(ONNX_NAMESPACE::TensorShapeProto_Dimension* p, int64_t value) override { return p->set_dim_value(value); }
   bool TensorShapeProto_Dimension__has_dim_value(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) override { return p->has_dim_value(); }
   bool TensorShapeProto_Dimension__has_dim_param(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) override { return p->has_dim_param(); }
+  const std::string& TensorShapeProto_Dimension__denotation(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) const override { return p->denotation(); }
+  void TensorShapeProto_Dimension__set_denotation(ONNX_NAMESPACE::TensorShapeProto_Dimension* p, const std::string& value) override { return p->set_denotation(value); }
 
   // TensorShapeProto_Dimensions (wrapped)
   std::unique_ptr<TensorShapeProto_Dimension_Iterator> TensorShapeProto_Dimensions__begin(const ONNX_NAMESPACE::TensorShapeProto_Dimensions* p) override {
@@ -510,6 +586,95 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::ValueInfoProto* ValueInfoProtos__Add(ONNX_NAMESPACE::ValueInfoProtos* p) override { return p->Add(); }
 
   const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) override { return (*p)[index]; }
+
+  static void xir_shape_infer(ONNX_NAMESPACE::InferenceContext& ctx) {
+    auto* shape = ctx.getAttribute("shape");
+    auto* data_type = ctx.getAttribute("data_type");
+    int32_t elemType = 0;
+    if (data_type->s() == "float32") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    } else if (data_type->s() == "int8") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT8;
+    } else if (data_type->s() == "uint8") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+    } else if (data_type->s() == "int32") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    } else if (data_type->s() == "int64") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    } else if (data_type->s() == "int1") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+    } else if (data_type->s() == "bfloat16") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+    } else if (data_type->s() == "float16") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+    } else if (data_type->s() == "uint16") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
+    } else if (data_type->s() == "int16") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT16;
+    } else {
+      return;
+    }
+    ONNX_NAMESPACE::updateOutputElemType(ctx, 0, elemType);
+    if (shape != nullptr) {
+      for (auto i = 0; i < shape->ints_size(); ++i) {
+        ONNX_NAMESPACE::getOutputShape(ctx, 0, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
+      }
+    } else {
+      // set scalar type.
+      ONNX_NAMESPACE::getOutputShape(ctx, 0, ONNX_NAMESPACE::TypeProto::kTensorType)->clear_dim();
+    }
+  }
+
+  static void xir_fixneuron_shape_inference(ONNX_NAMESPACE::InferenceContext& ctx) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+  }
+
+  static void xir_subgraph_shape_inference(ONNX_NAMESPACE::InferenceContext& ctx) {
+    auto num_inputs = ctx.getNumInputs();
+
+    // Run inferencing on the subgraph
+    auto* graphInferencer = ctx.getGraphAttributeInferencer("body");
+
+    std::vector<const ONNX_NAMESPACE::TensorProto*> input_data;
+    std::vector<const ONNX_NAMESPACE::TypeProto*> subgraph_input_types;
+    for (size_t i = 0; i < num_inputs; ++i) {
+      input_data.push_back(ctx.getInputData(i));
+      subgraph_input_types.push_back(ctx.getInputType(i));
+    }
+
+    auto output_types = graphInferencer->doInferencing(subgraph_input_types, input_data);
+    for (size_t i = 0, end = output_types.size(); i < end; ++i) {
+      *ctx.getOutputType(i) = *output_types[i];
+    }
+  }
+  void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) override {
+    auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+    const auto& domain_to_version_map = domain_instance.Map();
+    if (domain_to_version_map.find(domain) == domain_to_version_map.end()) {
+      domain_instance.AddDomainToVersion(domain, 1, 1000);
+    }
+    auto schema = CreateSchema(domain, {op});
+    switch (type) {
+      case 1:
+        schema.TypeAndShapeInferenceFunction(xir_subgraph_shape_inference);
+        break;
+      case 2:
+        schema.TypeAndShapeInferenceFunction(xir_fixneuron_shape_inference);
+        break;
+      case 3:
+        schema.TypeAndShapeInferenceFunction(xir_shape_infer);
+        break;
+      default:
+        break;
+    }
+    ONNX_NAMESPACE::RegisterSchema(schema, ORT_API_VERSION);
+  }
+
+  // ConfigOptions (wrapped)
+  std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) override {
+    return p->GetConfigEntry(config_key);
+  }
 
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
@@ -620,6 +785,14 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetType_BFloat16() override { return DataTypeImpl::GetType<BFloat16>(); }
   MLDataType DataTypeImpl__GetType_MLFloat16() override { return DataTypeImpl::GetType<MLFloat16>(); }
   MLDataType DataTypeImpl__GetType_string() override { return DataTypeImpl::GetType<std::string>(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  MLDataType DataTypeImpl__GetType_Float8E4M3FN() override { return DataTypeImpl::GetType<Float8E4M3FN>(); }
+  MLDataType DataTypeImpl__GetType_Float8E4M3FNUZ() override { return DataTypeImpl::GetType<Float8E4M3FNUZ>(); }
+  MLDataType DataTypeImpl__GetType_Float8E5M2() override { return DataTypeImpl::GetType<Float8E5M2>(); }
+  MLDataType DataTypeImpl__GetType_Float8E5M2FNUZ() override { return DataTypeImpl::GetType<Float8E5M2FNUZ>(); }
+#endif
+
   MLDataType DataTypeImpl__GetTensorType_bool() override { return DataTypeImpl::GetTensorType<bool>(); }
   MLDataType DataTypeImpl__GetTensorType_int8() override { return DataTypeImpl::GetTensorType<int8_t>(); }
   MLDataType DataTypeImpl__GetTensorType_uint8() override { return DataTypeImpl::GetTensorType<uint8_t>(); }
@@ -633,6 +806,13 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetTensorType_double() override { return DataTypeImpl::GetTensorType<double>(); }
   MLDataType DataTypeImpl__GetTensorType_BFloat16() override { return DataTypeImpl::GetTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetTensorType_MLFloat16() override { return DataTypeImpl::GetTensorType<MLFloat16>(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  MLDataType DataTypeImpl__GetTensorType_Float8E4M3FN() override { return DataTypeImpl::GetTensorType<Float8E4M3FN>(); }
+  MLDataType DataTypeImpl__GetTensorType_Float8E4M3FNUZ() override { return DataTypeImpl::GetTensorType<Float8E4M3FNUZ>(); }
+  MLDataType DataTypeImpl__GetTensorType_Float8E5M2() override { return DataTypeImpl::GetTensorType<Float8E5M2>(); }
+  MLDataType DataTypeImpl__GetTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetTensorType<Float8E5M2FNUZ>(); }
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   MLDataType DataTypeImpl__GetSparseTensorType_bool() override { return DataTypeImpl::GetSparseTensorType<bool>(); }
@@ -649,6 +829,12 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_string() override { return DataTypeImpl::GetSparseTensorType<std::string>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() override { return DataTypeImpl::GetSparseTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() override { return DataTypeImpl::GetSparseTensorType<MLFloat16>(); }
+#if !defined(DISABLE_FLOAT8_TYPES)
+  MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FN() override { return DataTypeImpl::GetSparseTensorType<Float8E4M3FN>(); }
+  MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E4M3FNUZ>(); }
+  MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2>(); }
+  MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>(); }
+#endif
 #endif
 
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
@@ -657,14 +843,39 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) override { return p->IsSparseTensorType(); }
 #endif
+
   DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) override { return p->GetDeleteFunc(); }
+
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv4() override { return DataTypeImpl::AllFixedSizeTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv9() override { return DataTypeImpl::AllFixedSizeTensorTypesIRv9(); }
+
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv4() override { return DataTypeImpl::AllTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv9() override { return DataTypeImpl::AllTensorTypesIRv9(); }
+
   const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() override { return DataTypeImpl::AllIEEEFloatTensorTypes(); }
+
   const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllTensorAndSequenceTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv4() override { return DataTypeImpl::AllTensorAndSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv9() override { return DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9(); }
+
+  const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv4() override { return DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv9() override { return DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv9(); }
+
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv4() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv9() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9(); }
+
   const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypes() override { return DataTypeImpl::AllSequenceTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv4() override { return DataTypeImpl::AllSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv9() override { return DataTypeImpl::AllSequenceTensorTypesIRv9(); }
+
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypes() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv4() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypesIRv4(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv9() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypesIRv9(); }
+
   size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
   const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }
 
@@ -691,6 +902,9 @@ struct ProviderHostImpl : ProviderHost {
   void Node__ToProto(const Node* p, ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) override { p->ToProto(proto, update_subgraphs); }
 
   const NodeAttributes& Node__GetAttributes(const Node* p) noexcept override { return p->GetAttributes(); }
+  void Node__AddAttribute(Node* p, const ::std::string& attr_name, const ONNX_NAMESPACE::GraphProto& value) override {
+    p->AddAttribute(attr_name, value);
+  }
   size_t Node__GetInputEdgesCount(const Node* p) noexcept override { return p->GetInputEdgesCount(); }
   size_t Node__GetOutputEdgesCount(const Node* p) noexcept override { return p->GetOutputEdgesCount(); }
 
@@ -699,11 +913,19 @@ struct ProviderHostImpl : ProviderHost {
 
   std::unique_ptr<Node__NodeIterator> Node__OutputNodesBegin(const Node* p) noexcept override { return std::make_unique<Node__NodeIterator_Impl>(p->OutputNodesBegin()); }
   std::unique_ptr<Node__NodeIterator> Node__OutputNodesEnd(const Node* p) noexcept override { return std::make_unique<Node__NodeIterator_Impl>(p->OutputNodesEnd()); }
-
+  std::unique_ptr<Node__EdgeIterator> Node__InputEdgesBegin(const Node* p) noexcept override {
+    return std::make_unique<Node__EdgeIterator_Impl>(p->InputEdgesBegin());
+  }
+  std::unique_ptr<Node__EdgeIterator> Node__InputEdgesEnd(const Node* p) noexcept override {
+    return std::make_unique<Node__EdgeIterator_Impl>(p->InputEdgesEnd());
+  }
   std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesBegin(const Node* p) noexcept override { return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesBegin()); }
   std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesEnd(const Node* p) noexcept override { return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesEnd()); }
 
   void Node__ForEachDef(const Node* p, std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs) override { p->ForEachDef(func, std::move(include_missing_optional_defs)); }
+  const std::unordered_map<std::string, gsl::not_null<Graph*>>& Node__GetAttributeNameToMutableSubgraphMap(Node* p) noexcept override { return p->GetAttributeNameToMutableSubgraphMap(); }
+  std::unordered_map<std::string, gsl::not_null<const Graph*>> Node__GetAttributeNameToSubgraphMap(const Node* p) const override { return p->GetAttributeNameToSubgraphMap(); }
+  int Node__NodeType(const Node* p) const noexcept override { return int(p->NodeType()); }
 
   // NodeArg (wrapped)
   const std::string& NodeArg__Name(const NodeArg* p) noexcept override { return p->Name(); }
@@ -712,6 +934,7 @@ struct ProviderHostImpl : ProviderHost {
   const NodeArgInfo& NodeArg__ToProto(const NodeArg* p) noexcept override { return p->ToProto(); }
   bool NodeArg__Exists(const NodeArg* p) const noexcept override { return p->Exists(); }
   const ONNX_NAMESPACE::TypeProto* NodeArg__TypeAsProto(const NodeArg* p) noexcept override { return p->TypeAsProto(); }
+  Status NodeArg__OverrideTypesHelper(NodeArg* p, const ONNX_NAMESPACE::TypeProto& input_type, int32_t input_tensor_elem_type, int32_t current_tensor_elem_type, bool override_types) override { return p->OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types); };
 
   // NodeAttributes (wrapped)
   std::unique_ptr<NodeAttributes> NodeAttributes__construct() override { return std::make_unique<NodeAttributes>(); }
@@ -734,18 +957,28 @@ struct ProviderHostImpl : ProviderHost {
   }
   void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) override { return p->insert(v.begin(), v.end()); }
   void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) override { p->emplace(k, v); }
+  void NodeAttributes__insert_or_assign(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) override { p->insert_or_assign(k, v); }
   void NodeAttributes__reserve(NodeAttributes* p, size_t size) override { p->reserve(size); }
 
   // Model (wrapped)
+  std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
+                                          const logging::Logger& logger) override {
+    return std::make_unique<Model>(model_proto, model_path, nullptr, logger);
+  }
   void Model__operator_delete(Model* p) override { delete p; }
   Graph& Model__MainGraph(Model* p) override { return p->MainGraph(); }
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) override { return std::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToProto()); }
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::string& external_file_name, const PathString& file_path, size_t initializer_size_threshold) override { return std::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold)); };
+  const ModelMetaData& Model__MetaData(const Model* p) const noexcept override { return p->MetaData(); };
+  Status Model__Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) override { return Model::Load(file_path, model_proto); }
 
   // Graph (wrapped)
   std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) override { return std::make_unique<GraphViewer>(*p); }
   std::unique_ptr<ONNX_NAMESPACE::GraphProto> Graph__ToGraphProto(const Graph* p) override { return std::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
+  void Graph__SetInputs(Graph* p, gsl::span<const NodeArg* const> inputs) override { p->SetInputs(inputs); }
 
   NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
+  void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) override { p->AddOuterScopeNodeArg(name); }
 
   Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
@@ -757,14 +990,59 @@ struct ProviderHostImpl : ProviderHost {
   void Graph__SetOutputs(Graph* p, gsl::span<const NodeArg* const> outputs) override { p->SetOutputs(outputs); }
 
   const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept override { return p->GetInputs(); }
+  std::vector<const Node*> Graph__Nodes(const Graph* p) override {
+    auto& node_refererence = p->Nodes();
+    std::vector<const Node*> nodes(p->NumberOfNodes(), nullptr);
+    std::transform(node_refererence.begin(), node_refererence.end(), nodes.begin(), [](const Node& n) { return &n; });
+    return nodes;
+  }
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
 
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
+  Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
   const Path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
+  const Node* Graph__GetProducerNode(const Graph* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
+  const Model& Graph__GetModel(const Graph* p) override { return p->GetModel(); }
+  void Graph__ReverseDFSFrom(const Graph* p, gsl::span<const Node* const> from,
+                             const std::function<void(const Node*)>& enter,
+                             const std::function<void(const Node*)>& leave,
+                             const std::function<bool(const Node*, const Node*)>& comp,
+                             const std::function<bool(const Node* from, const Node* to)>& stop) const override {
+    p->ReverseDFSFrom(from, enter, leave, comp, stop);
+  }
+  Graph& Graph__SetGraphResolveNeeded(Graph* p) override { return p->SetGraphResolveNeeded(); }
+  void Graph__RemoveInitializedTensor(Graph* p, const std::string& tensor_name) override { p->RemoveInitializedTensor(tensor_name); }
+
+  std::vector<const Node*> Graph__GetConsumerNodes(const Graph* p, const std::string& node_arg_name) const override {
+    return p->GetConsumerNodes(node_arg_name);
+  }
+  void Graph__AddEdge(Graph* p, NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index,
+                      int dst_arg_index) override {
+    p->AddEdge(src_node_index, dst_node_index, src_arg_index, dst_arg_index);
+  }
+  void Graph__RemoveEdge(Graph* p, NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index,
+                         int dst_arg_index) override {
+    p->RemoveEdge(src_node_index, dst_node_index, src_arg_index, dst_arg_index);
+  }
+  void Graph__RemoveNode(Graph* p, NodeIndex index) override { p->RemoveNode(index); }
+  Node& Graph__FuseSubGraph(Graph* p, const IndexedSubGraph& sub_graph, const std::string& fused_node_name) override {
+    return p->FuseSubGraph(sub_graph, fused_node_name);
+  }
+  void Graph__UpdateProducerNode(Graph* p, const std::string& node_arg_name, NodeIndex node_index) override {
+    p->UpdateProducerNode(node_arg_name, node_index);
+  }
+  const ONNX_NAMESPACE::TensorProto* Graph__GetConstantInitializer(const Graph* p, const std::string& name, bool check_outer_scope) const override {
+    return p->GetConstantInitializer(name, check_outer_scope);
+  }
+  const InitializedTensorSet& Graph__GetAllInitializedTensors(const Graph* p) override { return p->GetAllInitializedTensors(); }
+  int Graph__MaxNodeIndex(const Graph* p) const noexcept override { return p->MaxNodeIndex(); }
+  Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept override { return p->GetNode(node_index); }
+  const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const override { return p->GetNode(node_index); }
+  const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
@@ -805,11 +1083,14 @@ struct ProviderHostImpl : ProviderHost {
   void GraphViewer__ToProto(const GraphViewer* p, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) noexcept override {
     GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args);
   }
+  const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
 
   // Path (wrapped)
   PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }
   const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept override { return p->GetComponents(); }
   bool Path__IsEmpty(const Path* p) noexcept override { return p->IsEmpty(); }
+  std::unique_ptr<Path> Path__construct() override { return std::make_unique<Path>(); }
+  void Path__operator_delete(ONNX_NAMESPACE::Path* p) override { delete p; };
 
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }
@@ -841,7 +1122,7 @@ struct ProviderHostImpl : ProviderHost {
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }
-  AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, int device_id, OrtMemType mem_type) override { return p->GetAllocator(device_id, mem_type); }
+  AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, OrtMemType mem_type) override { return p->GetAllocator(mem_type); }
   const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) override { return p->GetExecutionProvider(); }
   Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) override { return p->GetAttr(name, value); }
   Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) override { return p->GetAttr(name, value); }
@@ -861,6 +1142,7 @@ struct ProviderHostImpl : ProviderHost {
   uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
   uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) override { return p->GetOutputCount(); }
   const Node& OpKernelInfo__node(const OpKernelInfo* p) override { return p->node(); }
+  const ConfigOptions& OpKernelInfo__GetConfigOptions(const OpKernelInfo* p) override { return p->GetConfigOptions(); }
 
   // SessionState (wrapped)
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
@@ -906,6 +1188,13 @@ struct ProviderHostImpl : ProviderHost {
   BFloat16* Tensor__MutableData_BFloat16(Tensor* p) override { return p->MutableData<BFloat16>(); }
   MLFloat16* Tensor__MutableData_MLFloat16(Tensor* p) override { return p->MutableData<MLFloat16>(); }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+  Float8E4M3FN* Tensor__MutableData_Float8E4M3FN(Tensor* p) override { return p->MutableData<Float8E4M3FN>(); }
+  Float8E4M3FNUZ* Tensor__MutableData_Float8E4M3FNUZ(Tensor* p) override { return p->MutableData<Float8E4M3FNUZ>(); }
+  Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) override { return p->MutableData<Float8E5M2>(); }
+  Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) override { return p->MutableData<Float8E5M2FNUZ>(); }
+#endif
+
   const bool* Tensor__Data_bool(const Tensor* p) override { return p->Data<bool>(); }
   const int8_t* Tensor__Data_int8(const Tensor* p) override { return p->Data<int8_t>(); }
   const uint8_t* Tensor__Data_uint8(const Tensor* p) override { return p->Data<uint8_t>(); }
@@ -919,6 +1208,13 @@ struct ProviderHostImpl : ProviderHost {
   const double* Tensor__Data_double(const Tensor* p) override { return p->Data<double>(); }
   const BFloat16* Tensor__Data_BFloat16(const Tensor* p) override { return p->Data<BFloat16>(); }
   const MLFloat16* Tensor__Data_MLFloat16(const Tensor* p) override { return p->Data<MLFloat16>(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  const Float8E4M3FN* Tensor__Data_Float8E4M3FN(const Tensor* p) override { return p->Data<Float8E4M3FN>(); }
+  const Float8E4M3FNUZ* Tensor__Data_Float8E4M3FNUZ(const Tensor* p) override { return p->Data<Float8E4M3FNUZ>(); }
+  const Float8E5M2* Tensor__Data_Float8E5M2(const Tensor* p) override { return p->Data<Float8E5M2>(); }
+  const Float8E5M2FNUZ* Tensor__Data_Float8E5M2FNUZ(const Tensor* p) override { return p->Data<Float8E5M2FNUZ>(); }
+#endif
 
   gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) override { return p->DataAsSpan<int64_t>(); }
 
@@ -941,6 +1237,13 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept override { return p->IsDataType<MLFloat16>(); }
   bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept override { return p->IsDataType<BFloat16>(); }
   bool Tensor__IsDataTypeString(const Tensor* p) noexcept override { return p->IsDataTypeString(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  bool Tensor__IsDataType_Float8E4M3FN(const Tensor* p) noexcept override { return p->IsDataType<Float8E4M3FN>(); }
+  bool Tensor__IsDataType_Float8E4M3FNUZ(const Tensor* p) noexcept override { return p->IsDataType<Float8E4M3FNUZ>(); }
+  bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2>(); }
+  bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2FNUZ>(); }
+#endif
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   void Tensor__Reshape(Tensor* p, const TensorShape& new_shape) override { return p->Reshape(new_shape); }
@@ -972,22 +1275,24 @@ struct ProviderHostImpl : ProviderHost {
   void TensorSeq__SetType(TensorSeq* p, MLDataType data_type) override { p->SetType(data_type); }
   size_t TensorSeq__Size(const TensorSeq* p) noexcept override { return p->Size(); }
   const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) override { return p->Get(i); }
+  const OrtValue& TensorSeq__GetAt(const TensorSeq* p, size_t i) override { return p->GetAt(i); }
+  void TensorSeq__Add(TensorSeq* p, const OrtValue& tensor) override { p->Add(tensor); }
+  void TensorSeq__Add(TensorSeq* p, OrtValue&& tensor) override { p->Add(std::move(tensor)); }
   void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) override { p->Add(std::move(tensor)); }
   void TensorSeq__Reserve(TensorSeq* p, size_t capacity) override { p->Reserve(capacity); }
 
-  // AllocatorManager (direct)
-  void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->AllocatorManager::InsertAllocator(allocator); }
-  AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, OrtMemType mem_type, OrtDevice device) override {
-    return p->AllocatorManager::GetAllocator(mem_type, device);
-  };
+  // ModelMetadefIdGenerator(wrapped)
+  std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__construct() override { return std::make_unique<ModelMetadefIdGenerator>(); }
+  void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) override { delete p; }
+  int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) override { return p->GenerateId(graph_viewer, model_hash); }
 
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-
   PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
+#endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }
@@ -1009,7 +1314,6 @@ struct ProviderHostImpl : ProviderHost {
   void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) override {
     return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
   }
-#endif
 #endif
 
 #if defined(USE_CANN)
@@ -1035,9 +1339,14 @@ struct ProviderHostImpl : ProviderHost {
 
 #ifdef _WIN32
   std::string ToUTF8String(const std::wstring& s) override { return onnxruntime::ToUTF8String(s); }
+  std::wstring ToWideString(const std::string& s) override { return onnxruntime::ToWideString(s); }
 #endif
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
+#endif
 } provider_host_;
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
@@ -1152,6 +1461,13 @@ static ProviderLibrary s_library_cuda(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
                                       false /* unload - On Linux if we unload the cuda shared provider we crash */
 #endif
 );
+// This lib is only for unittest.
+static ProviderLibrary s_library_cuda_test(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cuda_ut") LIBRARY_EXTENSION
+#ifndef _WIN32
+                                           ,
+                                           false /* unload - On Linux if we unload the cuda shared provider we crash */
+#endif
+);
 static ProviderLibrary s_library_cann(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cann") LIBRARY_EXTENSION
 #ifndef _WIN32
                                       ,
@@ -1165,15 +1481,40 @@ static ProviderLibrary s_library_rocm(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
 #endif
 );
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_dnnl") LIBRARY_EXTENSION);
+static ProviderLibrary s_library_vitisai(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_vitisai") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_openvino") LIBRARY_EXTENSION);
-static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_tensorrt") LIBRARY_EXTENSION);
+static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_tensorrt") LIBRARY_EXTENSION
+#ifndef _WIN32
+                                          ,
+                                          /*
+                                           * unload - On CentOS if we unload the TensorRT shared provider we crash.
+                                           *
+                                           * The reason is TensorRT EP holds a thread local data which won't be destroyed
+                                           * until thread exits which happens after TRT EP destruction. Upon thread exits,
+                                           * the destructor of thread local data will be called but the address of destructor
+                                           * is invalid since the destructor is defined in TRT EP which is already been
+                                           * removed from the address space. Therefore, we will hit a segmentation fault.
+                                           * So, here we won't unload the TensorRT shared provider and leave the library around.
+                                           * This way the OS/CRT/etc doesn't ever clean up until the process exits.
+                                           *
+                                           * Interestingly, TensorRT shared library won't crash on Ubuntu and Windows when being unloaded.
+                                           * The destructor of thread local data can be successfully called upon thread exits.
+                                           * One thing worth attention is, on Unix, the function to unload a library is allowed to do nothing.
+                                           * Please see here: https://pubs.opengroup.org/onlinepubs/007904975/functions/dlclose.html
+                                           *
+                                           */
+                                          false
+#endif
+);
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
   s_library_dnnl.Unload();
+  s_library_vitisai.Unload();
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_cuda.Unload();
+  s_library_cuda_test.Unload();
   s_library_cann.Unload();
   s_library_rocm.Unload();
   s_library_shared.Unload();
@@ -1181,16 +1522,16 @@ void UnloadSharedProviders() {
 }
 
 // Used by test code
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
-    return info->CreateCUDAPinnedAllocator(device_id, name);
+    return info->CreateCUDAPinnedAllocator(name);
 
   return nullptr;
 }
 
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) {
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
-    return info->CreateROCMPinnedAllocator(device_id, name);
+    return info->CreateROCMPinnedAllocator(name);
 
   return nullptr;
 }
@@ -1210,7 +1551,11 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   // Use default value as this field is not available in OrtCUDAProviderOptions
   cuda_options_converted.cudnn_conv_use_max_workspace = 1;
   cuda_options_converted.enable_cuda_graph = 0;
+  cuda_options_converted.prefer_nhwc = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
+  cuda_options_converted.enable_skip_layer_norm_strict_mode = 0;
+  cuda_options_converted.use_ep_level_unified_stream = 0;
+  cuda_options_converted.use_tf32 = 1;
 
   return cuda_options_converted;
 }
@@ -1235,10 +1580,6 @@ CannProviderFactoryCreator::Create(const OrtCANNProviderOptions* provider_option
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(int use_arena) {
   return s_library_dnnl.Get().CreateExecutionProviderFactory(use_arena);
-}
-
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
-  return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
 }
 
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(int device_id) {
@@ -1268,10 +1609,58 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_engine_decryption_lib_path = legacy_trt_options->trt_engine_decryption_lib_path;
   trt_options_converted.trt_force_sequential_engine_build = legacy_trt_options->trt_force_sequential_engine_build;
   // Add new provider option below
-  // Use default value as this field is not available in OrtTensorRTProviderOptionsV
+  // Use default value as this field is not available in OrtTensorRTProviderOptions
+  trt_options_converted.trt_timing_cache_enable = 0;
+  trt_options_converted.trt_force_timing_cache = 0;
+  trt_options_converted.trt_detailed_build_log = 0;
   trt_options_converted.trt_context_memory_sharing_enable = 0;
   trt_options_converted.trt_layer_norm_fp32_fallback = 0;
+  trt_options_converted.trt_build_heuristics_enable = 0;
+  trt_options_converted.trt_sparsity_enable = 0;
+  trt_options_converted.trt_builder_optimization_level = 3;
+  trt_options_converted.trt_auxiliary_streams = -1;
+  trt_options_converted.trt_tactic_sources = "";
+  trt_options_converted.trt_extra_plugin_lib_paths = "";
+  trt_options_converted.trt_profile_min_shapes = "";
+  trt_options_converted.trt_profile_max_shapes = "";
+  trt_options_converted.trt_profile_opt_shapes = "";
+  trt_options_converted.trt_cuda_graph_enable = 0;
+  trt_options_converted.trt_dump_ep_context_model = 0;
+  trt_options_converted.trt_ep_context_file_path = "";
+  trt_options_converted.trt_ep_context_embed_mode = 0;
+  trt_options_converted.trt_engine_cache_prefix = "";
+
   return trt_options_converted;
+}
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+// Apply configs from session options to TensorRT provider options V2 that are needed for TensorRT EP.
+// For example, EP context configs.
+void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptions* session_options, OrtTensorRTProviderOptionsV2* tensorrt_options) {
+  if (session_options) {
+    auto context_cache_enabled = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+    tensorrt_options->trt_dump_ep_context_model = context_cache_enabled;
+    LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
+
+    auto context_cache_path = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    tensorrt_options->trt_ep_context_file_path = context_cache_path.c_str();
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << tensorrt_options->trt_ep_context_file_path;
+
+    auto embed_mode = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
+    if ("1" == embed_mode) {
+      tensorrt_options->trt_ep_context_embed_mode = 1;
+    } else if ("0" == embed_mode) {
+      tensorrt_options->trt_ep_context_embed_mode = 0;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << tensorrt_options->trt_ep_context_embed_mode;
+  }
+}
+#endif
+
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
+  return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
 }
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptions* provider_options) {
@@ -1287,12 +1676,80 @@ std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Creat
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+// Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions
+ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const OrtOpenVINOProviderOptions* legacy_ov_options) {
+  ProviderOptions ov_options_converted_map;
+  if (legacy_ov_options->device_type != nullptr)
+    ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
+
+  if (legacy_ov_options->enable_npu_fast_compile) {
+    ov_options_converted_map["enable_npu_fast_compile"] = "false";
+  } else {
+    ov_options_converted_map["enable_npu_fast_compile"] = "true";
+  }
+
+  if (legacy_ov_options->device_id != nullptr)
+    ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
+
+  if (legacy_ov_options->num_of_threads != '\0')
+    ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
+
+  if (legacy_ov_options->cache_dir != nullptr)
+    ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
+
+  if (legacy_ov_options->context != nullptr) {
+    std::stringstream context_string;
+    context_string << legacy_ov_options->context;
+    ov_options_converted_map["context"] = context_string.str();
+  }
+
+  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
+
+  if (legacy_ov_options->enable_dynamic_shapes) {
+    ov_options_converted_map["disable_dynamic_shapes"] = "false";
+  } else {
+    ov_options_converted_map["disable_dynamic_shapes"] = "true";
+  }
+
+  // Add new provider option below
+  ov_options_converted_map["num_streams"] = "1";
+  return ov_options_converted_map;
+}
+
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const OrtOpenVINOProviderOptions* provider_options) {
-  return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options);
+  ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  return s_library_openvino.Get().CreateExecutionProviderFactory(&ov_options_converted_map);
+}
+
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions* provider_options_map) {
+  // std::cout << provider_options_map.at("num_streams") << std::endl;
+  return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
+}
+
+std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
+  return s_library_dnnl.Get().CreateExecutionProviderFactory(dnnl_options);
+}
+
+std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+  return s_library_vitisai.Get().CreateExecutionProviderFactory(&provider_options);
 }
 
 ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
   return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
+}
+
+ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT() try {
+  return reinterpret_cast<ProviderInfo_TensorRT*>(s_library_tensorrt.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_TensorRT& GetProviderInfo_TensorRT() {
+  if (auto* info = TryGetProviderInfo_TensorRT())
+    return *info;
+
+  ORT_THROW("TensorRT Provider not available, can't get interface for it");
 }
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
@@ -1304,6 +1761,20 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
 
 ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   if (auto* info = TryGetProviderInfo_CUDA())
+    return *info;
+
+  ORT_THROW("CUDA Provider not available, can't get interface for it");
+}
+
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA_Test() try {
+  return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda_test.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_CUDA& GetProviderInfo_CUDA_Test() {
+  if (auto* info = TryGetProviderInfo_CUDA_Test())
     return *info;
 
   ORT_THROW("CUDA Provider not available, can't get interface for it");
@@ -1321,6 +1792,20 @@ ProviderInfo_CANN& GetProviderInfo_CANN() {
     return *info;
 
   ORT_THROW("CANN Provider not available, can't get interface for it");
+}
+
+ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl() try {
+  return reinterpret_cast<ProviderInfo_Dnnl*>(s_library_dnnl.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_Dnnl& GetProviderInfo_Dnnl() {
+  if (auto* info = TryGetProviderInfo_Dnnl())
+    return *info;
+
+  ORT_THROW("oneDNN Provider not available, can't get interface for it");
 }
 
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM() try {
@@ -1370,7 +1855,7 @@ void NvtxRangeCreator::EndImpl() {
 }  // namespace profile
 #endif
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace cuda {
 INcclService& INcclService::GetInstance() {
   return GetProviderInfo_CUDA().GetINcclService();
@@ -1378,7 +1863,7 @@ INcclService& INcclService::GetInstance() {
 }  // namespace cuda
 #endif
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace rocm {
 INcclService& INcclService::GetInstance() {
   return GetProviderInfo_ROCM().GetINcclService();
@@ -1386,11 +1871,11 @@ INcclService& INcclService::GetInstance() {
 }  // namespace rocm
 #endif
 
-void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
+void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptionsV2* provider_options, const ProviderOptions& options) {
   s_library_tensorrt.Get().UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
 }
 
-ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
+ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptionsV2* provider_options) {
   return s_library_tensorrt.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
 }
 
@@ -1403,6 +1888,28 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
 }
 
 }  // namespace onnxruntime
+
+void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, std::string extra_plugin_lib_paths) {
+  auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
+    for (auto ptr : domains) {
+      if (domain_name == ptr->domain_) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
+  provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
+  for (auto ptr : custom_op_domains) {
+    if (!is_already_in_domains(ptr->domain_, options->custom_op_domains_)) {
+      options->custom_op_domains_.push_back(ptr);
+    } else {
+      LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
+    }
+  }
+}
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   API_IMPL_BEGIN
@@ -1418,13 +1925,9 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessi
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(device_id);
-  if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
-  }
-
-  options->provider_factories.push_back(factory);
-  return nullptr;
+  OrtTensorRTProviderOptionsV2 tensorrt_options;
+  tensorrt_options.device_id = device_id;
+  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(options, &tensorrt_options);
   API_IMPL_END
 }
 
@@ -1442,13 +1945,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtS
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
-  if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
-  }
-
-  options->provider_factories.push_back(factory);
-  return nullptr;
+  OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(tensorrt_options);
+  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(options, &trt_options_converted);
   API_IMPL_END
 }
 
@@ -1469,6 +1967,39 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                    _In_ OrtSessionOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys) {
+  API_IMPL_BEGIN
+  onnxruntime::ProviderOptions provider_options;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    // arbitrary length to validate the key/value. adjust if/when needed.
+    // TODO: are any other input validation checks required here (and in the other functions that process
+    // provider options)?
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+
+    provider_options[provider_options_keys[i]] = provider_options_values[i];
+  }
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
@@ -1543,12 +2074,40 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+
+  std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+  auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
+  auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+
+  // If EP context configs are provided in session options, we need to propagate them to provider options. However,
+  // if provider options already have the EP context configs provided, the configs in session options will be ignored
+  // since provider options has higher priority than session options.
+  if (!ep_context_cache_enabled_from_provider_options && ep_context_cache_enabled_from_sess_options) {
+    // This function might need to update the "const" OrtTensorRTProviderOptionsV2 object which can't be modified.
+    // Therefore, we need to create a new OrtTensorRTProviderOptionsV2 object and copy from tensorrt_options and use this new object to create the factory instead.
+    // Note: No need to worry about new_tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
+    // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
+    OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
+    onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &new_tensorrt_options);
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
+  } else {
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+  }
+#else
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+#endif
+
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
+
+  std::string extra_plugin_lib_paths = (tensorrt_options == nullptr || tensorrt_options->trt_extra_plugin_lib_paths == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
+  AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
+
   return nullptr;
   API_IMPL_END
 }
@@ -1556,27 +2115,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
-  *out = new OrtTensorRTProviderOptionsV2();
-  (*out)->device_id = 0;
-  (*out)->has_user_compute_stream = 0;
-  (*out)->user_compute_stream = nullptr;
-  (*out)->trt_max_partition_iterations = 1000;
-  (*out)->trt_min_subgraph_size = 1;
-  (*out)->trt_max_workspace_size = 1 << 30;
-  (*out)->trt_fp16_enable = false;
-  (*out)->trt_int8_enable = false;
-  (*out)->trt_int8_calibration_table_name = nullptr;
-  (*out)->trt_int8_use_native_calibration_table = false;
-  (*out)->trt_dla_enable = false;
-  (*out)->trt_dla_core = false;
-  (*out)->trt_dump_subgraphs = false;
-  (*out)->trt_engine_cache_enable = false;
-  (*out)->trt_engine_cache_path = nullptr;
-  (*out)->trt_engine_decryption_enable = false;
-  (*out)->trt_engine_decryption_lib_path = nullptr;
-  (*out)->trt_force_sequential_engine_build = false;
-  (*out)->trt_context_memory_sharing_enable = false;
-  (*out)->trt_layer_norm_fp32_fallback = false;
+  auto options = std::make_unique<OrtTensorRTProviderOptionsV2>();
+  *out = options.release();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -1602,7 +2142,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
     provider_options_map[provider_options_keys[i]] = provider_options_values[i];
   }
 
-  onnxruntime::UpdateProviderInfo_Tensorrt(reinterpret_cast<OrtTensorRTProviderOptions*>(tensorrt_options),
+  onnxruntime::UpdateProviderInfo_Tensorrt(tensorrt_options,
                                            reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
   return nullptr;
 #else
@@ -1615,28 +2155,28 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
+#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM)
+static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
+                                      const onnxruntime::ProviderOptions::iterator& end) {
+  std::ostringstream options;
+  auto it = begin;
+  if (it != end) {
+    options << it->first << "=" << it->second;
+    ++it;
+  }
+  for (; it != end; ++it) {
+    options << ";" << it->first << "=" << it->second;
+  }
+  return options.str();
+}
+#endif
+
 ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
-  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(reinterpret_cast<const OrtTensorRTProviderOptions*>(tensorrt_options));
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str = "";
-
-  while (it != options.end()) {
-    if (options_str == "") {
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    } else {
-      options_str += ";";
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    }
-    it++;
-  }
-
+  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(tensorrt_options);
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
@@ -1648,23 +2188,66 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, "user_compute_stream") == 0) {
+    tensorrt_options->has_user_compute_stream = 1;
+    tensorrt_options->user_compute_stream = value;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
+                    _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, "user_compute_stream") == 0) {
+    *ptr = tensorrt_options->user_compute_stream;
+  } else {
+    *ptr = nullptr;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
 #ifdef USE_TENSORRT
   if (ptr != nullptr) {
-    if (ptr->trt_int8_calibration_table_name != nullptr) {
-      delete ptr->trt_int8_calibration_table_name;
-    }
-
-    if (ptr->trt_engine_cache_path != nullptr) {
-      delete ptr->trt_engine_cache_path;
-    }
-
-    if (ptr->trt_engine_decryption_lib_path != nullptr) {
-      delete ptr->trt_engine_decryption_lib_path;
-    }
+    delete[] ptr->trt_int8_calibration_table_name;
+    delete[] ptr->trt_engine_cache_path;
+    delete[] ptr->trt_engine_cache_prefix;
+    delete[] ptr->trt_timing_cache_path;
+    delete[] ptr->trt_engine_decryption_lib_path;
+    delete[] ptr->trt_tactic_sources;
+    delete[] ptr->trt_extra_plugin_lib_paths;
+    delete[] ptr->trt_profile_min_shapes;
+    delete[] ptr->trt_profile_max_shapes;
+    delete[] ptr->trt_profile_opt_shapes;
+    delete[] ptr->trt_ep_context_file_path;
   }
 
-  delete ptr;
+  std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
@@ -1685,27 +2268,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
 ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_CUDA
-
-// Need to use 'new' here, so disable C26409
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
-  *out = new OrtCUDAProviderOptionsV2();
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
-  (*out)->device_id = 0;
-  (*out)->cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::OrtCudnnConvAlgoSearchExhaustive;
-  (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
-  (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
-  (*out)->do_copy_in_default_stream = 1;
-  (*out)->has_user_compute_stream = 0;
-  (*out)->user_compute_stream = nullptr;
-  (*out)->default_memory_arena_cfg = nullptr;
-  (*out)->cudnn_conv_use_max_workspace = 1;
-  (*out)->enable_cuda_graph = 0;
-  (*out)->cudnn_conv1d_pad_to_nc1d = 0;
+  auto options = std::make_unique<OrtCUDAProviderOptionsV2>();
+  *out = options.release();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -1749,23 +2313,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
   API_IMPL_BEGIN
 #ifdef USE_CUDA
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Cuda(cuda_options);
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str = "";
-
-  while (it != options.end()) {
-    if (options_str == "") {
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    } else {
-      options_str += ";";
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    }
-    it++;
-  }
-
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
@@ -1777,21 +2325,50 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
+                    _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  API_IMPL_BEGIN
+#ifdef USE_CUDA
+  if (strcmp(key, "user_compute_stream") == 0) {
+    cuda_options->has_user_compute_stream = 1;
+    cuda_options->user_compute_stream = value;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
+                    _In_ const OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_CUDA
+  if (strcmp(key, "user_compute_stream") == 0) {
+    *ptr = cuda_options->user_compute_stream;
+  } else {
+    *ptr = nullptr;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
 #ifdef USE_CUDA
-
-// Need to use 'delete' here, so disable C26409
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
-
-  delete ptr;
-
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
-
+  std::unique_ptr<OrtCUDAProviderOptionsV2> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
@@ -1813,13 +2390,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CANN,
 ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out) {
   API_IMPL_BEGIN
 #ifdef USE_CANN
-  *out = new OrtCANNProviderOptions();
-  (*out)->device_id = 0;
-  (*out)->npu_mem_limit = SIZE_MAX;
-  (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
-  (*out)->do_copy_in_default_stream = 1;
-  (*out)->enable_cann_graph = 1;
-  (*out)->default_memory_arena_cfg = nullptr;
+  auto options = std::make_unique<OrtCANNProviderOptions>();
+  options->device_id = 0;
+  options->npu_mem_limit = SIZE_MAX;
+  options->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
+  options->enable_cann_graph = 1;
+  options->dump_graphs = 0;
+  options->default_memory_arena_cfg = nullptr;
+  *out = options.release();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -1864,23 +2442,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
 #ifdef USE_CANN
   onnxruntime::ProviderOptions options =
       onnxruntime::s_library_cann.Get().GetProviderOptions(reinterpret_cast<const void*>(cann_options));
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string options_str = "";
-
-  while (it != options.end()) {
-    if (options_str == "") {
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    } else {
-      options_str += ";";
-      options_str += it->first;
-      options_str += "=";
-      options_str += it->second;
-    }
-    it++;
-  }
-
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
@@ -1894,8 +2456,204 @@ ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions* ptr) {
 #ifdef USE_CANN
-  delete ptr;
+  std::unique_ptr<OrtCANNProviderOptions> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
+                    _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::DnnlProviderFactoryCreator::Create(dnnl_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 "SessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_DNNL
+  auto options = std::make_unique<OrtDnnlProviderOptions>();
+  options->use_arena = true;
+  options->threadpool_args = nullptr;
+  *out = options.release();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "oneDNN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateDnnlProviderOptions,
+                    _Inout_ OrtDnnlProviderOptions* dnnl_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_DNNL
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::s_library_dnnl.Get().UpdateProviderOptions(reinterpret_cast<void*>(dnnl_options), provider_options_map);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(dnnl_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "oneDNN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
+                    _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_DNNL
+  onnxruntime::ProviderOptions options =
+      onnxruntime::s_library_dnnl.Get().GetProviderOptions(reinterpret_cast<const void*>(dnnl_options));
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(dnnl_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "oneDNN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions* ptr) {
+#ifdef USE_DNNL
+  std::unique_ptr<OrtDnnlProviderOptions> p(ptr);
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+  auto options = std::make_unique<OrtROCMProviderOptions>();
+  options->device_id = 0;
+  options->miopen_conv_exhaustive_search = 0;
+  options->gpu_mem_limit = std::numeric_limits<size_t>::max();
+  options->arena_extend_strategy = 0;
+  options->do_copy_in_default_stream = 1;
+  options->has_user_compute_stream = 0;
+  options->user_compute_stream = nullptr;
+  options->default_memory_arena_cfg = nullptr;
+  options->enable_hip_graph = false;
+  options->tunable_op_enable = 0;
+  options->tunable_op_tuning_enable = 0;
+  options->tunable_op_max_tuning_duration_ms = 0;
+
+  *out = options.release();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateROCMProviderOptions,
+                    _Inout_ OrtROCMProviderOptions* rocm_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::s_library_rocm.Get().UpdateProviderOptions(rocm_options, provider_options_map);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(rocm_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString, _In_ const OrtROCMProviderOptions* rocm_options,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_ROCM
+  onnxruntime::ProviderOptions options = onnxruntime::s_library_rocm.Get().GetProviderOptions(rocm_options);
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(rocm_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
+#ifdef USE_ROCM
+  std::unique_ptr<OrtROCMProviderOptions> p(ptr);
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_ OrtSessionOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
+  API_IMPL_BEGIN
+  onnxruntime::ProviderOptions provider_options;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    // arbitrary length to validate the key/value. adjust if/when needed.
+    // TODO: are any other input validation checks required here (and in the other functions that process
+    // provider options)?
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+
+    provider_options[provider_options_keys[i]] = provider_options_values[i];
+  }
+  auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_VitisAI: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
 }

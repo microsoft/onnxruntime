@@ -3,36 +3,26 @@
 
 #include <math.h>
 
-#include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/optimizer/initializer.h"
+#include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/coreml/shape_utils.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/optimizer/initializer.h"
-
-#ifdef __APPLE__
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
-#include "core/providers/coreml/builders/op_builder_factory.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class ResizeOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
- private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
@@ -41,7 +31,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 11; }
 };
 
-// Helper functions
+namespace {
 bool GetResizeScales(const InitializedTensorSet& initializers,
                      const Node& node, std::vector<float>& scales,
                      const logging::Logger&) {
@@ -70,13 +60,11 @@ bool GetResizeOutputSizes(const InitializedTensorSet& initializers,
     return false;
   Initializer unpacked_tensor(sizes_tensor);
   auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
-  sizes = std::vector<int64_t>{sizes_data.begin(), sizes_data.end()};
+  sizes = std::vector<int64_t>(sizes_data.begin(), sizes_data.end());
   return true;
 }
+}  // namespace
 
-// Add operator related
-
-#ifdef __APPLE__
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // We don't really use ROI here, so add it to skipped list if it's an initializer tensor
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
@@ -96,7 +84,7 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& logger) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
   auto* coreml_upsample = layer->mutable_upsample();
   NodeAttrHelper helper(node);
@@ -117,7 +105,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     coreml_upsample->add_scalingfactor(static_cast<int64_t>(scales[3]));
   } else {  // we already checked number of inputs in IsOpSupportedImpl
     std::vector<int64_t> input_shape;
-    ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Error getting input shape");
+    ORT_RETURN_IF_NOT(GetStaticShape(*input_defs[0], input_shape, logger), "Error getting input shape");
     std::vector<int64_t> output_sizes;
     ORT_RETURN_IF_NOT(GetResizeOutputSizes(initializers, node, output_sizes, logger),
                       "Error getting resize output_sizes");
@@ -131,9 +119,6 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif
-
-// Operator support related
 
 bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                         const logging::Logger& logger) const {
@@ -245,10 +230,15 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       if (!GetResizeOutputSizes(initializers, node, output_sizes, logger))
         return false;
 
+      if (!IsStaticShape(input_shape)) {
+        LOGS(logger, VERBOSE) << "Input shape with dynamic dimensions is not supported.";
+        return false;
+      }
+
       auto output_size_n = output_sizes[0];
       auto output_size_c = output_sizes[1];
       if (output_size_n != input_shape[0] || output_size_c != input_shape[1]) {
-        LOGS(logger, VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
+        LOGS(logger, VERBOSE) << "Output sizes of N/C channel should match the input sizes, "
                               << "Resize of N/C channels are not supported"
                               << ", input_size_n, " << input_shape[0] << ", output_size_n, " << output_size_n
                               << ". input_size_c, " << input_shape[1] << ", output_size_c, " << output_size_c;

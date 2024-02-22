@@ -13,8 +13,8 @@ template <typename AttrType, typename TargetType>
 class DictVectorizerOp final : public OpKernel {
  public:
   DictVectorizerOp(const OpKernelInfo& info) : OpKernel(info) {
-    //In some stupid models, the vocabulary could have duplicated elements.
-    //We must support that, otherwise some tests will be break.
+    // In some stupid models, the vocabulary could have duplicated elements.
+    // We must support that, otherwise some tests will be break.
     ORT_ENFORCE(info.GetAttrs(std::is_same<AttrType, std::string>::value ? "string_vocabulary" : "int64_vocabulary", vocabulary_).IsOK());
   }
   common::Status Compute(OpKernelContext* ctx) const override {
@@ -26,7 +26,7 @@ class DictVectorizerOp final : public OpKernel {
       if (index != map->end()) {
         *y_data++ = index->second;
       } else {
-        //Any keys not present in the input dictionary, will be zero in the output array
+        // Any keys not present in the input dictionary, will be zero in the output array
         *y_data++ = TargetType();
       }
     }

@@ -16,140 +16,29 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-// opset 11 explicitly added support for negative axis. implementation already allowed it.
-#define REGISTER_KERNEL_TYPED(name, T)                                                     \
+#define REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, end)                                \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      11, 12,                                                                              \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      13,                                                                                  \
+      1, end,                                                                              \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-#define REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                        \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      11, 11,                                                                              \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      12, 12,                                                                              \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, version)                                                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                  \
+      name,                                                                                                                       \
+      kOnnxDomain,                                                                                                                \
+      version,                                                                                                                    \
+      T,                                                                                                                          \
+      kCudaExecutionProvider,                                                                                                     \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).InputMemoryType(OrtMemTypeCPUInput, 1), \
       name<T>);
 
-// Register those with changes in OpSet12.
-#define REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(name, T)                                \
-  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      13,                                                                                  \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);
-
-#define REGISTER_KERNEL_VERSIONED_TYPED_13(name, T)                                        \
-  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      13, 13,                                                                              \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);
-
-// Register ReduceMin int64_t support in OpSet14.
-#define REGISTER_KERNEL_TYPED_14(name, T)                                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      14,                                                                                  \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);
-
-// CUDA ArgMax/ArgMin doesn't have OpSet12+ implementation (with select_last_index attr) yet
-#define REGISTER_KERNEL_VERSIONED_TYPED_11(name, T)                                        \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      11, 11,                                                                              \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);
-
-// Register with the latest version 13
-#define REGISTER_KERNEL_TYPED_13(name, T)                                                  \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      11, 12,                                                                              \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      13,                                                                                  \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create())                                                        \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                          \
-      name<T>);
+#define REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(name, T, last, cur) \
+  REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, last)                      \
+  REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, cur)
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
 template <bool allow_multi_axes>
@@ -443,7 +332,7 @@ Status PrepareForReduce(const Tensor* X,
 
 // `input_shape_override` is the input shape for compute purposes (if provided)
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
-Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
                          gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
@@ -473,7 +362,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
       IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
       const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
       if (calculate_sqt) {
-        input_data_buffer = cuda_ep.GetScratchBuffer<T>(input_count, ort_stream, WaitCudaNotificationOnDevice);
+        input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
         input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
         fast_divmod tmp_div;
         Impl_Mul<CudaT>(stream, static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
@@ -490,7 +379,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
         } break;
         case ApplicableMatrixReduction::Columns: {
           const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<CudaT>(m, n);
-          auto buffer = cuda_ep.GetScratchBuffer<void>(buffer_size_bytes, ort_stream, WaitCudaNotificationOnDevice);
+          auto buffer = buffer_size_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<void>(gpu_allocator, buffer_size_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
           ORT_RETURN_IF_ERROR(reduce_matrix_columns(stream, input_data,
                                                     reinterpret_cast<CudaT*>(output.MutableData<T>()), m, n,
                                                     buffer.get(), buffer_size_bytes));
@@ -527,7 +416,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
   if ((ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
       (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
     // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
-    temp_X = cuda_ep.GetScratchBuffer<float>(input_count, ort_stream, WaitCudaNotificationOnDevice);
+    temp_X = IAllocator::MakeUniquePtr<float>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
     Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()), temp_X.get(), input_shape.Size());
   } else {
     cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
@@ -550,18 +439,18 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
   CudaStream* cuda_stream = static_cast<CudaStream*>(ort_stream);
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc,
                                                        input_tensor, output_tensor, &workspace_bytes));
-  auto workspace_cuda = cuda_ep.GetScratchBuffer<CudaT>(workspace_bytes, ort_stream, WaitCudaNotificationOnDevice);
+  auto workspace_cuda = workspace_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, workspace_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
 
   size_t indices_bytes = 0;
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc,
                                                      input_tensor, output_tensor, &indices_bytes));
-  auto indices_cuda = cuda_ep.GetScratchBuffer<uint32_t>(indices_bytes, ort_stream, WaitCudaNotificationOnDevice);
+  auto indices_cuda = indices_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
     IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     CudaT* input_data = nullptr;
     if (calculate_sqt) {
-      input_data_buffer = cuda_ep.GetScratchBuffer<T>(input_count, ort_stream, WaitCudaNotificationOnDevice);
+      input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
       input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<CudaT>(stream,
@@ -588,7 +477,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
         size_t indices_bytes_max = 0;
         CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_max_desc,
                                                            input_tensor, output_tensor, &indices_bytes_max));
-        auto indices_cuda_max = cuda_ep.GetScratchBuffer<uint32_t>(indices_bytes, ort_stream, WaitCudaNotificationOnDevice);
+        auto indices_cuda_max = indices_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
         auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max,
@@ -599,9 +488,9 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
 
       // Exp(X-ReduceMax)
       const TensorShape output_shape(output_dims);
-      auto exp_result_buffer = cuda_ep.GetScratchBuffer<T>(input_count, ort_stream, WaitCudaNotificationOnDevice);
+      auto exp_result_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
       auto exp_result = exp_result_buffer.get();
-      auto log_sum_result_buffer = cuda_ep.GetScratchBuffer<T>(output_count, ort_stream, WaitCudaNotificationOnDevice);
+      auto log_sum_result_buffer = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<T>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape));
@@ -669,7 +558,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
         }
       } else {
         if (temp_X) {
-          auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count, ort_stream, WaitCudaNotificationOnDevice);
+          auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
           CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
               CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
               workspace_cuda.get(), workspace_bytes,
@@ -695,14 +584,14 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t), stream));
     } else {
       if (temp_X) {
-        auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count, ort_stream, WaitCudaNotificationOnDevice);
+        auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, temp_X.get(),
             &zero, output_tensor, temp_output.get()));
       } else {
-        auto temp_output = cuda_ep.GetScratchBuffer<CudaT>(output_count, ort_stream, WaitCudaNotificationOnDevice);
+        auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
@@ -724,6 +613,30 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
 
   return Status::OK();
 }
+
+template Status ReduceComputeCore<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    const AllocatorPtr& gpu_allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+    /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+    gsl::span<const int64_t> axes,
+    bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+    Stream* ort_stream,
+    const TensorShape* input_shape_override);
+
+template Status ReduceComputeCore<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    const AllocatorPtr& gpu_allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+    /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+    gsl::span<const int64_t> axes,
+    bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+    Stream* ort_stream,
+    const TensorShape* input_shape_override);
+
+template Status ReduceComputeCore<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    const AllocatorPtr& gpu_allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+    /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+    gsl::span<const int64_t> axes,
+    bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+    Stream* ort_stream,
+    const TensorShape* input_shape_override);
 
 template <bool allow_multi_axes>
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
@@ -770,7 +683,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
-  return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes,
+  return ReduceComputeCore<T, ReduceTensorIndices>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction, ctx->GetComputeStream());
 }
 
@@ -833,7 +746,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     CudnnReduceDescriptor reduce_desc;                                                                                    \
                                                                                                                           \
     cudnnDataType_t cudnn_type_X = CUDNN_DATA_FLOAT;                                                                      \
-    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, ctx->GetComputeStream());                             \
+    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, ctx->GetComputeStream());                    \
     Impl_Cast<CudaT, float>(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()), temp_X.get(), X->Shape().Size());  \
                                                                                                                           \
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));                  \
@@ -843,12 +756,12 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
         cudnnGetReductionIndicesSize(GetCudnnHandle(ctx), reduce_desc, input_tensor, output_tensor, &indices_bytes));     \
     CUDNN_RETURN_IF_ERROR(                                                                                                \
         cudnnGetReductionWorkspaceSize(GetCudnnHandle(ctx), reduce_desc, input_tensor, output_tensor, &workspace_bytes)); \
-    IAllocatorUniquePtr<uint32_t> indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes, ctx->GetComputeStream());               \
-    IAllocatorUniquePtr<CudaT> workspace_cuda = GetScratchBuffer<CudaT>(workspace_bytes, ctx->GetComputeStream());                 \
+    IAllocatorUniquePtr<uint32_t> indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes, ctx->GetComputeStream());      \
+    IAllocatorUniquePtr<CudaT> workspace_cuda = GetScratchBuffer<CudaT>(workspace_bytes, ctx->GetComputeStream());        \
                                                                                                                           \
     const auto one = Consts<float>::One;                                                                                  \
     const auto zero = Consts<float>::Zero;                                                                                \
-    auto temp_Y = GetScratchBuffer<float>(output_count, ctx->GetComputeStream());                                                  \
+    auto temp_Y = GetScratchBuffer<float>(output_count, ctx->GetComputeStream());                                         \
     CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(GetCudnnHandle(ctx), reduce_desc, indices_cuda.get(), indices_bytes,          \
                                             workspace_cuda.get(), workspace_bytes, &one, input_tensor, temp_X.get(),      \
                                             &zero, output_tensor, temp_Y.get()));                                         \
@@ -865,7 +778,7 @@ SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(uint8_t)
 namespace ReductionOps {
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
-std::unique_ptr<Tensor> ReduceCompute(const CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
+std::unique_ptr<Tensor> ReduceCompute(const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
                                       bool fast_reduction, Stream* stream, const TensorShape* input_shape_override) {
@@ -882,7 +795,7 @@ std::unique_ptr<Tensor> ReduceCompute(const CUDAExecutionProvider& cuda_ep, cudn
 
   auto output = Tensor::Create(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
 
-  status = ReduceComputeCore<T, ReduceTensorIndices>(cuda_ep, input, prepare_reduce_metadata, *output, cudnn_reduce_op, axes,
+  status = ReduceComputeCore<T, ReduceTensorIndices>(gpu_allocator, input, prepare_reduce_metadata, *output, cudnn_reduce_op, axes,
                                                      calculate_log, calculate_sqt, log_sum_exp, fast_reduction, stream, input_shape_override);
 
   if (!status.IsOK()) {
@@ -895,21 +808,21 @@ std::unique_ptr<Tensor> ReduceCompute(const CUDAExecutionProvider& cuda_ep, cudn
 // Explicit template instantiation (needed to be used in einsum_auxiliary_ops.cc)
 
 template std::unique_ptr<Tensor> ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
-    const CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
+    const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, Stream* stream, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
-    const CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
+    const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, Stream* stream, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
-    const CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
+    const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
@@ -917,69 +830,76 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 
 }  // namespace ReductionOps
 
-#define REGISTER_KERNEL_HFD(name)        \
-  REGISTER_KERNEL_TYPED(name, MLFloat16) \
-  REGISTER_KERNEL_TYPED(name, float)     \
-  REGISTER_KERNEL_TYPED(name, double)    \
-  REGISTER_KERNEL_TYPED(name, BFloat16)
+// CUDA ArgMax/ArgMin doesn't have OpSet12+ implementation (with select_last_index attr) yet
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, MLFloat16, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, float, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, double, 11)
 
-#define REGISTER_KERNEL_HFD_VERSIONED_11(name)        \
-  REGISTER_KERNEL_VERSIONED_TYPED_11(name, MLFloat16) \
-  REGISTER_KERNEL_VERSIONED_TYPED_11(name, float)     \
-  REGISTER_KERNEL_VERSIONED_TYPED_11(name, double)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, MLFloat16, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, float, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, double, 11)
 
-REGISTER_KERNEL_HFD_VERSIONED_11(ArgMax)
-REGISTER_KERNEL_HFD_VERSIONED_11(ArgMin)
-REGISTER_KERNEL_HFD(ReduceL1)
-REGISTER_KERNEL_HFD(ReduceL2)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int32_t, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int64_t, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int8_t, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, uint8_t, 17, 18)
 
-REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, MLFloat16)
-REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, float)
-REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, double)
-REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int32_t)
-REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int64_t)
-REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int8_t)
-REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, uint8_t)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, BFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, int32_t, 17, 18)
 
-REGISTER_KERNEL_HFD(ReduceMean)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int32_t, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int64_t, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int8_t, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, uint8_t, 17, 18)
 
-REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, MLFloat16)
-REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, float)
-REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, double)
-REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int32_t)
-REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int64_t)
-REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int8_t)
-REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, uint8_t)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, BFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, int32_t, 17, 18)
 
-REGISTER_KERNEL_TYPED_14(ReduceMin, MLFloat16)
-REGISTER_KERNEL_TYPED_14(ReduceMin, float)
-REGISTER_KERNEL_TYPED_14(ReduceMin, double)
-REGISTER_KERNEL_TYPED_14(ReduceMin, int32_t)
-REGISTER_KERNEL_TYPED_14(ReduceMin, int8_t)
-REGISTER_KERNEL_TYPED_14(ReduceMin, uint8_t)
-REGISTER_KERNEL_TYPED_14(ReduceMin, int64_t)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, MLFloat16, 12, 13)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, float, 12, 13)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, double, 12, 13)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, int32_t, 12, 13)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, int64_t, 12, 13)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, BFloat16, 12, 13)
 
-REGISTER_KERNEL_HFD(ReduceProd)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSum, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSum, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSum, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSum, BFloat16, 17, 18)
 
-REGISTER_KERNEL_TYPED_13(ReduceSum, MLFloat16)
-REGISTER_KERNEL_TYPED_13(ReduceSum, float)
-REGISTER_KERNEL_TYPED_13(ReduceSum, double)
-REGISTER_KERNEL_TYPED_13(ReduceSum, int32_t)
-REGISTER_KERNEL_TYPED_13(ReduceSum, int64_t)
-REGISTER_KERNEL_TYPED_13(ReduceSum, BFloat16)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSumSquare, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSumSquare, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSumSquare, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSumSquare, BFloat16, 17, 18)
 
-REGISTER_KERNEL_HFD(ReduceLogSum)
-REGISTER_KERNEL_HFD(ReduceSumSquare)
-REGISTER_KERNEL_HFD(ReduceLogSumExp)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSumExp, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSumExp, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSumExp, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSumExp, BFloat16, 17, 18)
 
-#define REGISTER_KERNEL_INT32(name) \
-  REGISTER_KERNEL_TYPED(name, int32_t)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, BFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, int32_t, 17, 18)
 
-REGISTER_KERNEL_INT32(ReduceL1)
-REGISTER_KERNEL_INT32(ReduceL2)
-REGISTER_KERNEL_INT32(ReduceMean)
-
-REGISTER_KERNEL_INT32(ReduceProd)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, MLFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, float, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, double, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, BFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, int32_t, 17, 18)
 
 }  // namespace cuda
 }  // namespace onnxruntime

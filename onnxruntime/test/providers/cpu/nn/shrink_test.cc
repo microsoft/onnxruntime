@@ -90,14 +90,14 @@ void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases,
 const std::vector<MLFloat16> ConvertFloatToMLFloat16(const std::vector<float>& float_data) {
   std::vector<MLFloat16> new_data;
   for (const auto& f : float_data) {
-    new_data.push_back(MLFloat16(math::floatToHalf(f)));
+    new_data.push_back(MLFloat16(f));
   }
   return new_data;
 }
 
 TEST(MathOpTest, ShrinkInt8Type) {
   const auto& test_cases = GenerateSignedTestCases<int8_t>();
-  RunShrinkTest<int8_t>(test_cases, {kTensorrtExecutionProvider}); // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  RunShrinkTest<int8_t>(test_cases, {kTensorrtExecutionProvider});  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
 }
 
 TEST(MathOpTest, ShrinkUint8Type) {

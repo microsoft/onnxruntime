@@ -1,8 +1,11 @@
 /.vscode/
 
+build.js
 webpack.config.js
 typedoc.json
 tsconfig.json
 **/*.tsbuildinfo
+
+/test/
 
 *.tgz

@@ -22,19 +22,19 @@ namespace cuda {
           .MayInplace(0, 0),                                     \
       x<T>);
 
-#define UNARY_ACTIVATION_COMPUTE(x, T)                                                                     \
-  template <>                                                                                              \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
-    UnaryElementwisePreparation p;                                                                         \
-    ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                           \
-    Ctx##x func_ctx = MakeFuncCtx();                                                                       \
-    Impl_##x<typename ToCudaType<T>::MappedType>(                                                          \
-        Stream(context),                                                                                          \
+#define UNARY_ACTIVATION_COMPUTE(x, T)                                                            \
+  template <>                                                                                     \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                  \
+    UnaryElementwisePreparation p;                                                                \
+    ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                  \
+    Ctx##x func_ctx = MakeFuncCtx();                                                              \
+    Impl_##x<typename ToCudaType<T>::MappedType>(                                                 \
+        Stream(context),                                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->MutableData<T>()), \
-        &func_ctx, p.output_tensor->Shape().Size());                                                       \
-                                                                                                           \
-    return Status::OK();                                                                                   \
+        &func_ctx, p.output_tensor->Shape().Size());                                              \
+                                                                                                  \
+    return Status::OK();                                                                          \
   }
 
 #define UNARY_ACTIVATION_OP_TYPED(name, ver, domain, T) \
@@ -56,6 +56,6 @@ REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, MLFloat16)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, float)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, double)
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

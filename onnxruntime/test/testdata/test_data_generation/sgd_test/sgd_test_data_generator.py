@@ -58,10 +58,8 @@ def generate_sgd_test_data(seed, _model_setup_func, data_func, train_step_count,
 
     def _build_param_index_to_name_mapping(model, map_result):
         """Build index to name mapping, which is used to retrieve data from optimizer group."""
-        index = 0
-        for param in model.named_parameters():
+        for index, param in enumerate(model.named_parameters()):
             map_result[index] = param[0]
-            index += 1
 
     torch.manual_seed(seed)
 
@@ -136,7 +134,7 @@ def generate_sgd_single_weight_tests(run_step_count, device):
         target = torch.randn(batch_size, dimension_hidden, device=device, dtype=torch.float32)
         return input, target
 
-    json_file_name = f"sgd_test_single_weight.json"
+    json_file_name = "sgd_test_single_weight.json"
     generate_sgd_test_data(seed, _model_setup_func, _data_func, run_step_count, json_file_name, device)
 
 
@@ -154,7 +152,7 @@ def generate_sgd_multiple_weights_tests(run_step_count, device):
         target = torch.randn(batch_size, dim_out, device=device, dtype=torch.float32)
         return input, target
 
-    json_file_name = f"sgd_test_multiple_weights.json"
+    json_file_name = "sgd_test_multiple_weights.json"
     generate_sgd_test_data(seed, _model_setup_func, data_func, run_step_count, json_file_name, device)
 
 

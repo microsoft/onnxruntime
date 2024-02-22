@@ -4,10 +4,8 @@
 #include <tvm/runtime/device_api.h>
 
 #include "tvm_allocator.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/session_state.h"
 #include "xpu_data_transfer.h"
-
 
 namespace onnxruntime {
 namespace tvm {
@@ -27,5 +25,5 @@ void TVMAllocator::Free(void* p) {
   TVMDeviceFreeDataSpace(ctx, p);
 }
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime

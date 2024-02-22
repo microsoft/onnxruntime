@@ -714,7 +714,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
   std::vector<float> Y_h_data = {-0.03277518f, 0.05935364f};
   std::vector<float> Y_c_data = {-0.0780206f, 0.098829f};
 
-  //Run Test
+  // Run Test
   LstmOpContext2x1x2x2 context("forward");
   context.RunTest(input, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data);
 }
@@ -1245,7 +1245,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthN
   context.RunTest(X_data, batch_size, seq_len, &initial_h, &initial_c, Y_data, Y_h_data, {}, &sequence_length, false);
 }
 
-//Doesn't work with CUDA 11.4 on Windows. Need investigation.
+// Doesn't work with CUDA 11.4 on Windows. Need investigation.
 #if defined(USE_CUDA) && defined(_WIN32)
 TEST(LSTMTest, DISABLED_ONNXRuntime_TestLSTMShorterSeqInMiddle) {
 #else
@@ -1296,7 +1296,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
 
-//Doesn't work with CUDA 11.4 on Windows. Need investigation.
+// Doesn't work with CUDA 11.4 on Windows. Need investigation.
 #if defined(USE_CUDA) && defined(_WIN32)
 TEST(LSTMTest, DISABLED_ONNXRuntime_TestLSTMZeroSeqInMiddle) {
 #else
@@ -1388,7 +1388,7 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   std::vector<int64_t> R_dims = {num_directions, 4 * hidden_size, hidden_size};
 
   test.AddInput<float>("X", X_dims, X_data);
-  test.AddInput<float>("W", W_dims, W_data, true);  //Trigger pre-packing
+  test.AddInput<float>("W", W_dims, W_data, true);  // Trigger pre-packing
   test.AddInput<float>("R", R_dims, R_data, true);  // Trigger pre-packing
 
   // B data

@@ -15,4 +15,4 @@ class GistBinarizeEncoderOp final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 }  // namespace contrib
-}  //namespace onnxruntime
+}  // namespace onnxruntime

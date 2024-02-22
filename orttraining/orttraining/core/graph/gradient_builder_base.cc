@@ -392,7 +392,7 @@ AttributeProto GradientBuilderBase::AttributeDefinitionToAttributeProto(
                   elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
       float float_value = value.get<float>();
       if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        tensor_proto = ScalarTensorProto(MLFloat16(math::floatToHalf(float_value)), {1});
+        tensor_proto = ScalarTensorProto(MLFloat16(float_value), {1});
       } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
         tensor_proto = ScalarTensorProto(BFloat16(float_value), {1});
       } else {

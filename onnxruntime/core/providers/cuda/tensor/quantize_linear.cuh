@@ -11,10 +11,33 @@ namespace onnxruntime {
 namespace cuda {
 
 template <class T, class U>
-Status CudaQuantizeLinear(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element);
+Status CudaQuantizeLinearStd(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element);
 
 template <class T, class U>
-Status CudaDequantizeLinear(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element);
+Status CudaQuantizeLinearSat(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element,
+                             bool saturate);
+
+template <class T, class U>
+Status CudaQuantizeLinearAxisStd(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element,
+                                 size_t batch_size, size_t n_scales);
+
+template <class T, class U>
+Status CudaQuantizeLinearAxisSat(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element,
+                                 size_t batch_size, size_t n_scales, bool saturate);
+
+template <class T, class U>
+Status CudaDequantizeLinearStd(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element);
+
+template <class T, class U>
+Status CudaDequantizeLinearSat(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element);
+
+template <class T, class U>
+Status CudaDequantizeLinearAxisStd(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element,
+                                   size_t batch_size, size_t n_scales);
+
+template <class T, class U>
+Status CudaDequantizeLinearAxisSat(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element,
+                                   size_t batch_size, size_t n_scales);
 
 }  // namespace cuda
 }  // namespace onnxruntime

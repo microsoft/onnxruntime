@@ -27,25 +27,25 @@
 using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
-#define ADD_VERSIONED_TYPED_ROIALIGN_OP(data_type)                  \
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
-    RoiAlign,                                                       \
-    10,                                                             \
-    15,                                                             \
-    data_type,                                                      \
-    KernelDefBuilder()                                              \
-    .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
-    .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
-    RoiAlign<data_type>);
+#define ADD_VERSIONED_TYPED_ROIALIGN_OP(data_type)                        \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                               \
+      RoiAlign,                                                           \
+      10,                                                                 \
+      15,                                                                 \
+      data_type,                                                          \
+      KernelDefBuilder()                                                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
+      RoiAlign<data_type>);
 
 ADD_VERSIONED_TYPED_ROIALIGN_OP(float);
 ADD_VERSIONED_TYPED_ROIALIGN_OP(double);
 
-#define ADD_TYPED_ROIALIGN_OP(data_type)                                                                \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 16, data_type,                                               \
-                                 KernelDefBuilder()                                                     \
-                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>())    \
-                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),     \
+#define ADD_TYPED_ROIALIGN_OP(data_type)                                                             \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 16, data_type,                                            \
+                                 KernelDefBuilder()                                                  \
+                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
+                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
                                  RoiAlign<data_type>);
 
 ADD_TYPED_ROIALIGN_OP(float);
@@ -63,7 +63,7 @@ struct PreCalc {
   T w3;
   T w4;
 };
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
@@ -163,7 +163,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
   int64_t pooled_height = output_shape[2];
   int64_t pooled_width = output_shape[3];
 
-  //100 is a random chosed value, need be tuned
+  // 100 is a random chosed value, need be tuned
   double cost = static_cast<double>(channels * pooled_width * pooled_height * 100);
 
   ThreadPool::TryParallelFor(ttp, static_cast<ptrdiff_t>(n_rois), cost, [&](ptrdiff_t n, ptrdiff_t end) {
@@ -197,7 +197,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
           (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
 
       // We do average (integral) pooling inside a bin
-      const int64_t count = std::max(roi_bin_grid_h * roi_bin_grid_w, static_cast<int64_t>(1)); // e.g. = 4
+      const int64_t count = std::max(roi_bin_grid_h * roi_bin_grid_w, static_cast<int64_t>(1));  // e.g. = 4
 
       // we want to precalculate indices and weights shared by all channels,
       // this is the key point of optimization

@@ -23,7 +23,8 @@ bool CheckAdapterFP16Blocked(bool isMcdmAdapter, uint32_t vendorId, uint32_t maj
       }
 
       // Check Intel GPU driver version
-      return (majorVersion < 25) || (majorVersion == 25 && minorVersion < 6574) || (majorVersion == 26 && minorVersion < 6572);
+      return (majorVersion < 25) || (majorVersion == 25 && minorVersion < 6574) ||
+        (majorVersion == 26 && minorVersion < 6572);
     }
   }
   return false;
@@ -34,7 +35,8 @@ void ParseDriverVersion(LARGE_INTEGER& version, uint32_t& majorVersion, uint32_t
   minorVersion = LOWORD(version.LowPart);
 }
 
-HRESULT GetDXGIAdapterMetadata(ID3D12Device& device, uint32_t& vendorId, uint32_t& majorVersion, uint32_t& minorVersion) {
+HRESULT
+GetDXGIAdapterMetadata(ID3D12Device& device, uint32_t& vendorId, uint32_t& majorVersion, uint32_t& minorVersion) {
   winrt::com_ptr<IDXGIFactory4> spFactory;
   RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
 
@@ -53,7 +55,9 @@ HRESULT GetDXGIAdapterMetadata(ID3D12Device& device, uint32_t& vendorId, uint32_
 }
 
 #ifdef ENABLE_DXCORE
-HRESULT GetDXCoreAdapterMetadata(ID3D12Device& device, bool& isMcdmAdapter, uint32_t& vendorId, uint32_t& majorVersion, uint32_t& minorVersion) {
+HRESULT GetDXCoreAdapterMetadata(
+  ID3D12Device& device, bool& isMcdmAdapter, uint32_t& vendorId, uint32_t& majorVersion, uint32_t& minorVersion
+) {
   winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
   RETURN_IF_FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(spFactory.put())));
 
@@ -61,8 +65,8 @@ HRESULT GetDXCoreAdapterMetadata(ID3D12Device& device, bool& isMcdmAdapter, uint
   RETURN_IF_FAILED(spFactory->GetAdapterByLuid(device.GetAdapterLuid(), IID_PPV_ARGS(spAdapter.put())));
 
   if (spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE) &&
-      (!(spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS) ||
-         spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D11_GRAPHICS)))) {
+        (!(spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS) ||
+           spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D11_GRAPHICS)))) {
     isMcdmAdapter = true;
   } else {
     isMcdmAdapter = false;
@@ -130,7 +134,7 @@ HRESULT IsFloat16Blocked(ID3D12Device& device, bool* isBlocked) {
   *isBlocked = CheckAdapterFP16Blocked(isMcdmAdapter, vendorId, majorVersion, minorVersion);
   return S_OK;
 }
-}
+}  // namespace
 
 namespace CommonDeviceHelpers {
 constexpr uint32_t c_intelVendorId = 0x8086;
@@ -152,27 +156,21 @@ bool IsFloat16Supported(const winml::LearningModelDevice& device) {
 
 bool IsFloat16Supported(ID3D12Device* device) {
 #ifndef USE_DML
-    throw winrt::hresult_error(E_NOTIMPL, L"IsFloat16Supported is not implemented for WinML only build."); 
+  throw winrt::hresult_error(E_NOTIMPL, L"IsFloat16Supported is not implemented for WinML only build.");
 #else
   bool isBlocked;
   if (FAILED(IsFloat16Blocked(*device, &isBlocked)) || isBlocked) {
     return false;
   }
   winrt::com_ptr<IDMLDevice> dmlDevice;
-  winrt::check_hresult(DMLCreateDevice(
-      device,
-      DML_CREATE_DEVICE_FLAG_NONE,
-      IID_PPV_ARGS(dmlDevice.put())));
+  winrt::check_hresult(DMLCreateDevice(device, DML_CREATE_DEVICE_FLAG_NONE, IID_PPV_ARGS(dmlDevice.put())));
 
   DML_FEATURE_QUERY_TENSOR_DATA_TYPE_SUPPORT float16Query = {DML_TENSOR_DATA_TYPE_FLOAT16};
   DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT float16Data = {};
 
   winrt::check_hresult(dmlDevice->CheckFeatureSupport(
-      DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT,
-      sizeof(float16Query),
-      &float16Query,
-      sizeof(float16Data),
-      &float16Data));
+    DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT, sizeof(float16Query), &float16Query, sizeof(float16Data), &float16Data
+  ));
   return float16Data.IsSupported;
 #endif
 }

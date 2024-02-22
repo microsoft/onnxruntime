@@ -5,6 +5,8 @@
 
 #include "custom_op_utils.h"
 #include "core/common/common.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
@@ -30,6 +32,17 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
 
   auto output_info = output.GetTensorTypeAndShapeInfo();
   int64_t size = output_info.GetElementCount();
+
+#ifdef USE_CUDA
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+#else
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
+#endif
+  OrtAllocator* allocator;
+  Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
+  void* allocated = allocator->Alloc(allocator, 2);
+  EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
+  allocator->Free(allocator, allocated);
 
   // Do computation
 #ifdef USE_CUDA
@@ -72,11 +85,10 @@ void MyCustomKernelSecondInputOnCpu::Compute(OrtKernelContext* context) {
   ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
 
   // copy the second input to GPU
-  const int64_t y_size =  input_Y.GetTensorTypeAndShapeInfo().GetElementCount();
-  float* Y_cuda {};
+  const int64_t y_size = input_Y.GetTensorTypeAndShapeInfo().GetElementCount();
+  float* Y_cuda{};
   cudaMalloc(&Y_cuda, y_size * sizeof(float));
   cudaMemcpy(Y_cuda, Y, y_size * sizeof(float), cudaMemcpyHostToDevice);
-
 
   // Setup output
   auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
@@ -172,6 +184,10 @@ void MyCustomStringLengthsKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext kcontext(context);
   constexpr std::array<const int64_t, 1> output_shape = {1};
   const size_t num_inputs = kcontext.GetInputCount();
+  Ort::Logger logger = kcontext.GetLogger();
+
+  ORT_CXX_LOGF(logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Getting string lengths for %d inputs",
+               static_cast<int>(num_inputs));
 
   // Each output is set to the length of the corresponding input string.
   for (size_t i = 0; i < num_inputs; ++i) {
@@ -356,18 +372,22 @@ StandaloneCustomKernel::StandaloneCustomKernel(const OrtKernelInfo* k_info) {
 
   const char* add_type_constraint_names[1] = {"T"};
   ONNXTensorElementDataType add_type_constraint_values[1] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-  op_add_ = Ort::Op::Create(info_copy_, "Add", "", 14,
+  op_add_ = Ort::Op::Create(info_copy_, "Add", "", /* must match onnx version number exactly */ 14,
                             add_type_constraint_names,
                             add_type_constraint_values,
                             1, nullptr, 0, 2, 1);
 
+#if !defined(REDUCED_OPS_BUILD)
   InitTopK();
   InitGru();
+#endif
 }
 
+#if !defined(REDUCED_OPS_BUILD)
 void StandaloneCustomKernel::InitTopK() {
   const char* type_constraint_names[2] = {"T", "I"};
-  ONNXTensorElementDataType type_constraint_values[2] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64};
+  ONNXTensorElementDataType type_constraint_values[2] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                                         ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64};
 
   constexpr int64_t axis_value = -1;
   auto axis = Ort::OpAttr("axis", &axis_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
@@ -379,7 +399,7 @@ void StandaloneCustomKernel::InitTopK() {
   auto sorted = Ort::OpAttr("sorted", &sorted_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   Ort::OpAttr top_attrs[3] = {std::move(axis), std::move(largest), std::move(sorted)};
-  op_topk_ = Ort::Op::Create(info_copy_, "TopK", "", 14,
+  op_topk_ = Ort::Op::Create(info_copy_, "TopK", "", /* must match onnx version number exactly */ 11,
                              type_constraint_names,
                              type_constraint_values,
                              2, top_attrs, 3, 2, 2);
@@ -418,7 +438,8 @@ void StandaloneCustomKernel::InvokeTopK(OrtKernelContext* context) {
 
 void StandaloneCustomKernel::InitGru() {
   const char* type_constraint_names[2] = {"T", "T1"};
-  ONNXTensorElementDataType type_constraint_values[2] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32};
+  ONNXTensorElementDataType type_constraint_values[2] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                                         ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32};
 
   const char* activition_names[4] = {"LeakyRelu", "Tanh", "Sigmoid", "ScaledTanh"};
   Ort::OpAttr activations = Ort::OpAttr("activations", activition_names, 4, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
@@ -433,7 +454,8 @@ void StandaloneCustomKernel::InitGru() {
   Ort::OpAttr direction = Ort::OpAttr("direction", direction_string, 1, OrtOpAttrType::ORT_OP_ATTR_STRING);
 
   int64_t linear_before_reset_value = 0;
-  Ort::OpAttr linear_before_reset = Ort::OpAttr("linear_before_reset", &linear_before_reset_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
+  Ort::OpAttr linear_before_reset = Ort::OpAttr("linear_before_reset", &linear_before_reset_value, 1,
+                                                OrtOpAttrType::ORT_OP_ATTR_INT);
 
   int64_t hidden_size_value = 2;
   Ort::OpAttr hidden_size = Ort::OpAttr("hidden_size", &hidden_size_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
@@ -443,7 +465,7 @@ void StandaloneCustomKernel::InitGru() {
                                     std::move(activation_beta), std::move(direction),
                                     std::move(linear_before_reset), std::move(hidden_size)};
 
-  op_gru_ = Ort::Op::Create(info_copy_, "GRU", "", 14,
+  op_gru_ = Ort::Op::Create(info_copy_, "GRU", "", /* must match onnx version number exactly */ 14,
                             type_constraint_names,
                             type_constraint_values,
                             2, gru_attrs, 6, 6, 2);
@@ -593,6 +615,8 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
   }
 }
 
+#endif  // !defined(REDUCED_OPS_BUILD)
+
 void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext ctx(context);
   auto input_X = ctx.GetInput(0);
@@ -605,7 +629,8 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   OrtValue* outputs[1] = {output};
 
   op_add_.Invoke(context, inputs, 2, outputs, 1);
-#ifndef USE_CUDA
+
+#if !defined(USE_CUDA) && !defined(REDUCED_OPS_BUILD)
   InvokeTopK(context);
   InvokeGru(context);
   InitInvokeConv(context);

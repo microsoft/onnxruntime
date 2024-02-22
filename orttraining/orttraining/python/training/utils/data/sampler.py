@@ -2,13 +2,14 @@
 # Licensed under the MIT License.
 # sampler.py
 
-import torch
 import math
-import torch.distributed as dist
-from torch.utils.data.sampler import Sampler
-from torch.utils.data.dataset import Dataset
-from typing import Optional, Iterator, Callable
+from typing import Callable, Iterator, Optional
+
 import numpy as np
+import torch
+import torch.distributed as dist
+from torch.utils.data.dataset import Dataset
+from torch.utils.data.sampler import Sampler
 
 
 def _shard_wrapped_indices_across_workers(dataset_index_list, num_shards, num_samples_per_shard):
@@ -122,7 +123,7 @@ class LoadBalancingDistributedSampler:
                 raise RuntimeError("Requires distributed package to be available")
             rank = dist.get_rank()
         if rank >= world_size or rank < 0:
-            raise ValueError("Invalid rank {}, rank should be in the interval" " [0, {}]".format(rank, world_size - 1))
+            raise ValueError(f"Invalid rank {rank}, rank should be in the interval [0, {world_size - 1}]")
         self.dataset = dataset
         self.world_size = world_size
         self.rank = rank
@@ -149,7 +150,7 @@ class LoadBalancingDistributedSampler:
         self.ordered_sample_complexities = None
 
         if random_level < 0.0 or random_level > 1.0:
-            raise ValueError("Invalid random level {}, shoule be in the range [0.0, 1.0]".format(random_level))
+            raise ValueError(f"Invalid random level {random_level}, shoule be in the range [0.0, 1.0]")
 
         self.random_level = random_level
         self.random_number = None

@@ -10,12 +10,12 @@
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
-#include "core/framework/TensorSeq.h"
 
 namespace onnxruntime {
 #if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
+class TensorSeq;
 }  // namespace onnxruntime
 
 #endif
@@ -68,11 +68,7 @@ struct OrtValue {
   }
 
   bool IsSparseTensor() const {
-#if !defined(DISABLE_SPARSE_TENSORS)
     return (type_ != nullptr && type_->IsSparseTensorType());
-#else
-    ORT_THROW("Sparse tensor is not supported in this build.");
-#endif
   }
 
   onnxruntime::MLDataType Type() const {

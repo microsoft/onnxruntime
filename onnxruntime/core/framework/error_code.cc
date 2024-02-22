@@ -28,7 +28,7 @@ inline OrtStatus* NewStatus(size_t clen) {
 }
 }  // namespace
 
-//Even we say it may not return NULL, indeed it may.
+// Even we say it may not return NULL, indeed it may.
 _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtApis::CreateStatus(OrtErrorCode code,
                                                                            _In_z_ const char* msg) NO_EXCEPTION {
   assert(!(code == 0 && msg != nullptr));

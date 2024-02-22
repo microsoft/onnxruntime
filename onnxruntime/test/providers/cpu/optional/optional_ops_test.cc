@@ -17,7 +17,7 @@ TEST(OptionalOpTest, OptionalTensorCreateFromTensor) {
   test.AddInput<float>("A", {2}, data);
   test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalSeqTensorCreateFromSeqTensor) {
@@ -30,7 +30,7 @@ TEST(OptionalOpTest, OptionalSeqTensorCreateFromSeqTensor) {
   test.AddSeqInput("S", data);
   test.AddOptionalTypeSeqOutput<float>("Y", &data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 TEST(OptionalOpTest, OptionalTensorCreateFromTypeProto) {
   OpTester test("Optional", 15);
@@ -43,7 +43,7 @@ TEST(OptionalOpTest, OptionalTensorCreateFromTypeProto) {
   // expected value is nullptr because we expect a "None" output
   test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalSeqTensorCreateFromTypeProto) {
@@ -60,7 +60,7 @@ TEST(OptionalOpTest, OptionalSeqTensorCreateFromTypeProto) {
   // expected value is nullptr because we expect a "None" output
   test.AddOptionalTypeSeqOutput<float>("Y", nullptr);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalTensorHasElement_True) {
@@ -71,7 +71,7 @@ TEST(OptionalOpTest, OptionalTensorHasElement_True) {
   test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
   test.AddOutput<bool>("Y", {}, {true});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalSeqTensorHasElement_True) {
@@ -84,7 +84,7 @@ TEST(OptionalOpTest, OptionalSeqTensorHasElement_True) {
   test.AddOptionalTypeSeqInput<float>("A", &data);
   test.AddOutput<bool>("Y", {}, {true});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalTensorHasElement_False) {
@@ -94,7 +94,7 @@ TEST(OptionalOpTest, OptionalTensorHasElement_False) {
   test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);
   test.AddOutput<bool>("Y", {}, {false});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalSeqTensorHasElement_False) {
@@ -104,7 +104,7 @@ TEST(OptionalOpTest, OptionalSeqTensorHasElement_False) {
   test.AddOptionalTypeSeqInput<float>("A", nullptr);
   test.AddOutput<bool>("Y", {}, {false});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalTensorGetElement) {
@@ -115,7 +115,7 @@ TEST(OptionalOpTest, OptionalTensorGetElement) {
   test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
   test.AddOutput<float>("Y", {2}, {-1.0856307f, 0.99734545f});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalSeqTensorGetElement) {
@@ -127,7 +127,7 @@ TEST(OptionalOpTest, OptionalSeqTensorGetElement) {
   test.AddOptionalTypeSeqInput<float>("A", &data);
   test.AddSeqOutput("S", data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 class OptionalOpTester : public OpTester {
@@ -142,8 +142,8 @@ class OptionalOpTester : public OpTester {
                 std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
     /*
     * Both the Optional* ops produce intermediate outputs
-    
-                      Graph Input  
+
+                      Graph Input
                           |
                           |
                       Optional
@@ -154,7 +154,7 @@ class OptionalOpTester : public OpTester {
                          |
                        Shape
                          |
-                         | 
+                         |
                       Graph output
       */
 
@@ -221,7 +221,7 @@ TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUseForOptionalTensors) {
   test.AddInput<float>("A", {2}, data);
   test.AddOutput<int64_t>("Y", {}, {2});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 
 TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUseForOptionalTensorSequence) {
@@ -242,7 +242,7 @@ TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUseForOptionalTensorSequence) 
   test.AddSeqInput("S", data);
   test.AddOutput<int64_t>("Y", {}, {1});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported ONNX type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
 }  // namespace test
 }  // namespace onnxruntime

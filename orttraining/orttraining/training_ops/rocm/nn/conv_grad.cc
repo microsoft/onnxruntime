@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//TODO Add exhaustive and default cases for algo.
+// TODO Add exhaustive and default cases for algo.
 
 #include "orttraining/training_ops/rocm/nn/conv_grad.h"
 
@@ -19,7 +19,7 @@ namespace rocm {
 
 REGISTER_GRADIENT_KERNEL_TYPED(float)
 // MIOpen double support not currently implemented.
-//REGISTER_GRADIENT_KERNEL_TYPED(double)
+// REGISTER_GRADIENT_KERNEL_TYPED(double)
 REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
 
 using T_BwdDataPerf = miopenConvAlgoPerf_t;
@@ -29,12 +29,12 @@ using T_BwdFilterAlgo = miopenConvBwdWeightsAlgorithm_t;
 
 miopenStatus_t GetWorkspaceSize(const ConvArgs& args, T_BwdDataAlgo algo, size_t* workspace_size) {
   return miopenConvolutionBackwardDataGetWorkSpaceSize(args.handle, args.y_tensor, args.x_tensor, args.conv_desc,
-							 args.w_desc, workspace_size);
+                                                       args.w_desc, workspace_size);
 }
 
 miopenStatus_t GetWorkspaceSize(const ConvArgs& args, T_BwdFilterAlgo algo, size_t* workspace_size) {
   return miopenConvolutionBackwardWeightsGetWorkSpaceSize(args.handle, args.y_tensor, args.x_tensor, args.conv_desc,
-							 args.w_desc, workspace_size);
+                                                          args.w_desc, workspace_size);
 }
 
 template <typename T_Algo>
@@ -127,28 +127,27 @@ template <>
 struct AlgoSearch<T_BwdDataAlgo> {
   static constexpr auto DEFAULT_ALGO = miopenConvolutionBwdDataAlgoGEMM;
   static AlgoPerfCache<T_BwdDataPerf>& Cache() { return bwd_data_algos; }
-  static Status FindAlgorithms(const ConvArgs& args, const ROCMExecutionProvider* provider,
+  static Status FindAlgorithms(const ConvArgs& args, const ROCMExecutionProvider* provider, const AllocatorPtr& allocator,
                                std::vector<T_BwdDataPerf>& perf_results) {
     static const T_BwdDataAlgo algos[] = {
         miopenConvolutionBwdDataAlgoGEMM,
-	miopenConvolutionBwdDataAlgoDirect,
-	miopenConvolutionBwdDataAlgoFFT,
-	miopenConvolutionBwdDataAlgoWinograd,
-	miopenTransposeBwdDataAlgoGEMM,
-	miopenConvolutionBwdDataAlgoImplicitGEMM
-    };
+        miopenConvolutionBwdDataAlgoDirect,
+        miopenConvolutionBwdDataAlgoFFT,
+        miopenConvolutionBwdDataAlgoWinograd,
+        miopenTransposeBwdDataAlgoGEMM,
+        miopenConvolutionBwdDataAlgoImplicitGEMM};
     static constexpr int num_algos = MIOPEN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing MIOpen convolution backward data algorithms.");
     int perf_count;
     std::unique_ptr<T_BwdDataPerf[]> candidates = std::make_unique<T_BwdDataPerf[]>(num_algos);
     size_t max_workspace_size = provider->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
-                                                                          : AlgoSearchWorkspaceSize;
+                                                                         : AlgoSearchWorkspaceSize;
     // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
     // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
-    IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
+    IAllocatorUniquePtr<void> workspace = max_workspace_size == 0 ? nullptr : IAllocator::MakeUniquePtr<void>(allocator, max_workspace_size, true);
     MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardDataAlgorithm(
-	args.handle, args.y_tensor, args.dy_data, args.w_desc, args.w_data, args.conv_desc, args.x_tensor,
-	args.dx_data, 1, &perf_count, candidates.get(), workspace.get(),  max_workspace_size, false));
+        args.handle, args.y_tensor, args.dy_data, args.w_desc, args.w_data, args.conv_desc, args.x_tensor,
+        args.dx_data, 1, &perf_count, candidates.get(), workspace.get(), max_workspace_size, false));
     perf_results = GetValidAlgorithms<T_BwdDataPerf>(candidates.get(), perf_count);
     return Status::OK();
   }
@@ -158,27 +157,26 @@ template <>
 struct AlgoSearch<T_BwdFilterAlgo> {
   static constexpr auto DEFAULT_ALGO = miopenConvolutionBwdWeightsAlgoGEMM;
   static AlgoPerfCache<T_BwdFilterPerf>& Cache() { return bwd_filter_algos; }
-  static Status FindAlgorithms(const ConvArgs& args, const ROCMExecutionProvider* provider,
+  static Status FindAlgorithms(const ConvArgs& args, const ROCMExecutionProvider* provider, const AllocatorPtr& allocator,
                                std::vector<T_BwdFilterPerf>& perf_results) {
     static const T_BwdFilterAlgo algos[] = {
         miopenConvolutionBwdWeightsAlgoGEMM,
-	miopenConvolutionBwdWeightsAlgoDirect,
-	miopenConvolutionBwdWeightsAlgoWinograd,
-	miopenConvolutionBwdWeightsAlgoImplicitGEMM
-    };
+        miopenConvolutionBwdWeightsAlgoDirect,
+        miopenConvolutionBwdWeightsAlgoWinograd,
+        miopenConvolutionBwdWeightsAlgoImplicitGEMM};
 
     static constexpr int num_algos = MIOPEN_CONVOLUTION_BWD_FILTER_ALGO_COUNT;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing MIOpen convolution backward filter algorithms.");
     std::unique_ptr<T_BwdFilterPerf[]> candidates = std::make_unique<T_BwdFilterPerf[]>(num_algos);
     int perf_count;
     size_t max_workspace_size = provider->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
-                                                                          : AlgoSearchWorkspaceSize;
-      // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
-      // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
-    IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
+                                                                         : AlgoSearchWorkspaceSize;
+    // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
+    // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
+    IAllocatorUniquePtr<void> workspace = max_workspace_size == 0 ? nullptr : IAllocator::MakeUniquePtr<void>(allocator, max_workspace_size, true);
     MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardWeightsAlgorithm(
         args.handle, args.y_tensor, args.dy_data, args.x_tensor, args.x_data, args.conv_desc, args.w_desc,
-	args.dw_data, 1, &perf_count, candidates.get(), workspace.get(), max_workspace_size, false));
+        args.dw_data, 1, &perf_count, candidates.get(), workspace.get(), max_workspace_size, false));
     perf_results = GetValidAlgorithms<T_BwdFilterPerf>(candidates.get(), perf_count);
     return Status::OK();
   }
@@ -191,7 +189,7 @@ class AlgoIterator {
 
   Status OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<miopenConvAlgoPerf_t>& perf_results);
 
-  Status TryAll(const ROCMExecutionProvider* provider, std::function<Status(const miopenConvAlgoPerf_t& perf)> f) {
+  Status TryAll(const ROCMExecutionProvider* provider, const AllocatorPtr& allocator, std::function<Status(const miopenConvAlgoPerf_t& perf)> f) {
     auto& cache = AlgoSearch<T_Algo>::Cache();
     miopenConvAlgoPerf_t algo_perf;
     if (cache.Find(args_.params, &algo_perf) && f(algo_perf) == Status::OK()) {
@@ -199,7 +197,7 @@ class AlgoIterator {
     }
 
     std::vector<miopenConvAlgoPerf_t> perf_results;
-    ORT_RETURN_IF_ERROR(AlgoSearch<T_Algo>::FindAlgorithms(args_, provider, perf_results));
+    ORT_RETURN_IF_ERROR(AlgoSearch<T_Algo>::FindAlgorithms(args_, provider, allocator, perf_results));
     for (auto& algo_perf : perf_results) {
       if (f(algo_perf) == Status::OK()) {
         cache.Insert(args_.params, algo_perf);
@@ -214,20 +212,21 @@ class AlgoIterator {
   const ConvArgs& args_;
 };
 
-template<> Status AlgoIterator<T_BwdDataAlgo>::OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_BwdDataPerf>& perf_results){
+template <>
+Status AlgoIterator<T_BwdDataAlgo>::OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_BwdDataPerf>& perf_results) {
   perf_results.resize(1);
   perf_results[0].bwd_data_algo = AlgoSearch<T_BwdDataAlgo>::DEFAULT_ALGO;
   MIOPEN_RETURN_IF_ERROR(GetWorkspaceSize(args, perf_results[0].bwd_data_algo, &(perf_results[0].memory)));
   return Status::OK();
 }
 
-template<> Status AlgoIterator<T_BwdFilterAlgo>::OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_BwdFilterPerf>& perf_results){
+template <>
+Status AlgoIterator<T_BwdFilterAlgo>::OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_BwdFilterPerf>& perf_results) {
   perf_results.resize(1);
   perf_results[0].bwd_weights_algo = AlgoSearch<T_BwdFilterAlgo>::DEFAULT_ALGO;
   MIOPEN_RETURN_IF_ERROR(GetWorkspaceSize(args, perf_results[0].bwd_weights_algo, &(perf_results[0].memory)));
   return Status::OK();
 }
-
 
 template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
@@ -344,13 +343,14 @@ template <typename T>
 Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
   return AlgoIterator<T_BwdDataAlgo>(args_).TryAll(
       static_cast<const ROCMExecutionProvider*>(Info().GetExecutionProvider()),
+      Info().GetAllocator(OrtMemType::OrtMemTypeDefault),
       [&](const T_BwdDataPerf& algo_perf) -> Status {
         const auto one = Consts<HipT>::One;
         const auto zero = Consts<HipT>::Zero;
         IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
         MIOPEN_RETURN_IF_ERROR(miopenConvolutionBackwardData(
             args_.handle, &one, args_.y_tensor, args_.dy_data, args_.w_desc, args_.w_data, args_.conv_desc,
-	    algo_perf.bwd_data_algo, &zero, args_.x_tensor, args_.dx_data, workspace.get(), algo_perf.memory));
+            algo_perf.bwd_data_algo, &zero, args_.x_tensor, args_.dx_data, workspace.get(), algo_perf.memory));
         return Status::OK();
       });
 }
@@ -359,13 +359,14 @@ template <typename T>
 Status ConvGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream) const {
   return AlgoIterator<T_BwdFilterAlgo>(args_).TryAll(
       static_cast<const ROCMExecutionProvider*>(Info().GetExecutionProvider()),
+      Info().GetAllocator(OrtMemType::OrtMemTypeDefault),
       [&](const T_BwdFilterPerf& algo_perf) -> Status {
         const auto one = Consts<HipT>::One;
         const auto zero = Consts<HipT>::Zero;
         IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
         MIOPEN_RETURN_IF_ERROR(miopenConvolutionBackwardWeights(
             args_.handle, &one, args_.y_tensor, args_.dy_data, args_.x_tensor, args_.x_data, args_.conv_desc,
-	    algo_perf.bwd_weights_algo, &zero, args_.w_desc, args_.dw_data, workspace.get(), algo_perf.memory));
+            algo_perf.bwd_weights_algo, &zero, args_.w_desc, args_.dw_data, workspace.get(), algo_perf.memory));
         return Status::OK();
       });
 }

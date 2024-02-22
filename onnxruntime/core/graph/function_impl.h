@@ -31,7 +31,6 @@ class FunctionImpl final : public Function {
   FunctionImpl(onnxruntime::Graph& graph,
                const ONNX_NAMESPACE::FunctionProto& onnx_func);
 
-
   ~FunctionImpl() override;
 
   const onnxruntime::Graph& Body() const override;
@@ -39,7 +38,7 @@ class FunctionImpl final : public Function {
   onnxruntime::Graph& MutableBody() override;
 
  private:
-  //onnxruntime::Model body_;
+  // onnxruntime::Model body_;
   ONNX_NAMESPACE::GraphProto function_storage_proto_;
   onnxruntime::Graph function_body_graph_;
 };

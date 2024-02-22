@@ -95,7 +95,7 @@ class RandomNormalLike final : public OpKernel {
   // see comments for generator_ and generator_mutex_ in RandomNormal class.
   mutable std::default_random_engine generator_;
   mutable onnxruntime::OrtMutex generator_mutex_;
-  ONNX_NAMESPACE::TensorProto::DataType dtype_ = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;  //optional and may be inferred
+  ONNX_NAMESPACE::TensorProto::DataType dtype_ = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;  // optional and may be inferred
 };
 
 class RandomUniform final : public OpKernel {
@@ -168,7 +168,7 @@ class RandomUniformLike final : public OpKernel {
   // see comments for generator_ and generator_mutex_ in RandomNormal class.
   mutable std::default_random_engine generator_;
   mutable onnxruntime::OrtMutex generator_mutex_;
-  ONNX_NAMESPACE::TensorProto::DataType dtype_ = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;  //optional and may be inferred
+  ONNX_NAMESPACE::TensorProto::DataType dtype_ = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;  // optional and may be inferred
 };
 
 class Multinomial final : public OpKernel {

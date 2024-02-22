@@ -38,10 +38,14 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             this.length = length;
         }
 
+        // A finalizer to allow debugging in test code is allowable.
+        // https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca2015
+#pragma warning disable CA2015
         ~NativeMemory()
         {
             Dispose(false);
         }
+#pragma warning restore CA2015
 
         public static NativeMemory<T> Allocate(int length)
         {

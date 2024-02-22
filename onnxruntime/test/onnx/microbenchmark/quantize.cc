@@ -66,7 +66,7 @@ static void BM_Quantize(benchmark::State& state) {
 
   for (auto _ : state) {
     benchmark::DoNotOptimize(a_data_quant);
-    onnxruntime::ParQuantizeLinear(a_data, a_data_quant, batch_size, scale, zero, tp.get());
+    onnxruntime::ParQuantizeLinearStd(a_data, a_data_quant, batch_size, scale, zero, tp.get());
     benchmark::ClobberMemory();
   }
   aligned_free(a_data_quant);

@@ -37,7 +37,7 @@ TEST(SummaryOpTest, SummaryScalarOp_Input_Incorrect_Shape) {
   OpTester test("SummaryScalar", 1, onnxruntime::kMSDomain);
 
   std::vector<std::string> tags = {"precision", "loss"};
-  std::vector<float> X = {0.85f, 0.13f, 1.0f}; // input size doesn't match tags size
+  std::vector<float> X = {0.85f, 0.13f, 1.0f};  // input size doesn't match tags size
   const int64_t N = static_cast<int64_t>(X.size());
   tensorboard::Summary summary;
 
@@ -172,14 +172,14 @@ TEST(SummaryOpTest, SummaryTextOp_2D_Tensor) {
   summary_value->set_tag(tag);
   summary_value->mutable_metadata()->mutable_plugin_data()->set_plugin_name("text");
   auto* summary_tensor = summary_value->mutable_tensor();
-  summary_tensor->mutable_tensor_shape()->add_dim()->set_size(N/2);
+  summary_tensor->mutable_tensor_shape()->add_dim()->set_size(N / 2);
   summary_tensor->mutable_tensor_shape()->add_dim()->set_size(2);
   summary_tensor->set_dtype(tensorboard::DataType::DT_STRING);
   for (const std::string& s : X)
     summary_tensor->add_string_val(s);
 
   test.AddAttribute("tag", tag);
-  test.AddInput("input", {N/2, 2}, X);
+  test.AddInput("input", {N / 2, 2}, X);
   test.AddOutput<std::string>("summary", {}, {summary.SerializeAsString()});
   test.Run();
 }

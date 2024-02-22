@@ -30,7 +30,8 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     int alpha_index = -1;
     float alpha = 1.0f;
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13, 14}) &&
-        graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) && node.GetOutputEdgesCount() == 1) {
+        graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) && node.GetOutputEdgesCount() == 1 &&
+        !graph.NodeProducesGraphOutput(node)) {
       for (int i = 0; i < static_cast<int>(node.InputDefs().size()); ++i) {
         const NodeArg& input_arg = *(node.InputDefs()[i]);
         if (!optimizer_utils::IsScalar(input_arg)) continue;
@@ -68,7 +69,7 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& sigmoid_node = *p_sigmoid_node;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sigmoid_node, "Sigmoid", {6, 13}) ||
         !graph_utils::IsSupportedProvider(sigmoid_node, GetCompatibleExecutionProviders()) ||
-        sigmoid_node.GetOutputEdgesCount() != 1) {
+        sigmoid_node.GetOutputEdgesCount() != 1 || graph.NodeProducesGraphOutput(sigmoid_node)) {
       continue;
     }
     nodes_to_fuse.emplace_back(sigmoid_node);

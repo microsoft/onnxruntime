@@ -11,6 +11,8 @@ namespace AttrName
     static constexpr const char* Activations = "activations";
     static constexpr const char* AllowZero = "allowzero";
     static constexpr const char* Alpha = "alpha";
+    static constexpr const char* AlignCorners = "align_corners";
+    static constexpr const char* Antialiased = "antialias";
     static constexpr const char* AutoPad = "auto_pad";
     static constexpr const char* Axes = "axes";
     static constexpr const char* Axis = "axis";
@@ -23,6 +25,7 @@ namespace AttrName
     static constexpr const char* Border = "border";
     static constexpr const char* Broadcast = "broadcast";
     static constexpr const char* CeilMode = "ceil_mode";
+    static constexpr const char* ChannelsLast = "channels_last";
     static constexpr const char* Clip = "clip";
     static constexpr const char* CoordinateTransformationMode = "coordinate_transformation_mode";
     static constexpr const char* CountIncludePad = "count_include_pad";
@@ -60,9 +63,12 @@ namespace AttrName
     static constexpr const char* Min = "min";
     static constexpr const char* Mode = "mode";
     static constexpr const char* NearestMode = "nearest_mode";
+    static constexpr const char* NewAxis = "new_axis";
     static constexpr const char* NoopWithEmptyAxes = "noop_with_empty_axes";
     static constexpr const char* NormalizeVariance = "normalize_variance";
+    static constexpr const char* NumOutputs = "num_outputs";
     static constexpr const char* P = "p";
+    static constexpr const char* PaddingMode = "padding_mode";
     static constexpr const char* OutputHeight = "output_height";
     static constexpr const char* OutputShape = "output_shape";
     static constexpr const char* OutputPadding = "output_padding";
@@ -102,6 +108,7 @@ namespace AttrName
     static constexpr const char* QkvHiddenSizes = "qkv_hidden_sizes";
     static constexpr const char* Unidirectional = "unidirectional";
     static constexpr const char* NumHeads = "num_heads";
+    static constexpr const char* PastPresentShareBuffer = "past_present_share_buffer";
 
     static constexpr const char* FusedActivation = "fused_activation";
     static constexpr const char* FusedActivationDomain = "fused_activation_domain";
@@ -110,6 +117,14 @@ namespace AttrName
     static constexpr const char* FusedBeta = "fused_beta";
     static constexpr const char* FusedGamma = "fused_gamma";
     static constexpr const char* FusedRatio = "fused_ratio";
+    static constexpr const char* MaskFilterValue = "mask_filter_value";
+    static constexpr const char* DoRotary = "do_rotary";
+    static constexpr const char* Activation = "activation";
+    static constexpr const char* Groups = "groups";
+
+    static constexpr const char* GraphFusedActivation = "activation";
+    static constexpr const char* GraphFusedAxis = "activation_axis";
+    static constexpr const char* Interleaved = "interleaved";
 
 } // namespace AttrName
 
@@ -135,5 +150,6 @@ namespace AttrValue
     static constexpr const char* NearestNeighbor = "NN";
     static constexpr const char* NotSet = "NOTSET";
     static constexpr const char* Reflect = "reflect";
+    static constexpr const char* Wrap = "wrap";
 
 } // namespace AttrValue

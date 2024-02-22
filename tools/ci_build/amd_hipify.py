@@ -11,9 +11,7 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
-    s = subprocess.run(
-        [hipify_perl_path, "-roc", src_file_path], stdout=subprocess.PIPE, universal_newlines=True, check=False
-    ).stdout
+    s = subprocess.run([hipify_perl_path, "-roc", src_file_path], stdout=subprocess.PIPE, text=True, check=False).stdout
 
     # Additional exact-match replacements.
     # Order matters for all of the following replacements, reglardless of appearing in logical sections.
@@ -37,6 +35,9 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("HIPBLAS_OP_T", "rocblas_operation_transpose")
     s = s.replace("HIPBLAS_OP_N", "rocblas_operation_none")
 
+    # in rocm 6.0, hipify-perl, the -roc option also maps __half -> rocblas_half which we don't want
+    s = s.replace("rocblas_half", "__half")
+
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")
     s = s.replace("CreateCudaAllocator", "CreateRocmAllocator")
@@ -59,6 +60,8 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("GPU_WARP_SIZE = 32", "GPU_WARP_SIZE = 64")
     s = s.replace("std::exp", "expf")
     s = s.replace("std::log", "logf")
+    s = s.replace("WaitCudaNotificationOnDevice", "WaitRocmNotificationOnDevice")
+    s = s.replace("hipHostAlloc", "hipHostMalloc")
     s = s.replace(
         "#include <cub/device/device_radix_sort.cuh>",
         "#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>",
@@ -66,6 +69,10 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace(
         '#include "cub/device/device_radix_sort.cuh"',
         "#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>",
+    )
+    s = s.replace(
+        "#include <cub/device/device_segmented_radix_sort.cuh>",
+        "#include <hipcub/backend/rocprim/device/device_segmented_radix_sort.hpp>",
     )
     s = s.replace(
         "#include <cub/device/device_reduce.cuh>", "#include <hipcub/backend/rocprim/device/device_reduce.hpp>"
@@ -110,7 +117,6 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("HIPBLAS_R_16F", "rocblas_datatype_f16_r")
     s = s.replace("HIPBLAS_R_32F", "rocblas_datatype_f32_r")
     s = s.replace("ROCBLAS_GEMM_DEFAULT_TENSOR_OP", "rocblas_gemm_algo_standard")
-    s = s.replace("ROCBLAS_TENSOR_OP_MATH", "0 /* CUBLAS_TENSOR_OP_MATH is deprecated */")
 
     # compatible layer
     s = s.replace("rocblas_gemm_strided_batched_ex", "_compat_rocblas_gemm_strided_batched_ex")
@@ -146,6 +152,8 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
 
     # CUFFT -> HIPFFT
     s = s.replace("CUFFT", "HIPFFT")
+    s = s.replace("cufftXtMakePlanMany", "hipfftXtMakePlanMany")
+    s = s.replace("cufftXtExec", "hipfftXtExec")
 
     # Undo where above hipify steps went too far.
     s = s.replace("id, ROCM", "id, CUDA")  # cuda_execution_provider.cc
@@ -165,6 +173,26 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("#include <hiprand_kernel.h>", "#include <hiprand/hiprand_kernel.h>")
     s = s.replace("#include <rocblas.h>", "#include <rocblas/rocblas.h>")
     s = s.replace("#include <hipblas.h>", "#include <hipblas/hipblas.h>")
+    s = s.replace("#include <hipfft.h>", "#include <hipfft/hipfft.h>")
+    s = s.replace('#include "hipfft.h"', "#include <hipfft/hipfft.h>")
+    s = s.replace('#include "hipfftXt.h"', "#include <hipfft/hipfftXt.h>")
+
+    # Fix onnxruntime/contrib_ops/rocm/transformers. They include cpu headers which use "cuda" in their names.
+    s = s.replace("rocm_device_prop_", "cuda_device_prop_")
+    s = s.replace("rocm_device_arch_", "cuda_device_arch_")
+
+    s = s.replace("HipTuningContext", "RocmTuningContext")
+
+    # We want hipfft, which needs hipDataType etc, but only do this for files that have "fft" in their names
+    # And we do this last, undoing or fixing hipify mistakes.
+    if "fft" in src_file_path:
+        s = s.replace("rocblas_datatype", "hipDataType")
+        s = s.replace("hipDataType_f32_c", "HIP_C_32F")
+        s = s.replace("hipDataType_f32_r", "HIP_R_32F")
+        s = s.replace("hipDataType_f64_c", "HIP_C_64F")
+        s = s.replace("hipDataType_f64_r", "HIP_R_64F")
+        s = s.replace("hipDataType_f16_c", "HIP_C_16F")
+        s = s.replace("hipDataType_f16_r", "HIP_R_16F")
 
     with open(dst_file_path, "w") as f:
         f.write(s)

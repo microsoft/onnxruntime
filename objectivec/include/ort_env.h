@@ -7,8 +7,26 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Gets the ORT version string in format major.minor.patch.
+ *
+ * Available since 1.15.
+ */
+NSString* _Nullable ORTVersion(void);
+
+#ifdef __cplusplus
+}
+#endif
+
 /**
  * The ORT environment.
+ * It maintains shared state including the default logger.
+ *
+ * @note One ORTEnv should be created before and destroyed after other ORT API usage.
  */
 @interface ORTEnv : NSObject
 

@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace {
 
-//assume start1 <= end1, start2 <= end2
+// assume start1 <= end1, start2 <= end2
 constexpr inline bool AreIntervalsOverlap(int start1, int end1, int start2, int end2) {
   return start1 <= end2 && start2 <= end1;
 }
@@ -38,18 +38,18 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   int other_since_version_end = 0;
   other.SinceVersion(&other_since_version_start, &other_since_version_end);
 
-  //When max version is INT_MAX, it means that it should be determined based on the
-  //SinceVersion of schema from a higher version.  Since this sometimes isn't known until
-  //all custom schema are available, make a conservative assumption here that the operator
-  //is valid for only one version.
+  // When max version is INT_MAX, it means that it should be determined based on the
+  // SinceVersion of schema from a higher version.  Since this sometimes isn't known until
+  // all custom schema are available, make a conservative assumption here that the operator
+  // is valid for only one version.
   int op_since_version_conservative_end = (op_since_version_end_ == INT_MAX) ? op_since_version_start_ : op_since_version_end_;
   int other_conservative_since_version_end = (other_since_version_end == INT_MAX) ? other_since_version_start : other_since_version_end;
 
   if (!AreIntervalsOverlap(op_since_version_start_, op_since_version_conservative_end, other_since_version_start, other_conservative_since_version_end))
     return false;
-  //only one case they don't conflict:
-  //There is a type_constraint, it exists in both hands, but they don't overlap
-  //check types
+  // only one case they don't conflict:
+  // There is a type_constraint, it exists in both hands, but they don't overlap
+  // check types
   const auto& other_types = other.type_constraints_;
   bool type_has_conflict = true;
   for (const auto& it : type_constraints_) {
@@ -63,9 +63,9 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   }
   if (!type_has_conflict)
     return false;
-  //if has type conflict, check if any other field has different
-  //for example, we register two kernel with float type, but one is inplace, another is not.
-  //check in-place
+  // if has type conflict, check if any other field has different
+  // for example, we register two kernel with float type, but one is inplace, another is not.
+  // check in-place
   if (inplace_map_.empty() && !other.MayInplace().empty())
     return false;
   for (auto& it : inplace_map_) {
@@ -73,7 +73,7 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
       return false;
   }
 
-  //check alias
+  // check alias
   for (auto& it : alias_map_) {
     if (std::find(other.Alias().begin(), other.Alias().end(), it) == other.Alias().end())
       return false;
@@ -81,7 +81,7 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   if (alias_map_.empty() && !other.Alias().empty())
     return false;
 
-  //check memory type
+  // check memory type
   auto& other_input_mem_types = other.input_memory_type_args_;
   for (auto it : input_memory_type_args_) {
     if (other_input_mem_types.count(it.first) && other_input_mem_types.find(it.first)->second == it.second)

@@ -12,7 +12,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* extra_add_qk,
+                                  const Tensor* relative_position_bias,
                                   void* parameters,
                                   const Tensor* past_seq_len) const {
   // Abbreviation and Meanings:
@@ -23,7 +23,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   M:    max_sequence_length
   //   T:    total_sequence_length = past_sequence_length + kv_sequence_length
   //   N:    num_heads
-  //   H:    head size for Q and K, aka q_head_size or v_head_size or qk_head_size
+  //   H:    head size for Q and K, aka q_head_size or k_head_size or qk_head_size
   //   H_v:  v_head_size
   //   D_i:  input hidden size
   //   D:    hidden size for Q and K (D = N * H), aka q_hidden_size or k_hidden_size or qk_hidden_size
@@ -37,11 +37,11 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   mask_index              : see below
   //   past         (K/V)      : (2, B, N, P, H) or NULL
-  //   extra_add_qk            : (B, N, S, T) or NULL
+  //   relative_position_bias            : (B, N, S, T) or NULL
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
-  //     (B), (2 * B),
+  //     (B), (2 * B), (3 * B + 2)
   //     (B, T)
   //     (B, S, T)
   //     (B, 1, M, M)
@@ -49,9 +49,9 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   // When a model is pruned (like some attention heads are removed in Q/K/V), input_hidden_size could be larger
   // than hidden dimension of Q, K and V.
 
-  if (past != nullptr && extra_add_qk != nullptr) {
-    // past is used on GPT-2 model with past state, we don't have a case for extra add qk yet
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention cannot have both past and extra_add_qk");
+  if (past != nullptr && relative_position_bias != nullptr) {
+    // past is used on GPT-2 model with past state, we don't have a case for relative position bias yet
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention cannot have both past and relative_position_bias");
   }
 
   const auto& dims = input_shape.GetDims();
@@ -191,34 +191,38 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
-  if (extra_add_qk != nullptr) {
-    const auto& extra_add_qk_dims = extra_add_qk->Shape().GetDims();
+  bool broadcast_res_pos_bias = false;
+  if (relative_position_bias != nullptr) {
+    const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
-    if (extra_add_qk_dims.size() != 4) {
+    if (relative_position_bias_dims.size() != 4) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'extra_add_qk' is expected to have 4 dimensions, got ",
-                             extra_add_qk_dims.size());
+                             "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
+                             relative_position_bias_dims.size());
     }
 
-    if (extra_add_qk_dims[0] != batch_size) {
+    if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'extra_add_qk' dimension 0 should be same as batch_size, got ",
-                             extra_add_qk_dims[0]);
+                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
+                             relative_position_bias_dims[0]);
     }
-    if (extra_add_qk_dims[1] != num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'extra_add_qk' dimension 1 should be same as number of heads, got ",
-                             extra_add_qk_dims[1]);
+    if (relative_position_bias_dims[0] == 1) {
+      broadcast_res_pos_bias = true;
     }
-    if (extra_add_qk_dims[2] != sequence_length) {
+    if (relative_position_bias_dims[1] != num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'extra_add_qk' dimension 2 should be same as sequence_length, got ",
-                             extra_add_qk_dims[2]);
+                             "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
+                             relative_position_bias_dims[1]);
     }
-    if (extra_add_qk_dims[3] != total_sequence_length) {
+    if (relative_position_bias_dims[2] != sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'extra_add_qk' dimension 3 should be same as total_sequence_length, got ",
-                             extra_add_qk_dims[3]);
+                             "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
+                             relative_position_bias_dims[2]);
+    }
+    if (relative_position_bias_dims[3] != total_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
+                             relative_position_bias_dims[3]);
     }
   }
 
@@ -248,8 +252,14 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0 && past != nullptr);
+    output_parameters->do_rotary = do_rotary_;
+    output_parameters->rotary_embedding = rotary_embedding_ == 0 ? (int)(output_parameters->head_size) : rotary_embedding_;
     output_parameters->mask_filter_value = mask_filter_value_;
+    output_parameters->scale = scale_;
     output_parameters->mask_type = mask_type;
+    output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
+    output_parameters->pass_past_in_kv = false;
+    output_parameters->qkv_format = Q_K_V_BNSH;
   }
 
   return Status::OK();
@@ -263,11 +273,12 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
                                 int64_t total_sequence_length) const {
   const auto& mask_dims = mask_index->Shape().GetDims();
   if (mask_dims.size() == 1) {
-    if (mask_dims[0] != batch_size && mask_dims[0] != 2 * batch_size) {
+    if (mask_dims[0] != batch_size && mask_dims[0] != 2 * batch_size && mask_dims[0] != 3 * batch_size + 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'mask_index' with 1D data shall have length of batch_size or 2 * batch_size");
+                             "Inputs 'mask_index' with 1D data shall have length of batch_size or 2 * batch_size or 3 * batch_size + 2");
     }
-    mask_type = (mask_dims[0] == batch_size ? AttentionMaskType::MASK_1D_KEY_SEQ_LEN : AttentionMaskType::MASK_1D_END_START);
+    mask_type = (mask_dims[0] == batch_size ? AttentionMaskType::MASK_1D_KEY_SEQ_LEN : mask_dims[0] == 2 * batch_size ? AttentionMaskType::MASK_1D_END_START
+                                                                                                                      : AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
   } else if (mask_dims.size() == 2) {
     if (mask_dims[0] == batch_size && mask_dims[1] == total_sequence_length) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
@@ -319,7 +330,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* extra_add_qk,
+                                  const Tensor* relative_position_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
@@ -327,7 +338,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, parameters, past_seq_len);
+  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, relative_position_bias, parameters, past_seq_len);
 }
 
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,

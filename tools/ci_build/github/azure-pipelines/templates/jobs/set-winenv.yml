@@ -1,0 +1,27 @@
+parameters:
+  - name: EnvSetupScript
+    type: string
+  - name: DownloadCUDA
+    type: boolean
+    default: false
+  - name: PrimaryCUDAVersion
+    type: string
+    default: '11.8'
+  - name: SecondaryCUDAVersion
+    type: string
+    default: '12.2'
+
+steps:
+  - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
+      - powershell: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.PrimaryCUDAVersion }}" $(Agent.TempDirectory)
+        displayName: 'Download Primary CUDA SDK v${{ parameters.PrimaryCUDAVersion }}'
+      - powershell: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.SecondaryCUDAVersion }}" $(Agent.TempDirectory)
+        displayName: 'Download Secondary CUDA SDK v${{ parameters.SecondaryCUDAVersion }}'
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'

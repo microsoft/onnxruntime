@@ -12,7 +12,7 @@
 //
 #ifndef NDEBUG
 #ifdef ONNXRUNTIME_ENABLE_MEMLEAK_CHECK
-constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak trace
+constexpr int c_callstack_limit = 32;  // Maximum depth of callstack in leak trace
 #define VALIDATE_HEAP_EVERY_ALLOC 0    // Call HeapValidate on every new/delete
 
 #pragma warning(disable : 4073)  // initializers put in library initialization area (this is intentional)
@@ -170,6 +170,13 @@ Memory_LeakCheck::Memory_LeakCheck() noexcept {
   g_heap = HeapCreate(0, 0, 0);
 }
 
+// print message to debug output and stdout
+// no trailing newline will be added
+static void DebugPrint(const char* message) {
+  OutputDebugStringA(message);
+  std::cout << "memleakdbg: " << message;
+}
+
 Memory_LeakCheck::~Memory_LeakCheck() {
   SymbolHelper symbols;
 
@@ -190,7 +197,8 @@ Memory_LeakCheck::~Memory_LeakCheck() {
 
     std::string string;
     char buffer[1024];
-    _snprintf_s(buffer, _TRUNCATE, "%IX bytes at location 0x%08IX\n", entry.cbData - sizeof(MemoryBlock), UINT_PTR(pBlock));
+    _snprintf_s(buffer, _TRUNCATE, "%Iu bytes at location 0x%08IX\n", entry.cbData - sizeof(MemoryBlock),
+                UINT_PTR(pBlock));
     string.append(buffer);
     for (auto& p : block.m_pTraces) {
       if (!p) break;
@@ -215,21 +223,27 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     //     empty_group_names = new std::map<int, string>; });
     if (string.find("RtlRunOnceExecuteOnce") == std::string::npos &&
         string.find("re2::RE2::Init") == std::string::npos &&
+        string.find("dynamic initializer for 'FLAGS_") == std::string::npos &&
+        string.find("AbslFlagDefaultGenForgtest_") == std::string::npos &&
+        string.find("AbslFlagDefaultGenForundefok::Gen") == std::string::npos &&
+        string.find("::SetProgramUsageMessage") == std::string::npos &&
+        string.find("testing::internal::ParseGoogleTestFlagsOnly") == std::string::npos &&
         string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked") == std::string::npos &&
-        string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos) {
+        string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos &&
+        string.find("PyInit_onnxruntime_pybind11_state") == std::string::npos) {
       if (leaked_bytes == 0)
-        OutputDebugStringA("\n-----Starting Heap Trace-----\n\n");
+        DebugPrint("\n-----Starting Heap Trace-----\n\n");
 
       leak_count++;
       leaked_bytes += entry.cbData - sizeof(MemoryBlock);
-      OutputDebugStringA(string.c_str());
-      OutputDebugStringA("\n");
+      DebugPrint(string.c_str());
+      DebugPrint("\n");
     }
   }
 
   if (leaked_bytes) {
-    OutputDebugStringA("-----Ending Heap Trace-----\n\n");
+    DebugPrint("-----Ending Heap Trace-----\n\n");
 
     std::string string;
     char buffer[1024];
@@ -242,7 +256,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     }
 
   } else {
-    OutputDebugStringA("\n----- No memory leaks detected -----\n\n");
+    DebugPrint("\n----- No memory leaks detected -----\n\n");
   }
 
   HeapDestroy(heap);

@@ -82,7 +82,6 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
   auto p_saved_mean = reinterpret_cast<void*>(saved_mean_data);
   auto p_saved_inv_std = reinterpret_cast<void*>(saved_inv_std_data);
 
-
   const int64_t C = new_dims[1];
   IAllocatorUniquePtr<float> p_f_scale, p_f_B, p_f_running_mean, p_f_running_var, p_f_saved_mean, p_f_saved_inv_std;
 
@@ -114,9 +113,9 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
     p_saved_inv_std = p_f_saved_inv_std.get();
   } else if (mean_data != running_mean_data) {
     HIP_RETURN_IF_ERROR(
-      hipMemcpyAsync(running_mean_data, mean_data, C * sizeof(T2), hipMemcpyDeviceToDevice, Stream(p_op_kernel_context)));
+        hipMemcpyAsync(running_mean_data, mean_data, C * sizeof(T2), hipMemcpyDeviceToDevice, Stream(p_op_kernel_context)));
     HIP_RETURN_IF_ERROR(
-      hipMemcpyAsync(running_var_data, var_data, C * sizeof(T2), hipMemcpyDeviceToDevice, Stream(p_op_kernel_context)));
+        hipMemcpyAsync(running_var_data, var_data, C * sizeof(T2), hipMemcpyDeviceToDevice, Stream(p_op_kernel_context)));
   }
 
   // NOTE: in miopenBatchNorm, biased std/var is used when calculating `save_inv_std` and `y`, while

@@ -32,7 +32,7 @@ class PropagateCastOps : public GraphTransformer {
 
  private:
   size_t level_;
-  FP16AllowOps fp16_allow_ops_0_; // Level0 allowed ops supplied by the user.
+  FP16AllowOps fp16_allow_ops_0_;  // Level0 allowed ops supplied by the user.
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy_;
 };
 

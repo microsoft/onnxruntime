@@ -18,10 +18,8 @@ else:
 
 sys.path.append(ort_fbs_py_parent_dir)
 
-from .operator_type_usage_processors import (  # noqa
-    GloballyAllowedTypesOpTypeImplFilter,
-    OperatorTypeUsageManager,
-    OpTypeImplFilterInterface,
-)
-from .ort_model_processor import OrtFormatModelProcessor  # noqa
-from .utils import create_config_from_models  # noqa
+from .operator_type_usage_processors import GloballyAllowedTypesOpTypeImplFilter  # noqa: E402, F401
+from .operator_type_usage_processors import OperatorTypeUsageManager  # noqa: E402, F401
+from .operator_type_usage_processors import OpTypeImplFilterInterface  # noqa: E402, F401
+from .ort_model_processor import OrtFormatModelProcessor  # noqa: E402, F401
+from .utils import create_config_from_models  # noqa: E402, F401

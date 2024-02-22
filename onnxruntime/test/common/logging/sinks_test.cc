@@ -137,7 +137,7 @@ TEST(LoggingTests, TestFileSink) {
   CheckStringInFile(filename, message);
   DeleteFile(filename);
 }
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26400)
 #endif
@@ -156,7 +156,7 @@ TEST(LoggingTests, TestCompositeSink) {
   EXPECT_CALL(*sink_ptr2, SendImpl(testing::_, testing::_, testing::_)).Times(1);
 
   CompositeSink* sink = new CompositeSink();
-  sink->AddSink(std::unique_ptr<ISink>{sink_ptr1}).AddSink(std::unique_ptr<ISink>{sink_ptr2});
+  sink->AddSink(std::unique_ptr<ISink>{sink_ptr1}, min_log_level).AddSink(std::unique_ptr<ISink>{sink_ptr2}, min_log_level);
   LoggingManager manager{std::unique_ptr<ISink>(sink), min_log_level, false, InstanceType::Temporal};
 
   auto logger = manager.CreateLogger(logid);

@@ -3,8 +3,9 @@
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 
+#include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/common/string_utils.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
@@ -13,6 +14,7 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
@@ -48,23 +50,28 @@ std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::strin
 
 NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
                                                const optional<std::string>& partitioning_stop_ops_list)
-    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
+    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider},
       nnapi_flags_(nnapi_flags),
       partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops_list)) {
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
-      });
+  nnapi_handle_ = NnApiImplementation();
+  ORT_ENFORCE(nnapi_handle_ != nullptr, "Failed to get NnApiImplementation");
 
-  InsertAllocator(CreateAllocator(device_info));
+  bool cpu_disabled = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED;
+  bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
 
-  AllocatorCreationInfo cpu_memory_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      });
+  ORT_ENFORCE((cpu_disabled && cpu_only) == false, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
 
-  InsertAllocator(CreateAllocator(cpu_memory_info));
+  target_device_option_ = nnapi::TargetDeviceOption::ALL_DEVICES;
+  if (cpu_disabled) {
+    target_device_option_ = (nnapi::TargetDeviceOption::CPU_DISABLED);
+  } else if (cpu_only) {
+    target_device_option_ = (nnapi::TargetDeviceOption::CPU_ONLY);
+  }
+
+  // May we could just mark this EP as unavailable instead of throwing an error
+  ORT_THROW_IF_ERROR(GetTargetDevices(*nnapi_handle_, target_device_option_, nnapi_target_devices_));
+
+  LOGS_DEFAULT(VERBOSE) << "Found devices [" << nnapi::GetDevicesDescription(nnapi_target_devices_) << "] in NNAPI";
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
@@ -84,14 +91,15 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // If we are actually running on Android system, we can get the API level by querying the system
   // However, since we also allow the NNAPI EP run GetCapability for model conversion on a non-Android system,
   // since we cannot get the runtime system API level, we have to specify it using compile definition.
-  static const int32_t android_feature_level = []() {
+  const int32_t android_feature_level = [this]() {
 #ifdef __ANDROID__
-    const auto* nnapi = NnApiImplementation();
-    return nnapi->nnapi_runtime_feature_level;
+    return GetNNAPIEffectiveFeatureLevel(*nnapi_handle_, nnapi_target_devices_);
 #else
+    ORT_UNUSED_PARAMETER(nnapi_handle_);
     return ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
 #endif
   }();
+  LOGS_DEFAULT(VERBOSE) << "Effective NNAPI feature level: " << android_feature_level;
 
   const nnapi::OpSupportCheckParams params{
       android_feature_level,
@@ -168,29 +176,31 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto gen_metadef_name = [&]() {
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
-  // Generally, NNAPI support graph with inputs and outputs except constant initializer.
-  // So far, we have a few cases that sub-graph has zero inputs,
+  // Generally, NNAPI supports sub-graphs with at least one non-constant initializer input and one output.
+  // So far, we have a few cases that sub-graph has zero valid inputs, like `CastLike`
   // a) A sub-graph has only initializer as inputs
-  // b) A sub-graph has zero inputs
+  // b) A sub-graph has zero inputs, like a `Constant` node
   // So we just remove these sub-graph which is captured by NNAPI.
   // A existing example is CastLike, as which can't be fold in constant folding pass.
-  // CastLike Op will be inlined into Cast after Pass transform.
-  // Can we remove it if support CastLike in CF or support Pass transform after InlineNodes?
+  // CastLike Op will be inlined into Cast after constant folding optimizer.
+  // Can we remove it if support CastLike in constant folding
+  // or support doing constant folding optimizer after InlineNodes?
   std::for_each(result.begin(), result.end(), [&graph_viewer](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
       const auto* meta_def = capability->sub_graph->GetMetaDef();
-      bool not_empty_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
+      bool has_any_non_constant_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
         return !graph_viewer.IsConstantInitializer(input, true);
       });
 
-      if (!not_empty_inputs || meta_def->outputs.empty()) {
+      // ALL inputs are constant
+      if (!has_any_non_constant_inputs) {
         capability.reset();
       }
     }
@@ -265,19 +275,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    nnapi::ModelBuilder builder(graph_viewer);
+    nnapi::ModelBuilder builder(graph_viewer, *nnapi_handle_, nnapi_target_devices_, target_device_option_);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
-
-    bool cpu_disabled = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED;
-    bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
-    if (cpu_disabled && cpu_only) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
-    } else if (cpu_disabled) {
-      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_DISABLED);
-    } else if (cpu_only) {
-      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_ONLY);
-    }
 
     std::unique_ptr<nnapi::Model> nnapi_model;
     ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
@@ -370,8 +370,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
         const void* inputBuffer = input_tensor.GetTensorRawData();
         inputs.push_back({input_name, inputBuffer, std::move(input_type)});
-
-     }
+      }
 
 #ifdef __ANDROID__
       // From this point we will need to take the exclusive lock on the model until the Predict is

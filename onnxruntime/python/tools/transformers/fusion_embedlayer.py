@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
@@ -28,7 +28,9 @@ class FusionEmbedLayerNoMask(Fusion):
             description,
         )
         self.utils = FusionUtils(model)
-        self.shape_infer_helper = self.model.infer_runtime_shape({}, update=True)
+        self.shape_infer = None
+        self.shape_infer_done = False
+
         # The following will be reset in each fuse call of FusionEmbedLayerNormalization
         self.attention = None
         self.embed_node = None
@@ -112,7 +114,12 @@ class FusionEmbedLayerNoMask(Fusion):
                 logger.debug("No Attention like subgraph in children of LayerNormalization")
                 return False
         else:
-            if children_types != ["Add", "MatMul", "MatMul", "MatMul",] and children_types != [
+            if children_types != [
+                "Add",
+                "MatMul",
+                "MatMul",
+                "MatMul",
+            ] and children_types != [
                 "MatMul",
                 "MatMul",
                 "MatMul",
@@ -245,11 +252,11 @@ class FusionEmbedLayerNoMask(Fusion):
                             /                  Add (optional, B=0)
                            /                    |
                         Gather (segment_ids) Unsqueeze (axes=0)
-                           \        |           |
-                            \     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
-                              \    /            |
+                           \\        |           |
+                            \\     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
+                              \\    /            |
                                 Add          Gather
-                                   \       /
+                                   \\       /
                                       Add
                                        |
                                 LayerNormalization
@@ -324,9 +331,13 @@ class FusionEmbedLayerNoMask(Fusion):
         segment_ids = segment_embedding_gather.input[1] if segment_embedding_gather else None
         position_ids = position_embedding_gather.input[1]
 
-        if self.shape_infer_helper is not None:
-            input_ids_shape = self.shape_infer_helper.get_edge_shape(input_ids)
-            position_ids_shape = self.shape_infer_helper.get_edge_shape(position_ids)
+        if not self.shape_infer_done:
+            self.shape_infer = self.model.infer_runtime_shape(update=True)
+            self.shape_infer_done = True
+
+        if self.shape_infer is not None:
+            input_ids_shape = self.shape_infer.get_edge_shape(input_ids)
+            position_ids_shape = self.shape_infer.get_edge_shape(position_ids)
             assert input_ids_shape and position_ids_shape
             if not (
                 len(input_ids_shape) == 2
@@ -340,11 +351,11 @@ class FusionEmbedLayerNoMask(Fusion):
                 )
                 return False
 
-            if segment_ids and not self.shape_infer_helper.compare_shape(input_ids, segment_ids):
+            if segment_ids and not self.shape_infer.compare_shape(input_ids, segment_ids):
                 logger.info(
                     "Cannot fuse EmbedLayerNormalization: input_ids and segment_ids does not have same shape: {} != {}".format(
                         input_ids_shape,
-                        self.shape_infer_helper.get_edge_shape(segment_ids),
+                        self.shape_infer.get_edge_shape(segment_ids),
                     )
                 )
                 return False
@@ -373,7 +384,7 @@ class FusionEmbedLayerNoMask(Fusion):
                 logger.info("Cannot fuse EmbedLayerNormalization: segment embedding table is not expected")
                 return False
 
-        # In normal case, word embeding table is the largest, and segment embedding table is the smallest, while postion embedding table is in between.
+        # In normal case, word embedding table is the largest, and segment embedding table is the smallest, while position embedding table is in between.
         # TODO: use other information (like initializer names) to identify different embedding weights automatically.
         if word_embedding_table.shape[0] <= position_embedding_table.shape[0]:
             logger.warning(
@@ -423,8 +434,9 @@ class FusionEmbedLayerNoMask(Fusion):
         word_embedding_gather: NodeProto,
         position_embedding_gather: NodeProto,
         segment_embedding_gather: Union[None, NodeProto],
-        position_ids: str = None,
+        position_ids: Optional[str] = None,
         embedding_sum_output=False,
+        embedding_sum_name=None,
     ):
         """Create an EmbedLayerNormalization node. Note that segment embedding is optional.
 
@@ -482,7 +494,8 @@ class FusionEmbedLayerNoMask(Fusion):
 
         embed_node_outputs = [node_name + "_output", node_name + "_dummy_mask_index"]
         if embedding_sum_output:
-            embed_node_outputs.append(node_name + "_embedding_sum")
+            name = embedding_sum_name if embedding_sum_name is not None else node_name + "_embedding_sum"
+            embed_node_outputs.append(name)
 
         embed_node = helper.make_node(
             "EmbedLayerNormalization",
@@ -517,38 +530,29 @@ class FusionEmbedLayerNoMask(Fusion):
         # use prune graph to remove nodes that is not needed
         self.prune_graph = True
 
-    def is_embedding_sum_needed(self, add_before_layer_norm):
-        """Check that Add before layer norm has an output to add before next layernorm
+    def is_skip_layer_norm_with_sum_output(self, node):
+        return (node.op_type == "SkipLayerNormalization") and len(node.output) > 3 and len(node.output[3]) > 0
 
-        Args:
-            add_before_layer_norm (NodeProto): Add before any LayerNormalization node in topological order of graph
-
-        Returns:
-            bool: whether there is an extra output needed out of embed layer norm node
-        """
-
-        nodes = self.model.get_children(add_before_layer_norm)
-
-        return len(nodes) > 1
-
-    def fuse_gpt2(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+    def fuse_gpt2(
+        self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather=None
+    ):
         # graph checks
-        # gpt2 has no segment embedding, subgraph pattern is like
-        #     input_ids  position_ids
-        #        |        |
-        #     Gather    Gather
-        #          \   /
-        #           Add _ _ _ _ _
-        #            |           |
-        #    LayerNormalization  |
-        #            |           |
-        #         Attention      |
-        #            |           |
-        #          Matmul        |
-        #            |          /
-        #           Add        /
-        #             \       /
-        #                Add
+        # gpt2 has optional segment embedding, subgraph pattern is like
+        #                      input_ids  position_ids
+        #                         |        |
+        #  token_ids           Gather    Gather
+        #       |                   \   /
+        #   Gather (optional)        Add _ _ _ _ _
+        #                   \         |           |
+        #                     LayerNormalization  |
+        #                             |           |
+        #                          Attention      |
+        #                             |           |
+        #                           Matmul        |
+        #                             |          /
+        #                            Add        /
+        #                              \       /
+        #                                 Add
         two_gather = self.match_two_gather(add_before_layernorm)
         if two_gather is None:
             return False
@@ -563,21 +567,31 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
             return False
 
-        # If the add_before_layernorm node is an Add node, then the add_output output is the first index
-        # output of this node.
-
-        # If the add_before_layernorm node is SkipLayerNormalization node, then the add_output output
+        # If layernorm node is SkipLayerNormalization, we need look at its optional fourth output.
+        # If the add_before_layernorm node is an Add node, then the add_output output is the first output of this node.
+        # If the add_before_layernorm node is a SkipLayerNormalization node, then the add_output output
         # is the (optional) fourth index output of this node.
-        add_output = None
-        optional_embedding_sum_output = False
-        if (add_before_layernorm.op_type == "Add" and self.is_embedding_sum_needed(add_before_layernorm)) or (
-            add_before_layernorm.op_type == "SkipLayerNormalization" and len(add_before_layernorm.output) >= 4
-        ):
-            optional_embedding_sum_output = True
-            add_output = (
-                add_before_layernorm.output[0]
-                if add_before_layernorm.op_type == "Add"
-                else add_before_layernorm.output[3]
+        # When add_before_layernorm is SkipLayerNormalization, add_before_layernorm and layernorm are same node.
+        if layernorm.op_type == "SkipLayerNormalization":
+            need_embedding_sum_output = self.is_skip_layer_norm_with_sum_output(layernorm)
+            sum_output_index = 3
+            node_with_sum_output = layernorm
+            sum_output = layernorm.output[3] if need_embedding_sum_output else None
+            is_sum_graph_output = (sum_output is not None) and (self.model.find_graph_output(sum_output) is not None)
+        else:  # layernorm.op_type == "LayerNormalization"
+            node_with_sum_output = add_before_layernorm
+            sum_output_index = 0 if add_before_layernorm.op_type == "Add" else 3
+            sum_output = (
+                add_before_layernorm.output[sum_output_index]
+                if len(add_before_layernorm.output) > sum_output_index
+                else None
+            )
+            is_sum_graph_output = (sum_output is not None) and (self.model.find_graph_output(sum_output) is not None)
+            is_sum_used_by_multiple_nodes = (
+                sum_output and (sum_output in input_name_to_nodes) and len(input_name_to_nodes[sum_output]) > 1
+            )
+            need_embedding_sum_output = (sum_output is not None) and (
+                add_before_layernorm.op_type != "Add" or is_sum_graph_output or is_sum_used_by_multiple_nodes
             )
 
         # make the fused node
@@ -586,16 +600,18 @@ class FusionEmbedLayerNoMask(Fusion):
             layernorm,
             word_embedding_gather,
             position_embedding_gather,
-            None,
+            optional_segment_gather,
             position_ids,
-            optional_embedding_sum_output,
+            embedding_sum_output=need_embedding_sum_output,
+            embedding_sum_name=sum_output if is_sum_graph_output else None,
         )
 
-        # direct the output to another add too
-        self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
-        if optional_embedding_sum_output:
-            self.model.replace_input_of_all_nodes(add_output, embed_node.output[2])
+        if need_embedding_sum_output:
+            node_with_sum_output.output[sum_output_index] = "_no_use__to_be_removed_"
+            if not is_sum_graph_output:
+                self.model.replace_input_of_all_nodes(sum_output, embed_node.output[2])
 
+        self.finish_fusion(layernorm, embed_node)
         return True
 
     def fuse_distilbert(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
@@ -690,15 +706,33 @@ class FusionEmbedLayerNoMask(Fusion):
         return True
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        first_add_path = self.model.match_parent_path(node, ["Add"], [0])
         if node.op_type == "LayerNormalization":
-            first_add_path = self.model.match_parent_path(node, ["Add"], [0])
             if first_add_path is None:
                 return
             add_before_layernorm = first_add_path[0]
+            optional_segment_gather = None
         else:  # SkipLayerNormalization
-            add_before_layernorm = node  # Add is fused into SkipLayerNormalization
+            gather_0_path = self.model.match_parent_path(node, ["Gather"], [0])
+            gather_1_path = self.model.match_parent_path(node, ["Gather"], [1])
+            if gather_0_path is None and gather_1_path is not None:
+                if first_add_path is None:
+                    return
+                add_before_layernorm = first_add_path[0]
+                optional_segment_gather = gather_1_path[0]
+            elif gather_0_path is not None and gather_1_path is None:
+                first_add_path = self.model.match_parent_path(node, ["Add"], [1])
+                if first_add_path is None:
+                    return
+                add_before_layernorm = first_add_path[0]
+                optional_segment_gather = gather_0_path[0]
+            else:
+                add_before_layernorm = node  # Add is fused into SkipLayerNormalization
+                optional_segment_gather = None
 
-        if self.fuse_gpt2(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+        if self.fuse_gpt2(
+            node, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather
+        ):
             return
 
         if self.fuse_distilbert(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
@@ -720,7 +754,7 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
         if len(embed_node.input) == 7:
             embed_node.input.append(mask_int32)
             logger.debug("append mask to %s", embed_node.name)
-        elif len(embed_node.input) > 7 and embed_node.input[7] == "":
+        elif len(embed_node.input) > 7 and not embed_node.input[7]:
             embed_node.input[7] = mask_int32
             logger.debug("replace mask in %s", embed_node.name)
         else:

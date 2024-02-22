@@ -27,16 +27,14 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
          const Path& model_path,
          const IExecutionProvider& execution_provider,
          const std::function<bool(const std::string&)>& is_sparse_initializer_func);
+
     Info(const std::vector<const Node*>& nodes,
          const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
          const Path& model_path,
          const IExecutionProvider& execution_provider,
          const std::function<bool(const std::string&)>& is_sparse_initializer_func);
-    ~Info() = default;
 
-    AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
-      return execution_provider_.GetAllocator(info.id, info.mem_type);
-    }
+    ~Info() = default;
 
     const AllocatorPtr& GetAllocator() const {
       return allocator_ptr_;
@@ -56,7 +54,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       return -1;
     }
 
-    std::unique_ptr<const OpKernel> CreateKernel(const Node* node) const;
+    std::unique_ptr<const OpKernel> CreateKernel(const Node* node, const ConfigOptions& config_options) const;
 
     // Check if an kernel create info can be found in the registry.
     Status TryFindKernel(const Node* node, const KernelCreateInfo** out) const;
@@ -68,16 +66,12 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     }
 
    private:
-    // The optimizer is running on CPU execution provider by default.
-    const int device_id_{0};
-    const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
     DataTransferManager data_transfer_mgr_;
     // MLValues for optimizer
     OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;
     std::unordered_map<int, OrtValue> initializers_;
-    InlinedHashMap<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
     const IExecutionProvider& execution_provider_;
     const std::function<bool(const std::string&)>& is_sparse_initializer_func_;
@@ -94,7 +88,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerExecutionFrame);
 
-  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
+  AllocatorPtr GetAllocatorImpl(const OrtDevice& info) const override;
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
 

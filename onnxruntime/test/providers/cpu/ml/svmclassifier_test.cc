@@ -19,7 +19,7 @@ TEST(MLOpTest, SVMClassifierMulticlassSVC) {
   std::vector<int64_t> classes = {0, 1, 2, 3};
   std::vector<int64_t> vectors_per_class = {2, 2, 1, 1};
   std::vector<float> rho = {0.5279583f, 0.32605162f, 0.32605162f, 0.06663721f, 0.06663721f, 0.f};
-  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  //gamma, coef0, degree
+  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  // gamma, coef0, degree
 
   std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f,
                           11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f,
@@ -59,7 +59,7 @@ TEST(MLOpTest, SVMClassifierMulticlassLinearSVC) {
                                           -4.38190277e-01f, 4.56869105e-02f, -1.29375499e-02f};
   std::vector<int64_t> classes = {0, 1, 2, 3};
   std::vector<float> rho = {-0.07489691f, -0.1764396f, -0.21167431f, -0.51619097f};
-  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  //gamma, coef0, degree
+  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  // gamma, coef0, degree
 
   std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f,
                           12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f,
@@ -105,7 +105,7 @@ TEST(MLOpTest, SVMClassifierSVCProbabilities) {
                                         43.f, 413.3f, -114.f};
 
   std::vector<float> rho = {0.5279583f, 0.32605162f, 0.32605162f, 0.06663721f, 0.06663721f, 0.f};
-  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  //gamma, coef0, degree
+  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  // gamma, coef0, degree
   std::vector<float> proba = {-3.8214362f, 1.82177748f, 1.82177748f, 7.17655643f, 7.17655643f, 0.69314718f};
   std::vector<float> probb = {-1.72839673e+00f, -1.12863030e+00f, -1.12863030e+00f, -6.48340925e+00f, -6.48340925e+00f, 2.39189538e-16f};
   std::vector<int64_t> classes = {0, 1, 2, 3};
@@ -147,7 +147,7 @@ TEST(MLOpTest, SVMClassifierSVC) {
                                         1.f, 1.5f, 1.f, 3.f, 13.3f, -11.f,
                                         12.f, 12.9f, -312.f, 43.f, 413.3f, -114.f};
   std::vector<float> rho = {0.5279583f};
-  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  //gamma, coef0, degree
+  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  // gamma, coef0, degree
   std::vector<int64_t> classes = {0, 1};
   std::vector<int64_t> vectors_per_class = {3, 3};
 
@@ -189,7 +189,7 @@ TEST(MLOpTest, SVMClassifierSVCDouble) {
                                         1.f, 1.5f, 1.f, 3.f, 13.3f, -11.f,
                                         12.f, 12.9f, -312.f, 43.f, 413.3f, -114.f};
   std::vector<float> rho = {0.5279583f};
-  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  //gamma, coef0, degree
+  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  // gamma, coef0, degree
   std::vector<int64_t> classes = {0, 1};
   std::vector<int64_t> vectors_per_class = {3, 3};
 
@@ -231,7 +231,7 @@ TEST(MLOpTest, SVMClassifierLinear) {
                                         4.5f, 2.29999995231628f, 1.29999995231628f,
                                         5.09999990463257f, 2.5f, 3.f};
   std::vector<float> rho = {2.23510527610779f};
-  std::vector<float> kernel_params = {0.122462183237076f, 0.f, 3.f};  //gamma, coef0, degree
+  std::vector<float> kernel_params = {0.122462183237076f, 0.f, 3.f};  // gamma, coef0, degree
   std::vector<int64_t> classes = {0, 1};
   std::vector<int64_t> vectors_per_class = {3, 1};
 

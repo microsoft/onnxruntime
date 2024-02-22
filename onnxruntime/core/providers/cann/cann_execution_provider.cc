@@ -9,21 +9,20 @@
 #include <map>
 #include <unordered_set>
 
-#include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/cann/cann_execution_provider.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_allocator.h"
-#include "core/providers/cann/cann_fence.h"
 #include "core/providers/cann/cann_fwd.h"
+#include "core/providers/cann/cann_stream_handle.h"
 #include "core/providers/cann/npu_data_transfer.h"
 
 using onnxruntime::cann::BuildONNXModel;
+using onnxruntime::cann::CannModelPreparation;
 using onnxruntime::cann::ParserONNXModel;
 using onnxruntime::cann::SupportONNXModel;
-using onnxruntime::cann::CannModelPreparation;
 using onnxruntime::common::Status;
 
 namespace onnxruntime {
@@ -42,49 +41,63 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
-    } else if (X_type->IsSparseTensorType()) {
-      const auto* X = ctx->Input<SparseTensor>(0);
-      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
-      SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
-      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
-      return X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
-    } else if (X_type->IsTensorSequenceType()) {
-      const TensorSeq* X = ctx->Input<TensorSeq>(0);
-      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
-      TensorSeq* Y = ctx->Output<TensorSeq>(0);
-      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
-      auto X_dtype = X->DataType();
-      Y->SetType(X_dtype);
-      AllocatorPtr alloc;
-
-      if (Node().OpType() == "MemcpyFromHost") {
-        auto status = ctx->GetTempSpaceAllocator(&alloc);
-        if (!status.IsOK()) {
-          return Status(common::ONNXRUNTIME, common::FAIL,
-                        "Memcpy cann: unable to get an allocator.");
-        }
-      } else {
-        auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
-        if (!status.IsOK()) {
-          return Status(common::ONNXRUNTIME, common::FAIL,
-                        "Memcpy cann: unable to get the CPU allocator.");
-        }
-      }
-      auto X_size = X->Size();
-      for (size_t i = 0; i < X_size; ++i) {
-        const Tensor& source_tensor = X->Get(i);
-        std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
-        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor,
-                                                                   Info().GetKernelDef().ExecQueueId());
-        if (!retval.IsOK()) {
-          return retval;
-        }
-        Y->Add(std::move(*target_tensor));
-      }
+      auto* npu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device,
+                                                                                Y->Location().device);
+      ORT_RETURN_IF_ERROR(npu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream()));
       return Status::OK();
+    } else {
+      if (X_type->IsSparseTensorType()) {
+        aclrtSynchronizeStream(static_cast<aclrtStream>(ctx->GetComputeStream()->GetHandle()));
+        const auto* X = ctx->Input<SparseTensor>(0);
+        ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+        SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
+        ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
+        return X->Copy(Info().GetDataTransferManager(), *Y);
+      } else if (X_type->IsTensorSequenceType()) {
+        const TensorSeq* X = ctx->Input<TensorSeq>(0);
+        ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
+        TensorSeq* Y = ctx->Output<TensorSeq>(0);
+        ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
+        auto X_dtype = X->DataType();
+        Y->SetType(X_dtype);
+        AllocatorPtr alloc;
+
+        // If we are copying contents to CANN, the allocator to use
+        // to allocate the buffers of the new tensors in the sequence
+        // can be temp space allocator associated with the CANN EP
+        if (Node().OpType() == "MemcpyFromHost") {
+          auto status = ctx->GetTempSpaceAllocator(&alloc);
+          if (!status.IsOK()) {
+            return Status(common::ONNXRUNTIME, common::FAIL,
+                          "Memcpy cann: unable to get an allocator.");
+          }
+        } else {
+          // If we are copying contents to CPU (op type is "MemcpyToHost"),
+          // the allocator to use to allocate the buffers of the new tensors
+          // in the sequence will be the allocator from the CPU EP
+          auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
+          if (!status.IsOK()) {
+            return Status(common::ONNXRUNTIME, common::FAIL,
+                          "Memcpy cann: unable to get the CPU allocator.");
+          }
+        }
+        auto X_size = X->Size();
+        for (size_t i = 0; i < X_size; ++i) {
+          const Tensor& source_tensor = X->Get(i);
+          std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
+                                                                 source_tensor.Shape(),
+                                                                 alloc);
+          auto* npu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(source_tensor.Location().device,
+                                                                                    target_tensor->Location().device);
+          ORT_RETURN_IF_ERROR(npu_data_transfer->CopyTensorAsync(source_tensor,
+                                                                 *target_tensor,
+                                                                 *ctx->GetComputeStream()));
+          Y->Add(std::move(*target_tensor));
+        }
+        return Status::OK();
+      }
+      return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
     }
-    return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
   }
 };
 
@@ -97,7 +110,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCannExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kCannStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -108,7 +120,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCannExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kCannStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -414,11 +425,15 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, double, Relu);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                       14, 14, float, BatchNormalization);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Identity);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
+                                                14, 18, Identity);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Reshape);
 
 // op 15
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 15, float, BatchNormalization);
+
+// op 19
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 19, Identity);
 
 Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -989,12 +1004,16 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
                                                                   14, double, Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                                             14, 14, float, BatchNormalization)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Identity)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
+                                                                      14, 18, Identity)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Reshape)>,
 
       // op 15
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                                   15, float, BatchNormalization)>,
+
+      // op 19
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 19, Identity)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -1009,31 +1028,25 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
 }  // namespace cann
 
 CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCannExecutionProvider, true}, info_{info} {
+    : IExecutionProvider{onnxruntime::kCannExecutionProvider, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info.device_id)}, info_{info} {
   InitProviderOrtApi();
 
   CANN_CALL_THROW(aclrtSetDevice(info_.device_id));
-  CANN_CALL_THROW(aclrtCreateStream(&stream_));
 
   soc_name_ = aclrtGetSocName();
   ORT_ENFORCE(soc_name_ != nullptr, "aclrtGetSocName return nullptr");
+  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
 }
 
 CANNExecutionProvider::~CANNExecutionProvider() {
-  CANN_CALL_THROW(aclrtDestroyStream(stream_));
+  for (auto modelID : modelIDs_) {
+    CANN_CALL_THROW(aclmdlUnload(modelID.second));
+  }
 }
 
 // All threads share the same context and stream
 Status CANNExecutionProvider::OnRunStart() {
-  CANN_CALL_THROW(aclrtSetDevice(info_.device_id));
-
-  return Status::OK();
-}
-
-Status CANNExecutionProvider::OnRunEnd(bool sync_stream) {
-  if (sync_stream) {
-    CANN_CALL_THROW(aclrtSynchronizeStream(stream_));
-  }
+  CANN_RETURN_IF_ERROR(aclrtSetDevice(info_.device_id));
 
   return Status::OK();
 }
@@ -1050,6 +1063,8 @@ void InitializeRegistry() {
 void DeleteRegistry() {
   s_kernel_registry.reset();
 
+  ge::aclgrphBuildFinalize();
+
   CANN_CALL_THROW(aclFinalize());
 }
 
@@ -1058,8 +1073,7 @@ std::shared_ptr<KernelRegistry> CANNExecutionProvider::GetKernelRegistry() const
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> CANNExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::NPUDataTransfer>(static_cast<aclrtStream>(GetComputeStream()),
-                                                        info_.do_copy_in_default_stream);
+  return std::make_unique<onnxruntime::NPUDataTransfer>();
 }
 
 std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
@@ -1072,9 +1086,9 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
   }
 
   // Get parent graph output names
-  std::vector<std::string> graph_output_names;
+  std::unordered_set<std::string> graph_output_names;
   for (const auto* output_arg : graph_viewer.GetOutputs()) {
-    graph_output_names.push_back(output_arg->Name());
+    graph_output_names.insert(output_arg->Name());
   }
 
   // Find inputs and outputs of the subgraph
@@ -1084,26 +1098,35 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
   int input_order = 0;
   int output_order = 0;
 
+  std::vector<std::string> initializers;
   for (const auto& index : graph_nodes_index) {
     sub_graph->Nodes().push_back(index);
     const auto& node = graph_viewer.GetNode(index);
     for (const auto& input : node->InputDefs()) {
+      if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
+        initializers.push_back(input->Name());
+        continue;
+      }
       const auto& it = fused_outputs.find(input);
       if (it != fused_outputs.end()) {
         fused_outputs.erase(it);
         erased.insert(input);
-      } else if (erased.find(input) == erased.end() && !graph_viewer.GetAllInitializedTensors().count(input->Name())) {
+      } else if (erased.find(input) == erased.end()) {
         // Only when input is neither in output list nor erased list, add the input to input list
         fused_inputs[input] = input_order++;
       }
     }
 
     for (const auto& input : node->ImplicitInputDefs()) {
+      if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
+        initializers.push_back(input->Name());
+        continue;
+      }
       const auto& it = fused_outputs.find(input);
       if (it != fused_outputs.end()) {
         fused_outputs.erase(it);
         erased.insert(input);
-      } else if (erased.find(input) == erased.end() && !graph_viewer.GetAllInitializedTensors().count(input->Name())) {
+      } else if (erased.find(input) == erased.end()) {
         // Only when input is neither in output list nor erased list, add the input to input list
         fused_inputs[input] = input_order++;
       }
@@ -1118,15 +1141,20 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
         const auto& node_idx = it->GetNode().Index();
-        const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        const onnxruntime::NodeArg* output;
+        if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
+          output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        } else {
+          auto index = it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size());
+          output = (it->GetNode()).ImplicitInputDefs()[index];
+        }
         if (node_set.find(node_idx) != node_set.end()) {
           const auto& iter = fused_inputs.find(output);
           if (iter != fused_inputs.end()) {
             fused_inputs.erase(iter);
             erased.insert(output);
           } else if (erased.find(output) == erased.end()) {
-            auto it = std::find(graph_output_names.begin(), graph_output_names.end(), output->Name());
-            if (it != graph_output_names.end()) {
+            if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
               graph_outputs_to_add[output] = output_order;
             }
             fused_outputs[output] = output_order++;
@@ -1144,8 +1172,7 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
         } else {
           // Only when output is neither in input list nor erased list, add the output to output list
           if (erased.find(output) == erased.end()) {
-            auto it = std::find(graph_output_names.begin(), graph_output_names.end(), output->Name());
-            if (it != graph_output_names.end()) {
+            if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
               graph_outputs_to_add[output] = output_order;
             }
             fused_outputs[output] = output_order++;
@@ -1168,30 +1195,9 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
 
-  // It is possible that an output of an node is put bebind the output of an later
-  // node in the graph output list. So we should sort the output name according
-  // to the graph output names
-  std::vector<std::string> output_names;
-  std::unordered_set<std::string> graph_out_names;
-  for (const auto& output : outputs) {
-    if (output.second->Exists()) {
-      auto name = output.second->Name();
-      if (std::find(graph_output_names.begin(), graph_output_names.end(), name) == graph_output_names.end()) {
-        output_names.push_back(name);
-      } else {
-        graph_out_names.insert(name);
-      }
-    }
-  }
-
-  for (auto& name : graph_output_names) {
-    if (std::find(graph_out_names.begin(), graph_out_names.end(), name) != graph_out_names.end())
-      output_names.push_back(name);
-  }
-
   // Generate unique kernel name for CANN subgraph
   HashValue model_hash = 0;
-  int id = GenerateMetaDefId(graph_viewer, model_hash);
+  int id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   meta_def->name() = graph_viewer.Name() + "_" + std::to_string(model_hash) + "_" + std::to_string(id);
 
@@ -1202,8 +1208,14 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
     }
   }
 
-  for (const auto& output : output_names) {
-    meta_def->outputs().push_back(output);
+  for (const auto& initializer : initializers) {
+    meta_def->constant_initializers().push_back(initializer);
+  }
+
+  for (const auto& output : outputs) {
+    if (output.second->Exists()) {
+      meta_def->outputs().push_back(output.second->Name());
+    }
   }
 
   meta_def->domain() = kMSDomain;
@@ -1306,13 +1318,13 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
 
     const std::string node_name = fused_node.Name();
 
-    std::unordered_map<size_t, std::string> names2index;
+    std::unordered_map<size_t, std::string> index2name;
     const auto& input_defs = fused_node.InputDefs();
-    names2index.reserve(input_defs.size());
+    index2name.reserve(input_defs.size());
     for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
-      names2index[i] = input_defs[i]->Name();
+      index2name[i] = input_defs[i]->Name();
     }
-    names_[node_name] = names2index;
+    names_[node_name] = index2name;
 
     std::string string_model;
     auto model = cann::CreateModel(graph_body_viewer, *GetLogger());
@@ -1321,6 +1333,11 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     model_proto->SerializeToString(string_model);
     models_[node_name] = string_model;
+
+    if (info_.dump_graphs) {
+      std::fstream dump(fused_node.Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto->SerializeToOstream(dump);
+    }
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
@@ -1335,20 +1352,19 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         delete static_cast<CannFuncState*>(state);
     };
 
-    compute_info.compute_func = [this](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi*, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
 
       CannFuncState* cann_state = reinterpret_cast<CannFuncState*>(state);
       std::string& string_model = models_[cann_state->node_name];
-      std::unordered_map<size_t, std::string>& names2index = names_[cann_state->node_name];
+      std::unordered_map<size_t, std::string>& index2name = names_[cann_state->node_name];
 
-      std::string input_shape = [&ctx, &names2index]() -> std::string {
+      std::string input_shape = [&ctx, &index2name]() -> std::string {
         std::string res;
         for (size_t i = 0; i < ctx.GetInputCount(); i++) {
           auto&& shape = ctx.GetInput(i).GetTensorTypeAndShapeInfo().GetShape();
-          auto name = names2index[i];
 
-          std::string s = name + ":";
+          std::string s = index2name[i] + ":";
           for (auto& d : shape) {
             s += std::to_string(d) + ",";
           }
@@ -1366,8 +1382,13 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       std::string filename = cann_state->node_name + "_" + std::to_string(hash);
       std::string filename_with_suffix = filename + ".om";
 
+      // TODO(FFFrog): Resource Management
+      // It is very necessary to provide a new mechanism for memory reclamation to avoid inference failure caused by
+      // device memory exhaustion
       uint32_t modelID;
-      {
+      if (modelIDs_.find(filename) != modelIDs_.end()) {
+        modelID = modelIDs_[filename];
+      } else {
         std::lock_guard<OrtMutex> lock(g_mutex);
 
         if (cann::FileExist(filename_with_suffix)) {
@@ -1377,10 +1398,12 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
           ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
 
           ge::ModelBufferData model;
-          ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, model));
+          ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, info_, model));
 
           CANN_RETURN_IF_ERROR(aclmdlLoadFromMem(model.data.get(), model.length, &modelID));
         }
+
+        modelIDs_.emplace(filename, modelID);
       }
 
       CannModelPreparation prepare(modelID);
@@ -1407,7 +1430,8 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
       }
 
-      CANN_RETURN_IF_ERROR(aclmdlExecuteAsync(modelID, prepare.inputSet_, prepare.outputSet_, stream_));
+      aclrtStream stream = static_cast<aclrtStream>(ctx.GetGPUComputeStream());
+      CANN_RETURN_IF_ERROR(aclmdlExecuteAsync(modelID, prepare.inputSet_, prepare.outputSet_, stream));
 
       return Status::OK();
     };
@@ -1418,78 +1442,50 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
   return Status::OK();
 }
 
-AllocatorPtr CANNExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeDefault) {
-    return IExecutionProvider::GetAllocator(info_.device_id, mem_type);
-  } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
-  }
+AllocatorPtr CANNExecutionProvider::CreateCannAllocator(OrtDevice::DeviceId device_id, size_t npu_mem_limit,
+                                                        ArenaExtendStrategy arena_extend_strategy,
+                                                        OrtArenaCfg* default_memory_arena_cfg) {
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId id) {
+        return std::make_unique<CANNAllocator>(id, CANN);
+      },
+      device_id,
+      true,
+      {default_memory_arena_cfg ? *default_memory_arena_cfg
+                                : OrtArenaCfg(npu_mem_limit,
+                                              static_cast<int>(arena_extend_strategy),
+                                              -1,
+                                              -1,
+                                              -1,
+                                              -1L)},
+      true,
+      false);
+
+  return CreateAllocator(default_memory_info);
 }
 
-void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cann_device{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info_.device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo pinned_memory_info(
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
+      },
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
-  auto cann_alloc = IExecutionProvider::GetAllocator(cann_device.Id(), OrtMemTypeDefault);
-  if (!cann_alloc) {
-    cann_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cann_device);
+  return std::vector<AllocatorPtr>{
+      CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
+                          info_.default_memory_arena_cfg),
+      CreateAllocator(pinned_memory_info),
+  };
+}
 
-    if (!cann_alloc) {
-      AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId id) {
-            return std::make_unique<CANNAllocator>(id, CANN);
-          },
-          cann_device.Id(),
-          true,
-          {info_.default_memory_arena_cfg ? *info_.default_memory_arena_cfg
-                                          : OrtArenaCfg(info_.npu_mem_limit,
-                                                        static_cast<int>(info_.arena_extend_strategy), -1, -1, -1)});
+void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const {
+  RegisterCannStreamHandles(stream_handle_registry, OrtDevice::NPU);
+}
 
-      cann_alloc = CreateAllocator(default_memory_info);
-      allocator_manager.InsertAllocator(cann_alloc);
-    }
-
-    InsertAllocator(cann_alloc);
-  }
-
-  auto cann_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
-  if (!cann_pinned_alloc) {
-    cann_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-
-    if (!cann_pinned_alloc) {
-      AllocatorCreationInfo pinned_memory_info(
-          [](OrtDevice::DeviceId device_id) {
-            return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
-          },
-          pinned_device.Id());
-
-      cann_pinned_alloc = CreateAllocator(pinned_memory_info);
-      allocator_manager.InsertAllocator(cann_pinned_alloc);
-    }
-
-    InsertAllocator(cann_pinned_alloc);
-  }
-
-  auto cann_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
-  if (!cann_cpu_alloc) {
-    cann_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-
-    if (!cann_cpu_alloc) {
-      AllocatorCreationInfo cpu_memory_info(
-          [](int device_id) {
-            return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("CANN_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
-          },
-          cpu_device.Id());
-
-      cann_cpu_alloc = CreateAllocator(cpu_memory_info);
-      allocator_manager.InsertAllocator(cann_cpu_alloc);
-    }
-
-    InsertAllocator(cann_cpu_alloc);
-  }
+OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, 0);
+  return default_device_;
 }
 
 }  // namespace onnxruntime

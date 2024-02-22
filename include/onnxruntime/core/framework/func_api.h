@@ -10,7 +10,7 @@ using DestroyFunc = void (*)(void*, void*);
 using AllocatorHandle = void*;
 
 typedef struct {
-  //right now we only include allocation for host memory
+  // right now we only include allocation for host memory
   AllocateFunc allocate_func;
   DestroyFunc release_func;
   AllocatorHandle allocator_handle;

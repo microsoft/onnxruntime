@@ -30,10 +30,30 @@ export declare namespace Test {
   }
 
   /**
+   * This interface represent a placeholder for an empty tensor. Should only be used in testing.
+   */
+  interface EmptyTensorValue {
+    data: null;
+    type: Tensor.Type;
+  }
+
+  /**
    * Represent a string to describe the current environment.
    * Used in ModelTest and OperatorTest to determine whether to run the test or not.
    */
-  export type Condition = string;
+  export type PlatformCondition = string;
+
+  /**
+   * The IOBindingMode represents how to test a model with GPU data.
+   *
+   * - none: inputs will be pre-allocated as CPU tensors; no output will be pre-allocated; `preferredOutputLocation`
+   * will not be set.
+   * - gpu-location: inputs will be pre-allocated as GPU tensors; no output will be pre-allocated;
+   * `preferredOutputLocation` will be set to `gpu-buffer`.
+   * - gpu-tensor: inputs and outputs will all be pre-allocated as GPU tensors. `preferredOutputLocation`
+   * will not be set.
+   */
+  export type IOBindingMode = 'none'|'gpu-tensor'|'gpu-location';
 
   export interface ModelTestCase {
     name: string;
@@ -45,8 +65,10 @@ export declare namespace Test {
   export interface ModelTest {
     name: string;
     modelUrl: string;
+    externalData?: InferenceSession.SessionOptions['externalData'];
     backend?: string;  // value should be populated at build time
-    condition?: Condition;
+    ioBinding: IOBindingMode;
+    platformCondition?: PlatformCondition;
     cases: readonly ModelTestCase[];
   }
 
@@ -57,8 +79,8 @@ export declare namespace Test {
 
   export interface OperatorTestCase {
     name: string;
-    inputs: readonly TensorValue[];
-    outputs: readonly TensorValue[];
+    inputs: ReadonlyArray<TensorValue|EmptyTensorValue>;
+    outputs: ReadonlyArray<TensorValue|EmptyTensorValue>;
   }
 
   export interface OperatorTestOpsetImport {
@@ -66,13 +88,17 @@ export declare namespace Test {
     version: number;
   }
 
+  export type InputShapeDefinition = ReadonlyArray<number|string>;
+
   export interface OperatorTest {
     name: string;
     operator: string;
-    opsets?: readonly OperatorTestOpsetImport[];
+    inputShapeDefinitions?: 'none'|'rankOnly'|'static'|ReadonlyArray<InputShapeDefinition|undefined>;
+    opset?: OperatorTestOpsetImport;
     backend?: string;  // value should be populated at build time
-    condition?: Condition;
-    attributes: readonly AttributeValue[];
+    ioBinding: IOBindingMode;
+    platformCondition?: PlatformCondition;
+    attributes?: readonly AttributeValue[];
     cases: readonly OperatorTestCase[];
   }
 
@@ -86,7 +112,7 @@ export declare namespace Test {
     export type TestName = string;
     export interface TestDescription {
       name: string;
-      condition: Condition;
+      platformCondition: PlatformCondition;
     }
     export type Test = TestName|TestDescription;
   }
@@ -99,18 +125,27 @@ export declare namespace Test {
     [backend: string]: {[group: string]: readonly TestList.Test[]};
   }
 
+  interface EnvOptions extends Partial<Omit<Env, 'wasm'|'webgl'|'webgpu'>> {
+    wasm: Partial<Env.WebAssemblyFlags>;
+    webgl: Partial<Env.WebGLFlags>;
+    webgpu: Partial<Env.WebGpuFlags>;
+    logLevel?: Env['logLevel'];
+  }
+
   /**
    * Represent ONNX Runtime Web global options
    */
   export interface Options {
     debug?: boolean;
+    sessionOptions?: InferenceSession.SessionOptions;
     cpuOptions?: InferenceSession.CpuExecutionProviderOption;
     cpuFlags?: Record<string, unknown>;
     cudaOptions?: InferenceSession.CudaExecutionProviderOption;
     cudaFlags?: Record<string, unknown>;
     wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-    globalEnvFlags?: Env;
+    webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
+    globalEnvFlags?: EnvOptions;
   }
 
   /**

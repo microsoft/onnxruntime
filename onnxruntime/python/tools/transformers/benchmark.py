@@ -36,6 +36,8 @@
             python benchmark.py -e torchscript onnxruntime -p "int8" -o
         Run OnnxRuntime with the ROCM provider and graph optimization script:
             python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
+        Run OnnxRuntime with bfloat16 fastmath mode kernels on aarch64 platforms with bfloat16 support:
+            python benchmark.py --enable_arm64_bfloat16_fastmath_mlas_gemm
 
     It is recommended to use run_benchmark.sh to launch benchmark.
 """
@@ -45,16 +47,13 @@ import logging
 import os
 import timeit
 from datetime import datetime
-from enum import Enum
 
 import numpy
-import onnx
 import psutil
 from benchmark_helper import (
     ConfigModifier,
     OptimizerInfo,
     Precision,
-    allocateOutputBuffers,
     create_onnxruntime_session,
     get_latency_result,
     inference_ort,
@@ -65,17 +64,17 @@ from benchmark_helper import (
     setup_logger,
 )
 from fusion_options import FusionOptions
+from huggingface_models import MODEL_CLASSES, MODELS
 from onnx_exporter import (
     create_onnxruntime_input,
     export_onnx_model_from_pt,
     export_onnx_model_from_tf,
     load_pretrained_model,
 )
+from packaging import version
 from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
-
-from huggingface_models import MODEL_CLASSES, MODELS
 
 cpu_count = psutil.cpu_count(logical=False)
 
@@ -83,8 +82,8 @@ cpu_count = psutil.cpu_count(logical=False)
 if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
-import torch
-from transformers import AutoConfig, AutoModel, AutoTokenizer, GPT2Model, LxmertConfig
+import torch  # noqa: E402
+from transformers import AutoConfig, AutoTokenizer, LxmertConfig  # noqa: E402
 
 
 def run_onnxruntime(
@@ -109,6 +108,7 @@ def run_onnxruntime(
     use_raw_attention_mask,
     model_fusion_statistics,
     model_source,
+    enable_arm64_bfloat16_fastmath_mlas_gemm,
     args,
 ):
     import onnxruntime
@@ -177,7 +177,12 @@ def run_onnxruntime(
                         fusion_options,
                     )
             if "tf" in model_source:
-                (onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length,) = export_onnx_model_from_tf(
+                (
+                    onnx_model_file,
+                    is_valid_onnx_model,
+                    vocab_size,
+                    max_sequence_length,
+                ) = export_onnx_model_from_tf(
                     model_name,
                     MODELS[model_name][1],
                     MODELS[model_name][2],
@@ -207,6 +212,7 @@ def run_onnxruntime(
                 enable_all_optimization=True,
                 num_threads=num_threads,
                 verbose=verbose,
+                enable_mlas_gemm_fastmath_arm64_bfloat16=enable_arm64_bfloat16_fastmath_mlas_gemm,
             )
             if ort_session is None:
                 continue
@@ -256,9 +262,12 @@ def run_onnxruntime(
                         "datetime": str(datetime.now()),
                     }
 
-                    logger.info(
-                        "Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, sequence_length])
-                    )
+                    if config.model_type in ["vit", "swin"]:
+                        logger.info(
+                            f"Run onnxruntime on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"
+                        )
+                    else:
+                        logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
 
                     if disable_ort_io_binding:
                         result = inference_ort(
@@ -312,6 +321,7 @@ def run_pytorch(
     sequence_lengths,
     repeat_times,
     torchscript,
+    torch2,
     cache_dir,
     verbose,
 ):
@@ -331,11 +341,14 @@ def run_pytorch(
             cache_dir=cache_dir,
             custom_model_class=model_class,
         )
-        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = (
-            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-        )
+        if config.model_type in ["vit", "swin"]:
+            # These models don't use sequence lengths, so just pick the first sequence length so that the summary still works
+            sequence_lengths = [sequence_lengths[0]]
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+
+            max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
 
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
@@ -354,25 +367,37 @@ def run_pytorch(
                 continue
 
             for sequence_length in sequence_lengths:
-                if max_input_size is not None and sequence_length > max_input_size:
-                    continue
+                if config.model_type in ["vit", "swin"]:
+                    logger.info(
+                        f"Run PyTorch on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"
+                    )
+                    input_ids = torch.randn(
+                        size=(batch_size, 3, config.image_size, config.image_size),
+                        dtype=torch.float16 if precision == Precision.FLOAT16 else torch.float32,
+                        device=device,
+                    )
+                else:
+                    if max_input_size is not None and sequence_length > max_input_size:
+                        continue
 
-                logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
-                input_ids = torch.randint(
-                    low=0,
-                    high=config.vocab_size - 1,
-                    size=(batch_size, sequence_length),
-                    dtype=torch.long,
-                    device=device,
-                )
+                    logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
+                    input_ids = torch.randint(
+                        low=0,
+                        high=config.vocab_size - 1,
+                        size=(batch_size, sequence_length),
+                        dtype=torch.long,
+                        device=device,
+                    )
                 try:
-                    inference = torch.jit.trace(model, input_ids) if torchscript else model
+                    inference = (
+                        torch.jit.trace(model, input_ids) if torchscript else torch.compile(model) if torch2 else model
+                    )
                     inference(input_ids)
 
-                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
+                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)  # noqa: B023
 
                     result = {
-                        "engine": "torchscript" if torchscript else "torch",
+                        "engine": "torchscript" if torchscript else "torch2" if torch2 else "torch",
                         "version": torch.__version__,
                         "providers": "NA",
                         "device": "cuda" if use_gpu else "cpu",
@@ -475,9 +500,7 @@ def run_tensorflow(
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = (
-            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-        )
+        max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
 
         for batch_size in batch_sizes:
             if batch_size <= 0:
@@ -487,9 +510,7 @@ def run_tensorflow(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info(
-                    "Run Tensorflow on {} with input shape {}".format(model_name, [batch_size, sequence_length])
-                )
+                logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")
 
                 import random
 
@@ -501,18 +522,18 @@ def run_tensorflow(
                     # Disable both for better inference perf
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_forward():
-                        return model(input_ids, training=False)
+                        return model(input_ids, training=False)  # noqa: B023
 
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_decoder_forward():
-                        return model(input_ids, decoder_input_ids=input_ids, training=False)
+                        return model(input_ids, decoder_input_ids=input_ids, training=False)  # noqa: B023
 
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def lxmert_forward():
-                        feats = tf.random.normal([1, 1, config.visual_feat_dim])
-                        pos = tf.random.normal([1, 1, config.visual_pos_dim])
-                        return model(
-                            input_ids,
+                        feats = tf.random.normal([1, 1, config.visual_feat_dim])  # noqa: B023
+                        pos = tf.random.normal([1, 1, config.visual_pos_dim])  # noqa: B023
+                        return model(  # noqa: B023
+                            input_ids,  # noqa: B023
                             visual_feats=feats,
                             visual_pos=pos,
                             training=False,
@@ -526,7 +547,7 @@ def run_tensorflow(
 
                     inference()
 
-                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)
+                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)  # noqa: B023
 
                     result = {
                         "engine": "tensorflow",
@@ -597,7 +618,7 @@ def parse_arguments():
         nargs="+",
         type=str,
         default=["onnxruntime"],
-        choices=["onnxruntime", "torch", "torchscript", "tensorflow"],
+        choices=["onnxruntime", "torch", "torch2", "torchscript", "tensorflow"],
         help="Engines to benchmark",
     )
 
@@ -743,6 +764,14 @@ def parse_arguments():
         help="Manually set the model's layer number",
     )
 
+    parser.add_argument(
+        "--enable_arm64_bfloat16_fastmath_mlas_gemm",
+        required=False,
+        action="store_true",
+        help="Enable bfloat16 mlas gemm kernels on aarch64. Supported only for CPU EP ",
+    )
+    parser.set_defaults(enable_arm64_bfloat16_fastmath_mlas_gemm=False)
+
     FusionOptions.add_arguments(parser)
 
     args = parser.parse_args()
@@ -758,11 +787,14 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu:
+    if args.precision == Precision.INT8 and args.use_gpu and args.provider != "migraphx":
         logger.error("int8 is for CPU only")
         return
 
-    args.num_threads = sorted(set(cpu_count if x <= 0 else x for x in args.num_threads))
+    if len(args.models) == 1 and MODELS[args.models[0]][3] in ["vit", "swim"]:
+        args.sequence_lengths = [""]
+
+    args.num_threads = sorted({cpu_count if x <= 0 else x for x in args.num_threads})
 
     logger.info(f"Arguments: {args}")
 
@@ -773,9 +805,14 @@ def main():
             logger.error("Creation of the directory %s failed" % args.cache_dir)
 
     enable_torch = "torch" in args.engines
+    enable_torch2 = "torch2" in args.engines
     enable_torchscript = "torchscript" in args.engines
     enable_onnxruntime = "onnxruntime" in args.engines
     enable_tensorflow = "tensorflow" in args.engines
+
+    if enable_torch2 and version.parse(torch.__version__) < version.parse("2.0.0"):
+        logger.error(f"PyTorch version must be >=2.0.0 and you are using {torch.__version__}")
+        return
 
     config_modifier = ConfigModifier(args.force_num_layers)
 
@@ -784,7 +821,7 @@ def main():
     for num_threads in args.num_threads:
         torch.set_num_threads(num_threads)
         logger.debug(torch.__config__.parallel_info())
-        if enable_torch or enable_torchscript:
+        if enable_torch or enable_torch2 or enable_torchscript:
             if args.input_counts != [1]:
                 logger.warning("--input_counts is not implemented for torch or torchscript engine.")
 
@@ -800,6 +837,7 @@ def main():
                     args.sequence_lengths,
                     args.test_times,
                     True,
+                    False,
                     args.cache_dir,
                     args.verbose,
                 )
@@ -816,6 +854,24 @@ def main():
                     args.sequence_lengths,
                     args.test_times,
                     False,
+                    False,
+                    args.cache_dir,
+                    args.verbose,
+                )
+
+            if enable_torch2:
+                results += run_pytorch(
+                    args.use_gpu,
+                    args.models,
+                    args.model_class,
+                    config_modifier,
+                    args.precision,
+                    num_threads,
+                    args.batch_sizes,
+                    args.sequence_lengths,
+                    args.test_times,
+                    False,
+                    True,
                     args.cache_dir,
                     args.verbose,
                 )
@@ -861,10 +917,11 @@ def main():
                     use_raw_attention_mask,
                     model_fusion_statistics,
                     args.model_source,
+                    args.enable_arm64_bfloat16_fastmath_mlas_gemm,
                     args,
                 )
-            except:
-                logger.error(f"Exception", exc_info=True)
+            except Exception:
+                logger.error("Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

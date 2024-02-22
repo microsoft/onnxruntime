@@ -1,6 +1,5 @@
-import numpy as np
 import onnx
-from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 X1 = helper.make_tensor_value_info("x1", TensorProto.INT64, [4, 4])
 X2 = helper.make_tensor_value_info("x2", TensorProto.INT64, [4, 1])

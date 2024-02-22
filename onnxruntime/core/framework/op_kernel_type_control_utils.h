@@ -9,8 +9,8 @@ namespace onnxruntime {
 namespace utils {
 
 /**
-* Check if the set of types contains the specified type.
-*/
+ * Check if the set of types contains the specified type.
+ */
 template <typename TypeSet, typename T>
 constexpr bool HasType() {
   static_assert(boost::mp11::mp_is_set<TypeSet>::value, "TypeSet must be a type set.");
@@ -22,11 +22,11 @@ template <typename T>
 using SizeOfT = boost::mp11::mp_size_t<sizeof(T)>;
 
 /**
-* Check if the set of types contains a type with the same size as T.
-*
-* @remarks e.g. will return true if T is int32_t and the list contains any 4 byte type (i.e. sizeof(int32_t))
-*               such as int32_t, uint32_t or float.
-*/
+ * Check if the set of types contains a type with the same size as T.
+ *
+ * @remarks e.g. will return true if T is int32_t and the list contains any 4 byte type (i.e. sizeof(int32_t))
+ *               such as int32_t, uint32_t or float.
+ */
 template <typename TypeSet, typename T>
 constexpr bool HasTypeWithSameSize() {
   static_assert(boost::mp11::mp_is_set<TypeSet>::value, "TypeSet must be a type set.");

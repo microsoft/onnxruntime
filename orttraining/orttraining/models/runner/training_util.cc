@@ -36,7 +36,7 @@ common::Status DataSet::AddData(DataSet::SampleType&& single_sample) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DataSet::AddData failed");
   }
 
-  data_.emplace_back(move(single_sample));
+  data_.emplace_back(std::move(single_sample));
   return Status::OK();
 }
 
@@ -52,14 +52,14 @@ common::Status DataSet::AddData(const vector<ONNX_NAMESPACE::TensorProto>& featu
     OrtValue ort_value;
     OrtMemoryInfo info("Cpu", OrtDeviceAllocator, OrtDevice{}, 0, OrtMemTypeDefault);
     std::unique_ptr<char[]> buffer = std::make_unique<char[]>(cpu_tensor_length);
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(
         Env::Default(), nullptr, tensor_proto, MemBuffer(buffer.get(), cpu_tensor_length, info), ort_value));
 
     sample->push_back(ort_value);
     ortvalue_buffers_.emplace_back(std::move(buffer));
   }
 
-  data_.emplace_back(move(sample));
+  data_.emplace_back(std::move(sample));
   return Status::OK();
 }
 

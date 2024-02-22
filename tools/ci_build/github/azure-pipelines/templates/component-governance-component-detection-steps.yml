@@ -5,7 +5,14 @@ parameters:
   default: 'succeeded' # could be 'ci_only', 'always', 'succeeded'
 
 steps:
-- ${{ if eq(variables['System.TeamProject'], 'Lotus') }}: 
+- ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
+  - task: DeleteFiles@1
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)'
+      contents: |
+        **/*
+    displayName: 'Clean up build directory'
+
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'
     condition:

@@ -14,20 +14,20 @@ function GetFile {
       echo "File '$path' already exists. Skipping download"
       return 0
     else
-      rm -rf $path
+      rm -rf "$path"
     fi
   fi
 
   if [[ -f $uri ]]; then
     echo "'$uri' is a file path, copying file to '$path'"
-    cp $uri $path
+    cp "$uri" "$path"
     return $?
   fi
 
   echo "Downloading $uri"
   # Use aria2c if available, otherwise use curl
   if command -v aria2c > /dev/null; then
-    aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
+    aria2c -q -d "$(dirname $path)" -o "$(basename $path)" "$uri"
   else
     curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail
   fi
@@ -38,20 +38,22 @@ mkdir -p /tmp/src
 
 cd /tmp/src
 
+CPU_ARCH=$(uname -m)
 echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.24.3/cmake-3.24.3-linux-`uname -m`.tar.gz /tmp/src/cmake-3.24.3-linux-`uname -m`.tar.gz
-tar -zxf /tmp/src/cmake-3.24.3-linux-`uname -m`.tar.gz --strip=1 -C /usr
+GetFile "https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-linux-$CPU_ARCH.tar.gz" "/tmp/src/cmake.tar.gz"
+tar -zxf /tmp/src/cmake.tar.gz --strip=1 -C /usr
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
 tar -zxf ninja-linux.tar.gz
-cd ninja-1.10.0
+pushd ninja-1.10.0
 cmake -Bbuild-cmake -H.
 cmake --build build-cmake
 mv ./build-cmake/ninja /usr/bin
+popd
 
 echo "Installing Node.js"
-CPU_ARCH=`uname -m`
+
 if [[ "$CPU_ARCH" = "x86_64" ]]; then
   NODEJS_ARCH=x64
 elif [[ "$CPU_ARCH" = "aarch64" ]]; then
@@ -59,13 +61,9 @@ elif [[ "$CPU_ARCH" = "aarch64" ]]; then
 else
   NODEJS_ARCH=$CPU_ARCH
 fi
-GetFile https://nodejs.org/dist/v16.14.2/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz
-tar --strip 1 -xf /tmp/src/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz -C /usr
-
-cd /tmp/src
-GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
-unzip /tmp/src/gradle-6.3-bin.zip
-mv /tmp/src/gradle-6.3 /usr/local/gradle
+# The EOL for nodejs v18.17.1 LTS is April 2025
+GetFile https://nodejs.org/dist/v18.17.1/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz
+tar --strip 1 -xf /tmp/src/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
 
 cd /
 rm -rf /tmp/src

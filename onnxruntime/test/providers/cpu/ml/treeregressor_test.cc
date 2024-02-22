@@ -35,7 +35,7 @@ void GenTreeAndRunTest(int opsetml, const std::vector<T>& X, const std::vector<f
                        bool one_obs = false, int64_t n_obs = 8, int n_trees = 1) {
   OpTester test("TreeEnsembleRegressor", opsetml, onnxruntime::kMLDomain);
 
-  //tree
+  // tree
   std::vector<int64_t> lefts = {1, 2, -1, -1, -1, 1, -1, 3, -1, -1, 1, -1, -1};
   std::vector<int64_t> rights = {4, 3, -1, -1, -1, 2, -1, 4, -1, -1, 2, -1, -1};
   std::vector<int64_t> treeids = {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2};
@@ -65,7 +65,7 @@ void GenTreeAndRunTest(int opsetml, const std::vector<T>& X, const std::vector<f
     _multiply_update_array(target_weights, n_trees);
   }
 
-  //add attributes
+  // add attributes
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -89,7 +89,7 @@ void GenTreeAndRunTest(int opsetml, const std::vector<T>& X, const std::vector<f
     test.AddAttribute("aggregate_function", "MAX");
   }  // default function is SUM
 
-  //fill input data
+  // fill input data
   std::vector<T> xn;
   std::vector<float> yn;
   if (one_obs) {
@@ -129,7 +129,7 @@ void GenTreeAndRunTest_as_tensor(int opsetml, const std::vector<T>& X, const std
                                  bool one_obs = false, int64_t n_obs = 8, int n_trees = 1) {
   OpTester test("TreeEnsembleRegressor", opsetml, onnxruntime::kMLDomain);
 
-  //tree
+  // tree
   std::vector<int64_t> lefts = {1, 2, -1, -1, -1, 1, -1, 3, -1, -1, 1, -1, -1};
   std::vector<int64_t> rights = {4, 3, -1, -1, -1, 2, -1, 4, -1, -1, 2, -1, -1};
   std::vector<int64_t> treeids = {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2};
@@ -159,7 +159,7 @@ void GenTreeAndRunTest_as_tensor(int opsetml, const std::vector<T>& X, const std
     _multiply_update_array(target_weights, n_trees);
   }
 
-  //add attributes
+  // add attributes
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -206,7 +206,7 @@ void GenTreeAndRunTest_as_tensor(int opsetml, const std::vector<T>& X, const std
     test.AddAttribute("aggregate_function", "MAX");
   }  // default function is SUM
 
-  //fill input data
+  // fill input data
   std::vector<T> xn;
   std::vector<float> yn;
   if (one_obs) {
@@ -339,7 +339,7 @@ TEST(MLOpTest, TreeRegressorMultiTargetMaxDouble) {
 void GenTreeAndRunTest1(int opsetml, const std::string& aggFunction, bool one_obs, int64_t n_obs = 3, int n_trees = 1) {
   OpTester test("TreeEnsembleRegressor", opsetml, onnxruntime::kMLDomain);
 
-  //tree
+  // tree
   std::vector<int64_t> lefts = {1, 0, 0, 1, 0, 0, 1, 0, 0};
   std::vector<int64_t> rights = {2, 0, 0, 2, 0, 0, 2, 0, 0};
   std::vector<int64_t> treeids = {0, 0, 0, 1, 1, 1, 2, 2, 2};
@@ -383,10 +383,10 @@ void GenTreeAndRunTest1(int opsetml, const std::string& aggFunction, bool one_ob
     results = {63.33333333f, 26.66666667f, 30.0f};
   }
 
-  //test data
+  // test data
   std::vector<float> X = {0, 1, 1, 1, 2, 0};
 
-  //add attributes
+  // add attributes
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -402,7 +402,7 @@ void GenTreeAndRunTest1(int opsetml, const std::string& aggFunction, bool one_ob
   test.AddAttribute("n_targets", (int64_t)1);
   // SUM aggregation by default -- no need to add explicitly
 
-  //fill input data
+  // fill input data
   std::vector<float> xn, yn;
   if (one_obs) {
     ASSERT_TRUE(n_obs == 3);
@@ -436,7 +436,7 @@ void GenTreeAndRunTest1(int opsetml, const std::string& aggFunction, bool one_ob
 void GenTreeAndRunTest1_as_tensor(int opsetml, const std::string& aggFunction, bool one_obs, int64_t n_obs = 3, int n_trees = 1) {
   OpTester test("TreeEnsembleRegressor", opsetml, onnxruntime::kMLDomain);
 
-  //tree
+  // tree
   std::vector<int64_t> lefts = {1, 0, 0, 1, 0, 0, 1, 0, 0};
   std::vector<int64_t> rights = {2, 0, 0, 2, 0, 0, 2, 0, 0};
   std::vector<int64_t> treeids = {0, 0, 0, 1, 1, 1, 2, 2, 2};
@@ -496,10 +496,10 @@ void GenTreeAndRunTest1_as_tensor(int opsetml, const std::string& aggFunction, b
     results = {63.33333333f, 26.66666667f, 30.0f};
   }
 
-  //test data
+  // test data
   std::vector<double> X = {0, 1, 1, 1, 2, 0};
 
-  //add attributes
+  // add attributes
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -515,7 +515,7 @@ void GenTreeAndRunTest1_as_tensor(int opsetml, const std::string& aggFunction, b
   test.AddAttribute("n_targets", (int64_t)1);
   // SUM aggregation by default -- no need to add explicitly
 
-  //fill input data
+  // fill input data
   std::vector<double> xn;
   std::vector<float> yn;
   if (one_obs) {
@@ -620,7 +620,7 @@ TEST(MLOpTest, TreeRegressorSingleTargetMax) {
 void GenTreeAndRunTest1_as_tensor_precision(int opsetml) {
   OpTester test("TreeEnsembleRegressor", opsetml, onnxruntime::kMLDomain);
 
-  //tree
+  // tree
   std::vector<int64_t> lefts = {1, 0, 0, 1, 0, 0, 1, 0, 0};
   std::vector<int64_t> rights = {2, 0, 0, 2, 0, 0, 2, 0, 0};
   std::vector<int64_t> treeids = {0, 0, 0, 1, 1, 1, 2, 2, 2};
@@ -651,7 +651,7 @@ void GenTreeAndRunTest1_as_tensor_precision(int opsetml) {
     target_weights_as_tensor.add_double_data(v);
   }
 
-  //add attributes
+  // add attributes
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -667,7 +667,7 @@ void GenTreeAndRunTest1_as_tensor_precision(int opsetml) {
   test.AddAttribute("n_targets", (int64_t)1);
   // SUM aggregation by default -- no need to add explicitly
 
-  //fill input data
+  // fill input data
   std::vector<double> X{1, 1, 1 + 1e-8, 1 + 1e-8, 1 - 1e-8, 1 - 1e-8, 1 + 1e-10, 1 + 1e-10, 1 - 1e-10, 1 - 1e-10};
   std::vector<float> Y{11001, 101010, 10101, 11010, 11001};
   test.AddInput<double>("X", {5, 2}, X);
@@ -677,6 +677,87 @@ void GenTreeAndRunTest1_as_tensor_precision(int opsetml) {
 
 TEST(MLOpTest, TreeRegressorSingleTargetSum_as_tensor_precision) {
   GenTreeAndRunTest1_as_tensor_precision(3);
+}
+
+TEST(MLOpTest, TreeRegressorTrueNodeBeforeNode) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  // tree
+  int64_t n_targets = 1;
+  std::vector<int64_t> nodes_featureids = {0, 1, 1,
+                                           1, 0, 1,
+                                           0, 0, 0,
+                                           0, 1, 1,
+                                           0, 1, 0,
+                                           0, 0, 0,
+                                           0};
+  std::vector<std::string> nodes_modes = {"BRANCH_LEQ", "BRANCH_LEQ", "BRANCH_LEQ",
+                                          "BRANCH_LEQ", "LEAF", "BRANCH_LEQ",
+                                          "LEAF", "LEAF", "LEAF",
+                                          "LEAF", "BRANCH_LEQ", "BRANCH_LEQ",
+                                          "LEAF", "BRANCH_LEQ", "LEAF",
+                                          "LEAF", "BRANCH_LEQ", "LEAF",
+                                          "LEAF"};
+  std::vector<float> nodes_values = {2.5, 0.4000000059604645, 0.20000000298023224,
+                                     0.5999999642372131, 0.0, 0.7999999523162842,
+                                     0.0, 0.0, 0.0,
+                                     0.0, 1.600000023841858, 1.1999999284744263,
+                                     0.0, 1.399999976158142, 0.0,
+                                     0.0, 17.0, 0.0,
+                                     0.0};
+
+  std::vector<int64_t> nodes_treeids = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  std::vector<int64_t> nodes_nodeids = {0, 1, 2,
+                                        3, 4, 5,
+                                        6, 7, 8,
+                                        9, 10, 11,
+                                        12, 13, 14,
+                                        15, 16, 17,
+                                        18};
+  std::vector<int64_t> nodes_falsenodeids = {10, 5, 4,
+                                             8, 0, 9,
+                                             0, 0, 0,
+                                             0, 16, 13,
+                                             0, 15, 0,
+                                             0, 18, 0,
+                                             0};
+  std::vector<int64_t> nodes_truenodeids = {1, 2, 3,
+                                            7, 0, 6,
+                                            0, 0, 0,
+                                            0, 11, 12,
+                                            0, 14, 0,
+                                            0, 17, 0,
+                                            0};
+
+  std::string post_transform = "NONE";
+  std::vector<int64_t> target_ids = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  std::vector<int64_t> target_nodeids = {4, 6, 7, 8, 9, 12, 14, 15, 17, 18};
+  std::vector<int64_t> target_treeids = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  std::vector<float> target_weights = {-4.699999809265137, -4.900000095367432, -4.5,
+                                       -4.300000190734863, -4.099999904632568, 11.100000381469727,
+                                       13.300000190734863, 15.5, 17.700000762939453,
+                                       19.899999618530273};
+
+  // add attributes
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_treeids", nodes_treeids);
+  test.AddAttribute("nodes_nodeids", nodes_nodeids);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_values", nodes_values);
+  test.AddAttribute("nodes_modes", nodes_modes);
+  test.AddAttribute("target_treeids", target_treeids);
+  test.AddAttribute("target_nodeids", target_nodeids);
+  test.AddAttribute("target_ids", target_ids);
+  test.AddAttribute("target_weights", target_weights);
+  test.AddAttribute("n_targets", n_targets);
+
+  // fill input data
+  std::vector<float> X = {-5.0f, 0.1f, -5.0f, 0.3f, -5.0f, 0.5f};
+  std::vector<float> Y = {-4.5f, -4.6999998f, -4.9f};
+  test.AddInput<float>("X", {3, 2}, X);
+  test.AddOutput<float>("Y", {3, 1}, Y);
+  test.Run();
 }
 
 }  // namespace test

@@ -13,6 +13,7 @@ from .operators.gemm import QDQGemm, QLinearGemm
 from .operators.lstm import LSTMQuant
 from .operators.matmul import MatMulInteger, QDQMatMul, QLinearMatMul
 from .operators.maxpool import QDQMaxPool, QMaxPool
+from .operators.norm import QDQNormalization
 from .operators.pad import QPad
 from .operators.pooling import QLinearPool
 from .operators.qdq_base_operator import QDQOperatorBase
@@ -64,6 +65,7 @@ QLinearOpsRegistry.update(CommonOpsRegistry)
 
 QDQRegistry = {
     "Conv": QDQConv,
+    "ConvTranspose": QDQConv,
     "Gemm": QDQGemm,
     "Clip": QDQRemovableActivation,
     "Relu": QDQRemovableActivation,
@@ -79,23 +81,25 @@ QDQRegistry = {
     "Gather": QDQGather,
     "Softmax": QDQSoftmax,
     "Where": QDQWhere,
+    "InstanceNormalization": QDQNormalization,
+    "LayerNormalization": QDQNormalization,
 }
 
 
-def CreateDefaultOpQuantizer(onnx_quantizer, node):
+def CreateDefaultOpQuantizer(onnx_quantizer, node):  # noqa: N802
     return QuantOperatorBase(onnx_quantizer, node)
 
 
-def CreateOpQuantizer(onnx_quantizer, node):
+def CreateOpQuantizer(onnx_quantizer, node):  # noqa: N802
     registry = IntegerOpsRegistry if onnx_quantizer.mode == QuantizationMode.IntegerOps else QLinearOpsRegistry
-    if node.op_type in registry.keys():
+    if node.op_type in registry:
         op_quantizer = registry[node.op_type](onnx_quantizer, node)
         if op_quantizer.should_quantize():
             return op_quantizer
     return QuantOperatorBase(onnx_quantizer, node)
 
 
-def CreateQDQQuantizer(onnx_quantizer, node):
-    if node.op_type in QDQRegistry.keys():
+def CreateQDQQuantizer(onnx_quantizer, node):  # noqa: N802
+    if node.op_type in QDQRegistry:
         return QDQRegistry[node.op_type](onnx_quantizer, node)
     return QDQOperatorBase(onnx_quantizer, node)

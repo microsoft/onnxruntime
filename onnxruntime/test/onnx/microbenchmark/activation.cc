@@ -27,7 +27,7 @@ class Allocs : public IExecutionProvider {
 
  public:
   Allocs() : IExecutionProvider("fake"){};
-  virtual AllocatorPtr GetAllocator(int, OrtMemType) const {
+  AllocatorPtr GetAllocator(OrtMemType) const {
     return alloc;
   }
 };
@@ -69,7 +69,18 @@ struct KernelAndDef {
                   .SetDomain(domain)
                   .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
                   .Build();
-    OpKernelInfo info(main_node, *out.def, *out.a, {}, {}, {});
+
+    // these usually come from the session state. OpKernelInfo stores references to them so we need a valid backing
+    // instance even though we don't use them in this test.
+    static const std::unordered_map<int, OrtValue> constant_initialized_tensors;
+    static const OrtValueNameIdxMap mlvalue_name_idx_map;
+    static const DataTransferManager data_transfer_mgr;
+    static const AllocatorMap allocators;
+    static const ConfigOptions config_options;
+    OpKernelInfo info(main_node, *out.def, *out.a,
+                      constant_initialized_tensors, mlvalue_name_idx_map, data_transfer_mgr, allocators,
+                      config_options);
+
     out.kernel = std::make_unique<KernelType>(info);
     return out;
   }
@@ -97,8 +108,8 @@ class MyIExecutionFrame : public IExecutionFrame {
   Status CreateNodeOutputMLValueImpl(OrtValue& /*ort_value*/, int /*ort_value_idx*/, const TensorShape* /*shape*/) override {
     abort();
   }
-  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const {
-    return a_.GetAllocator(info.id, info.mem_type);
+  AllocatorPtr GetAllocatorImpl(const OrtDevice&) const override {
+    return static_cast<Allocs&>(a_).GetAllocator(OrtMemTypeDefault);
   }
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_index, const TensorShape* shape, size_t) {
@@ -118,7 +129,7 @@ class MyIExecutionFrame : public IExecutionFrame {
     if (!IAllocator::CalcMemSizeForArrayWithAlignment<0>(static_cast<size_t>(len), sizeof(T), &size)) {
       return Status(ONNXRUNTIME, FAIL, "size overflow");
     }
-    auto alloc = a_.GetAllocator(0, OrtMemTypeDefault);
+    auto alloc = static_cast<Allocs&>(a_).GetAllocator(OrtMemTypeDefault);
     std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), *shape, alloc);
 
     auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -126,7 +137,7 @@ class MyIExecutionFrame : public IExecutionFrame {
     return Status::OK();
   }
 
-  Status CopyTensor(const Tensor& /*src*/, Tensor& /*dest*/) const {
+  Status CopyTensor(const Tensor& /*src*/, Tensor& /*dest*/) const override {
     return Status::OK();
   }
 };

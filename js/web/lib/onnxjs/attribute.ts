@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 import Long from 'long';
-import {onnx} from 'onnx-proto';
 
-import {onnxruntime} from './ort-schema/ort-generated';
+import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
+import {onnx} from './ort-schema/protobuf/onnx';
 import {Tensor} from './tensor';
 import {decodeUtf8String, LongUtil} from './util';
 

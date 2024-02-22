@@ -32,7 +32,10 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
-#include "unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h"
+#if defined(_M_X64) && !defined(_M_ARM64EC) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#include "core/platform/windows/hardware_core_enumerator.h"
+#endif
+#include <unsupported/Eigen/CXX11/ThreadPool>
 #include <wil/Resource.h>
 
 #include "core/platform/path_lib.h"  // for LoopDir()
@@ -95,7 +98,7 @@ class WindowsThread : public EnvThread {
     }
 
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.get());
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, local_param.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
@@ -136,25 +139,22 @@ class WindowsThread : public EnvThread {
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
-#if WINVER >= _WIN32_WINNT_WIN10
-    constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
-#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+
+    // Not all machines have kernel32.dll and/or SetThreadDescription (e.g. Azure App Service sandbox)
+    // so we need to ensure it's available before calling.
     HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
-    // kernel32.dll is always loaded
-    assert(kernelModule != nullptr);
-    auto pSetThrDesc =
-        (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
-#else
-    constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
-#endif
-    if (pSetThrDesc != nullptr) {
-      const ORTCHAR_T* name_prefix =
-          (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
-      std::wostringstream oss;
-      oss << name_prefix << "-" << p->index;
-      // Ignore the error
-      (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
+    if (kernelModule != nullptr) {
+      auto setThreadDescriptionFn = (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
+      if (setThreadDescriptionFn != nullptr) {
+        const ORTCHAR_T* name_prefix = (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime"
+                                                                                                  : p->name_prefix;
+        std::wostringstream oss;
+        oss << name_prefix << "-" << p->index;
+        // Ignore any errors
+        (void)(setThreadDescriptionFn)(GetCurrentThread(), oss.str().c_str());
+      }
     }
+
     unsigned ret = 0;
     ORT_TRY {
       if (p->affinity.has_value() && !p->affinity->empty()) {
@@ -217,7 +217,7 @@ class WindowsThread : public EnvThread {
   }
 #pragma warning(pop)
 
-  static void __stdcall CustomThreadMain(void* param) {
+  static void CustomThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
       p->start_address(p->index, p->param);
@@ -251,12 +251,53 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
   Sleep(static_cast<DWORD>(micros) / 1000);
 }
 
+// EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
+#endif
 int WindowsEnv::DefaultNumCores() {
   return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
 }
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
-  return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+// EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+  // The following code is a temporary fix for a perf problem on Intel's Meteor Lake CPUs. The Intel compute platform has
+  // a hybrid architecture that some CPU cores runs significant slower than the others. If we distribute our compute work
+  // evenly to all CPU cores, the slowest CPU core will drag the performance down. So, instead, we reduce the total number
+  // of threads to exclude the slowest cores out.
+  // The following code is based on assumptions that:
+  // 1. All Intel hybrid CPUs should have 3 levels of cache.
+  // 2. If a CPU core is only associated with two levels of cache,  it should be a low performance CPU core and should
+  //    not be used.
+  // Since we don't know what the next Intel hybrid CPU would be like, later on we may need to rework the following code.
+  // However, no matter what the code should not cause any crash. The worst is it might return 1 that
+  //  thread pools will not be created, which is just a perf issue and does not impact usability.
+  // TODO: detect if CPUID instruction is available per instructions at https://wiki.osdev.org/CPUID#Checking_CPUID_availability
+  int regs[4];
+  __cpuid(regs, 0);
+  bool bIsIntel =
+      (kVendorID_Intel[0] == regs[1]) &&
+      (kVendorID_Intel[1] == regs[2]) &&
+      (kVendorID_Intel[2] == regs[3]);
+  if (bIsIntel && regs[0] >= 7) {
+    // Query Structured Extended Feature Flags Enumeration Leaf
+    __cpuid(regs, 0x7);
+    // The bit 15 of EDX indicates if the processor is identified as a hybrid part.
+    bool ishybrid = regs[3] & (1 << 15);
+    if (ishybrid) {
+      // NOTE: even if ishybrid is true, it doesn't mean the processor must have P-cores and E-cores.
+      // On Intel CPUs we assume the HardwareCoreEnumerator::DefaultIntraOpNumThreads function would never fail.
+      // NOTE: due to resource restrictions, we cannot test this branch in our CI build pipelines.
+      return std::max(static_cast<uint32_t>(1), HardwareCoreEnumerator::DefaultIntraOpNumThreads());
+    } else {
+      return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+    }
+  } else
+#endif
+  {
+    return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+  }
 }
 
 std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
@@ -273,13 +314,8 @@ PIDType WindowsEnv::GetSelfPid() const {
 }
 
 Status WindowsEnv::GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const {
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
@@ -325,13 +361,8 @@ Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, c
   ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
   ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
   ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
@@ -383,13 +414,8 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
     return Status::OK();
   }
 
-#if WINVER >= _WIN32_WINNT_WIN8
   wil::unique_hfile file_handle{
       CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
-#else
-  wil::unique_hfile file_handle{
-      CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
-#endif
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -398,18 +424,6 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                            " - ", std::system_category().message(error_code));
   }
 
-#if NTDDI_VERSION >= NTDDI_WIN10_RS5 && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
-  wil::unique_hfile file_mapping_handle{
-      CreateFileMapping2(file_handle.get(),
-                         nullptr,
-                         FILE_MAP_READ,
-                         PAGE_READONLY,
-                         SEC_COMMIT,
-                         0,
-                         nullptr,
-                         nullptr,
-                         0)};
-#else
   wil::unique_hfile file_mapping_handle{
       CreateFileMappingW(file_handle.get(),
                          nullptr,
@@ -417,7 +431,6 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                          0,
                          0,
                          nullptr)};
-#endif
   if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -449,7 +462,7 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                                           0,
                                           static_cast<DWORD>(mapped_offset),
                                           mapped_length);
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   mapped_memory =
       MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
                       OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
@@ -588,23 +601,16 @@ common::Status WindowsEnv::GetCanonicalPath(
     PathString& canonical_path) const {
   // adapted from MSVC STL std::filesystem::canonical() implementation
   // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
-#if WINVER >= _WIN32_WINNT_WIN8
+  CREATEFILE2_EXTENDED_PARAMETERS param;
+  memset(&param, 0, sizeof(param));
+  param.dwSize = sizeof(CREATEFILE2_EXTENDED_PARAMETERS);
+  param.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
   wil::unique_hfile file_handle{CreateFile2(
       path.c_str(),
       FILE_READ_ATTRIBUTES,
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
       OPEN_EXISTING,
-      NULL)};
-#else
-  wil::unique_hfile file_handle{CreateFileW(
-      path.c_str(),
-      FILE_READ_ATTRIBUTES,
-      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-      nullptr,
-      OPEN_EXISTING,
-      FILE_FLAG_BACKUP_SEMANTICS,
-      nullptr)};
-#endif
+      &param)};
 
   if (file_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();

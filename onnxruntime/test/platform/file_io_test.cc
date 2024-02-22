@@ -40,7 +40,8 @@ struct TempFilePath {
               close(fd);
 #endif
               return path_template;
-            }()} {}
+            }()} {
+  }
 
   ~TempFilePath() {
     DeleteFileFromDisk(path.c_str());
@@ -194,7 +195,8 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     // invalid - offset is not a multiple of the allocation granularity
     ASSERT_FALSE(Env::Default().MapFileIntoMemory(
-        tmp.path.c_str(), allocation_granularity * 3 / 2, page_size / 10, mapped_memory).IsOK());
+                                   tmp.path.c_str(), allocation_granularity * 3 / 2, page_size / 10, mapped_memory)
+                     .IsOK());
   }
 
   {

@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <thread>
 #include <iomanip>
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
 #endif

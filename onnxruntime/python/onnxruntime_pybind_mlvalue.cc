@@ -25,6 +25,21 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/provider_options_utils.h"
 
+#ifdef USE_DML
+using Microsoft::WRL::ComPtr;
+
+#include <wil/wrl.h>
+#include "core/providers/dml/DmlExecutionProvider/src/External/D3DX12/d3dx12.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DescriptorPool.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlCommittedResourceAllocator.h"
+#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/BucketizedBufferAllocator.h"
+#include "core/providers/dml/DmlExecutionProvider/src/PooledUploadHeap.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ReadbackHeap.h"
+#include "core/providers/dml/DmlExecutionProvider/src/AllocationInfo.h"
+#endif
+
 namespace onnxruntime {
 namespace python {
 
@@ -177,6 +192,168 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
   return GetProviderInfo_CUDA().CreateGPUDataTransfer();
+}
+
+#endif
+
+#ifdef USE_DML
+
+constexpr GUID execution_context_guid = {0x50fd773b, 0x4462, 0x4b28, {0x98, 0x9e, 0x8c, 0xa0, 0x54, 0x05, 0xbd, 0x4a}};
+constexpr GUID upload_heap_guid = {0x125235f9, 0xef41, 0x4043, {0xa4, 0x9d, 0xdd, 0xc9, 0x61, 0xe7, 0xdb, 0xee}};
+constexpr GUID dml_readback_heap_guid = {0x00d32df8, 0xea2d, 0x40bf, {0xa4, 0x47, 0x9c, 0xb4, 0xbc, 0xf1, 0x1d, 0x5e}};
+
+AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded DML allocation work, including maintaining a per-thread DML allocator.
+
+  // We are leaking this map so we do not accidentally destroy the DML Allocator instance
+  // after we unloaded DML provider library. Appeasing static analysis warning and using make_unique.
+  static auto* id_to_allocator_map = std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
+
+  auto hit = id_to_allocator_map->find(id);
+  if (hit == id_to_allocator_map->end()) {
+    constexpr uint32_t device_id = 0;
+    auto d3d12_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);
+    auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device.Get());
+
+    D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
+    cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
+
+    ComPtr<ID3D12CommandQueue> cmd_queue;
+    ORT_THROW_IF_FAILED(
+        d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+
+    auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get());
+
+    // We leak the upload and readback heaps to keep them alive, just like the map
+    auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context).release();
+    auto readback_heap = std::make_unique<Dml::ReadbackHeap>(d3d12_device.Get(), context).release();
+
+    auto dml_allocator = std::make_shared<Dml::BucketizedBufferAllocator>(
+        d3d12_device.Get(),
+        context,
+        CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        std::make_unique<Dml::DmlCommittedResourceAllocator>(d3d12_device.Get()));
+    dml_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
+    context->SetAllocator(dml_allocator);
+
+    auto context_ptr = context.get();
+
+    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(execution_context_guid, sizeof(context_ptr), &context_ptr));
+    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(upload_heap_guid, sizeof(upload_heap), &upload_heap));
+    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_readback_heap_guid, sizeof(readback_heap), &readback_heap));
+
+    hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
+  }
+
+  return hit->second;
+}
+
+void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes) {
+  const auto* allocInfo = static_cast<const Dml::AllocationInfo*>(dst);
+  ID3D12Resource* dst_data = allocInfo->GetResource();
+
+  ComPtr<ID3D12Device> d3d12_device;
+  ORT_THROW_IF_FAILED(dst_data->GetDevice(IID_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+
+  Dml::ExecutionContext* context = nullptr;
+  uint32_t context_size = gsl::narrow_cast<uint32_t>(sizeof(context));
+  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(execution_context_guid, &context_size, &context));
+
+  Dml::PooledUploadHeap* upload_heap = nullptr;
+  uint32_t upload_heap_size = gsl::narrow_cast<uint32_t>(sizeof(upload_heap));
+  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(upload_heap_guid, &upload_heap_size, &upload_heap));
+
+  upload_heap->BeginUploadToGpu(
+      dst_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, gsl::make_span(static_cast<const std::byte*>(src), num_bytes));
+  context->Flush();
+
+  // We don't use the same command queue as the execution provider, so we need to sync to make sure that all data has
+  // been uploaded to the resource. This function is usually called before inference just to upload initial data to the
+  // GPU, so it shouldn't be a bottleneck.
+  context->GetCurrentCompletionEvent().WaitForSignal();
+}
+
+void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  const auto* allocInfo = static_cast<const Dml::AllocationInfo*>(src);
+  ID3D12Resource* src_data = allocInfo->GetResource();
+
+  ComPtr<ID3D12Device> d3d12_device;
+  ORT_THROW_IF_FAILED(src_data->GetDevice(IID_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+
+  Dml::ExecutionContext* context = nullptr;
+  uint32_t context_size = gsl::narrow_cast<uint32_t>(sizeof(context));
+  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(execution_context_guid, &context_size, &context));
+
+  Dml::ReadbackHeap* readback_heap = nullptr;
+  uint32_t readback_heap_size = gsl::narrow_cast<uint32_t>(sizeof(readback_heap));
+  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_readback_heap_guid, &readback_heap_size, &readback_heap));
+
+  // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we don't need to sync after
+  // this call
+  readback_heap->ReadbackFromGpu(
+      gsl::make_span(static_cast<std::byte*>(dst), num_bytes), src_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, DmlToCpuMemCpy}};
+
+  return &map;
+}
+
+#endif
+
+#ifdef USE_CANN
+void CpuToCannMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_CANN().cannMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void CannToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_CANN().cannMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCannToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::NPU, CannToCpuMemCpy}};
+
+  return &map;
+}
+
+bool IsCannDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = GetProviderInfo_CANN().cannGetDeviceCount();
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a CANN capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "cann_device=" << id << " is invalid, must choose device ID between 0 and "
+                          << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+AllocatorPtr GetCannAllocator(OrtDevice::DeviceId id) {
+  size_t npu_mem_limit = std::numeric_limits<size_t>::max();
+  onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+
+  static auto* id_to_allocator_map =
+      std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
+  auto hit = id_to_allocator_map->find(id);
+  if (hit == id_to_allocator_map->end()) {
+    auto cann_allocator = GetProviderInfo_CANN().CreateCannAllocator(id, npu_mem_limit, arena_extend_strategy, nullptr);
+    hit = id_to_allocator_map->emplace(id, std::move(cann_allocator)).first;
+  }
+
+  return hit->second;
 }
 
 #endif
@@ -482,7 +659,12 @@ static bool CheckIfInputIsSequenceType(const std::string& name_input,
   if (!temp) {
     throw std::runtime_error("Corresponding type_proto is null");
   } else {
-    type_proto = *temp;
+    if (temp->has_optional_type()) {
+      const ::onnx::TypeProto_Optional& optional_type_proto = temp->optional_type();
+      type_proto = optional_type_proto.elem_type();
+    } else {
+      type_proto = *temp;
+    }
   }
 
   return type_proto.has_sequence_type();
@@ -495,26 +677,24 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
     throw std::runtime_error("Input is not of sequence type");
   }
 
+  // set the seq type
+  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
+  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
+
   // populate the seq
-  std::vector<Tensor> tensors;
   auto list_size = PyList_Size(pylist_obj);
   if (list_size > 0) {
-    tensors.resize(list_size);
     for (Py_ssize_t i = 0; i < list_size; ++i) {
       auto* py_obj = PyList_GetItem(pylist_obj, i);
       if (!PyObjectCheck_NumpyArray(py_obj)) {
         throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
       }
       auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
-      tensors[i] = std::move(*p_tensor);
+      p_seq_tensors->Add(std::move(*p_tensor));
     }
   }
 
-  // set the seq type
-  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
-      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
-  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
-  p_seq_tensors->SetElements(std::move(tensors));
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   p_mlvalue->Init(p_seq_tensors.release(),
                   ml_tensor_sequence,

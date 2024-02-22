@@ -25,13 +25,24 @@ else:
 
 class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
-        optimized_model.topological_sort()
+        optimized_model.topological_sort(is_deterministic=True)
 
         expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", expected_model_filename)
         expected_model = OnnxModel(onnx.load(expected_model_path))
-        expected_model.topological_sort()
+        expected_model.topological_sort(is_deterministic=True)
 
-        self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
+        nodes = optimized_model.model.graph.node
+        self.assertEqual(len(nodes), len(expected_model.model.graph.node))
+
+        for i in range(len(nodes)):
+            self.assertEqual(nodes[i], expected_model.model.graph.node[i])
+
+        for expected_initializer in expected_model.model.graph.initializer:
+            self.assertTrue(
+                OnnxModel.has_same_value(
+                    optimized_model.get_initializer(expected_initializer.name), expected_initializer
+                )
+            )
 
     def test_multi_head_attention_fusion(self):
         model = create_bert_attention()
@@ -40,6 +51,7 @@ class TestFusion(unittest.TestCase):
         onnx.save(model, model_path)
         options = FusionOptions("bert")
         options.use_multi_head_attention = True
+        options.use_raw_attention_mask(True)
         optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
         self.verify_fusion(optimized_model, "attention_mha.onnx")
@@ -49,7 +61,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "attention_opt.onnx")
@@ -64,7 +78,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "pruned_attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "pruned_attention_opt.onnx")
@@ -80,7 +96,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "bert_attention_reverse_add_order.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         # reverse add input order will get same optimized model
@@ -96,7 +114,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "attention_with_varied_qkv_opt.onnx")
@@ -113,7 +133,9 @@ class TestFusion(unittest.TestCase):
         onnx.save(model, model_path)
 
         # wrong num_heads and hidden_size
-        optimized_model = optimize_model(model_path, "bert", num_heads=8, hidden_size=8)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, "bert", num_heads=8, hidden_size=8, optimization_options=options)
 
         os.remove(model_path)
 
@@ -167,7 +189,7 @@ class TestFusion(unittest.TestCase):
                 else:
                     model_suffix = "opt_no_skiplayernorm"
 
-                model_name = "gpt2_attention_{}.onnx".format(model_suffix)
+                model_name = f"gpt2_attention_{model_suffix}.onnx"
                 self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):
@@ -192,7 +214,7 @@ class TestFusion(unittest.TestCase):
             else:
                 model_suffix = "opt_no_skiplayernorm"
 
-            model_name = "gpt2_megatron_{}.onnx".format(model_suffix)
+            model_name = f"gpt2_megatron_{model_suffix}.onnx"
             self.verify_fusion(optimized_model, model_name)
 
 

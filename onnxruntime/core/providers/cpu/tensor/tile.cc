@@ -34,6 +34,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                             DataTypeImpl::GetTensorType<uint16_t>(),
                                             DataTypeImpl::GetTensorType<uint32_t>(),
                                             DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<std::string>(),
                                             DataTypeImpl::GetTensorType<bool>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
@@ -51,6 +52,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                             DataTypeImpl::GetTensorType<uint16_t>(),
                                             DataTypeImpl::GetTensorType<uint32_t>(),
                                             DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<std::string>(),
                                             DataTypeImpl::GetTensorType<bool>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
@@ -92,6 +94,45 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
       for (int64_t repeat = 0; repeat < num_repeats; ++repeat) {
         memcpy(output, copy, block_size);
         output += block_size;
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status TileCoreForStringType(const Tensor& input_tensor, Tensor& output_tensor, const int64_t* repeats, TensorAxisCounters& input_counters, const TensorPitches& output_pitches) {
+  const auto& input_shape = input_tensor.Shape().GetDims();
+  const size_t dimension_count = input_shape.size();
+
+  const auto* input = input_tensor.Data<std::string>();
+  auto* output = output_tensor.MutableData<std::string>();
+
+  // some helper variables that will be used along the way
+  size_t block_size = 0;
+  int64_t num_repeats = 0;
+  const std::string* copy = nullptr;
+  const int64_t innermost_dim = input_shape[dimension_count - 1];
+
+  while (input_counters) {
+    // Copy the input data over
+    block_size = SafeInt<size_t>(innermost_dim);
+    output = std::copy(input, input + block_size, output);
+    input += block_size;
+
+    // Tile data for the innermost axis
+    copy = output - block_size;
+    num_repeats = repeats[dimension_count - 1] - 1;
+    for (int64_t repeat = 0; repeat < num_repeats; ++repeat) {
+      output = std::copy(copy, copy + block_size, output);
+    }
+
+    // Tile data for other axes
+    while (input_counters.Increment()) {
+      block_size = onnxruntime::narrow<size_t>(output_pitches[input_counters.Axis()] * input_shape[input_counters.Axis()]);
+      copy = output - block_size;
+      num_repeats = repeats[input_counters.Axis()] - 1;
+      for (int64_t repeat = 0; repeat < num_repeats; ++repeat) {
+        output = std::copy(copy, copy + block_size, output);
       }
     }
   }
@@ -170,10 +211,10 @@ Status Tile::Compute(OpKernelContext* ctx) const {
 
   // Repeat tensor has all 1s in it
   if (output_shape == input_shape) {
-    // TODO: Handle string copies when the kernel eventually supports string type.
-    // For now, it shouldn't throw in the enforce as the kernel doesn't claim string support
-    ORT_ENFORCE(!input_tensor.IsDataType<std::string>(), "Tile doesn't support string type yet");
-    memcpy(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes());
+    if (input_tensor.IsDataType<std::string>())
+      std::copy(input_tensor.Data<std::string>(), input_tensor.Data<std::string>() + input_shape.Size(), output_tensor.MutableData<std::string>());
+    else
+      memcpy(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes());
     return Status::OK();
   }
 
@@ -187,11 +228,8 @@ Status Tile::Compute(OpKernelContext* ctx) const {
                            is_batched_memcpy,
                            num_of_elements_per_batch,
                            num_of_copies_per_batch,
-                           num_of_batch_copies)) {
-    // TODO: Handle string copies when the kernel eventually supports string type.
-    // For now, it shouldn't throw in the enforce as the kernel doesn't claim string support
-    ORT_ENFORCE(!input_tensor.IsDataType<std::string>(), "Tile doesn't support string type yet");
-
+                           num_of_batch_copies) &&
+      !input_tensor.IsDataType<std::string>()) {
     int8_t* output_data_casted = reinterpret_cast<int8_t*>(output_tensor.MutableDataRaw());
     const int8_t* input_data_casted = reinterpret_cast<const int8_t*>(input_tensor.DataRaw());
     const void* input_data_raw = input_tensor.DataRaw();
@@ -238,6 +276,9 @@ Status Tile::Compute(OpKernelContext* ctx) const {
 
   static_assert(sizeof(float) == sizeof(int32_t), "Float and Int32 are of different sizes");
   static_assert(sizeof(double) == sizeof(int64_t), "Double and Int64 are of different sizes");
+
+  if (input_tensor.IsDataType<std::string>())
+    return TileCoreForStringType(input_tensor, output_tensor, repeats, input_counters, output_pitches);
 
   if (input_tensor.IsDataType<float>() ||
       input_tensor.IsDataType<int32_t>() ||

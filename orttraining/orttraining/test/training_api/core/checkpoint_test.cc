@@ -19,16 +19,16 @@
 #include "core/platform/path_lib.h"
 
 #include "orttraining/core/framework/checkpoint_common.h"
-#include "orttraining/training_api/include/module.h"
-#include "orttraining/training_api/include/optimizer.h"
-#include "orttraining/training_api/include/checkpoint_property.h"
-#include "orttraining/training_api/include/checkpoint.h"
-#include "orttraining/training_api/include/lr_scheduler.h"
+#include "orttraining/training_api/module.h"
+#include "orttraining/training_api/optimizer.h"
+#include "orttraining/training_api/checkpoint_property.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/lr_scheduler.h"
 
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
-#include "test/util/include/test/test_environment.h"
+#include "test/util/include/test_environment.h"
 #include "orttraining/test/training_api/common/synthetic_data_loader.h"
 #include "orttraining/test/training_api/core/data_utils.h"
 #include "default_providers.h"
@@ -36,11 +36,8 @@
 using onnxruntime::test::TemporaryDirectory;
 using namespace onnxruntime::training::api;
 
-namespace onnxruntime {
-namespace training {
-namespace test {
+namespace onnxruntime::training::test {
 
-namespace {
 #define MODEL_FOLDER ORT_TSTR("testdata/")
 
 /**
@@ -90,9 +87,6 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   /// Phase 2 - Run save checkpoint APIs.
@@ -100,24 +94,9 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 
   // Call Save APIs.
   PathString checkpoint_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
-
-  // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{ORT_TSTR("paramfrozen_tensors.pbseq"), ORT_TSTR("paramtrain_tensors.pbseq")};
-  std::set<PathString> valid_file_names;
-  LoopDir(checkpoint_path,
-          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
-            PathString filename_str = filename;
-            bool is_valid_ckpt_file_exts = HasExtensionOf(filename_str, ORT_TSTR("pbseq"));
-            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
-              return true;
-            }
-            valid_file_names.emplace(filename_str);
-            return true;
-          });
-
-  ASSERT_EQ(expected_file_names, valid_file_names);
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
+  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path,
+                                  false /* nominal checkpoint */));
 
   /// Phase 3 - Run load checkpoint APIs.
   /// And check the result comparable with initial parameter values.
@@ -125,6 +104,114 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   // Call Load APIs
   CheckpointState checkpoint_state_to_load;
   ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
+  ModuleCheckpointState module_state = checkpoint_state_to_load.module_checkpoint_state;
+  const auto& param_states = module_state.named_parameters;
+  std::unordered_map<std::string, OrtValue> restored_param_name_to_ort_values;
+  std::vector<std::string> restored_trainable_param_names;
+  for (auto it = param_states.begin(); it != param_states.end(); ++it) {
+    restored_param_name_to_ort_values.insert({it->first, it->second->Data()});
+    if (it->second->RequiresGrad()) {
+      restored_trainable_param_names.emplace_back(it->first);
+    }
+  }
+
+  // Check loaded parameter's values are same with original ones.
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), restored_trainable_param_names.size());
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), 7);
+  ASSERT_EQ(restored_param_name_to_ort_values.size(), 9);
+
+  std::sort(expected_trainable_param_names.begin(), expected_trainable_param_names.end());
+  std::sort(restored_trainable_param_names.begin(), restored_trainable_param_names.end());
+  ASSERT_EQ(expected_trainable_param_names, restored_trainable_param_names);
+
+  for (const auto& name : restored_trainable_param_names) {
+    const auto& restored_ort_value = restored_param_name_to_ort_values[name];
+    const auto& expected_ort_value = expected_trainable_param_name_to_ort_value.at(name);
+
+    ASSERT_TRUE(restored_ort_value.IsTensor() && expected_ort_value.IsTensor());
+    const Tensor& restored_tensor = restored_ort_value.Get<Tensor>();
+    const Tensor& expected_tensor = expected_ort_value.Get<Tensor>();
+    ASSERT_EQ(expected_tensor.DataType(), restored_tensor.DataType());
+    ASSERT_EQ(expected_tensor.SizeInBytes(), restored_tensor.SizeInBytes());
+    ASSERT_EQ(expected_tensor.DataType(), restored_tensor.DataType());
+
+    ASSERT_EQ(std::memcmp(expected_tensor.DataRaw(), restored_tensor.DataRaw(), expected_tensor.SizeInBytes()), 0);
+  }
+}
+
+/**
+ * Load ONNX model from file path, save into ORT checkpoint files,
+ * Then load it into a bytes buffer and then load the buffer to a checkpoint, compare with the initial parameter values.
+ */
+TEST(CheckpointApiTest, SaveOnnxModelAsCheckpointThenLoadFromBufferCPU) {
+  /// Phase 1 - Test Preparation
+  /// Prepare the data and dest folder for saving checkpoint.
+  /// Also cooked the data for test result comparison.
+
+  // Model path and trainable parameter name definitions.
+  auto model_uri = MODEL_FOLDER "transform/computation_reduction/gathernd/e2e.onnx";
+  std::vector<std::string> expected_trainable_param_names{
+      "bert.encoder.layer.2.output.LayerNorm.weight",
+      "bert.encoder.layer.2.output.LayerNorm.bias",
+      "add1_initializerr",
+      "cls.predictions.transform.LayerNorm.weight",
+      "cls.predictions.transform.LayerNorm.bias",
+      "bert.embeddings.word_embeddings.weight_transposed",
+      "cls.predictions.bias",
+  };
+
+  // Extract a weight value baseline to compare.
+  // expected_trainable_param_name_to_ort_value is used to compare with the values after restoring from checkpoint.
+  auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+  std::shared_ptr<Model> p_model;
+  ORT_ENFORCE(Model::Load(model_uri, p_model, nullptr, *logger_ptr).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  std::vector<ONNX_NAMESPACE::TensorProto> trainable_param_values;
+  trainable_param_values.reserve(expected_trainable_param_names.size());
+  std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
+  const auto& initializer_tensors = graph.GetAllInitializedTensors();
+  for (const auto& [initializer_name, tensor_proto] : initializer_tensors) {
+    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), initializer_name) !=
+        expected_trainable_param_names.end()) {
+      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+    } else {
+      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+    }
+  }
+
+  std::unordered_map<std::string, OrtValue> expected_trainable_param_name_to_ort_value;
+  ORT_ENFORCE(CreateOrtValuesFromTensorProtos(trainable_param_values, expected_trainable_param_name_to_ort_value)
+                  .IsOK());
+
+  // Remove the temporary directory if it already exists.
+  auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
+  TemporaryDirectory tmp_dir{ckpt_test_root_dir};
+
+  /// Phase 2 - Run save checkpoint APIs.
+  /// And check the result checkpoint files.
+
+  // Call Save APIs.
+  PathString checkpoint_path{
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
+  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path,
+                                  false /* nominal checkpoint */));
+
+  /// Phase 3 - Run load checkpoint APIs.
+  /// And check the result comparable with initial parameter values.
+
+  // Call Load APIs
+  size_t num_bytes = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(checkpoint_path.c_str(), num_bytes));
+  std::vector<uint8_t> checkpoint_bytes(num_bytes);
+
+  std::ifstream bytes_stream(checkpoint_path, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(checkpoint_bytes.data()), num_bytes);
+
+  ASSERT_TRUE(bytes_stream);
+
+  CheckpointState checkpoint_state_to_load;
+  ASSERT_STATUS_OK(LoadCheckpointFromBuffer(checkpoint_bytes, checkpoint_state_to_load));
   ModuleCheckpointState module_state = checkpoint_state_to_load.module_checkpoint_state;
   const auto& param_states = module_state.named_parameters;
   std::unordered_map<std::string, OrtValue> restored_param_name_to_ort_values;
@@ -171,7 +258,7 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
   // Phase 2: Load the checkpoint weights into the Model.
   // Call Load APIs
-  auto checkpoint_uri = MODEL_FOLDER "training_api/load_checkpoint";
+  auto checkpoint_uri = MODEL_FOLDER "training_api/checkpoint.ckpt";
   ASSERT_STATUS_OK(LoadCheckpointToModel(checkpoint_uri, p_model));
 
   // Phase 3: Make sure the Model's weights are not equal to zero after loading the new ones.
@@ -191,14 +278,12 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
 }
 
 /**
- * Create Module with sets of parameters,
- * Create Optimizer passing in Module's parameters.
+ * Create Module passing in checkpoint state,
+ * Create Optimizer passing in checkpoint state.
  * Save Optimizer states into ORT checkpoint files,
  * Then load it into ORT, compare with the initial optimizer states values.
  */
-#if defined(USE_CUDA)
-
-TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
+TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
   /// Phase 1 - Test Preparation
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparison.
@@ -206,7 +291,8 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   auto optim_uri = "testdata/training_api/adamw.onnx";
 
   // Generate randomized weight values using synthetic data generator.
-  const int64_t fc2_weight_dim_in = 10, fc2_weight_dim_out = 500, fc1_weight_dim_in = 500, fc1_weight_dim_out = 784;
+  constexpr int64_t fc2_weight_dim_in = 10, fc2_weight_dim_out = 500,
+                    fc1_weight_dim_in = 500, fc1_weight_dim_out = 784;
   const std::vector<int64_t> fc1_weight_shape{fc1_weight_dim_in, fc1_weight_dim_out};
   const std::vector<int64_t> fc1_bias_shape{fc1_weight_dim_in};
   const std::vector<int64_t> fc2_weight_shape{fc2_weight_dim_in, fc2_weight_dim_out};
@@ -237,76 +323,54 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
     named_parameters.insert({it->first, param});
   }
 
+  auto state = CheckpointState();
+  state.module_checkpoint_state.named_parameters = named_parameters;
+
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  std::vector<std::shared_ptr<IExecutionProvider>> cuda_provider{onnxruntime::test::DefaultCudaExecutionProvider()};
-  auto model = std::make_unique<Module>(model_uri, named_parameters, session_option,
-                                        *env, cuda_provider);
-  auto optimizer = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option,
-                                               *env, cuda_provider);
-
-  /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
-  /// And check the result checkpoint files.
-
-  CheckpointState checkpoint_state;
-  ORT_ENFORCE(optimizer->GetStateDict(checkpoint_state.optimizer_checkpoint_state).IsOK());
+  std::vector<std::shared_ptr<IExecutionProvider>> providers;
+#if defined(USE_CUDA)
+  providers.push_back(onnxruntime::test::DefaultCudaExecutionProvider());
+#endif
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                           std::nullopt,
+                                           std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
+  auto model = std::make_unique<Module>(model_identifier, &state, session_option,
+                                        *env, providers);
+  auto optimizer = std::make_unique<Optimizer>(model_identifier, &state, session_option,
+                                               *env, providers);
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   // Call Save APIs.
   PathString checkpoint_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path));
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
+  ASSERT_STATUS_OK(SaveCheckpoint(state, checkpoint_path, true));
 
-  // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{
-      ORT_TSTR("optim_group0_momentum0_tensors.pbseq"),
-      ORT_TSTR("optim_group0_momentum1_tensors.pbseq"),
-      ORT_TSTR("optim_group0_properties.pbseq"),
-  };
-
-  std::set<PathString> valid_file_names;
-  LoopDir(checkpoint_path,
-          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
-            PathString filename_str = filename;
-            bool is_valid_ckpt_file_exts =
-                HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
-            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
-              return true;
-            }
-            valid_file_names.emplace(filename_str);
-            return true;
-          });
-
-  ASSERT_EQ(expected_file_names, valid_file_names);
-
-  /// Phase 3 - Run load checkpoint APIs.
+  /// Phase 2 - Run load checkpoint APIs.
   /// Validate the result matches with initial optimizer state values.
 
   // Call Load APIs
   CheckpointState checkpoint_state_to_load;
   ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
   OptimizerCheckpointState optimizer_state = checkpoint_state_to_load.optimizer_checkpoint_state;
-  std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>>&
+  InlinedHashMap<std::string, std::shared_ptr<GroupOptimizerState>>&
       group_optimizer_states = optimizer_state.group_named_optimizer_states;
 
   ASSERT_EQ(group_optimizer_states.size(), 1);
   ASSERT_EQ(group_optimizer_states.begin()->first, "group0");
 
-  std::unordered_map<std::string, ParameterOptimizerState>&
+  InlinedHashMap<std::string, ParameterOptimizerState>&
       param_named_optimizer_states = group_optimizer_states["group0"]->param_named_optimizer_states;
 
   ASSERT_EQ(param_named_optimizer_states.size(), named_parameters.size());
 
   for (auto it = param_named_optimizer_states.begin(); it != param_named_optimizer_states.end(); ++it) {
     ASSERT_TRUE(named_parameters.find(it->first) != named_parameters.end());
-    for (auto& [momentum_name, restored_ort_value] : it->second.momentum_named_states) {
+    for (auto& [momentum_name, restored_ort_value] : it->second) {
       ASSERT_TRUE(momentum_name == "momentum0" || momentum_name == "momentum1");
       const OrtValue& param_ort_value = name_to_ort_value[it->first];
       ASSERT_TRUE(restored_ort_value.IsTensor() && param_ort_value.IsTensor());
@@ -315,18 +379,15 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
       ASSERT_EQ(param_tensor.DataType(), restored_tensor.DataType());
       ASSERT_EQ(param_tensor.SizeInBytes(), restored_tensor.SizeInBytes());
-      ASSERT_EQ(param_tensor.DataType(), restored_tensor.DataType());
 
       std::vector<float> state_vect;
-      OrtValueToVec(restored_ort_value, state_vect);
+      CpuOrtValueToVec(restored_ort_value, state_vect);
       for (size_t i = 0; i < state_vect.size(); i++) {
         ASSERT_EQ(state_vect[i], 0.0f);
       }
     }
   }
 }
-
-#endif
 
 /**
  * Create PropertyBag with sets of properties,
@@ -354,9 +415,6 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   /// Phase 2 - Call save checkpoint APIs.
@@ -364,34 +422,14 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   // Call Save APIs.
   PathString checkpoint_path{
-      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path));
-
-  // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{
-      ORT_TSTR("custom_properties.pbseq"),
-  };
-
-  std::set<PathString> valid_file_names;
-  LoopDir(checkpoint_path,
-          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
-            PathString filename_str = filename;
-            bool is_valid_ckpt_file_exts =
-                HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
-            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
-              return true;
-            }
-            valid_file_names.emplace(filename_str);
-            return true;
-          });
-
-  ASSERT_EQ(expected_file_names, valid_file_names);
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
+  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, false));
 
   // Call Load APIs
   CheckpointState checkpoint_state_to_load;
   ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
   PropertyBag& restored_property_bag = checkpoint_state_to_load.property_bag;
-  ASSERT_EQ(restored_property_bag.Size(), 3);
+  ASSERT_EQ(restored_property_bag.size(), 3);
   float restored_f_data = restored_property_bag.GetProperty<float>(f_property_name);
   ASSERT_FLOAT_EQ(f_data, restored_f_data);
   int64_t restored_i_data = restored_property_bag.GetProperty<int64_t>(i_property_name);
@@ -399,7 +437,37 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   std::string restored_s_data = restored_property_bag.GetProperty<std::string>(s_property_name);
   ASSERT_EQ(s_data, restored_s_data);
 }
-}  // namespace
-}  // namespace test
-}  // namespace training
-}  // namespace onnxruntime
+
+/**
+ * Loads a nominal checkpoint. Checks for nominal flag, and that the state is empty.
+ * Saves the checkpoint, and loads it again. Checks for nominal flag, and that the state is empty.
+ */
+TEST(CheckpointApiTest, LoadAndSaveNominalCheckpoint) {
+  PathString nominal_checkpoint_path{ORT_TSTR("testdata/training_api/nominal_checkpoint")};
+
+  CheckpointState checkpoint_state;
+  ASSERT_STATUS_OK(LoadCheckpoint(nominal_checkpoint_path, checkpoint_state));
+  ASSERT_TRUE(checkpoint_state.module_checkpoint_state.is_nominal_state);
+  for (auto& [name, param] : checkpoint_state.module_checkpoint_state.named_parameters) {
+    ASSERT_TRUE(param->Data().IsTensor());
+    // An empty tensor will have size 1.
+    ASSERT_EQ(param->Data().Get<Tensor>().Shape().Size(), 1);
+  }
+
+  // Remove the temporary directory if it already exists.
+  auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
+  TemporaryDirectory tmp_dir{ckpt_test_root_dir};
+  PathString checkpoint_path{
+      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("nominal_checkpoint_2"))};
+  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, false));
+
+  CheckpointState checkpoint_state_2;
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_2));
+  ASSERT_TRUE(checkpoint_state_2.module_checkpoint_state.is_nominal_state);
+  for (auto& [name, param] : checkpoint_state_2.module_checkpoint_state.named_parameters) {
+    ASSERT_TRUE(param->Data().IsTensor());
+    // An empty tensor will have size 1.
+    ASSERT_EQ(param->Data().Get<Tensor>().Shape().Size(), 1);
+  }
+}
+}  // namespace onnxruntime::training::test

@@ -42,7 +42,7 @@ void IncrementElement(TestData& test_data, ptrdiff_t i) {
   test_data.data[i]++;
 }
 
-void ValidateTestData(TestData& test_data, int expected=1) {
+void ValidateTestData(TestData& test_data, int expected = 1) {
   ASSERT_TRUE(std::count_if(test_data.data.cbegin(), test_data.data.cend(), [&](int i) { return i != expected; }) == 0);
 }
 
@@ -60,8 +60,8 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
       test_body(tp_dynamic_block_size.get());  // test thread pool with dynamic block size
     } else {
       auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true, mock_hybrid);
-      test_body(tp_constant_block_size.get()); // test thread pool with constant block size
-    } 
+      test_body(tp_constant_block_size.get());  // test thread pool with constant block size
+    }
   } else {
     test_body(nullptr);
   }
@@ -70,7 +70,7 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
   auto test_data = CreateTestData(num_tasks);
   CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
+    ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
   });
   ValidateTestData(*test_data);
 }
@@ -153,7 +153,7 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
         }
       });
     });
-    ASSERT_TRUE(ctr == num_tasks*2);
+    ASSERT_TRUE(ctr == num_tasks * 2);
   }
 }
 
@@ -169,14 +169,14 @@ void TestPoolCreation(const std::string&, int iter) {
   constexpr int num_threads = 4;
   for (auto i = 0; i < iter; i++) {
     auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
-                                                   onnxruntime::ThreadOptions(),
-                                                   nullptr,
-                                                   num_threads,
-                                                   true);
+                                           onnxruntime::ThreadOptions(),
+                                           nullptr,
+                                           num_threads,
+                                           true);
     ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0,
-                    [&](std::ptrdiff_t s, std::ptrdiff_t e) {
-                      ctr += e - s;
-                    });
+                               [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                                 ctr += e - s;
+                               });
   }
   ASSERT_EQ(ctr, iter * per_iter);
 }
@@ -187,15 +187,15 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
     constexpr int num_tasks = 1024;
     auto test_data = CreateTestData(num_tasks);
     CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-	ThreadPool::ParallelSection ps(tp);
-	for (int l = 0; l < num_loops; l++) {
-          ThreadPool::TrySimpleParallelFor(tp,
-                                           num_tasks,
-                                           [&](std::ptrdiff_t i) {
-                                             IncrementElement(*test_data, i);
-                                           });
-	}
-      });
+      ThreadPool::ParallelSection ps(tp);
+      for (int l = 0; l < num_loops; l++) {
+        ThreadPool::TrySimpleParallelFor(tp,
+                                         num_tasks,
+                                         [&](std::ptrdiff_t i) {
+                                           IncrementElement(*test_data, i);
+                                         });
+      }
+    });
     ValidateTestData(*test_data, num_loops);
   }
 }
@@ -205,25 +205,25 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
 // differing numbers of threads over time.
 void TestStagedMultiLoopSections(const std::string& name, int num_threads, int num_loops) {
   for (int rep = 0; rep < 5; rep++) {
-    auto test_data1 = CreateTestData(num_threads/2);
+    auto test_data1 = CreateTestData(num_threads / 2);
     auto test_data2 = CreateTestData(num_threads);
     CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-	ThreadPool::ParallelSection ps(tp);
-	for (int l = 0; l < num_loops; l++) {
-          // Loop needing few threads
-          ThreadPool::TrySimpleParallelFor(tp,
-                                           num_threads / 2,
-                                           [&](std::ptrdiff_t i) {
-                                             IncrementElement(*test_data1, i);
-                                           });
-          // Loop needing more threads, forcing growth of set of threads in use
-          ThreadPool::TrySimpleParallelFor(tp,
-                                           num_threads,
-                                           [&](std::ptrdiff_t i) {
-                                             IncrementElement(*test_data2, i);
-                                           });
-	}
-      });
+      ThreadPool::ParallelSection ps(tp);
+      for (int l = 0; l < num_loops; l++) {
+        // Loop needing few threads
+        ThreadPool::TrySimpleParallelFor(tp,
+                                         num_threads / 2,
+                                         [&](std::ptrdiff_t i) {
+                                           IncrementElement(*test_data1, i);
+                                         });
+        // Loop needing more threads, forcing growth of set of threads in use
+        ThreadPool::TrySimpleParallelFor(tp,
+                                         num_threads,
+                                         [&](std::ptrdiff_t i) {
+                                           IncrementElement(*test_data2, i);
+                                         });
+      }
+    });
     ValidateTestData(*test_data1, num_loops);
     ValidateTestData(*test_data2, num_loops);
   }
@@ -551,18 +551,18 @@ TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
   OrtThreadPoolParams tp_params;
   tp_params.thread_pool_size = 3;
   const char* wrong_formats[] = {
-      ",",     //1st and 2nd processor id are empty strings
-      "1,",    //2nd processor id is an empty string
-      ";",     //affinity settings for both threads are empty
-      ";1",    //missing the affinity setting for the 1st thread
-      "a",     //invalid char, must be digit
-      "a;b",   //invalid char, must be digit
-      "1;a",   //invalid char, must be digit
-      "0;1",   //processor string must start from 1
-      "-;2",   //invalid char, must be digit
-      "--",    //invalid char, must be digit
-      "2-1;3", //invalid interval, "from" must be equal to or smaller than "to"
-      "5;3a"   //invalid processor id containing non-digit as suffix
+      ",",      // 1st and 2nd processor id are empty strings
+      "1,",     // 2nd processor id is an empty string
+      ";",      // affinity settings for both threads are empty
+      ";1",     // missing the affinity setting for the 1st thread
+      "a",      // invalid char, must be digit
+      "a;b",    // invalid char, must be digit
+      "1;a",    // invalid char, must be digit
+      "0;1",    // processor string must start from 1
+      "-;2",    // invalid char, must be digit
+      "--",     // invalid char, must be digit
+      "2-1;3",  // invalid interval, "from" must be equal to or smaller than "to"
+      "5;3a"    // invalid processor id containing non-digit as suffix
   };
   for (const auto* wrong_format : wrong_formats) {
     tp_params.affinity_str = wrong_format;
@@ -609,7 +609,7 @@ TEST(ThreadPoolTest, TestAffinityStringWellShaped) {
                                                         tp_params,
                                                         concurrency::ThreadPoolType::INTRA_OP);
     auto DOP = concurrency::ThreadPool::DegreeOfParallelism(non_default_tp.get());
-    ASSERT_TRUE(DOP >= 3 && DOP % 3 == 0); // for hybrid cpu, dop is a multiple of 3
+    ASSERT_TRUE(DOP >= 3 && DOP % 3 == 0);  // for hybrid cpu, dop is a multiple of 3
   }
 }
 

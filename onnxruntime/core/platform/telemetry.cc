@@ -7,10 +7,24 @@
 namespace onnxruntime {
 
 void LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
-                     const char* function, uint32_t line)
-{
+                     const char* function, uint32_t line) {
   const Env& env = Env::Default();
   env.GetTelemetryProvider().LogRuntimeError(sessionId, status, file, function, line);
+}
+
+bool Telemetry::IsEnabled() const {
+  return false;
+}
+
+// Get the current logging level
+// The Level defined as uchar is coming from the ETW Enable callback in TraceLoggingRegisterEx.
+unsigned char Telemetry::Level() const {
+  return 0;
+}
+
+// Get the current keyword
+uint64_t Telemetry::Keyword() const {
+  return 0;
 }
 
 void Telemetry::EnableTelemetryEvents() const {
@@ -56,7 +70,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
 }
 
 void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
-                                       const char* function, uint32_t line) const {
+                                const char* function, uint32_t line) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(status);
   ORT_UNUSED_PARAMETER(file);
@@ -75,4 +89,3 @@ void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
 }
 
 }  // namespace onnxruntime
-

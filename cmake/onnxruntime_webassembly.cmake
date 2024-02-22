@@ -97,7 +97,7 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
-      nsync_cpp
+      nsync::nsync_cpp
       ${PROTOBUF_LIB}
       onnx
       onnx_proto
@@ -108,7 +108,9 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_mlas
       onnxruntime_optimizer
       onnxruntime_providers
+      ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
+      ${PROVIDERS_WEBNN}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -172,7 +174,7 @@ else()
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
-    nsync_cpp
+    nsync::nsync_cpp
     ${PROTOBUF_LIB}
     onnx
     onnx_proto
@@ -183,69 +185,131 @@ else()
     onnxruntime_mlas
     onnxruntime_optimizer
     onnxruntime_providers
+    ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_WEBNN}
     onnxruntime_session
     onnxruntime_util
     re2::re2
   )
+
+  set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8'")
+
   if (onnxruntime_USE_XNNPACK)
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
+    string(APPEND EXPORTED_RUNTIME_METHODS ",'addFunction'")
+    target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s ALLOW_TABLE_GROWTH=1")
+  endif()
+
+  if(onnxruntime_USE_WEBNN)
+    target_link_libraries(onnxruntime_webassembly PRIVATE onnxruntime_providers_webnn)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING)
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
-  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
+  if (onnxruntime_USE_JSEP)
+    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput,_JsepGetNodeName")
+  else()
+    set(EXPORTED_FUNCTIONS "_malloc,_free")
+  endif()
 
-  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS " \
-                        -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
-                        -s \"EXPORTED_FUNCTIONS=_malloc,_free\" \
-                        -s MAXIMUM_MEMORY=4294967296 \
-                        -s WASM=1 \
-                        -s NO_EXIT_RUNTIME=0 \
-                        -s ALLOW_MEMORY_GROWTH=1 \
-                        -s MODULARIZE=1 \
-                        -s EXPORT_ALL=0 \
-                        -s LLD_REPORT_UNDEFINED \
-                        -s VERBOSE=0 \
-                        -s NO_FILESYSTEM=1 \
-                        ${WASM_API_EXCEPTION_CATCHING} \
-                        --no-entry")
+  target_link_options(onnxruntime_webassembly PRIVATE
+    "SHELL:-s EXPORTED_RUNTIME_METHODS=[${EXPORTED_RUNTIME_METHODS}]"
+    "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
+    "SHELL:-s MAXIMUM_MEMORY=4294967296"
+    "SHELL:-s EXIT_RUNTIME=0"
+    "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+    "SHELL:-s MODULARIZE=1"
+    "SHELL:-s EXPORT_ALL=0"
+    "SHELL:-s VERBOSE=0"
+    "SHELL:-s FILESYSTEM=0"
+    "SHELL:-s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm,mainScriptUrlOrBlob]"
+    ${WASM_API_EXCEPTION_CATCHING}
+    --no-entry
+  )
+
+  if (onnxruntime_USE_JSEP)
+    # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
+    #       This flag allows async functions to be called from sync functions, in the cost of binary size and
+    #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
+
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
+    target_link_options(onnxruntime_webassembly PRIVATE
+      --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
+      "SHELL:-s ASYNCIFY=1"
+      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+    )
+    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js)
+  endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
     foreach(setting IN LISTS onnxruntime_EMSCRIPTEN_SETTINGS)
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS
-      " -s ${setting}")
+      target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s ${setting}")
     endforeach()
   endif()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=1 -s DEMANGLE_SUPPORT=1")
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s ASSERTIONS=2"
+      "SHELL:-s SAFE_HEAP=1"
+      "SHELL:-s STACK_OVERFLOW_CHECK=2"
+      "SHELL:-s DEMANGLE_SUPPORT=1"
+    )
   else()
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=0 -s DEMANGLE_SUPPORT=0 --closure 1")
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s ASSERTIONS=0"
+      "SHELL:-s SAFE_HEAP=0"
+      "SHELL:-s STACK_OVERFLOW_CHECK=0"
+      "SHELL:-s DEMANGLE_SUPPORT=0"
+      --closure 1
+    )
+  endif()
+
+  if (onnxruntime_USE_WEBNN)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --bind -sWASM_BIGINT")
+    if (onnxruntime_DISABLE_RTTI)
+      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -fno-rtti -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
+    endif()
   endif()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s DISABLE_EXCEPTION_THROWING=0")
+  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --profiling --profiling-funcs")
+    target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
-    else()
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
-    endif()
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s EXPORT_NAME=ortWasmThreaded"
+      "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
+      "SHELL:-s PTHREAD_POOL_SIZE=Module[\\\"numThreads\\\"]"
+    )
   else()
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd")
-    else()
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
-    endif()
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s EXPORT_NAME=ortWasm"
+    )
   endif()
+
+  set(target_name_list ort)
+
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND target_name_list  "training")
+  endif()
+
+  list(APPEND target_name_list  "wasm")
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    list(APPEND target_name_list  "simd")
+  endif()
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    list(APPEND target_name_list  "threaded")
+  endif()
+
+  list(JOIN target_name_list  "-" target_name)
+
+  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name})
 endif()

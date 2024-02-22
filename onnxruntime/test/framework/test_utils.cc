@@ -11,27 +11,6 @@ IExecutionProvider* TestCPUExecutionProvider() {
   return &cpu_provider;
 }
 
-#ifdef USE_NNAPI
-IExecutionProvider* TestNnapiExecutionProvider() {
-  static NnapiExecutionProvider nnapi_provider(0);
-  return &nnapi_provider;
-}
-#endif
-
-#ifdef USE_RKNPU
-IExecutionProvider* TestRknpuExecutionProvider() {
-  static RknpuExecutionProvider rknpu_provider;
-  return &rknpu_provider;
-}
-#endif
-
-#ifdef USE_COREML
-IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags) {
-  static CoreMLExecutionProvider coreml_provider(coreml_flags);
-  return &coreml_provider;
-}
-#endif
-
 static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs, OpCountMap& ops) {
   for (auto& node : graph.Nodes()) {
     std::string key = node.Domain() + (node.Domain().empty() ? "" : ".") + node.OpType();

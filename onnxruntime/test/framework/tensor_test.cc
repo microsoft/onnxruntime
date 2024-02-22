@@ -2,12 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
-#include "core/framework/allocatormgr.h"
 #include "test_utils.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
+#include <absl/base/config.h>
 #include <sstream>
 
 namespace onnxruntime {
@@ -16,7 +15,7 @@ template <typename T>
 void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
   // create Tensor where we provide the buffer
   TensorShape shape(dims);  // this is the shape that will be available starting at the offset in the Tensor
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   // alloc extra data if needed, as anything before the offset is not covered by the shape
   auto num_elements = shape.Size() + offset_elements;
   auto num_bytes = num_elements * sizeof(T);
@@ -126,7 +125,7 @@ TEST(TensorTest, CPUUInt64TensorOffsetTest) {
 
 TEST(TensorTest, EmptyTensorTest) {
   auto type = DataTypeImpl::GetType<float>();
-  Tensor t(type, TensorShape({1, 0}), nullptr, TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault)->Info());
+  Tensor t(type, TensorShape({1, 0}), nullptr, TestCPUExecutionProvider()->CreatePreferredAllocators()[0]->Info());
   auto& shape = t.Shape();
   EXPECT_EQ(shape.Size(), 0);
   EXPECT_EQ(t.DataType(), type);
@@ -139,7 +138,7 @@ TEST(TensorTest, EmptyTensorTest) {
   EXPECT_EQ(location.id, 0);
 
   // arena is disabled for CPUExecutionProvider on x86 and JEMalloc
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC) && !defined(USE_MIMALLOC)
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC) && !defined(USE_MIMALLOC) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
   EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtArenaAllocator);
 #else
   EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtDeviceAllocator);
@@ -147,7 +146,7 @@ TEST(TensorTest, EmptyTensorTest) {
 }
 
 TEST(TensorTest, StringTensorTest) {
-//add scope to explicitly delete tensor
+// add scope to explicitly delete tensor
 #ifdef _MSC_VER
   std::string* string_ptr = nullptr;
 #else
@@ -155,7 +154,7 @@ TEST(TensorTest, StringTensorTest) {
 #endif
   {
     TensorShape shape({2, 3});
-    auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+    auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
     Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();
@@ -200,7 +199,7 @@ TEST(TensorTest, SizeOverflow) {
   EXPECT_THROW(TensorShape({std::numeric_limits<int64_t>::max() / 2, 3}).Size(), OnnxRuntimeException);
 
   auto type = DataTypeImpl::GetType<float>();
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 
   // total size overflow with 4 bytes per element
   TensorShape shape1({static_cast<int64_t>(std::numeric_limits<size_t>::max() / 3)});
@@ -213,8 +212,9 @@ TEST(TensorTest, SizeOverflow) {
 #ifdef ENABLE_STRIDED_TENSORS
 TEST(TensorTest, Strided) {
   TensorShape shape({2, 3, 4});
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   void* data = alloc->Alloc(shape.Size() * sizeof(float));
+
   Tensor t(DataTypeImpl::GetType<float>(), shape, data, alloc->Info());
   EXPECT_TRUE(t.IsContiguous());
   const TensorShapeVector strides{12, 4, 1};
@@ -228,6 +228,7 @@ TEST(TensorTest, Strided) {
   ASSERT_EQ(t.Shape(), new_shape);
   ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(new_strides)));
   ASSERT_EQ(t.SizeInBytes(), sizeof(float) * 24);
+
   Tensor t2(DataTypeImpl::GetType<float>(), new_shape, data, alloc->Info(), 0L, gsl::make_span(new_strides));
   EXPECT_FALSE(t2.IsContiguous());
   ASSERT_EQ(t2.Shape(), new_shape);
@@ -238,7 +239,9 @@ TEST(TensorTest, Strided) {
   ASSERT_EQ(t2.Shape(), shape);
   ASSERT_THAT(t2.Strides(), testing::ContainerEq(gsl::make_span(strides)));
   ASSERT_EQ(t2.SizeInBytes(), sizeof(float) * 24);
+
   alloc->Free(data);
+
   data = alloc->Alloc(sizeof(int64_t));
   const TensorShapeVector single_element_strides{0, 0, 0};
   Tensor t3(DataTypeImpl::GetType<int64_t>(), shape, data, alloc->Info(), 0L, gsl::make_span(single_element_strides));
@@ -247,8 +250,10 @@ TEST(TensorTest, Strided) {
   ASSERT_THAT(t3.Strides(), testing::ContainerEq(gsl::make_span(single_element_strides)));
   ASSERT_EQ(t3.SizeInBytes(), sizeof(int64_t));
   alloc->Free(data);
+
   const TensorShapeVector zero_strides{0, 0, 0};
-  Tensor t4(DataTypeImpl::GetType<float>(), shape, alloc, zero_strides);
+  Tensor t4(DataTypeImpl::GetType<float>(), shape, alloc);
+  t4.SetShapeAndStrides(shape, zero_strides);
   EXPECT_FALSE(t4.IsContiguous());
   EXPECT_EQ(t4.Shape(), shape);
   ASSERT_THAT(t4.Strides(), testing::ContainerEq(gsl::make_span(zero_strides)));

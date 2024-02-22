@@ -99,7 +99,7 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESP
         << "than the operator set version " << ver_range_it->second.opset_version << std::endl;
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostream.str());
   }
-  GSL_SUPPRESS(es .84)
+  GSL_SUPPRESS(es.84)
   map_[op_name][op_domain].emplace(std::make_pair(ver, op_schema));
   return common::Status::OK();
 }
@@ -172,7 +172,7 @@ void SchemaRegistryManager::GetDomainToVersionMapForRegistries(DomainToVersionMa
       // If the map doesn't yet contain this domain, insert it with this registry's value.
       // Otherwise, merge the existing range in the map.
       if (iter == domain_version_map.end()) {
-        GSL_SUPPRESS(es .84)
+        GSL_SUPPRESS(es.84)
         domain_version_map.insert(local_domain);
       } else {
         iter->second = std::max(iter->second, local_domain.second);
@@ -194,7 +194,7 @@ DomainToVersionMap SchemaRegistryManager::GetLastReleasedOpsetVersions(bool is_o
       continue;
     auto it = domain_version_map.find(domain.first);
     if (it == domain_version_map.end()) {
-      GSL_SUPPRESS(es .84)
+      GSL_SUPPRESS(es.84)
       domain_version_map.insert(std::make_pair(domain.first, domain.second));
     } else {
       it->second = std::max(it->second, domain.second);
@@ -217,7 +217,7 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
       continue;
     auto it = domain_version_map.find(domain.first);
     if (it == domain_version_map.end()) {
-      GSL_SUPPRESS(es .84)
+      GSL_SUPPRESS(es.84)
       domain_version_map.insert(std::make_pair(domain.first, domain.second.second));
     } else {
       it->second = std::max(it->second, domain.second.second);
@@ -271,7 +271,7 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     }
 
     if (new_version < version) {
-      GSL_SUPPRESS(es .84)
+      GSL_SUPPRESS(es.84)
       unchecked_registry_indices.insert(unchecked_registry_indices.end(),
                                         checked_registry_indices.begin(),
                                         checked_registry_indices.end());
@@ -282,8 +282,17 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     checked_registry_indices.push_back(index);
   }
 
+  // reset the version to the input op_set_version in case there was an unchecked registry using the same domain.
+  // we have no control over the opset values in those registries and the version values aren't guaranteed to
+  // match the real ONNX ones.
+  // e.g. a user can add a custom registry that uses the ONNX domain. the custom op infrastructure would
+  //      create the custom registry with an opset range of 1 to 1000. the above loop that processes the unchecked
+  //      registry would find the opset range of 1 to 1000 and set `new_version` to 1, which would result in `version`
+  //      being set to 1. that would override the op_set_version value provided and result in us only ever looking for
+  //      opset 1 schemas if we fall through to here to find an ONNX operator's schema.
+  version = op_set_version;
+
   // Reject versions greater than what is actually supported.
-  *latest_schema = nullptr;
   if (!IsDomainVersionBeyondSupportedRange(domain, version)) {
     // if not found in registered custom schema registry, search in ONNX schema registry
     *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);

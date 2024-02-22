@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {SessionHandler} from './backend';
-import {resolveBackend} from './backend-impl';
-import {InferenceSession as InferenceSessionInterface} from './inference-session';
-import {OnnxValue} from './onnx-value';
-import {Tensor} from './tensor';
+import {resolveBackend} from './backend-impl.js';
+import {InferenceSessionHandler} from './backend.js';
+import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
+import {Tensor} from './tensor.js';
+import {TRACE_FUNC_BEGIN, TRACE_FUNC_END} from './trace.js';
 
 type SessionOptions = InferenceSessionInterface.SessionOptions;
 type RunOptions = InferenceSessionInterface.RunOptions;
@@ -14,12 +15,13 @@ type FetchesType = InferenceSessionInterface.FetchesType;
 type ReturnType = InferenceSessionInterface.ReturnType;
 
 export class InferenceSession implements InferenceSessionInterface {
-  private constructor(handler: SessionHandler) {
+  private constructor(handler: InferenceSessionHandler) {
     this.handler = handler;
   }
   run(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
   run(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
   async run(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
+    TRACE_FUNC_BEGIN();
     const fetches: {[name: string]: OnnxValue|null} = {};
     let options: RunOptions = {};
     // check inputs
@@ -109,10 +111,20 @@ export class InferenceSession implements InferenceSessionInterface {
     const returnValue: {[name: string]: OnnxValue} = {};
     for (const key in results) {
       if (Object.hasOwnProperty.call(results, key)) {
-        returnValue[key] = new Tensor(results[key].type, results[key].data, results[key].dims);
+        const result = results[key];
+        if (result instanceof Tensor) {
+          returnValue[key] = result;
+        } else {
+          returnValue[key] = new Tensor(result.type, result.data, result.dims);
+        }
       }
     }
+    TRACE_FUNC_END();
     return returnValue;
+  }
+
+  async release(): Promise<void> {
+    return this.handler.dispose();
   }
 
   static create(path: string, options?: SessionOptions): Promise<InferenceSessionInterface>;
@@ -123,6 +135,7 @@ export class InferenceSession implements InferenceSessionInterface {
   static async create(
       arg0: string|ArrayBufferLike|Uint8Array, arg1?: SessionOptions|number, arg2?: number,
       arg3?: SessionOptions): Promise<InferenceSessionInterface> {
+    TRACE_FUNC_BEGIN();
     // either load from a file or buffer
     let filePathOrUint8Array: string|Uint8Array;
     let options: SessionOptions = {};
@@ -186,7 +199,8 @@ export class InferenceSession implements InferenceSessionInterface {
     const eps = options.executionProviders || [];
     const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
     const backend = await resolveBackend(backendHints);
-    const handler = await backend.createSessionHandler(filePathOrUint8Array, options);
+    const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, options);
+    TRACE_FUNC_END();
     return new InferenceSession(handler);
   }
 
@@ -204,5 +218,5 @@ export class InferenceSession implements InferenceSessionInterface {
     return this.handler.outputNames;
   }
 
-  private handler: SessionHandler;
+  private handler: InferenceSessionHandler;
 }

@@ -21,16 +21,17 @@ constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
 constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
 constexpr const char* kMiopenConvUseMaxWorkspace = "miopen_conv_use_max_workspace";
-constexpr const char* kTunableOpEnabled = "tunable_op_enabled";
+constexpr const char* kEnableHipGraph = "enable_hip_graph";
+constexpr const char* kTunableOpEnable = "tunable_op_enable";
+constexpr const char* kTunableOpTuningEnable = "tunable_op_tuning_enable";
+constexpr const char* kTunableOpMaxTuningDurationMs = "tunable_op_max_tuning_duration_ms";
 }  // namespace provider_option_names
 }  // namespace rocm
 
-namespace {
 const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 };
-}  // namespace
 
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   ROCMExecutionProviderInfo info{};
@@ -79,13 +80,28 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToEnumReference(
               rocm::provider_option_names::kArenaExtendStrategy,
               arena_extend_strategy_mapping, info.arena_extend_strategy)
-          .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
+          .AddAssignmentToReference(
+              rocm::provider_option_names::kMiopenConvExhaustiveSearch,
+              info.miopen_conv_exhaustive_search)
           .AddAssignmentToReference(rocm::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvUseMaxWorkspace, info.miopen_conv_use_max_workspace)
+          .AddAssignmentToReference(rocm::provider_option_names::kEnableHipGraph, info.enable_hip_graph)
           .AddValueParser(
-              rocm::provider_option_names::kTunableOpEnabled,
+              rocm::provider_option_names::kTunableOpEnable,
               [&info](const std::string& value_str) -> Status {
-                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.enabled));
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.enable));
+                return Status::OK();
+              })
+          .AddValueParser(
+              rocm::provider_option_names::kTunableOpTuningEnable,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.tuning_enable));
+                return Status::OK();
+              })
+          .AddValueParser(
+              rocm::provider_option_names::kTunableOpMaxTuningDurationMs,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.max_tuning_duration_ms));
                 return Status::OK();
               })
           .Parse(options));
@@ -107,7 +123,25 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
       {rocm::provider_option_names::kMiopenConvExhaustiveSearch, MakeStringWithClassicLocale(info.miopen_conv_exhaustive_search)},
       {rocm::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
       {rocm::provider_option_names::kMiopenConvUseMaxWorkspace, MakeStringWithClassicLocale(info.miopen_conv_use_max_workspace)},
-      {rocm::provider_option_names::kTunableOpEnabled, MakeStringWithClassicLocale(info.tunable_op.enabled)},
+      {rocm::provider_option_names::kEnableHipGraph, MakeStringWithClassicLocale(info.enable_hip_graph)},
+      {rocm::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op.enable)},
+      {rocm::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_enable)},
+      {rocm::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op.max_tuning_duration_ms)},
+  };
+
+  return options;
+}
+
+ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const OrtROCMProviderOptions& info) {
+  const ProviderOptions options{
+      {rocm::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
+      {rocm::provider_option_names::kArenaExtendStrategy, EnumToName(arena_extend_strategy_mapping, static_cast<onnxruntime::ArenaExtendStrategy>(info.arena_extend_strategy))},
+      {rocm::provider_option_names::kMiopenConvExhaustiveSearch, MakeStringWithClassicLocale(info.miopen_conv_exhaustive_search)},
+      {rocm::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
+      {rocm::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op_enable)},
+      {rocm::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op_tuning_enable)},
+      {rocm::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op_max_tuning_duration_ms)},
   };
 
   return options;

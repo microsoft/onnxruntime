@@ -78,10 +78,10 @@ inline bool operator!=(const OrtMemoryInfo& lhs, const OrtMemoryInfo& rhs) { ret
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info);
 
 namespace std {
-template<>
+template <>
 struct hash<OrtMemoryInfo> {
   size_t operator()(const OrtMemoryInfo& i) const {
     return i.Hash();
   }
 };
-}
+}  // namespace std

@@ -4,6 +4,7 @@
 namespace OrtApis {
 
 ORT_API(const OrtApi*, GetApi, uint32_t version);
+
 ORT_API(const char*, GetVersionString);
 
 ORT_API(void, ReleaseEnv, OrtEnv*);
@@ -355,16 +356,16 @@ ORT_API(void, ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr);
 
 ORT_API_STATUS_IMPL(CreateOp,
                     _In_ const OrtKernelInfo* info,
-                    _In_ const char* op_name,
-                    _In_ const char* domain,
-                    _In_ int version,
-                    _In_opt_ const char** type_constraint_names,
-                    _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                    _In_opt_ int type_constraint_count,
-                    _In_opt_ const OrtOpAttr* const* attr_values,
-                    _In_opt_ int attr_count,
-                    _In_ int input_count,
-                    _In_ int output_count,
+                    _In_z_ const char* op_name,
+                    _In_z_ const char* domain,
+                    int version,
+                    _In_reads_(type_constraint_count) const char** type_constraint_names,
+                    _In_reads_(type_constraint_count) const ONNXTensorElementDataType* type_constraint_values,
+                    int type_constraint_count,
+                    _In_reads_(attr_count) const OrtOpAttr* const* attr_values,
+                    int attr_count,
+                    int input_count,
+                    int output_count,
                     _Outptr_ OrtOp** ort_op);
 
 ORT_API_STATUS_IMPL(InvokeOp,
@@ -430,5 +431,86 @@ ORT_API_STATUS_IMPL(HasSessionConfigEntry, _In_ const OrtSessionOptions* options
                     _In_z_ const char* config_key, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                     _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size);
-}  // namespace OrtApis
 
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_Dnnl,
+                    _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options);
+ORT_API_STATUS_IMPL(CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out);
+ORT_API_STATUS_IMPL(UpdateDnnlProviderOptions, _Inout_ OrtDnnlProviderOptions* dnnl_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys);
+ORT_API_STATUS_IMPL(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOptions* dnnl_options,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+ORT_API(void, ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions*);
+
+ORT_API_STATUS_IMPL(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger);
+ORT_API_STATUS_IMPL(KernelContext_GetLogger, _In_ const OrtKernelContext* context, _Outptr_ const OrtLogger** logger);
+
+ORT_API_STATUS_IMPL(Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
+                    _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
+                    _In_z_ const char* func_name);
+ORT_API_STATUS_IMPL(Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger, _Out_ OrtLoggingLevel* out);
+
+ORT_API_STATUS_IMPL(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Out_ int* is_constant, _Outptr_ const OrtValue** out);
+
+ORT_API_STATUS_IMPL(CastTypeInfoToOptionalTypeInfo, _In_ const OrtTypeInfo* type_info,
+                    _Outptr_result_maybenull_ const OrtOptionalTypeInfo** out);
+
+ORT_API_STATUS_IMPL(GetOptionalContainedTypeInfo, _In_ const OrtOptionalTypeInfo* optional_type_info,
+                    _Outptr_ OrtTypeInfo** out);
+
+ORT_API_STATUS_IMPL(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value,
+                    _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char**);
+
+ORT_API_STATUS_IMPL(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
+
+ORT_API(const char*, GetBuildInfoString);
+
+ORT_API_STATUS_IMPL(CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out);
+ORT_API_STATUS_IMPL(UpdateROCMProviderOptions, _Inout_ OrtROCMProviderOptions* rocm_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys);
+ORT_API_STATUS_IMPL(GetROCMProviderOptionsAsString, _In_ const OrtROCMProviderOptions* rocm_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+ORT_API(void, ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions*);
+
+ORT_API_STATUS_IMPL(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+                    _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
+
+ORT_API_STATUS_IMPL(RunAsync, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
+                    _In_reads_(input_len) const char* const* input_names,
+                    _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
+                    _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
+                    _Inout_updates_all_(output_names_len) OrtValue** outputs,
+                    _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
+
+ORT_API_STATUS_IMPL(UpdateTensorRTProviderOptionsWithValue, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _In_ void* value);
+ORT_API_STATUS_IMPL(GetTensorRTProviderOptionsByName, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _Outptr_ void** ptr);
+ORT_API_STATUS_IMPL(UpdateCUDAProviderOptionsWithValue, _Inout_ OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _In_ void* value);
+ORT_API_STATUS_IMPL(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
+ORT_API_STATUS_IMPL(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version, _In_ int resource_id, _Outptr_ void** stream);
+
+ORT_API_STATUS_IMPL(SetUserLoggingFunction, _Inout_ OrtSessionOptions* options,
+                    _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param);
+ORT_API_STATUS_IMPL(ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info);
+ORT_API_STATUS_IMPL(ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr);
+ORT_API_STATUS_IMPL(ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info);
+ORT_API_STATUS_IMPL(SetSymbolicDimensions, _In_ OrtTensorTypeAndShapeInfo* info, _In_ const char* dim_params[], _In_ size_t dim_params_length);
+ORT_API_STATUS_IMPL(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value);
+
+ORT_API_STATUS_IMPL(KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* user_data);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                    _In_ OrtSessionOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_VitisAI, _In_ OrtSessionOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
+}  // namespace OrtApis

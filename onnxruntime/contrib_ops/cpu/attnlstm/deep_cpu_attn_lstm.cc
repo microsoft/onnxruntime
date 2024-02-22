@@ -11,7 +11,7 @@
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 #include "core/framework/allocator.h"
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
@@ -26,7 +26,7 @@ extern template class BahdanauAttention<float>;
 
 /* AttnLSTM operator */
 ONNX_OPERATOR_KERNEL_EX(
-    AttnLSTM,  //name
+    AttnLSTM,  // name
     kMSDomain,
     1,
     kCpuExecutionProvider,
