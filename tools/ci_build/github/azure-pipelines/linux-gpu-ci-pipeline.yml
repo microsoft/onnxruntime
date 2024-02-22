@@ -261,6 +261,6 @@ stages:
                 --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
                 --enable_pybind --build_java --ctest_path "" ; \
               '
-      displayName: 'Check GPU'
+      displayName: 'Run Tests'
 
     - template: templates/clean-agent-build-directory-step.yml
