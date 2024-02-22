@@ -29,10 +29,13 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
+  rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
+  num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
 }
 
@@ -48,6 +51,8 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
                                                                    position_ids,
                                                                    cos_cache,
                                                                    sin_cache,
+                                                                   num_heads,
+                                                                   rotary_embedding_dim,
                                                                    &parameters));
 
   Tensor* output = context->Output(0, input->Shape());
@@ -71,6 +76,7 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.sequence_length,
       parameters.num_heads,
       parameters.head_size,
+      parameters.rotary_embedding_dim,
       parameters.max_sequence_length,
       parameters.position_ids_format,
       interleaved,

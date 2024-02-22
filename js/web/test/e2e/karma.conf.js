@@ -15,6 +15,8 @@ if (typeof USER_DATA !== 'string') {
   throw new Error('flag --user-data=<CHROME_USER_DATA_FOLDER> is required');
 }
 
+const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de'];
+
 module.exports = function(config) {
   const distPrefix = SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/';
   config.set({
@@ -25,10 +27,14 @@ module.exports = function(config) {
       {pattern: TEST_MAIN},
       {pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true},
       {pattern: './model.onnx', included: false},
+      {pattern: './model_with_orig_ext_data.onnx', included: false},
+      {pattern: './model_with_orig_ext_data.bin', included: false},
     ],
     plugins: [require('@chiragrupani/karma-chromium-edge-launcher'), ...config.plugins],
     proxies: {
       '/model.onnx': '/base/model.onnx',
+      '/model_with_orig_ext_data.onnx': '/base/model_with_orig_ext_data.onnx',
+      '/model_with_orig_ext_data.bin': '/base/model_with_orig_ext_data.bin',
       '/test-wasm-path-override/ort-wasm.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
       '/test-wasm-path-override/renamed.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
     },
@@ -43,10 +49,11 @@ module.exports = function(config) {
     hostname: 'localhost',
     browsers: [],
     customLaunchers: {
-      Chrome_default: {base: 'ChromeHeadless', chromeDataDir: USER_DATA},
+      Chrome_default: {base: 'Chrome', flags, chromeDataDir: USER_DATA},
       Chrome_no_threads: {
-        base: 'ChromeHeadless',
+        base: 'Chrome',
         chromeDataDir: USER_DATA,
+        flags
         // TODO: no-thread flags
       },
       Edge_default: {base: 'Edge', edgeDataDir: USER_DATA}

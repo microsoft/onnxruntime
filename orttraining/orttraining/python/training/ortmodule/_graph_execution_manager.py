@@ -217,7 +217,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # requires PRIORITY_BASED order to work properly. So we use PRIORITY_BASED order when recompute is enabled.
         session_options.execution_order = (
             onnxruntime.ExecutionOrder.PRIORITY_BASED
-            if self._runtime_options.memory_optimizer_config != ""
+            if self._runtime_options.memory_optimizer_is_enabled()
             else onnxruntime.ExecutionOrder.DEFAULT
         )
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
@@ -343,7 +343,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             if self._runtime_options.enable_sparse_optimizer:
                 detected_device = _utils.get_device_from_module_and_inputs(self._original_module, inputs, kwargs)
 
-                if self._runtime_options.enable_zero_stage3_support:
+                if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
                     self._append_pull_weight_trigger_as_input(kwargs, detected_device)
 
                 prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(
@@ -391,19 +391,18 @@ class GraphExecutionManager(GraphExecutionInterface):
                 self._runtime_inspector.disable_input_inspector()
 
     def _append_pull_weight_trigger_as_input(self, kwargs: Dict, device: torch.device):
-        from ._zero_stage3_compatibility import (
-            STAGE3_PULL_WEIGHT_TRIGGER_NAME,
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
-        )
+        if self._runtime_options.enable_zero_stage3_support:
+            from ._zero_stage3_compatibility import (
+                STAGE3_PULL_WEIGHT_TRIGGER_NAME,
+                STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
+                STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+            )
 
-        kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros(
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
-            dtype=onnx_dtype_to_pytorch_dtype(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE),
-            device=device,
-        ).requires_grad_()
-
-        return kwargs
+            kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros(
+                STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+                dtype=onnx_dtype_to_pytorch_dtype(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE),
+                device=device,
+            ).requires_grad_()
 
     def _log_feature_stats(self):
         if get_rank() != 0:

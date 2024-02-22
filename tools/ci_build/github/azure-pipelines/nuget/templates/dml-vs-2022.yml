@@ -103,7 +103,7 @@ stages:
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '$(BuildCommand) --path_to_protoc_exe $(Build.BinariesDirectory)\installed\bin\protoc.exe --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
+          arguments: '$(BuildCommand) --use_binskim_compliant_compile_flags --parallel --path_to_protoc_exe $(Build.BinariesDirectory)\installed\bin\protoc.exe --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
           workingDirectory: '$(Build.BinariesDirectory)'
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
@@ -176,7 +176,7 @@ stages:
              python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
              set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
              @echo %PATH%
-             python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
+             python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --parallel --use_binskim_compliant_compile_flags --test --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
             workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
             displayName: 'Run tests'
 

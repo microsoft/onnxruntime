@@ -1,0 +1,11 @@
+torch>=1.13.0
+transformers>=4.24.0
+openai-whisper
+ffmpeg-python
+datasets
+soundfile
+librosa
+optimum
+onnxruntime-extensions>=0.9.0
+protobuf==3.20.2
+numpy==1.23.3

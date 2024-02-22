@@ -76,7 +76,6 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
   const isBroadcast = !(ShapeUtil.areEqual(dimsA, dimsB) && ShapeUtil.areEqual(dimsB, dimsC));
   let outputShape = dimsA;
   let outputSize = ShapeUtil.size(dimsA);
-  const vecSize = Math.ceil(outputSize / 4);
   // TODO: deal with zero-sized tensors (eg. dims=[1,0])
 
   if (isBroadcast) {
@@ -88,6 +87,8 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
     outputSize = ShapeUtil.size(outputShape);
   }
 
+  const vecSize = Math.ceil(outputSize / 4);
+
   return {
     name: 'Where',
     shaderCache: {inputDependencies: ['rank', 'rank', 'rank']},
@@ -96,10 +97,8 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: outputDataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)},
-      programUniforms: [
-        {type: 'uint32', data: vecSize}, ...createTensorShapeVariables(dimsC), ...createTensorShapeVariables(dimsA),
-        ...createTensorShapeVariables(dimsB), ...createTensorShapeVariables(outputShape)
-      ],
+      programUniforms:
+          [{type: DataType.uint32, data: vecSize}, ...createTensorShapeVariables(dimsC, dimsA, dimsB, outputShape)],
     }),
   };
 };

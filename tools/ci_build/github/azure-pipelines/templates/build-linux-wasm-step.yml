@@ -24,19 +24,17 @@ parameters:
   type: string
 
 steps:
-  - task: Cache@2
-    inputs:
-      ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
-        key: ' "${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}  | merge '
-      ${{else}}:
-        key: '"${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}  | $(Build.SourceVersion) '
-      path: ${{parameters.CacheDir}}
-      restoreKeys: |
-        "${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}
-    displayName: Cache Task
-    condition: eq('${{parameters.WithCache}}', true)
-
   - ${{if eq(parameters.WithCache, true)}}:
+    - task: Cache@2
+      inputs:
+        ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
+          key: ' "${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}  | merge '
+        ${{else}}:
+          key: '"${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}  | $(Build.SourceVersion) '
+        path: ${{parameters.CacheDir}}
+        restoreKeys: |
+          "${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}
+      displayName: Cache Task
     - script: |
         set -e -x
         pushd '$(Build.SourcesDirectory)/cmake/external/emsdk'

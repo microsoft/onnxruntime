@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import argparse
 import logging
 import os
 import shutil
+import subprocess
+import sys
 from itertools import chain
-from typing import List
 
 import onnx
 import torch
@@ -21,11 +24,12 @@ from transformers import AutoConfig, AutoModelForCausalLM
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
+torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
 init_dist()
 
 
-def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_model_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in input_names:
@@ -42,7 +46,7 @@ def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
     return dynamic_axes
 
 
-def get_model_with_past_kv_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_model_with_past_kv_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in {"input_ids", "position_ids"}:
@@ -65,7 +69,7 @@ def get_model_with_past_kv_dynamic_axes(input_names: List[str], output_names: Li
     return dynamic_axes
 
 
-def get_merged_model_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_merged_model_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in {"input_ids", "position_ids"}:
@@ -229,7 +233,7 @@ def run_torchscript_separate_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -288,7 +292,7 @@ def run_torchscript_separate_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -368,7 +372,7 @@ def run_torchscript_merged_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -406,13 +410,38 @@ def optimize_export(config: AutoConfig, input_path: str, output_path: str, remov
         only_onnxruntime=False,
     )
     model_opt.save_model_to_file(output_path, use_external_data_format=True)
+
+    # Run symbolic shape inference on optimized model to avoid shape errors during runtime
+    # Ex: Before attention fusion, RotaryEmbedding assumes a 4D input and produces a 4D output.
+    # After attention fusion, RotaryEmbedding expects a 3D input and produces a 3D output.
+    wheel_cmd = [sys.executable, "-m", "onnxruntime.tools.symbolic_shape_infer"]
+    source_cmd = [sys.executable, "../symbolic_shape_infer.py"]
+    symbolic_shape_infer_args = [
+        "--input",
+        output_path,
+        "--output",
+        output_path,
+        "--auto_merge",
+        "--save_as_external_data",
+        "--all_tensors_to_one_file",
+        "--external_data_location",
+        os.path.basename(output_path) + ".data",
+    ]
+
+    file_path = os.path.dirname(__file__)
+    if os.path.exists(os.path.join(file_path, "../../../tools/symbolic_shape_infer.py")):
+        main_cmd = wheel_cmd
+    else:
+        main_cmd = source_cmd
+    subprocess.run(main_cmd + symbolic_shape_infer_args)  # noqa: PLW1510
+
     logger.info(f"The ONNX model at {input_path} has been successfully optimized and saved at {output_path}!")
     if remove_model:
         remove_existing_model(input_path)
 
 
 def convert_to_float16(
-    args: argparse.Namespace, config: AutoConfig, old_paths: List[str], rank: int = 0, world_size: int = 1
+    args: argparse.Namespace, config: AutoConfig, old_paths: list[str], rank: int = 0, world_size: int = 1
 ):
     decoder_model_fp16_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp16.onnx")
     decoder_with_past_model_fp16_path = os.path.join(
@@ -635,7 +664,7 @@ def get_args():
         help="Run a specific quantization algorithm (blockwise for int4, smooth_quant for int8, quantize_dynamic for int8). Blockwise is recommended. Need to install extra packages in `requirements-quant.txt` for SmoothQuant.",
     )
 
-    blockwise_group = parser.add_argument_group("4-bit quantization")
+    blockwise_group = parser.add_argument_group("blockwise (4-bit quantization)")
 
     blockwise_group.add_argument(
         "--block_size",
@@ -643,6 +672,15 @@ def get_args():
         default=32,
         type=int,
         help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+    )
+
+    blockwise_group.add_argument(
+        "--int4_accuracy_level",
+        required=False,
+        type=int,
+        help="Accuracy level of the 4-bit quantized MatMul computation. "
+        "Refer to the MatMulNBits contrib op's 'accuracy_level' attribute for details "
+        "(https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftmatmulnbits).",
     )
 
     smooth_quant_group = parser.add_argument_group("smooth_quant (8-bit quantization)")
@@ -743,6 +781,13 @@ def get_args():
         action="store_true",
         help="Avoid exporting model, only apply quantizations and optimizations to existing model exported from optimum.",
     )
+
+    parser.add_argument(
+        "--small_gpu",
+        action="store_true",
+        help="Load the llama in GPU every time for parity_check if it's running in a machine which GPU memory < 36GB.",
+    )
+
     parser.set_defaults(optimize_optimum=False)
 
     args = parser.parse_args()
@@ -750,9 +795,7 @@ def get_args():
 
 
 def main():
-    if version.parse(torch.__version__) < version.parse("2.2.0") and "2.2.0.dev" not in torch.__version__:
-        # Second predicate is for comparing nightly (ex: 2.2.0.dev20230920 vs 2.2.0) since first predicate is false
-        # in that scenario. It can be removed when torch v2.2.0 is released in stable.
+    if version.parse(torch.__version__) < version.parse("2.2.0"):
         logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
         return
 
@@ -937,7 +980,13 @@ def main():
                 for fp_path, int4_path in zip(old_paths, new_paths):
                     if os.path.exists(fp_path):
                         model = onnx.load_model(fp_path, load_external_data=True)
-                        quant = MatMul4BitsQuantizer(model, args.block_size, is_symmetric=True, nodes_to_exclude=[])
+                        quant = MatMul4BitsQuantizer(
+                            model=model,
+                            block_size=args.block_size,
+                            is_symmetric=True,
+                            accuracy_level=args.int4_accuracy_level,
+                            nodes_to_exclude=[],
+                        )
                         quant.process()
                         quant.model.save_model_to_file(int4_path, use_external_data_format=True)
                         del model
@@ -977,7 +1026,11 @@ def main():
             args.precision,
             "--cache_dir",
             args.cache_dir,
+            "--torch_model_directory",
+            args.input,
         ]
+        if args.small_gpu:
+            parity_cmd.append("--small_gpu")
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
         if "merged" in filename:
@@ -986,7 +1039,7 @@ def main():
             parity_cmd.append("--use_gqa")
 
         try:
-            logger.debug(f"check parity with cmd: {parity_cmd}")
+            logger.info(f"check parity with cmd: {parity_cmd}")
             parity_check(parity_cmd)
         except Exception as e:
             logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)

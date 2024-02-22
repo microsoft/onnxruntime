@@ -95,6 +95,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_allocator) {
   g_ort->ReleaseStatus(ort_st);
 }
 
+#if !defined(__wasm__)
 template <bool use_current_dir>
 static void run_external_data_test() {
   FILE* fp;
@@ -154,6 +155,7 @@ TEST(CApiTensorTest, load_float_tensor_with_external_data) {
   run_external_data_test<true>();
   run_external_data_test<false>();
 }
+#endif
 
 #if defined(__amd64__) || defined(_M_X64)
 #ifndef __ANDROID__

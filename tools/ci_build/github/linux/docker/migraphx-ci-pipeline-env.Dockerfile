@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=5.7
+ARG ROCM_VERSION=6.0
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -64,9 +64,6 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
     conda config --set auto_activate_base false && \
     conda update --all && \
     rm ~/miniconda.sh && conda clean -ya
-
-# Conda base patch
-RUN pip install cryptography==41.0.4
 
 # Create migraphx-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/migraphx-ci

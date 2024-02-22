@@ -200,7 +200,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
       D, BNS, head_size, &one,
       reinterpret_cast<const CudaT*>(weight_tensor.template Data<T>()), (int)D,
       reinterpret_cast<const CudaT*>(workspace.get()), (int)head_size,
-      &zero, gemm_output, ld_gemm_output, device_prop));
+      &zero, gemm_output, ld_gemm_output, device_prop, UseTF32()));
 
   auto status = LaunchGatedRelativePositionBiasKernel<CudaT>(
       device_prop, stream,

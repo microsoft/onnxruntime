@@ -12,6 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {inspect} from 'util';
 
+import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {bufferToBase64} from '../test/test-shared';
 import {Test} from '../test/test-types';
 
@@ -165,6 +166,7 @@ async function main() {
       debug: args.debug,
       cpuOptions: args.cpuOptions,
       webglOptions: args.webglOptions,
+      webnnOptions: args.webnnOptions,
       wasmOptions: args.wasmOptions,
       globalEnvFlags: args.globalEnvFlags
     }
@@ -263,10 +265,12 @@ async function main() {
 
     let modelUrl: string|null = null;
     let cases: Test.ModelTestCase[] = [];
+    let externalData: Array<{data: string; path: string}>|undefined;
 
     npmlog.verbose('TestRunnerCli.Init.Model', `Start to prepare test data from folder: ${testDataRootFolder}`);
 
     try {
+      const maybeExternalDataFiles: Array<[fileNameWithoutExtension: string, size: number]> = [];
       for (const thisPath of fs.readdirSync(testDataRootFolder)) {
         const thisFullPath = path.join(testDataRootFolder, thisPath);
         const stat = fs.lstatSync(thisFullPath);
@@ -281,6 +285,8 @@ async function main() {
             } else {
               throw new Error('there are multiple model files under the folder specified');
             }
+          } else {
+            maybeExternalDataFiles.push([path.parse(thisPath).name, stat.size]);
           }
         } else if (stat.isDirectory()) {
           const dataFiles: string[] = [];
@@ -305,6 +311,34 @@ async function main() {
 
       if (modelUrl === null) {
         throw new Error('there are no model file under the folder specified');
+      }
+      // for performance consideration, we do not parse every model. when we think it's likely to have external
+      // data, we will parse it. We think it's "likely" when one of the following conditions is met:
+      // 1. any file in the same folder has the similar file name as the model file
+      //    (e.g., model file is "model_abc.onnx", and there is a file "model_abc.pb" or "model_abc.onnx.data")
+      // 2. the file size is larger than 1GB
+      const likelyToHaveExternalData = maybeExternalDataFiles.some(
+          ([fileNameWithoutExtension, size]) =>
+              path.basename(modelUrl!).startsWith(fileNameWithoutExtension) || size >= 1 * 1024 * 1024 * 1024);
+      if (likelyToHaveExternalData) {
+        const model = onnx.ModelProto.decode(fs.readFileSync(path.join(testDataRootFolder, path.basename(modelUrl!))));
+        const externalDataPathSet = new Set<string>();
+        for (const initializer of model.graph!.initializer!) {
+          if (initializer.externalData) {
+            for (const data of initializer.externalData) {
+              if (data.key === 'location') {
+                externalDataPathSet.add(data.value!);
+              }
+            }
+          }
+        }
+        externalData = [];
+        const externalDataPaths = [...externalDataPathSet];
+        for (const dataPath of externalDataPaths) {
+          const fullPath = path.resolve(testDataRootFolder, dataPath);
+          const url = path.join(TEST_DATA_BASE, path.relative(TEST_ROOT, fullPath));
+          externalData.push({data: url, path: dataPath});
+        }
       }
     } catch (e) {
       npmlog.error('TestRunnerCli.Init.Model', `Failed to prepare test data. Error: ${inspect(e)}`);
@@ -339,9 +373,23 @@ async function main() {
     npmlog.verbose('TestRunnerCli.Init.Model', ` Model file: ${modelUrl}`);
     npmlog.verbose('TestRunnerCli.Init.Model', ` Backend: ${backend}`);
     npmlog.verbose('TestRunnerCli.Init.Model', ` Test set(s): ${cases.length} (${caseCount})`);
+    if (externalData) {
+      npmlog.verbose('TestRunnerCli.Init.Model', ` External data: ${externalData.length}`);
+      for (const data of externalData) {
+        npmlog.verbose('TestRunnerCli.Init.Model', `  - ${data.path}`);
+      }
+    }
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
 
-    return {name: path.basename(testDataRootFolder), platformCondition, modelUrl, backend, cases, ioBinding};
+    return {
+      name: path.basename(testDataRootFolder),
+      platformCondition,
+      modelUrl,
+      backend,
+      cases,
+      ioBinding,
+      externalData
+    };
   }
 
   function tryLocateModelTestFolder(searchPattern: string): string {
@@ -499,7 +547,7 @@ async function main() {
           args.bundleMode === 'perf' ? 'perf' :
               args.debug             ? 'debug' :
                                        'test',
-          webgpu, webnn);
+          webgpu);
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
       const chromiumFlags = ['--enable-features=SharedArrayBuffer', ...args.chromiumFlags];
       if (args.debug) {
@@ -614,11 +662,10 @@ async function main() {
     fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
   }
 
-  function getBrowserNameFromEnv(
-      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
+  function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode, webgpu, webnn);
+        return selectChromeBrowser(mode, webgpu);
       case 'edge':
         return 'EdgeTest';
       case 'firefox':
@@ -634,10 +681,8 @@ async function main() {
     }
   }
 
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
-    if (webnn) {
-      return 'ChromeCanaryTest';
-    } else if (webgpu) {
+  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean) {
+    if (webgpu) {
       return 'ChromeTest';
     } else {
       switch (mode) {

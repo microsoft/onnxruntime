@@ -30,7 +30,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing.
   // We only support Resize opset 11+ here.
@@ -120,8 +120,9 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<float> scales_hw;
   std::vector<int32_t> sizes_hw;
   std::vector<int32_t> axes;
+  std::string scales_name = GetTensorName(input_defs, 2);
   const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
-  if (input_defs.size() == 3) {  // Use scales.
+  if (!scales_name.empty()) {  // Use scales.
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
     if (is_nhwc) {
       scales_hw = {scales[1], scales[2]};
@@ -129,7 +130,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       scales_hw = {scales[2], scales[3]};
     }
     options.set("scales", emscripten::val::array(scales_hw));
-  } else {  // We already checked number of inputs in IsOpSupportedImpl.
+  } else {  // Use sizes, we already checked inputs in IsOpSupportedImpl.
     std::vector<int64_t> output_sizes;
     ORT_RETURN_IF_NOT(GetResizeOutputSizes(initializers, node, output_sizes, logger),
                       "Error getting resize output_sizes");
@@ -161,7 +162,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                         const Node& node,
-                                        const WebnnDeviceType /* device_type */,
+                                        const WebnnDeviceType device_type,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
@@ -181,9 +182,18 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     const auto mode = helper.Get("mode", "nearest");
     bool is_linear_resize = mode == "linear";
     bool is_nearest_resize = mode == "nearest";
-    if (!is_linear_resize && !is_nearest_resize) {
-      LOGS(logger, VERBOSE) << "Resize unsupported input mode, " << mode;
-      return false;
+    // WebNN CPU backend only supports "linear" mode.
+    // WebNN GPU backend only supports "linear" and "nearest" modes.
+    if (device_type == WebnnDeviceType::CPU) {
+      if (!is_linear_resize) {
+        LOGS(logger, VERBOSE) << "Resize unsupported input mode, " << mode << " for CPU backend.";
+        return false;
+      }
+    } else {
+      if (!is_linear_resize && !is_nearest_resize) {
+        LOGS(logger, VERBOSE) << "Resize unsupported input mode, " << mode << " for GPU backend.";
+        return false;
+      }
     }
 
     const auto exclude_outside = helper.Get("exclude_outside", 0);
@@ -194,26 +204,31 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   }
 
   {  // scales and sizes (if present) must be initializers.
-    if (input_defs.size() < 3) {
-      LOGS(logger, VERBOSE) << "Input scales or sizes of Resize must be known";
-      return false;
-    }
+    const std::string scales_name = GetTensorName(input_defs, 2);
+    const std::string sizes_name = GetTensorName(input_defs, 3);
 
-    // scales
-    if (input_defs.size() == 3 && !Contains(initializers, input_defs[2]->Name())) {
+    // scales (scales may be empty tensor)
+    bool has_scales = !scales_name.empty();
+    if ((has_scales && !Contains(initializers, scales_name)) || (!has_scales && node.SinceVersion() == 11)) {
       LOGS(logger, VERBOSE) << "Input scales of Resize must be known";
       return false;
     }
 
-    // sizes
-    if (input_defs.size() > 3 && !Contains(initializers, input_defs[3]->Name())) {
+    // sizes (sizes may be empty tensor)
+    bool has_sizes = !sizes_name.empty();
+    if (has_sizes && !Contains(initializers, sizes_name)) {
       LOGS(logger, VERBOSE) << "Input sizes of Resize must be known";
+      return false;
+    }
+
+    if (has_scales && has_sizes) {
+      LOGS(logger, VERBOSE) << "Only one of 'scales' and 'sizes' can be specified";
       return false;
     }
 
     const bool is_nhwc = node.Domain() == kMSInternalNHWCDomain;
     // We want to check if the scales or sizes are not trying to resize on N/C channels here.
-    if (input_defs.size() == 3) {  // We are using scales.
+    if (has_scales) {  // We are using scales.
       std::vector<float> scales;
       if (!GetResizeScales(initializers, node, scales, logger))
         return false;
@@ -242,7 +257,9 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         LOGS(logger, VERBOSE) << "Resize: scale_w: " << scale_w << " is not a whole number";
         return false;
       }
-    } else {
+    }
+
+    if (has_sizes) {
       // We are using sizes.
       std::vector<int64_t> output_sizes;
       if (!GetResizeOutputSizes(initializers, node, output_sizes, logger))

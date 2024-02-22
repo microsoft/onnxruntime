@@ -38,6 +38,8 @@ jobs:
   timeoutInMinutes: 150
   steps:
     - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: 14.3
     - template: templates/mac-build-step-with-cache.yml
       parameters:
         WithCache: true
@@ -60,7 +62,7 @@ jobs:
                 --use_xcode \
                 --config RelWithDebInfo \
                 --build_apple_framework \
-                --parallel
+                --parallel --use_binskim_compliant_compile_flags
             displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
             env:
               CC: clang

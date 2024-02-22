@@ -39,10 +39,6 @@ const ONNXRUNTIME_THRESHOLD_RELATIVE_ERROR = 1.00001;
  */
 const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : Date.now;
 
-function toInternalTensor(tensor: ort.Tensor): Tensor {
-  return new Tensor(
-      tensor.dims, tensor.type as Tensor.DataType, undefined, undefined, tensor.data as Tensor.NumberType);
-}
 function fromInternalTensor(tensor: Tensor): ort.Tensor {
   return new ort.Tensor(tensor.type, tensor.data as ort.Tensor.DataType, tensor.dims);
 }
@@ -96,7 +92,7 @@ async function loadTensors(
   const outputs: Test.NamedTensor[] = [];
   let dataFileType: 'none'|'pb'|'npy' = 'none';
 
-  const allowInt64 = ['wasm', 'xnnpack', 'webgpu'].includes(backendName);
+  const allowInt64 = ['wasm', 'webgpu', 'webnn'].includes(backendName);
 
   for (const dataFile of testCase.dataFiles) {
     const ext = extname(dataFile);
@@ -137,7 +133,8 @@ async function loadTensors(
 }
 
 async function initializeSession(
-    modelFilePath: string, backendHint: string, ioBindingMode: Test.IOBindingMode, profile: boolean,
+    modelFilePath: string, backendHint: ort.InferenceSession.ExecutionProviderConfig, ioBindingMode: Test.IOBindingMode,
+    profile: boolean, externalData: ort.InferenceSession.SessionOptions['externalData'],
     sessionOptions: ort.InferenceSession.SessionOptions, fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
   const preloadModelData: Uint8Array|undefined =
       fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
@@ -152,7 +149,8 @@ async function initializeSession(
     executionProviders: [backendHint],
     profiler: profilerConfig,
     enableProfiling: profile,
-    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined
+    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
+    externalData
   };
 
   let session: ort.InferenceSession;
@@ -232,9 +230,8 @@ export class ModelTestContext {
   /**
    * create a ModelTestContext object that used in every test cases in the given ModelTest.
    */
-  static async create(
-      modelTest: Test.ModelTest, profile: boolean,
-      sessionOptions?: ort.InferenceSession.SessionOptions): Promise<ModelTestContext> {
+  static async create(modelTest: Test.ModelTest, profile: boolean, testOptions?: Test.Options):
+      Promise<ModelTestContext> {
     if (this.initializing) {
       throw new Error('cannot create a ModelTestContext object when the previous creation is not done');
     }
@@ -243,8 +240,12 @@ export class ModelTestContext {
       this.initializing = true;
 
       const initStart = now();
+      const executionProviderConfig =
+          modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || 'webnn') : modelTest.backend!;
       const session = await initializeSession(
-          modelTest.modelUrl, modelTest.backend!, modelTest.ioBinding, profile, sessionOptions || {}, this.cache);
+          modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, modelTest.externalData,
+          testOptions?.sessionOptions || {}, this.cache);
+
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {
@@ -313,7 +314,7 @@ export class TensorResultValidator {
     } else if (backend === 'webgpu') {
       this.absoluteThreshold = WEBGPU_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WEBGPU_THRESHOLD_RELATIVE_ERROR;
-    } else if (backend === 'wasm' || backend === 'xnnpack' || backend === 'webnn') {
+    } else if (backend === 'wasm' || backend === 'webnn') {
       this.absoluteThreshold = WASM_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WASM_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'onnxruntime') {
@@ -325,6 +326,10 @@ export class TensorResultValidator {
   }
 
   checkTensorResult(actual: Tensor[], expected: Tensor[]): void {
+    this.checkApiTensorResult(actual.map(fromInternalTensor), expected.map(fromInternalTensor));
+  }
+
+  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
     // check output size
     expect(actual.length, 'size of output tensors').to.equal(expected.length);
 
@@ -342,10 +347,6 @@ export class TensorResultValidator {
     }
   }
 
-  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
-    this.checkTensorResult(actual.map(toInternalTensor), expected.map(toInternalTensor));
-  }
-
   checkNamedTensorResult(actual: Record<string, ort.Tensor>, expected: Test.NamedTensor[]): void {
     // check output size
     expect(Object.getOwnPropertyNames(actual).length, 'size of output tensors').to.equal(expected.length);
@@ -359,7 +360,7 @@ export class TensorResultValidator {
   }
 
   // This function check whether 2 tensors should be considered as 'match' or not
-  areEqual(actual: Tensor, expected: Tensor): boolean {
+  areEqual(actual: ort.Tensor, expected: ort.Tensor): boolean {
     if (!actual || !expected) {
       return false;
     }
@@ -387,13 +388,13 @@ export class TensorResultValidator {
 
     switch (actualType) {
       case 'string':
-        return this.strictEqual(actual.stringData, expected.stringData);
+        return this.strictEqual(actual.data, expected.data);
 
       case 'float32':
       case 'float64':
         return this.floatEqual(
-            actual.numberData as number[] | Float32Array | Float64Array,
-            expected.numberData as number[] | Float32Array | Float64Array);
+            actual.data as number[] | Float32Array | Float64Array,
+            expected.data as number[] | Float32Array | Float64Array);
 
       case 'uint8':
       case 'int8':
@@ -404,10 +405,8 @@ export class TensorResultValidator {
       case 'int64':
       case 'bool':
         return TensorResultValidator.integerEqual(
-            actual.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
-                Int32Array,
-            expected.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
-                Int32Array);
+            actual.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array,
+            expected.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array);
 
       default:
         throw new Error('type not implemented or not supported');

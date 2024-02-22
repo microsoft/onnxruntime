@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
+#include "core/platform/ort_mutex.h"
+#include "core/common/logging/logging.h"
 #include "onnxruntime_config.h"
 
 // ETW includes
@@ -16,6 +18,7 @@
 
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
+#include <winmeta.h>
 
 // Seems this workaround can be dropped when we drop support for VS2017 toolchains
 // https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
@@ -55,15 +58,20 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 #endif
 
 OrtMutex WindowsTelemetry::mutex_;
+OrtMutex WindowsTelemetry::provider_change_mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
 bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
+UCHAR WindowsTelemetry::level_ = 0;
+UINT64 WindowsTelemetry::keyword_ = 0;
+std::vector<WindowsTelemetry::EtwInternalCallback> WindowsTelemetry::callbacks_;
+OrtMutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<OrtMutex> lock(mutex_);
   if (global_register_count_ == 0) {
     // TraceLoggingRegister is fancy in that you can only register once GLOBALLY for the whole process
-    HRESULT hr = TraceLoggingRegister(telemetry_provider_handle);
+    HRESULT hr = TraceLoggingRegisterEx(telemetry_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
     if (SUCCEEDED(hr)) {
       global_register_count_ += 1;
     }
@@ -77,6 +85,55 @@ WindowsTelemetry::~WindowsTelemetry() {
     if (global_register_count_ == 0) {
       TraceLoggingUnregister(telemetry_provider_handle);
     }
+  }
+}
+
+bool WindowsTelemetry::IsEnabled() const {
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return enabled_;
+}
+
+UCHAR WindowsTelemetry::Level() const {
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return level_;
+}
+
+UINT64 WindowsTelemetry::Keyword() const {
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return keyword_;
+}
+
+// HRESULT WindowsTelemetry::Status() {
+//     return etw_status_;
+// }
+
+void WindowsTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
+  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  callbacks_.push_back(callback);
+}
+
+void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
+    _In_ LPCGUID SourceId,
+    _In_ ULONG IsEnabled,
+    _In_ UCHAR Level,
+    _In_ ULONGLONG MatchAnyKeyword,
+    _In_ ULONGLONG MatchAllKeyword,
+    _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
+    _In_opt_ PVOID CallbackContext) {
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  enabled_ = (IsEnabled != 0);
+  level_ = Level;
+  keyword_ = MatchAnyKeyword;
+
+  InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+}
+
+void WindowsTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
+                                       ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
+                                       PVOID CallbackContext) {
+  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  for (const auto& callback : callbacks_) {
+    callback(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 
@@ -110,6 +167,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
@@ -126,7 +184,8 @@ void WindowsTelemetry::LogSessionCreationStart() const {
                     "SessionCreationStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO));
 }
 
 void WindowsTelemetry::LogEvaluationStop() const {
@@ -199,6 +258,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
@@ -227,6 +288,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingHResult(hr, "hResult"),
@@ -243,6 +305,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),

@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType} from '../types';
+import {ComputeContext, GpuDataType, ProgramUniform} from '../types';
 
 import {applyAttention, AttentionAttrs, AttentionMaskType, AttentionParameters, AttentionQkvFormat} from './attention';
-import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 import {createTransposeProgramInfo, TransposeAttributes} from './transpose';
 
 const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttrs): AttentionParameters => {
@@ -228,7 +229,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
   };
 };
 
-
 export const parseMultiHeadAttentionAttributes = (attributes: AttentionAttrs): AttentionAttrs =>
     createAttributeWithCacheKey({...attributes});
 
@@ -239,30 +239,37 @@ const addBiasTranspose =
      hiddenSize: number, biasOffset: number) => {
       const outputShape = [batchSize, sequenceLength, hiddenSize];
       const outputSize = ShapeUtil.size(outputShape);
+      const programUniforms: ProgramUniform[] = [
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: biasOffset},
+        {type: DataType.uint32, data: hiddenSize}
+      ];
 
-      const dataType = tensorTypeToWsglStorageType(qkv.dataType);
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const biasOffset = ${biasOffset}u;
-  const hiddenSize = ${hiddenSize}u;
+      const getShaderSource = (shaderHelper: ShaderHelper) => {
+        const output = outputVariable('qkv_with_bias', qkv.dataType, outputShape);
+        const qkvInput = inputVariable('qkv', qkv.dataType, outputShape);
+        const biasInput = inputVariable('bias', bias.dataType, outputShape);
 
-  @group(0) @binding(0) var<storage, read> qkv: array<${dataType}>;
-  @group(0) @binding(1) var<storage, read> bias: array<${dataType}>;
-  @group(0) @binding(2) var<storage, read_write> qkv_with_bias: array<${dataType}>;
-
+        const uniforms: UniformsArrayType = [
+          {name: 'output_size', type: 'u32'}, {name: 'bias_offset', type: 'u32'}, {name: 'hidden_size', type: 'u32'}
+        ];
+        return `
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(qkvInput, biasInput, output)}
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-    let biasOffsetIdx = (global_idx % hiddenSize) + biasOffset;
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
+    let bias_offset_idx = (global_idx % uniforms.hidden_size) + uniforms.bias_offset;
 
-    qkv_with_bias[global_idx] = qkv[global_idx] + bias[biasOffsetIdx];
+    qkv_with_bias[global_idx] = qkv[global_idx] + bias[bias_offset_idx];
   }`;
+      };
 
       return context.compute(
           {
             name: 'MultiHeadAttentionAddBias',
-            shaderCache: {hint: JSON.stringify({batchSize, sequenceLength, hiddenSize, biasOffset})},
+            shaderCache: {inputDependencies: ['type', 'type']},
             getRunData: () => ({
               outputs: [{dims: outputShape, dataType: qkv.dataType, gpuDataType: GpuDataType.default}],
               dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+              programUniforms
             }),
             getShaderSource,
           },

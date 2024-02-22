@@ -5,9 +5,9 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
+import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface GatherAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -31,35 +31,17 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
 
   const axisDimLimit = inputShape[axis];
   const components = inputs[0].dataType === DataType.bool ? 4 : 1;
-  const outputSize = ShapeUtil.size(outputShape) / components;
+  const outputSize = Math.ceil(ShapeUtil.size(outputShape) / components);
 
-  const enableInputShapesUniforms = enableShapesUniforms(inputs[0].dims.length);
-  const inputShapeOrRank = enableInputShapesUniforms ? inputs[0].dims.length : inputs[0].dims;
-  const enableIndicesShapesUniforms = enableShapesUniforms(inputs[1].dims.length);
-  const indicesShapeOrRank = enableIndicesShapesUniforms ? inputs[1].dims.length : inputs[1].dims;
-  const enableOutputShapesUniforms = enableShapesUniforms(outputShape.length);
-  const outputShapeOrRank = enableOutputShapesUniforms ? outputShape.length : outputShape;
-
-  const programUniforms: ProgramUniform[] =
-      [{type: 'uint32', data: outputSize}, {type: 'int32', data: axisDimLimit}, {type: 'uint32', data: axis}];
-  if (enableInputShapesUniforms) {
-    programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
-  }
-  if (enableIndicesShapesUniforms) {
-    programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
-  }
-  if (enableOutputShapesUniforms) {
-    programUniforms.push(...createTensorShapeVariables(outputShape));
-  }
-
-  const inputDependencies: ProgramInputTensorInfoDependency[] = [];
-  inputDependencies.push(enableInputShapesUniforms ? 'rank' : 'dims');
-  inputDependencies.push(enableIndicesShapesUniforms ? 'rank' : 'dims');
+  const programUniforms: ProgramUniform[] = [
+    {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: axisDimLimit},
+    {type: DataType.uint32, data: axis}, ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims, outputShape)
+  ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
-    const data = inputVariable('data', inputs[0].dataType, inputShapeOrRank, components);
-    const indices = inputVariable('inputIndices', inputs[1].dataType, indicesShapeOrRank);
-    const output = outputVariable('output', inputs[0].dataType, outputShapeOrRank, components);
+    const data = inputVariable('data', inputs[0].dataType, inputs[0].dims.length, components);
+    const indices = inputVariable('inputIndices', inputs[1].dataType, inputs[1].dims.length);
+    const output = outputVariable('output', inputs[0].dataType, outputShape.length, components);
 
     const calcDataIndices = (x: number|string): string => {
       const indicesRank = indicesShape.length;
@@ -127,7 +109,7 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
   };
   return {
     name: 'Gather',
-    shaderCache: {hint: attributes.cacheKey, inputDependencies},
+    shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank', 'rank']},
     getRunData: () => ({
       outputs: [
         {dims: outputShape, dataType: inputs[0].dataType},
