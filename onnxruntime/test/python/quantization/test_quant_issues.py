@@ -31,12 +31,13 @@ def ignore_warnings(warns):
 
 
 class TestQuantIssues(unittest.TestCase):
-
     @ignore_warnings(DeprecationWarning)
     def test_minimal_model(self):
         folder = os.path.join(os.path.dirname(__file__), "..", "..", "testdata")
         onnx_path = os.path.join(folder, "qdq_minimal_model.onnx")
-        assert os.path.exists(onnx_path), "unable to find {onnx_path!r}"
+        if not os.path.exists(onnx_path):
+            # The file does seem to be the same location in every CI job.
+            raise unittest.SkipTest("unable to find {onnx_path!r}")
 
         import numpy as np
 
