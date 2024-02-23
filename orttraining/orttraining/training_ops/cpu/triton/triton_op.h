@@ -25,12 +25,15 @@ class TritonOp final : public OpKernel {
           attr.first == "onnx_string") {
         continue;
       }
-      // Support int64 and float only for now, skip other types.
+      // Support int64, float and string only for now, skip other types.
       if (attr.second.type() == ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_INT) {
         kwargs_.insert({attr.first, {std::to_string(attr.second.i()), ONNX_NAMESPACE::TensorProto_DataType_INT64}});
       } else if (attr.second.type() ==
                  ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_FLOAT) {
         kwargs_.insert({attr.first, {std::to_string(attr.second.f()), ONNX_NAMESPACE::TensorProto_DataType_FLOAT}});
+      } else if (attr.second.type() ==
+                 ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_STRING) {
+        kwargs_.insert({attr.first, {attr.second.s(), ONNX_NAMESPACE::TensorProto_DataType_STRING}});
       }
     }
   }

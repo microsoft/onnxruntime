@@ -11,14 +11,12 @@ namespace cuda {
 typedef onnxruntime::cuda::CtxAlphaBeta CtxAffine;
 typedef onnxruntime::cuda::CtxAlphaBeta CtxParametricSoftplus;
 typedef onnxruntime::cuda::CtxAlphaBeta CtxScaledTanh;
-typedef onnxruntime::cuda::CtxNull CtxGelu;
 typedef onnxruntime::cuda::CtxAlpha CtxQuickGelu;
 
 #define UNARY_CONTRIB_ACTIVATION_OPS()         \
   UNARY_ACTIVATION_OP_NAME(ScaledTanh)         \
   UNARY_ACTIVATION_OP_NAME(Affine)             \
   UNARY_ACTIVATION_OP_NAME(ParametricSoftplus) \
-  UNARY_ACTIVATION_OP_NAME(Gelu)               \
   UNARY_ACTIVATION_OP_NAME(QuickGelu)
 
 #define UNARY_ACTIVATION_OP_NAME(name) UNARY_ACTIVATION_IMPL_DECLARATION(name);
