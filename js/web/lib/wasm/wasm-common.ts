@@ -5,7 +5,7 @@ import {Tensor} from 'onnxruntime-common';
 
 // a dummy type declaration for Float16Array in case any polyfill is available.
 declare global {
-  // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any, no-var
   var Float16Array: any;
 }
 export type Float16ArrayType = InstanceType<typeof Float16Array>;
