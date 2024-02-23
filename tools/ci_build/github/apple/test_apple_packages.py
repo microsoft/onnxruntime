@@ -146,7 +146,8 @@ def _test_apple_packages(args):
                     "-destination",
                     f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
                     "-retry-tests-on-failure",
-                    "-test-iterations 3"
+                    "-test-iterations",
+                    "3",
                 ],
                 shell=False,
                 check=True,
