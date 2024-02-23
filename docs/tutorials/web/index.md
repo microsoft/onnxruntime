@@ -1,5 +1,5 @@
 ---
-title: Deploy on web
+title: Web
 parent: Tutorials
 has_children: true
 nav_order: 7

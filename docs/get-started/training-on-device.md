@@ -1,7 +1,7 @@
 ---
 title: On-Device Training
 parent: Get Started
-nav_order: 12
+nav_order: 11
 ---
 
 # On-Device Training with ONNX Runtime
