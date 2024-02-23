@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <gsl/narrow>
 #ifndef ORT_MINIMAL_BUILD
 
 #include "core/common/span_utils.h"
@@ -66,7 +67,8 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
 }
 
 void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
-             bool has_zeropoint, bool use_float16, float fp16_abs_error = 0.02f) {
+             bool has_zeropoint, bool use_float16, bool has_g_idx = false, bool zp_is_4bit = true, float fp16_abs_error = 0.02f) {
+  zp_is_4bit = zp_is_4bit|has_g_idx;
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));
   std::vector<float> input1_f_vals(random.Gaussian<float>(std::vector<int64_t>({K, N}), 0.0f, 0.25f));
@@ -118,7 +120,32 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
     test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
     test.AddInput<MLFloat16>("scales", {static_cast<int64_t>(q_scale_size)}, ToFloat16(scales), true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
+      if (zp_is_4bit){
+        test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
+      } else {
+        std::vector<float> zp_f;
+        zp_f.reserve(q_zp_size_in_bytes*2);
+        for (size_t i = 0; i < zp.size(); i++) {
+          zp_f.push_back(static_cast<float>(zp[i] & 0xf));
+          zp_f.push_back(static_cast<float>((zp[i] >> 4) & 0xf));
+        }
+        size_t ind = zp_f.size()-1;
+        while(zp_f.size() != q_scale_size){
+          zp_f.erase(zp_f.begin() + ind);
+          ind -= q_scale_size/N+1;
+        }
+
+        test.AddInput<MLFloat16>("zero_points", {static_cast<int64_t>(q_scale_size)}, ToFloat16(zp_f), true);
+      }
+    } else {
+      test.AddInput<uint8_t>("", {0}, {});
+    }
+    if (has_g_idx) {
+      std::vector<int32_t> g_idx(K);
+      for (int64_t i = 0; i < K; i++) {
+        g_idx[i] = gsl::narrow<int32_t>(i/block_size);
+      }
+      test.AddInput<int32_t>("g_idx", {static_cast<int64_t>(K)}, g_idx, true);
     }
 
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
@@ -172,8 +199,10 @@ TEST(MatMulNBits, Float16) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-          RunTest(M, N, K, block_size, 0, false, true);
-          RunTest(M, N, K, block_size, 0, true, true);
+          for (auto has_gidx : {false,true, false}) {
+            RunTest(M, N, K, block_size, 0, false, true, has_gidx);
+            RunTest(M, N, K, block_size, 0, true, true, has_gidx, false);
+          }
         }
       }
     }
@@ -183,9 +212,9 @@ TEST(MatMulNBits, Float16) {
 TEST(MatMulNBits, Float16Large) {
   for (auto block_size : {16, 32, 64, 128}) {
     for (auto symmetric : {false, true}) {
-      RunTest(1, 4096, 4096, block_size, 0, symmetric, true, 0.05f);
-      RunTest(1, 4096, 11008, block_size, 0, symmetric, true, 0.05f);
-      RunTest(1, 11008, 4096, block_size, 0, symmetric, true, 0.05f);
+      RunTest(1, 4096, 4096, block_size, 0, symmetric, true, false, true, 0.05f);
+      RunTest(1, 4096, 11008, block_size, 0, symmetric, true, false, true, 0.05f);
+      RunTest(1, 11008, 4096, block_size, 0, symmetric, true, false, true, 0.05f);
     }
   }
 }

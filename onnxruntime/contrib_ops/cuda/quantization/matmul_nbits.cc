@@ -8,6 +8,7 @@
 //
 
 #include "matmul_nbits.h"
+#include <cstdint>
 #include "core/common/status.h"
 #include "core/framework/float16.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -25,11 +26,13 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* b = ctx->Input<Tensor>(1);
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->Input<Tensor>(3);
+  const Tensor* reorder_idx = ctx->Input<Tensor>(4);
 
   const auto* a_data = a->Data<T>();
   const uint8_t* blob_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<T>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -44,33 +47,50 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0) return Status::OK();
 
-  bool is_4bit_done = TryMatMul4Bits(
-      reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-      reinterpret_cast<const CudaT*>(a_data),
-      blob_data,
-      reinterpret_cast<const CudaT*>(scales_data),
-      zero_points_data,
-      SafeInt<int>(helper.M()),
-      SafeInt<int>(helper.N()),
-      SafeInt<int>(helper.K()),
-      SafeInt<int>(block_size_),
-      SafeInt<int>(GetDeviceProp().sharedMemPerBlock),
-      static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
+  bool is_4bit_done = (reorder_idx_data == nullptr) &&
+                      (!zero_points || !zero_points->IsDataType<T>()) &&
+                      TryMatMul4Bits(
+                          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+                          reinterpret_cast<const CudaT*>(a_data),
+                          blob_data,
+                          reinterpret_cast<const CudaT*>(scales_data),
+                          static_cast<const uint8_t*>(zero_points_data),
+                          SafeInt<int>(helper.M()),
+                          SafeInt<int>(helper.N()),
+                          SafeInt<int>(helper.K()),
+                          SafeInt<int>(block_size_),
+                          SafeInt<int>(GetDeviceProp().sharedMemPerBlock),
+                          static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
+
   if (!is_4bit_done) {
     int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
     IAllocatorUniquePtr<T> b_data_ptr = GetScratchBuffer<T>(N_ * K_padded, ctx->GetComputeStream());
     auto* b_data = b_data_ptr.get();
     if (column_wise_quant_blk_) {
       // column-wise block
-      ORT_RETURN_IF_ERROR(Dequantize4Bits(
-          reinterpret_cast<CudaT*>(b_data),
-          blob_data,
-          reinterpret_cast<const CudaT*>(scales_data),
-          zero_points_data,
-          SafeInt<int>(K_padded),
-          SafeInt<int>(N_),
-          SafeInt<int>(block_size_),
-          static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+      if ((zero_points && zero_points->IsDataType<T>())) {
+        ORT_RETURN_IF_ERROR(Dequantize4Bits(
+            reinterpret_cast<CudaT*>(b_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            (const CudaT*)zero_points_data,
+            reorder_idx_data,
+            SafeInt<int>(K_padded),
+            SafeInt<int>(N_),
+            SafeInt<int>(block_size_),
+            static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+      } else {
+        ORT_RETURN_IF_ERROR(Dequantize4Bits(
+            reinterpret_cast<CudaT*>(b_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            (const uint8_t*)zero_points_data,
+            reorder_idx_data,
+            SafeInt<int>(K_padded),
+            SafeInt<int>(N_),
+            SafeInt<int>(block_size_),
+            static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+      }
     } else {
       // row-wise block
       K_padded = K_;
@@ -79,7 +99,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           reinterpret_cast<CudaT*>(b_data),
           blob_data,
           reinterpret_cast<const CudaT*>(scales_data),
-          zero_points_data,
+          (const uint8_t*)zero_points_data,
           SafeInt<int>(block_size_),
           column_wise_quant_blk_,
           SafeInt<int>(K_),
