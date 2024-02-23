@@ -16,7 +16,6 @@ from torch.utils.cpp_extension import ROCM_HOME
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training.utils import PTable, onnx_dtype_to_pytorch_dtype
-from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3
 
 from . import _are_deterministic_algorithms_enabled, _logger, _onnx_models, _utils
 from ._fallback import ORTModuleTorchModelException, _FallbackManager, _FallbackPolicy, wrap_exception
@@ -103,6 +102,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._zero_stage3_param_map = {}
         if self._runtime_options.enable_zero_stage3_support:
+            # Move import to here to avoid circular dependency error
+            from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3  # type: ignore[import]
+
             # Cannot toggle feature enabling/disabling after the first time enabled.
 
             configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="ort_output", stats_overwrite=True)
