@@ -254,8 +254,7 @@ Status ScatterNDImplReduction(
 
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator.");
-      }
-      break;
+      } break;
     case 2:  // Reduction::Mul
       switch (element_type) {
         case 1:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT: TODO: which header to use?
@@ -281,6 +280,10 @@ Status ScatterNDImplReduction(
               num_updates_elements,
               FuncMul<half>());
           break;
+
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator.");
+      } break;
 
     case 3:  // Reduction::Min
       switch (element_type) {
@@ -310,8 +313,7 @@ Status ScatterNDImplReduction(
 
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator.");
-      }
-      break;
+      } break;
 
     case 4:  // Reduction::Max
       switch (element_type) {
@@ -341,8 +343,7 @@ Status ScatterNDImplReduction(
 
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator.");
-      }
-      break;
+      } break;
 
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reduction ", reduction_as_int, " not implemented for ScatterND operator.");
