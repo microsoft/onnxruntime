@@ -265,7 +265,8 @@ def parse_inputs_for_onnx_export(
 
     """
 
-    tensor_idx = [-1]
+    arg_tensor_idx = [-1]
+    kwarg_tensor_idx = [-1]
 
     def _add_dynamic_shape(name, input) -> Dict[str, Dict[int, str]]:
         dynamic_axes[name] = {}
@@ -276,7 +277,9 @@ def parse_inputs_for_onnx_export(
     def _warn_of_constant_inputs(data):
         warnings.warn(f"Received input of type {type(data)} is treated as a constant by ORT by default.")
 
-    def _add_input(name: str, input_value, onnx_graph_input_names: List[str], cur_func: Callable):
+    def _add_input(
+        name: str, input_value, onnx_graph_input_names: List[str], cur_func: Callable, tensor_idx: List[int]
+    ):
         """Returns number of expanded non none inputs that _add_input processed"""
 
         # in case the input is already handled.
@@ -316,6 +319,7 @@ def parse_inputs_for_onnx_export(
                     val,
                     onnx_graph_input_names,
                     partial(_access_func, i, cur_func),
+                    tensor_idx,
                 )
 
                 if not isinstance(input_schema, SkipRetValue):
@@ -348,6 +352,7 @@ def parse_inputs_for_onnx_export(
                     val,
                     onnx_graph_input_names,
                     partial(_access_func, key, cur_func),
+                    tensor_idx,
                 )
 
                 if not isinstance(input_schema, SkipRetValue):
@@ -417,7 +422,13 @@ def parse_inputs_for_onnx_export(
                 var_positional_idx += 1
                 num_positional_args += 1
                 inp = args[args_i]
-                schema = _add_input(name, inp, onnx_graph_input_names, partial(_arg_access_with_index_func, args_i))
+                schema = _add_input(
+                    name,
+                    inp,
+                    onnx_graph_input_names,
+                    partial(_arg_access_with_index_func, args_i),
+                    arg_tensor_idx,
+                )
                 if not isinstance(schema, SkipRetValue):
                     input_arg_schema.append(schema)
         elif (
@@ -434,13 +445,13 @@ def parse_inputs_for_onnx_export(
                 inp = args[input_idx]
                 num_positional_args += 1
                 access_func = partial(_arg_access_with_index_func, input_idx)
-                schema = _add_input(name, inp, onnx_graph_input_names, access_func)
+                schema = _add_input(name, inp, onnx_graph_input_names, access_func, arg_tensor_idx)
                 if not isinstance(schema, SkipRetValue):
                     input_arg_schema.append(schema)
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
                 access_func = partial(_kwarg_access_with_name_func, name)
-                schema = _add_input(name, inp, onnx_graph_input_names, access_func)
+                schema = _add_input(name, inp, onnx_graph_input_names, access_func, kwarg_tensor_idx)
                 if not isinstance(schema, SkipRetValue):
                     input_kwarg_schema[name] = schema
 
@@ -452,6 +463,7 @@ def parse_inputs_for_onnx_export(
                     inp,
                     onnx_graph_input_names,
                     partial(_kwarg_access_with_name_func, name),
+                    kwarg_tensor_idx,
                 )
                 if not isinstance(schema, SkipRetValue):
                     input_kwarg_schema[name] = schema
