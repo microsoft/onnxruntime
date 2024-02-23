@@ -4,23 +4,25 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cuda/math/unary_elementwise_ops.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 template <typename T>
-class FastGelu final : public CudaKernel {
+class Gelu final : public UnaryElementwise {
  public:
-  FastGelu(const OpKernelInfo& op_kernel_info);
+  Gelu(const OpKernelInfo& info) : UnaryElementwise(info) {
+    approximation_algorithm_ = info.GetAttrOrDefault<std::string>("approximate", "none");
+  }
+
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
-  bool use_half2_;  // Only applicable to CUDA kernel (not ROCM).
+  const bool use_half2_{true};
+
+  std::string approximation_algorithm_;
 };
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime
