@@ -430,8 +430,10 @@ stages:
       displayName: 'Run build_custom_android_package.py'
       inputs:
         script: |
+          export MY_ENV_VAR=2
           "$(Build.SourcesDirectory)/tools/android_custom_build/build_custom_android_package.py" \
             --docker_image_tag=$(dockerImageTag) \
+            --docker_run_env FOO=1 --docker_run_env MY_ENV_VAR \
             "$(Build.BinariesDirectory)/custom_android_package"
         workingDirectory: '$(Build.BinariesDirectory)'
 

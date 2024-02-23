@@ -6,6 +6,9 @@
 
 set -e -x
 
+env
+exit 0
+
 USAGE_TEXT="Usage: ${0} <build config> <ops config file> <build settings file> <output directory>"
 
 BUILD_CONFIG=${1:?${USAGE_TEXT}}
