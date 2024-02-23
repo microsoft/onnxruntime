@@ -29,33 +29,21 @@ Status ScatterNDOfShape::ComputeInternal(OpKernelContext* context) const {
   const auto* updates_tensor = context->Input<Tensor>(2);
 
   const auto& input_shape_shape = input_tensor->Shape();
-  ORT_ENFORCE(input_shape_shape.NumDimensions() == 1, "First input should have one dimension only.");
-  ORT_ENFORCE(input_shape_shape.Size() > 0, "First input cannot be empty.");
-
-  auto shape_type = input_tensor->DataType()->AsPrimitiveDataType()->GetDataType();
-  ORT_ENFORCE(shape_type == 7, "Expect int64 as first input not", shape_type, ".");
-
-  printf("ZZZ\n");
-  printf("FFZ %d %d\n", (int)input_shape_shape.NumDimensions(), shape_type);
-  const int64_t* shape_ptr = input_tensor->Data<int64_t>();
-  ORT_ENFORCE(shape_ptr != nullptr, "First input is not a int64 pointer.");
-  std::vector<int64_t> shape_v(input_shape_shape.NumDimensions());
-  std::copy(shape_ptr, shape_ptr + input_shape_shape.Size(), shape_v.begin());
-  TensorShape input_shape(shape_v);
-  printf("BEGIN\n");
+  
+  // The shape tensor is on CUDA, it needs to be copied on CPU.
+  cudaDeviceSynchronize();
+  std::vector<int64_t> buf(input_shape_shape.Size());
+  cudaMemcpy(buf.data(), input_tensor->DataRaw(), input_shape_shape.Size() * sizeof(int64_t), cudaMemcpyDeviceToHost);
+  TensorShape input_shape(buf);
 
   const auto& indices_shape = indices_tensor->Shape();
-  printf("Y\n");
   const auto& updates_shape = updates_tensor->Shape();
-  printf("BEGIN2\n");
 
   // Validate input shapes
   ORT_RETURN_IF_ERROR(onnxruntime::ScatterND::ValidateShapes(input_shape, indices_shape, updates_shape));
-  printf("BEGIN\n");
 
   auto* output_tensor = context->Output(0, input_shape);
   void* output_data = output_tensor->MutableDataRaw();
-  printf("BEGIN\n");
 
   // Bail out early
   if (indices_shape.Size() == 0) {
@@ -79,7 +67,6 @@ Status ScatterNDOfShape::ComputeInternal(OpKernelContext* context) const {
   switch (reduction_) {
     case Reduction::Add: {
       auto element_type = updates_tensor->DataType()->AsPrimitiveDataType()->GetDataType();
-      printf("element_type %d\n", element_type);
       ORT_RETURN_IF_ERROR(onnxruntime::cuda::ScatterNDImplReduction(
           Stream(context),
           output_data,
@@ -96,7 +83,6 @@ Status ScatterNDOfShape::ComputeInternal(OpKernelContext* context) const {
       ORT_THROW("ScatterNDOfShape not supported for other reduction than Add, None.");
       break;
     }
-    printf("done\n");
 
     return Status::OK();
   }

@@ -354,7 +354,6 @@ class TestScatterPerProvider(unittest.TestCase):
         opts = onnxruntime.SessionOptions()
         # opts.log_severity_level = 0
         # opts.log_verbosity_level = 0
-        print(model2)
         sess = onnxruntime.InferenceSession(model2.SerializeToString(), opts, providers=["CUDAExecutionProvider"])
         got = sess.run(None, feeds2)[0]
         self.assertEqual(expected.tolist(), got.tolist())
