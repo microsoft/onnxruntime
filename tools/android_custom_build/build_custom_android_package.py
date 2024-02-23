@@ -88,6 +88,15 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--docker_run_env",
+        action="append",
+        default=[],
+        help="An environment variable definition to set when running the Docker container. "
+        "This may be specified multiple times. The values are provided to `docker run` via the --env option. "
+        "Refer to the `docker run` --env documentation for more information."
+    )
+
+    parser.add_argument(
         "--docker_path",
         default=shutil.which("docker"),
         help="The path to docker. If unspecified, docker should be in PATH.",
@@ -155,10 +164,13 @@ def main():
     # enable use of Ctrl-C to stop when running interactively
     docker_run_interactive_args = ["-it"] if sys.stdin.isatty() else []
 
+    docker_run_env_args = [f"--env={env_arg}" for env_arg in args.docker_run_env]
+
     docker_container_build_cmd = [
         args.docker_path,
         "run",
         *docker_run_interactive_args,
+        *docker_run_env_args,
         f"--name={args.docker_container_name}" if args.docker_container_name is not None else "--rm",
         f"--volume={working_dir}:/workspace/shared",
         args.docker_image_tag,
