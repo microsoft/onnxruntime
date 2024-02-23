@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import sys
-import onnx
-from onnx import helper, shape_inference
-from onnx import TensorProto
+
 import numpy as np
+import onnx
 from onnx import numpy_helper
 
 if len(sys.argv) < 2:
@@ -16,10 +17,8 @@ model = onnx.load(input_model_name)
 
 
 def add_name(model):
-    i = 0
-    for node in model.graph.node:
+    for i, node in enumerate(model.graph.node):
         node.name = "%s_%d" % (node.op_type, i)
-        i += 1
 
 
 def find_input_node(model, arg):
@@ -110,7 +109,7 @@ def process_concat(model):
                     assert attr[0].type == 4
                     data = numpy_helper.to_array(attr[0].t)
                     shape.append(np.asscalar(data))
-            print("concat node: %s, new_shape is: %s" % (node.name, shape))
+            print(f"concat node: {node.name}, new_shape is: {shape}")
             # find out the nodes need to be deleted.
             fuse_nodes = find_all_fused_nodes(model, node)
             reshape_node = find_output_node(model, node.output[0])
@@ -119,11 +118,9 @@ def process_concat(model):
             for n in fuse_nodes:
                 delete_nodes.append(get_node_index(model, n))
     # insert new shape to reshape
-    index = 0
-    for reshape_node_index in new_nodes:
+    for index, reshape_node_index in enumerate(new_nodes):
         shape_tensor = numpy_helper.from_array(np.asarray(new_nodes[reshape_node_index], dtype=np.int64))
         const_node = add_const(model, "concat_shape_node_%d" % index, "concat_shape_%d" % index, shape_tensor)
-        index += 1
         reshape_node = model.graph.node[reshape_node_index]
         reshape_node.input[1] = const_node.output[0]
     # delete nodes
@@ -200,12 +197,10 @@ def replace_input_arg(model, arg, new_arg):
             i += 1
 
 
-def find_weight_index(model, name):
-    index = 0
-    for w in model.graph.initializer:
+def find_weight_index(model, name: str) -> int | None:
+    for index, w in enumerate(model.graph.initializer):
         if w.name == name:
             return index
-        index += 1
     return None
 
 
@@ -299,13 +294,13 @@ add_expand_shape(model)
 # set opset version to 10
 model.opset_import[0].version = 10
 
-f = open(output_model_name, "wb")
+f = open(output_model_name, "wb")  # noqa: SIM115
 f.write(model.SerializeToString())
 f.close()
 
 # Use ORT to verify the converted model. Notice that you must use python package from the
 # training branch because training requires some extra ops.
-import onnxruntime as ort
+import onnxruntime as ort  # noqa: E402
 
 # We convert model to accept variable-length batch size, so it can be any positive integer.
 batch = 3

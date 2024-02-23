@@ -1,0 +1,254 @@
+parameters:
+- name: BuildConfig
+  type: string
+
+- name: EnvSetupScript
+  type: string
+  default: setup_env.bat
+
+- name: job_name_suffix
+  type: string
+
+- name: buildArch
+  type: string
+
+- name: additionalBuildFlags
+  type: string
+
+- name: msbuildPlatform
+  type: string
+
+- name: isX86
+  type: boolean
+  default: false
+
+- name: isTraining
+  type: boolean
+  default: false
+
+- name: EnablePython
+  type: boolean
+  default: true
+
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+- name: ORT_EP_NAME
+  type: string
+
+- name: MachinePool
+  type: string
+
+- name: GenerateDocumentation
+  displayName: Generate updated documentation. Requires build to have occurred and `--gen_doc` to be specified
+  type: boolean
+  default: false
+
+- name: WITH_CACHE
+  displayName: Use Cache to acclerate compilation
+  type: boolean
+  default: false
+
+- name: OnnxruntimeTestGpuDeviceId
+  type: number
+  default: 0
+
+
+jobs:
+- job: build_${{ parameters.job_name_suffix }}
+  variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    DocUpdateNeeded: false  # Set to true during document generation if there are diffs
+    NVIDIA_TF32_OVERRIDE: '0'
+    skipComponentGovernanceDetection: true
+    DEPS_CACHE_DIR: $(Agent.TempDirectory)/deps_ccache
+    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    ONNXRUNTIME_TEST_GPU_DEVICE_ID: ${{ parameters.OnnxruntimeTestGpuDeviceId }}
+    ${{ if eq(parameters.WITH_CACHE, true) }}:
+      PS_CACHE_ARG: '-use_cache'
+      PY_CACHE_ARG: '--use_cache'
+  workspace:
+    clean: all
+  pool: ${{ parameters.MachinePool }}
+  timeoutInMinutes:  300
+  steps:
+  - checkout: self
+    clean: true
+    submodules: none
+
+  - template: win-ci-prebuild-steps.yml
+    parameters:
+      EnvSetupScript: ${{parameters.EnvSetupScript}}
+      ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+        DownloadCUDA: true
+      ${{ else }}:
+        DownloadCUDA: false
+      BuildArch: ${{parameters.buildArch}}
+      BuildConfig: ${{parameters.BuildConfig}}
+      MachinePool: ${{parameters.MachinePool}}
+      WithCache: ${{parameters.WITH_CACHE}}
+      Today: $(Today)
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '18.x'
+      force32bit: ${{ parameters.isX86 }}
+
+  # Our build machine doesn't have java x86
+  - ${{ if eq(parameters.buildArch, 'x64') }}:
+      - task: JavaToolInstaller@0
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: ${{ parameters.buildArch }}
+          jdkSourceOption: 'PreInstalled'
+
+  - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
+     mkdir %ORT_DOXY_SRC%
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 5.7.0
+    inputs:
+      versionSpec: 5.7.0
+
+  - task: NuGetCommand@2
+    displayName: 'NuGet restore'
+    inputs:
+      command: 'restore'
+      feedsToUse: 'config'
+      restoreSolution: '$(Build.SourcesDirectory)\packages.config'
+      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
+      restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+
+  - template: win-ci-build-steps.yml
+    parameters:
+      WithCache: ${{ parameters.WITH_CACHE }}
+      Today: $(TODAY)
+      CacheDir: $(ORT_CACHE_DIR)
+      AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "
+      BuildPyArguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      MsbuildArguments: '-maxcpucount'
+      BuildArch: ${{ parameters.buildArch }}
+      Platform: ${{ parameters.msbuildPlatform }}
+      BuildConfig: ${{ parameters.BuildConfig }}
+
+  - powershell: |
+      Get-Volume $("$(Build.BinariesDirectory)")[0]
+    displayName: check disk size
+
+  - task: DeleteFiles@1
+    displayName: 'Delete intermedia files from $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+      Contents: |
+        **/*.obj
+
+  - powershell: |
+      Get-Volume $("$(Build.BinariesDirectory)")[0]
+    displayName: check disk size
+
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel'
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
+    inputs:
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
+      platform: 'Any CPU'
+      configuration: '${{ parameters.BuildConfig }}'
+      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - script: |
+      python3 tools\ValidateNativeDelegateAttributes.py
+    displayName: 'Validate C# native delegates'
+    workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: MSBuild@1
+    displayName: 'Build C#'
+    inputs:
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
+      configuration: '${{ parameters.BuildConfig }}'
+      platform: 'Any CPU'
+      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  # C# test isn't launched by build.py, so models link has to be added.
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
+
+  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
+      - task: DotNetCoreCLI@2
+        displayName: 'Test C#'
+        inputs:
+          command: test
+          projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
+          configuration: '${{ parameters.BuildConfig }}'
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IncludeMobileTargets=false --blame'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - powershell: |
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+        displayName: 'Install onnxruntime wheel'
+
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - powershell: |
+         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+        displayName: 'Run tests'
+
+      - task: PublishTestResults@2
+        displayName: 'Publish unit test results'
+        inputs:
+          testResultsFiles: '**/*.results.xml'
+          searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
+          testRunTitle: 'Unit Test Run'
+        condition: succeededOrFailed()
+
+  - ${{ if eq(parameters.GenerateDocumentation, true) }}:
+    - task: PythonScript@0
+      displayName: 'Generate documentation'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate ${{ variables.PY_CACHE_ARG }}'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+  # if the validation from --gen_doc failed it sets DocUpdateNeeded so we can publish the latest version of the docs
+  # as an artifact, allowing a developer to download this and replace the current version instead of having to build
+  # and generate the docs locally themselves. handle each of the two md files separately - simpler than copying
+  # them to another location and publishing from there in a single task.
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/OperatorKernels.md'
+      artifactName: 'OperatorKernels.md'
+
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
+      artifactName: 'ContribOperators.md'

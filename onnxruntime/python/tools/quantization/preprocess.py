@@ -101,7 +101,7 @@ Essentially this tool performs the following three (skippable) steps:
     parser.add_argument(
         "--external_data_location",
         help="The file location to save the external file",
-        default="./",
+        default=None,
     )
     parser.add_argument(
         "--external_data_size_threshold",

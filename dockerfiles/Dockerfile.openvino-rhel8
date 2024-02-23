@@ -19,7 +19,7 @@ ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/extras/opencv/lib:${LD_LIBRARY_PATH}
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/usr/local/lib64:/usr/lib64:/lib64:${LD_LIBRARY_PATH}
 ENV PATH=${MY_ROOT}/cmake-dir/bin:$PATH
 
-# Install packages 
+# Install packages
 RUN yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-devel libffi-devel openssl-devel git make gcc && \
     yum clean packages &&  yum clean all && rm -rf /var/cache/yum && \
 # Install python 3.8
@@ -31,7 +31,7 @@ RUN yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-deve
     cd /opt/ && wget https://github.com/libusb/libusb/archive/v1.0.22.zip && \
     unzip v1.0.22.zip && rm -rf v1.0.22.zip && cd  /opt/libusb-1.0.22 && \
 # bootstrap steps
-    ./bootstrap.sh && \ 
+    ./bootstrap.sh && \
     ./configure --disable-udev --enable-shared && \
     make -j4 && \
 # configure libusb1.0.22
@@ -57,7 +57,7 @@ RUN yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-deve
 #Install protobuf
     cd $MY_ROOT && \
     git clone https://github.com/protocolbuffers/protobuf.git && \
-    cd protobuf && \ 
+    cd protobuf && \
     git checkout v3.16.0 && \
     git submodule update --init --recursive && \
     mkdir build_source && cd build_source && \
@@ -71,7 +71,7 @@ RUN yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-deve
     bash onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     ln -s cmake-* cmake-dir && \
     source /opt/intel/openvino_2022.3.0/setupvars.sh && \
-    cd /code/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel && \
+    cd /code/onnxruntime && ./build.sh --allow_running_as_root --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel && \
     pip3 install /code/onnxruntime/build/Linux/Release/dist/*-linux_x86_64.whl && \
 # Clean up
     cd ${MY_ROOT} && rm -rf onnxruntime && rm -rf Python-3.8.9 && rm -rf protobuf

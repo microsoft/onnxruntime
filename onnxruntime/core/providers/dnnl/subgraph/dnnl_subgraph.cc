@@ -33,7 +33,7 @@ std::string DnnlTensor::Name() const {
   return tensor_name_;
 }
 
-const ONNX_NAMESPACE::TensorShapeProto* DnnlTensor::GetShape() const{
+const ONNX_NAMESPACE::TensorShapeProto* DnnlTensor::GetShape() const {
   if (arg_type_proto_ == nullptr || arg_type_ == nullptr) {
     return nullptr;
   }
@@ -69,7 +69,7 @@ dnnl::memory::dims DnnlTensor::Dim() const {
       shape.push_back(dim.dim_value());
     }
   }
-  //make scaler as having dimension of 1
+  // make scaler as having dimension of 1
   if (shape.size() == 0) {
     shape.push_back(1);
   }
@@ -261,7 +261,7 @@ void DnnlSubgraph::TopoSort() {
     }
   }
 
-  //need to make sure all indegrees are computed before doing bfs
+  // need to make sure all indegrees are computed before doing bfs
   while (!queue.empty()) {
     auto cur = queue.front();
     queue.pop();
@@ -289,14 +289,13 @@ DnnlNode* DnnlSubgraph::GetDnnlNode(size_t node_index) {
   return dnnl_nodes_[node_index].get();
 }
 
-DnnlTensor* DnnlSubgraph::GetDnnlTensor(const std::string& tensor_name){
-  if(dnnl_tensors_.count(tensor_name)){
+DnnlTensor* DnnlSubgraph::GetDnnlTensor(const std::string& tensor_name) {
+  if (dnnl_tensors_.count(tensor_name)) {
     return dnnl_tensors_[tensor_name].get();
-  }else{
+  } else {
     return nullptr;
   }
 }
-
 
 size_t DnnlSubgraph::GetMaxNodeIndex() {
   return dnnl_nodes_.size();
@@ -329,8 +328,8 @@ void DnnlSubgraph::RemoveNode(size_t node_index) {
 }
 
 void DnnlSubgraph::RemoveTensor(const std::string& tensor_name) {
-  inputs_.erase(std::remove_if(inputs_.begin(), inputs_.end(), [=](DnnlTensor* t){ return t->Name() == tensor_name;}), inputs_.end());
-  initializers_.erase(std::remove_if(initializers_.begin(), initializers_.end(), [=](DnnlTensor* t){ return t->Name() == tensor_name;}), initializers_.end());
+  inputs_.erase(std::remove_if(inputs_.begin(), inputs_.end(), [=](DnnlTensor* t) { return t->Name() == tensor_name; }), inputs_.end());
+  initializers_.erase(std::remove_if(initializers_.begin(), initializers_.end(), [=](DnnlTensor* t) { return t->Name() == tensor_name; }), initializers_.end());
   dnnl_tensors_.erase(tensor_name);
 }
 
@@ -349,7 +348,7 @@ void DnnlSubgraph::AddNode(std::unique_ptr<DnnlNode> new_node) {
 }
 
 void DnnlSubgraph::Build(const GraphViewer& graph_viewer) {
-  //establish nodes, tensors and nodeargs
+  // establish nodes, tensors and nodeargs
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer.GetNode(node_indices[i]));
@@ -360,9 +359,9 @@ void DnnlSubgraph::Build(const GraphViewer& graph_viewer) {
     for (auto input : node->InputDefs()) {
       if (input && input->Exists() && input->Name() != "") {
         if (!dnnl_tensors_.count(input->Name())) {
-          dnnl_tensors_[input->Name()] = 
-            std::make_unique<DnnlTensor>(input,
-                                         graph_viewer.IsConstantInitializer(input->Name(), true));
+          dnnl_tensors_[input->Name()] =
+              std::make_unique<DnnlTensor>(input,
+                                           graph_viewer.IsConstantInitializer(input->Name(), true));
         }
         dnnl_tensors_[input->Name()]->AddConsumer(DnnlNodeArg(dnnl_node, index, false));
         inputs.push_back(dnnl_tensors_[input->Name()].get());
@@ -389,11 +388,11 @@ void DnnlSubgraph::Build(const GraphViewer& graph_viewer) {
     dnnl_node->Outputs() = outputs;
   }
 
-  //all tensors should have been established in graph
-  //establish inputs, outputs and initializers
-  //graph inputs including initializers and outputs can be deleted by graph transformation (eg, gelu fusion)
-  //delete unneeded inputs don't affect onnxruntime passing them as input data handle
-  //delete unneeded outputs will cause ep to output to fewer data handles then expected
+  // all tensors should have been established in graph
+  // establish inputs, outputs and initializers
+  // graph inputs including initializers and outputs can be deleted by graph transformation (eg, gelu fusion)
+  // delete unneeded inputs don't affect onnxruntime passing them as input data handle
+  // delete unneeded outputs will cause ep to output to fewer data handles then expected
   for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
     inputs_.push_back(dnnl_tensors_[node_arg->Name()].get());
   }

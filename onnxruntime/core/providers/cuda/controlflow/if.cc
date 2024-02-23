@@ -35,14 +35,25 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   If);
 
 // opset-13 supports sequence type for If's subgraph outputs
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
+                                  kOnnxDomain,
+                                  13, 18,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                  If);
+
+// opset-19 supports float8
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
-                        13,
+                        19,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
                         If);
 
 Status If::Compute(OpKernelContext* ctx) const {

@@ -15,6 +15,5 @@ class DynamicQuantizeLinear final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
-
 };
 }  // namespace onnxruntime

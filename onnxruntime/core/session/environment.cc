@@ -3,14 +3,14 @@
 
 #include "core/session/environment.h"
 #include "core/session/allocator_adapters.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
-#include "core/graph/contrib_ops/internal_nhwc_onnx_opset.h"
+#include "core/graph/contrib_ops/internal_nhwc_onnx_schemas.h"
 #include "core/graph/contrib_ops/ms_opset.h"
 #include "core/graph/contrib_ops/onnx_deprecated_opset.h"
 #if defined(ENABLE_TRAINING_OPS)
@@ -42,11 +42,18 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
+#endif
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+#ifdef USE_CUDA
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
+#endif  // USE_CUDA
 
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
@@ -78,12 +85,6 @@ static bool AreOrtMemoryInfosEquivalent(
 Status Environment::RegisterAllocator(AllocatorPtr allocator) {
   const auto& mem_info = allocator->Info();
 
-  if (mem_info.device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Only CPU allocators can be shared between "
-                           "multiple sessions for now.");
-  }
-
   // We don't expect millions of allocators getting registered. Hence linear search should be fine.
   auto ite = std::find_if(std::begin(shared_allocators_),
                           std::end(shared_allocators_),
@@ -112,7 +113,7 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
 Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg) {
   // TODO should we allow sharing of non-CPU allocators?
   if (mem_info.device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only CPU devices are supported for now.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only CPU devices are supported. Please call CreateAndRegisterAllocatorV2() for other device.");
   }
 
   // determine if arena should be used
@@ -135,6 +136,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     int initial_chunk_size_bytes = -1;
     int max_dead_bytes_per_chunk = -1;
     int initial_growth_chunk_size_bytes = -1;
+    int64_t max_power_of_two_extend_bytes = -1L;
 
     // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
@@ -151,10 +153,11 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
       initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
       max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
       initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
+      max_power_of_two_extend_bytes = arena_cfg->max_power_of_two_extend_bytes;
     }
 
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
-                            initial_growth_chunk_size_bytes};
+                            initial_growth_chunk_size_bytes, max_power_of_two_extend_bytes};
     AllocatorCreationInfo alloc_creation_info{
         [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
         0,
@@ -280,7 +283,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // These ops are internal-only, so register outside of onnx
     static std::vector<std::string> all_fixed_size_types = []() {
       std::vector<std::string> all_types;
-      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_with_bfloat();
+      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_ir9();
       std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
       all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
       all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
@@ -327,6 +330,24 @@ Internal copy node
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
   return status;
+}
+
+Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+  if (provider_type == onnxruntime::kCpuExecutionProvider) {
+    ORT_UNUSED_PARAMETER(options);
+    return CreateAndRegisterAllocator(mem_info, arena_cfg);
+  }
+#ifdef USE_CUDA
+  if (provider_type == onnxruntime::kCudaExecutionProvider) {
+    CUDAExecutionProviderInfo cuda_ep_info;
+    GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
+    CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
+    AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
+                                                                            external_info, arena_cfg);
+    return RegisterAllocator(allocator_ptr);
+  }
+#endif
+  return Status{ONNXRUNTIME, common::INVALID_ARGUMENT, provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
 }  // namespace onnxruntime

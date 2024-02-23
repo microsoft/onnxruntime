@@ -27,6 +27,7 @@ Subgraph::Subgraph(
       vocab_size(0),
       num_layers(0),
       past_present_share_buffer_(false),
+      has_decoder_masked_attention_(false),
       allocator_(nullptr),
       is_output_float16_(false) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
@@ -49,6 +50,13 @@ Subgraph::Subgraph(
   for (int i = 0; i < num_subgraph_outputs; ++i) {
     subgraph_output_names.push_back(subgraph_outputs[i]->Name());
   }
+
+  for (const auto& n : subgraph.Nodes()) {
+    if (n.OpType() == "DecoderMaskedSelfAttention" || n.OpType() == "DecoderMaskedMultiHeadAttention") {
+      has_decoder_masked_attention_ = true;
+      break;
+    }
+  }
 }
 
 Status Subgraph::Setup(const SessionState& session_state,
@@ -60,8 +68,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   // Use the first output (logits) to find device location.
-  const OrtMemoryInfo& default_location = utils::FindMemoryInfoForValue(subgraph_session_state,
-                                                                        subgraph_output_names[0]);
+  const OrtDevice& default_location = utils::FindDeviceForValue(subgraph_session_state, subgraph_output_names[0]);
 
   // The position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.
   feed_names.insert(feed_names.end(), subgraph_input_names.begin(), subgraph_input_names.end());
@@ -75,16 +82,19 @@ Status Subgraph::Setup(const SessionState& session_state,
 
   for (size_t i = 0, end = feed_names.size(); i < end; ++i) {
     if (i >= subgraph_input_names.size()) {  // Implicit inputs
-      const auto& location = utils::FindMemoryInfoForValue(session_state, feed_names[i]);
-      feed_locations.push_back(location.device);
+      const auto& location = utils::FindDeviceForValue(session_state, feed_names[i]);
+      feed_locations.push_back(location);
     } else {
       if (feed_names[i] == "past_sequence_length") {
         // when past_sequence_length is needed in subgraph, treat it as past_present_share_buffer
         past_present_share_buffer_ = true;
         // past_sequence_length is on CPU memory
         feed_locations.push_back(OrtDevice());
+      } else if (feed_names[i] == "beam_width") {
+        // beam_width is on CPU memory
+        feed_locations.push_back(OrtDevice());
       } else {
-        feed_locations.push_back(default_location.device);
+        feed_locations.push_back(default_location);
       }
     }
   }
@@ -94,7 +104,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *feeds_fetches_manager_));
 
   // Setup the locations where we want the subgraph output to end up on
-  InlinedVector<const OrtMemoryInfo*> fetch_locations;
+  InlinedVector<const OrtDevice*> fetch_locations;
   fetch_locations.reserve(num_subgraph_outputs);
 
   // Past state need to be where we can feed them in to the next iteration, so set the location to match the feed.
@@ -108,7 +118,6 @@ Status Subgraph::Setup(const SessionState& session_state,
   auto& inputs = subgraph.GetInputs();
   auto& outputs = subgraph.GetOutputs();
   ORT_RETURN_IF_ERROR(Validate(inputs, outputs));
-
   return Status::OK();
 }
 
@@ -116,7 +125,9 @@ const IExecutionProvider* Subgraph::GetProvider() const {
   const ExecutionProviders& providers = session_state_->GetExecutionProviders();
   const IExecutionProvider* cpu_provider = providers.Get(onnxruntime::kCpuExecutionProvider);
   const IExecutionProvider* cuda_provider = providers.Get(onnxruntime::kCudaExecutionProvider);
-  const IExecutionProvider* provider = cuda_provider ? cuda_provider : cpu_provider;
+  const IExecutionProvider* rocm_provider = providers.Get(onnxruntime::kRocmExecutionProvider);
+  const IExecutionProvider* gpu_provider = cuda_provider ? cuda_provider : rocm_provider;
+  const IExecutionProvider* provider = gpu_provider ? gpu_provider : cpu_provider;
   return provider;
 }
 
@@ -159,6 +170,44 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
                 "subgraph past state dimension 2 shall have a positive value for vocabulary size");
 
   this->vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
+
+  return Status::OK();
+}
+
+Status Subgraph::AppendPastSequenceLength(std::vector<OrtValue>& feeds,
+                                          AllocatorPtr cpu_allocator,
+                                          const int32_t init_value) {
+  int64_t past_seq_len_dims[] = {1};
+  TensorShape past_seq_len_shape(&past_seq_len_dims[0], 1);
+  OrtValue past_seq_len_tensor_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), past_seq_len_shape, cpu_allocator, past_seq_len_tensor_value);
+  feeds.push_back(past_seq_len_tensor_value);
+  *past_seq_len_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = init_value;
+
+  return Status::OK();
+}
+
+Status Subgraph::AppendBeamWidthAndCacheIndir(std::vector<OrtValue>& feeds,
+                                              AllocatorPtr cpu_allocator,
+                                              AllocatorPtr default_allocator,
+                                              const int64_t batch_size,
+                                              const int64_t num_beams,
+                                              const int64_t max_seq_len) {
+  // Beam width feed
+  int64_t num_beams_dims[] = {1};
+  TensorShape num_beams_shape(&num_beams_dims[0], 1);
+  OrtValue num_beams_tensor_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), num_beams_shape, cpu_allocator, num_beams_tensor_value);
+  feeds.push_back(num_beams_tensor_value);
+  *num_beams_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = static_cast<int32_t>(num_beams);
+
+  // Cache indirection feed
+  int64_t cache_indirection_dims[] = {batch_size, num_beams, max_seq_len};
+  TensorShape cache_indirection_shape(&cache_indirection_dims[0], 3);
+  OrtValue default_cache_indirection;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), cache_indirection_shape,
+                       default_allocator, default_cache_indirection);
+  feeds.push_back(default_cache_indirection);
 
   return Status::OK();
 }

@@ -8,13 +8,17 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 8.5.1.1
+  default: 8.6.1.6
   values:
-  - 8.2.1.8
-  - 8.0.1.6
   - 8.4.1.5
   - 8.5.1.1
+  - 8.6.1.6
   - BIN
+
+- name: UseTensorrtOssParser
+  displayName: Use TensorRT-OSS Parser
+  type: boolean
+  default: false
 
 - name: ModelGroups
   type: object
@@ -25,7 +29,7 @@ parameters:
 - name: MemTest
   displayName: Run Memory Test
   type: boolean
-  default: false
+  default: true
 
 - name: TrtEPOptions
   displayName: TensorRT EP options
@@ -74,7 +78,7 @@ jobs:
       value: ort-image-$(Build.BuildId)
 
   steps:
-    - ${{ if eq(parameters.TrtVersion, 'BIN') }}:
+    - ${{ if and(eq(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:
       - script: 'ls -al $(trtBinsDir)'
         displayName: 'Show available TensorRT .tar.gz packages'
 
@@ -84,20 +88,28 @@ jobs:
       - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
         displayName: 'Install TensorRT from binaries and build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-    - ${{ else }}:
+    
+    # Build ORT with TensorRT built-in parser 
+    - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:
       - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75'
-        displayName: 'Build latest ORT Image'
+        displayName: 'Build latest ORT Image with TensorRT built-in parser'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    
+    # Build ORT with TensorRT OSS parser 
+    - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, true)) }}:
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --use_tensorrt_oss_parser'
+        displayName: 'Build latest ORT Image with TensorRT OSS parser'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
+        displayName: 'Run Memory Test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b true -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-        
-    - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
-        displayName: 'Run Memory Test'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     # Prepare and Publish Artifacts 
     
@@ -126,6 +138,13 @@ jobs:
 
       - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
         displayName: 'Install dashboard dependencies'
+
+      - script: |
+          az --version || {
+              echo "Azure CLI not found, installing..."
+              curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          }
+        displayName: 'Check and Install Azure CLI'
 
       - task: AzureCLI@2
         displayName: 'Azure CLI Post to Dashboard'

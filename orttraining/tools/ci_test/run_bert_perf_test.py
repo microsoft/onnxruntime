@@ -3,10 +3,10 @@
 # Licensed under the MIT License.
 
 import argparse
+import json
+import os
 import subprocess
 import sys
-import os
-import json
 from collections import namedtuple
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
@@ -59,7 +59,7 @@ def main():
         cmds = [
             os.path.join(args.binary_dir, "onnxruntime_training_bert"),
             "--model_name",
-            os.path.join(args.model_root, "nv/bert-large/{}".format(model)),
+            os.path.join(args.model_root, f"nv/bert-large/{model}"),
             "--train_data_dir",
             os.path.join(args.training_data_root, str(c.max_seq_length), "books_wiki_en_corpus/train"),
             "--test_data_dir",
@@ -97,7 +97,7 @@ def main():
             cmds.append("--use_mixed_precision"),
             cmds.append("--allreduce_in_fp16"),
 
-        subprocess.run(cmds).check_returncode()
+        subprocess.run(cmds).check_returncode()  # noqa: PLW1510
         if c.expected_perf > 0.0:
             json_filename = "onnxruntime_perf_metrics_{}.onnx_bert_{}_{}_Lamb.json".format(
                 model, precision_prefix, c.max_seq_length

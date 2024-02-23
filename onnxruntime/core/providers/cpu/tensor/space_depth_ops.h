@@ -89,4 +89,4 @@ class DepthToSpace final : public OpKernel, SpaceDepthBase {
   bool is_dcr_ = true;
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

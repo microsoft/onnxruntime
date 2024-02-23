@@ -11,67 +11,67 @@
 #include "test/util/include/default_providers.h"
 
 /*
-* The tests validate that if a fusion occures the expected output matches
-* the output of each graph if they had not be done separatly.
-*
-* Unfortantly there is no hook to actually check that the fussion occured
-* other than inspecting debug logs.
-*
-* The 8 tests use patterns that we have seen in actual models durring testing.
-* Other tests validate that non-associative ops work as expected. We are able
-* to fuse the output of matmul divided by another value but we can not fuse
-* the a value divided by the output of matmul. Similar with Subtraction.
-*
-* A few tests are there simply to validate the limits of the MatMul + post op
-* fusion. The max number of ops fusable are 32 post ops so we exced that number
-* and make sure the generated fusion is not a broken graph.
-*
-* A current implementation limitation is that we can only support a single instance
-* ops that use the 'alpha' attribute. We purposly test models that have more than
-* one instance of LeakRelu or Elu to make sure the graph generated is not broken.
-*
-* Most numbers for the tests were randomly generated and calculated using
-* python numpy library.
-*
-*  // fusions seen in most bert models
-*  matmul_add
-*  matmul_add_add
-*  // fusions seen in mobilebert
-*  matmul_add_add_mul_add
-*  matmul_add_relu
-*  matmul_add_mul_add_add_mul_add
-*  // fusions seen in bertsquade
-*  matmul_mul
-*  matmul_mul_add
-*  // fusions seen in bidif
-*  matmul_add_sigmoid_mul_add
-*
-*  // testing other possible combinations that are not seen in models
-*  // Non-associative ops
-*  // not all layouts can be fused
-*  matmul_div_add_0
-*  matmul_div_add_1
-*  matmul_div_sub_0
-*  matmul_div_sub_1
-*
-*  // Max number of post ops supported by OneDNN is 32.
-*  // Test that the post-op fusion does not fail when that value is exceded
-*  matmul_36_post_ops
-*
-*  // test fusion of remaining eltwise ops
-*  matmul_add_abs_mul
-*  matmul_add_exp_mul
-*  matmul_add_abs_log_mul
-*  matmul_add_round_mul
-*  matmul_add_softplus_mul
-*  matmul_add_abs_sqrt_mul
-*  matmul_add_tanh_mul
-*
-*  //element wise functions that take alpha attribute
-*  matmul_add_leakyrelu_mul
-*  matmul_add_leakyrelu_mul_leakyrelu
-*  matmul_add_elu_mul_leakyrelu
-*/
+ * The tests validate that if a fusion occures the expected output matches
+ * the output of each graph if they had not be done separatly.
+ *
+ * Unfortantly there is no hook to actually check that the fussion occured
+ * other than inspecting debug logs.
+ *
+ * The 8 tests use patterns that we have seen in actual models durring testing.
+ * Other tests validate that non-associative ops work as expected. We are able
+ * to fuse the output of matmul divided by another value but we can not fuse
+ * the a value divided by the output of matmul. Similar with Subtraction.
+ *
+ * A few tests are there simply to validate the limits of the MatMul + post op
+ * fusion. The max number of ops fusable are 32 post ops so we exced that number
+ * and make sure the generated fusion is not a broken graph.
+ *
+ * A current implementation limitation is that we can only support a single instance
+ * ops that use the 'alpha' attribute. We purposly test models that have more than
+ * one instance of LeakRelu or Elu to make sure the graph generated is not broken.
+ *
+ * Most numbers for the tests were randomly generated and calculated using
+ * python numpy library.
+ *
+ *  // fusions seen in most bert models
+ *  matmul_add
+ *  matmul_add_add
+ *  // fusions seen in mobilebert
+ *  matmul_add_add_mul_add
+ *  matmul_add_relu
+ *  matmul_add_mul_add_add_mul_add
+ *  // fusions seen in bertsquade
+ *  matmul_mul
+ *  matmul_mul_add
+ *  // fusions seen in bidif
+ *  matmul_add_sigmoid_mul_add
+ *
+ *  // testing other possible combinations that are not seen in models
+ *  // Non-associative ops
+ *  // not all layouts can be fused
+ *  matmul_div_add_0
+ *  matmul_div_add_1
+ *  matmul_div_sub_0
+ *  matmul_div_sub_1
+ *
+ *  // Max number of post ops supported by OneDNN is 32.
+ *  // Test that the post-op fusion does not fail when that value is exceded
+ *  matmul_36_post_ops
+ *
+ *  // test fusion of remaining eltwise ops
+ *  matmul_add_abs_mul
+ *  matmul_add_exp_mul
+ *  matmul_add_abs_log_mul
+ *  matmul_add_round_mul
+ *  matmul_add_softplus_mul
+ *  matmul_add_abs_sqrt_mul
+ *  matmul_add_tanh_mul
+ *
+ *  //element wise functions that take alpha attribute
+ *  matmul_add_leakyrelu_mul
+ *  matmul_add_leakyrelu_mul_leakyrelu
+ *  matmul_add_elu_mul_leakyrelu
+ */
 
 namespace onnxruntime {
 namespace test {
@@ -283,8 +283,6 @@ class Dnnl_matmul_add_mul_add_add_mul_add_PostOpTester : public OpTester {
     auto& a2_out = graph.GetOrCreateNodeArg("a2_out", y->TypeAsProto());
     auto& a3_out = graph.GetOrCreateNodeArg("a3_out", y->TypeAsProto());
     auto& m2_out = graph.GetOrCreateNodeArg("m2_out", y->TypeAsProto());
-
-
 
     graph.AddNode("matmul1", "MatMul", "", {x, w}, {&matmul_out});
     graph.AddNode("add1", "Add", "", {&matmul_out, a1}, {&a1_out});
@@ -615,7 +613,7 @@ class Dnnl_matmul_div_sub_0_PostOpTester : public OpTester {
 TEST(DnnlMatMulFusion, matmul_div_sub_0) {
   Dnnl_matmul_div_sub_0_PostOpTester test;
 
-test.AddInput<float>("x", {2, 3}, {-2.1785734f, -0.6487803f, 2.3332274f, -8.685032f, 5.256502f, -5.2456903f});
+  test.AddInput<float>("x", {2, 3}, {-2.1785734f, -0.6487803f, 2.3332274f, -8.685032f, 5.256502f, -5.2456903f});
   test.AddInput<float>("w", {3, 2}, {-5.553054f, 2.9051464f, 8.103106f, 8.064656f, 5.6170983f, -4.5699472f});
   test.AddInput<float>("d1", {2}, {-0.06625523f, -0.49858263f});
   test.AddInput<float>("s1", {2, 2}, {1.7707943f, -0.67333674f, 1.680975f, 1.5092063f});
@@ -842,7 +840,6 @@ class Dnnl_matmul_add_abs_mul_PostOpTester : public OpTester {
     auto& matmul_out = graph.GetOrCreateNodeArg("matmul_out", y->TypeAsProto());
     auto& a1_out = graph.GetOrCreateNodeArg("a1_out", y->TypeAsProto());
     auto& abs1_out = graph.GetOrCreateNodeArg("abs1_out", y->TypeAsProto());
-
 
     graph.AddNode("matmul1", "MatMul", "", {x, w}, {&matmul_out});
     graph.AddNode("add1", "Add", "", {&matmul_out, a1}, {&a1_out});
@@ -1196,7 +1193,6 @@ TEST(DnnlMatMulFusion, matmul_add_leakyrelu_mul) {
 
   test.Run();
 }
-
 
 // verfy the second LeakyRelu op is NOT being added to the post ops.
 // This is testing a limitation in the current implementation that

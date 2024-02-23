@@ -1,11 +1,10 @@
 /*
- * Copyright (c) 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
-import static ai.onnxruntime.OnnxTensor.fp16ToFloat;
-
+import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -15,6 +14,7 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.Arrays;
+import java.util.logging.Logger;
 
 /**
  * A Java object wrapping an OnnxSparseTensor.
@@ -23,6 +23,7 @@ import java.util.Arrays;
  * different static inner class representing each type.
  */
 public final class OnnxSparseTensor extends OnnxTensorLike {
+  private static final Logger logger = Logger.getLogger(OnnxSparseTensor.class.getName());
   private final SparseTensorType sparseTensorType;
 
   // Held to prevent deallocation while used in native code.
@@ -111,6 +112,16 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     return createSparseTensor(env, env.defaultAllocator, tensor);
   }
 
+  /**
+   * Creates a Sparse Tensor in ORT from the Java side representation.
+   *
+   * @param env The OrtEnvironment.
+   * @param allocator The memory allocator.
+   * @param tensor The Java side representation.
+   * @param <T> The buffer type.
+   * @return The sparse tensor in ORT.
+   * @throws OrtException If the tensor could not be created or was invalid.
+   */
   static <T extends Buffer> OnnxSparseTensor createSparseTensor(
       OrtEnvironment env, OrtAllocator allocator, SparseTensor<T> tensor) throws OrtException {
     if (!allocator.isClosed()) {
@@ -189,6 +200,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
 
   @Override
   public SparseTensor<? extends Buffer> getValue() throws OrtException {
+    checkClosed();
     Buffer buffer = getValuesBuffer();
     long[] indicesShape = getIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
     switch (sparseTensorType) {
@@ -225,8 +237,13 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   }
 
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  public synchronized void close() {
+    if (!closed) {
+      close(OnnxRuntime.ortApiHandle, nativeHandle);
+      closed = true;
+    } else {
+      logger.warning("Closing an already closed OnnxSparseTensor.");
+    }
   }
 
   /**
@@ -248,6 +265,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The indices.
    */
   public Buffer getIndicesBuffer() {
+    checkClosed();
     switch (sparseTensorType) {
       case COO:
       case CSRC:
@@ -286,6 +304,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The inner indices.
    */
   public LongBuffer getInnerIndicesBuffer() {
+    checkClosed();
     if (sparseTensorType == SparseTensorType.CSRC) {
       LongBuffer buf =
           getInnerIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
@@ -311,29 +330,27 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The data buffer.
    */
   public Buffer getValuesBuffer() {
+    checkClosed();
     ByteBuffer buffer =
         getValuesBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
     switch (info.type) {
       case FLOAT:
-        if (info.onnxType == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-          ShortBuffer shortBuffer = buffer.asShortBuffer();
-          int bufferCap = shortBuffer.capacity();
-          FloatBuffer output = FloatBuffer.allocate(bufferCap);
-          for (int i = 0; i < bufferCap; i++) {
-            output.put(fp16ToFloat(shortBuffer.get(i)));
-          }
-          output.rewind();
-          return output;
-        } else if (info.onnxType
-            == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16) {
-          throw new IllegalArgumentException("BFloat16 is not supported.");
-        } else {
-          // regular fp32
+        {
           FloatBuffer floatBuf = buffer.asFloatBuffer();
           FloatBuffer output = FloatBuffer.allocate(floatBuf.capacity());
           output.put(floatBuf);
           output.rewind();
           return output;
+        }
+      case FLOAT16:
+        {
+          ShortBuffer shortBuffer = buffer.asShortBuffer();
+          return Fp16Conversions.convertFp16BufferToFloatBuffer(shortBuffer);
+        }
+      case BFLOAT16:
+        {
+          ShortBuffer shortBuffer = buffer.asShortBuffer();
+          return Fp16Conversions.convertBf16BufferToFloatBuffer(shortBuffer);
         }
       case DOUBLE:
         {
@@ -390,6 +407,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The indices shape.
    */
   public long[] getIndicesShape() {
+    checkClosed();
     return getIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
   }
 
@@ -399,6 +417,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The indices shape.
    */
   public long[] getInnerIndicesShape() {
+    checkClosed();
     if (sparseTensorType == SparseTensorType.CSRC) {
       return getInnerIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
     } else {
@@ -414,6 +433,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The values shape.
    */
   public long[] getValuesShape() {
+    checkClosed();
     return getValuesShape(OnnxRuntime.ortApiHandle, nativeHandle);
   }
 
@@ -605,6 +625,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    *
    * <p>Will be sealed to {@link COOTensor}, {@link CSRCTensor} and {@link BlockSparseTensor} one
    * day.
+   *
+   * @param <T> The type of the indices buffer.
    */
   public abstract static class SparseTensor<T extends Buffer> {
     private final long[] indicesShape;
@@ -613,7 +635,9 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     private final OnnxJavaType type;
     private final long numNonZero;
 
+    /** The buffer holding the indices. */
     final T indices;
+    /** The buffer holding the values. */
     final Buffer values;
 
     SparseTensor(

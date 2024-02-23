@@ -35,10 +35,18 @@ The formula corresponding to LayerNorm activation subgraph:
 */
 class SimplifiedLayerNormFusion : public GraphTransformer {
  public:
-  SimplifiedLayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers) {}
+  SimplifiedLayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                            bool skip_device_check = false) noexcept
+      : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers),
+        skip_device_check_(skip_device_check) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+ private:
+  // A flag indicate whether device check is skipped for some cases.
+  // This is introduced for pre-training optimizations, where when optimization passes are running,
+  // devices placement is NOT done yet.
+  bool skip_device_check_;
 };
 
 }  // namespace onnxruntime

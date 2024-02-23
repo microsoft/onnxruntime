@@ -459,7 +459,7 @@ public:
             maskIndexOutputEdge.FromNodeOutputIndex = 0;
             outputEdges.push_back(std::move(maskIndexOutputEdge));
         }
-        else
+        else if (maskIndexDesc.Desc)
         {
             // Insert the edge feeding into the MaskIndex output
             DML_OUTPUT_GRAPH_EDGE_DESC maskIndexOutputEdge = {};

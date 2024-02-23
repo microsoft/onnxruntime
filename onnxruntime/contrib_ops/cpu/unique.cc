@@ -38,9 +38,9 @@ Status Unique<float>::Compute(OpKernelContext* ctx) const {
   int64_t* output_idx_data = output_idx->MutableData<int64_t>();
 
   struct ElementData {
-    int64_t input_pos_; // original index
+    int64_t input_pos_;  // original index
     int64_t output_pos_;
-    int64_t count_; // number of times encountered
+    int64_t count_;  // number of times encountered
   };
 
   // XXX: Refactoring for less memory allocations. unordered_map

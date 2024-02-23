@@ -13,10 +13,10 @@ namespace cuda {
 template <typename T>
 void EyeLikeImpl(
     cudaStream_t stream,
-    size_t offset,                  // offset of first element in diagnal
-    size_t stripe,                  // stripe, here it's width + 1
-    T* output_data,                 // output buffer
-    size_t diag_count               // total number of elements in diagnal
+    size_t offset,     // offset of first element in diagnal
+    size_t stripe,     // stripe, here it's width + 1
+    T* output_data,    // output buffer
+    size_t diag_count  // total number of elements in diagnal
 );
 
 }  // namespace cuda

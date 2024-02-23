@@ -13,6 +13,16 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
+typedef std::vector<PyObject*> (*CustomFunctionRunnerType)(const char* func_name_char,
+                                                           void* callback,
+                                                           const std::vector<int64_t>& requires_grads,
+                                                           const std::vector<int64_t>& tensor_type_flags,
+                                                           const bool is_training_mode,
+                                                           const std::vector<int64_t>& inplace_map,
+                                                           const char* kernel_invoke_id_char,
+                                                           const bool safe_run_mode_enabled,
+                                                           const std::vector<PyObject*>& tensor_args);
+
 class OrtTorchFunctionPool final {
  public:
   static OrtTorchFunctionPool& GetInstance() {
@@ -34,6 +44,27 @@ class OrtTorchFunctionPool final {
   //  2. Caller of GetBackwardCore should not decrease the reference count of the returned object.
   PyObject* GetBackwardCore(const std::string& key);  // The "key" is the "name" attribute in PythonOpGrad.
 
+  // Return a borrowed reference to the stored Python function running in safe mode.
+  PyObject* GetUnsafeForwardCore(const std::string& key);  // The "key" is the "name" attribute in PythonOp.
+
+  // Shape inference function is used to infer output shape of a PythonOp.
+  void RegisterShapeInferenceFunction(const std::string& key, PyObject* obj);
+  // Return a borrowed reference to the stored Python function, if it exists; otherwise, return nullptr.
+  std::optional<PyObject*> TryGettingShapeInferenceFunction(const std::string& key);
+
+  // Input alias function is used to infer memory reuse map of a PythonOp.
+  void RegisterInputAliasFunction(const std::string& key, PyObject* obj);
+  // Return a borrowed reference to the stored Python function, if it exists; otherwise, return nullptr.
+  std::optional<PyObject*> TryGettingInputAliasFunction(const std::string& key);
+
+  // Autograd function may take input of "non-tensor && non int/float && non int/float tuple" types.
+  // While PythonOp running requires those inputs be there otherwise kernel execution will fail.
+  // So during model exporting, we need register those input with this API, then a ref cnt is increased by 1,
+  // they will not be released until OrtTorchFunctionPool is destroyed.
+  // We also trying to release those registration in 'UnRegisterFunctions' to avoid the issues of python program
+  // exits before we de-crease ref cnt for the already release python object.
+  void RegisterMiscellaneousConstInput(PyObject* obj);
+
   // Context is torch backward gradient function pointer, and
   // it is a property of forward run outputs (tensors), its lifecycle
   // is along with forward run outputs in PyTorch design.
@@ -49,15 +80,15 @@ class OrtTorchFunctionPool final {
   // ForwardRunner/BackwardRunner are "glue" codes written in Python that interacting
   // with C++ kernels during Python function invoking.
   // This function creates new ownership to "obj".
-  void RegisterForwardRunner(PyObject* obj);
+  void RegisterForwardRunner(size_t function_address);
   // This function creates new ownership to "obj".
-  void RegisterBackwardRunner(PyObject* obj);
-  // Return a borrowed reference to a Python function, which
+  void RegisterBackwardRunner(size_t function_address);
+  // Return a borrowed reference to a c++ function, which
   // is responsible for executing autograd.Function.apply.
-  PyObject* GetForwardRunner();
-  // Return a borrowed reference to a Python function, which
+  CustomFunctionRunnerType GetForwardRunner();
+  // Return a borrowed reference to a c++ function, which
   // is responsible for executing autograd.Function.apply.
-  PyObject* GetBackwardRunner();
+  CustomFunctionRunnerType GetBackwardRunner();
 
   // The reason we provide this unregister api is:
   //   A static OrtTorchFunctionPool instance will be destructed after
@@ -76,11 +107,19 @@ class OrtTorchFunctionPool final {
   OrtTorchFunctionPool(){};
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTorchFunctionPool);
 
-  PythonObjectPtr forward_runner_;
-  PythonObjectPtr backward_runner_;
+  void UnRegisterGlobalFunctions();
+  void UnRegisterModelSpecificFunctions();
+
+  CustomFunctionRunnerType forward_runner_;
+  CustomFunctionRunnerType backward_runner_;
 
   std::unordered_map<std::string, PythonObjectPtr> forward_core_pool_;
   std::unordered_map<std::string, PythonObjectPtr> backward_core_pool_;
+  std::unordered_map<std::string, PythonObjectPtr> unsafe_forward_core_pool_;
+  std::unordered_map<std::string, PythonObjectPtr> shape_inference_function_pool_;
+  std::unordered_map<std::string, PythonObjectPtr> input_alias_function_pool_;
+
+  std::unordered_map<std::string, PythonObjectPtr> miscellaneous_const_input_pool_;
   std::unordered_map<int64_t, PythonObjectPtr> func_context_pool_;
 
   std::mutex mutex_;

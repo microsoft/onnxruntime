@@ -130,7 +130,7 @@ class TrainingRunner {
     VectorString histogram_names;
     VectorString norm_names;
 
-    //Default value is -1.0f. When gpu_mem_limit_in_gb < 0, ORT can use all cuda memory available.
+    // Default value is -1.0f. When gpu_mem_limit_in_gb < 0, ORT can use all cuda memory available.
     float gpu_mem_limit_in_gb = -1.0f;
 
     bool EnableTensorboard() const {
@@ -247,7 +247,7 @@ class TrainingRunner {
                         size_t& gradient_accumulation_step_count);
   void CheckWorkerException(const std::exception_ptr& p);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
-    const MapStringToString& mapped_dimensions);
+                      const MapStringToString& mapped_dimensions);
   Status Evaluate(TrainingSession& session, IDataLoader& data_loader);
 
   Status SaveCheckpoint(const PathString& checkpoint_path);

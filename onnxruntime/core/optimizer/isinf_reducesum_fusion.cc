@@ -45,7 +45,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     // This Cast can be skipped as we are replacing the subgraph with IsAllFinite, which supports FP16
     auto cast1_node_iter = isinf_node.InputNodesBegin();
     if (cast1_node_iter != isinf_node.InputNodesEnd() &&
-        graph_utils::IsSupportedOptypeVersionAndDomain(*cast1_node_iter, "Cast", {9, 13}) &&
+        graph_utils::IsSupportedOptypeVersionAndDomain(*cast1_node_iter, "Cast", {9, 13, 19}) &&
         cast1_node_iter->GetOutputEdgesCount() == 1) {
       // check input type of cast node
       Node& cast1_node = *graph.GetNode(cast1_node_iter->Index());
@@ -65,7 +65,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     Node& cast2_node = *graph.GetNode(cast2_node_itr->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast2_node, "Cast", {9, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast2_node, "Cast", {9, 13, 19}) ||
         cast2_node.GetOutputEdgesCount() != 1 ||
         graph.NodeProducesGraphOutput(cast2_node)) {
       continue;

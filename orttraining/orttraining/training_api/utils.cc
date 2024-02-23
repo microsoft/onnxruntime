@@ -19,9 +19,9 @@ namespace utils {
 const std::vector<std::string> GRAD_SUFFIX{"_grad.accumulation.buffer", "_grad", "_grad.accumulation.out"};
 
 void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
-                              std::vector<std::string>& input_names,
-                              std::vector<std::string>& output_names) {
-  auto get_names = [](const std::vector<const NodeArg*>* node_args, std::vector<std::string>& names) {
+                              InlinedVector<std::string>& input_names,
+                              InlinedVector<std::string>& output_names) {
+  auto get_names = [](const std::vector<const NodeArg*>* node_args, InlinedVector<std::string>& names) {
     ORT_ENFORCE(nullptr != node_args);
     for (const auto* arg : *node_args) {
       names.push_back(arg->Name());
@@ -57,7 +57,7 @@ bool GetParamNameFromGradient(const std::string& grad_name, std::string& param_n
   return false;
 }
 
-Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val) {
+Status CreateZeroValuedOrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val) {
   const auto& param_tensor = input_val.template Get<Tensor>();
   const TensorShape& shape = param_tensor.Shape();
   auto& tensor_location = param_tensor.Location();

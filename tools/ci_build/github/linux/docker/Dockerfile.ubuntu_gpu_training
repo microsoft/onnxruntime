@@ -1,8 +1,8 @@
-ARG BASEIMAGE=nvcr.io/nvidia/cuda:11.6.2-cudnn8-devel-ubuntu18.04
+ARG BASEIMAGE=nvcr.io/nvidia/cuda:11.8.0-cudnn8-devel-ubuntu18.04
 
 FROM $BASEIMAGE
 
-ARG PYTHON_VERSION=3.6
+ARG PYTHON_VERSION=3.9
 ARG INSTALL_DEPS_EXTRA_ARGS
 ARG USE_CONDA=false
 

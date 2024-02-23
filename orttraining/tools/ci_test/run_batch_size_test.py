@@ -4,9 +4,9 @@
 
 import argparse
 import collections
+import os
 import subprocess
 import sys
-import os
 
 
 def parse_args():
@@ -56,7 +56,7 @@ def main():
     configs["MI100_32G"] = [
         Config(True, 128, 192, 20, ""),
         Config(True, 512, 26, 80, ""),
-        Config(False, 128, 108, 20, ""),
+        Config(False, 128, 106, 20, ""),
         Config(False, 512, 16, 80, ""),
     ]
 
@@ -108,7 +108,7 @@ def main():
         if config.enable_mixed_precision:
             cmds.append("--use_mixed_precision"),
 
-        subprocess.run(cmds, timeout=120).check_returncode()
+        subprocess.run(cmds, timeout=120).check_returncode()  # noqa: PLW1510
 
     return 0
 

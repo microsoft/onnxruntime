@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="onnxruntime::MLFloat16">
+    <Intrinsic Name="_negative" Expression="(val &amp; 0x8000) == 1"/>
+    <Intrinsic Name="_strip_sign" Expression="(val &amp; ~0x8000)"/>
+    <Intrinsic Name="_is_nan" Expression="(_strip_sign() &gt; 0x7C00)"/>
+    <Intrinsic Name="_is_finite" Expression="(_strip_sign() &lt; 0x7C00)"/>
+    <Intrinsic Name="_is_normal" Expression="(_is_finite() &amp;&amp; (val != 0)) &amp;&amp; ((val &amp; 0x7C00) != 0)"/>
+    <Intrinsic Name="_biased_exponent" Expression="(val &gt;&gt; 10) &amp; (0x7C00 &gt;&gt; 10)"/>
+    <Intrinsic Name="_exponent" Expression="(int16_t)(_biased_exponent() - 15)"/>
+    <Intrinsic Name="_significand" Expression="(val &amp; 0x03FF)"/>
+    <DisplayString>{{val={ val }}}</DisplayString>
+    <Expand>
+      <Item Name="[Negative]" ExcludeView="simple">_negative()</Item>
+      <Item Name="[IsNan]" ExcludeView="simple" Condition="_is_nan()">true</Item>
+      <Item Name="[IsFinite]" ExcludeView="simple">_is_finite()</Item>
+      <Item Name="[IsNormal]" ExcludeView="simple">_is_normal()</Item>
+      <Item Name="[uint16_t]" ExcludeView="simple">val</Item>
+      <Item Name="[Exponent]" ExcludeView="simple">_exponent()</Item>
+      <Item Name="[Biased Exponent]" ExcludeView="simple">_biased_exponent()</Item>
+      <Item Name="[Significand]" ExcludeView="simple">_significand()</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="onnxruntime::BFloat16">
+    <Intrinsic Name="_negative" Expression="(val &amp; 0x8000) == 1"/>
+    <Intrinsic Name="_strip_sign" Expression="(val &amp; ~0x8000)"/>
+    <Intrinsic Name="_is_nan" Expression="(_strip_sign() &gt; 0x7F80)"/>
+    <Intrinsic Name="_is_finite" Expression="(_strip_sign() &lt; 0x7F80)"/>
+    <Intrinsic Name="_is_normal" Expression="(_is_finite() &amp;&amp; (val != 0)) &amp;&amp; ((val &amp; 0x7F80) != 0)"/>
+    <Intrinsic Name="_biased_exponent" Expression="(val &gt;&gt; 7) &amp; (0x7F80 &gt;&gt; 7)"/>
+    <Intrinsic Name="_exponent" Expression="(int16_t)(_biased_exponent() - 127)"/>
+    <Intrinsic Name="_significand" Expression="(val &amp; 0x007F)"/>
+    <DisplayString>{{val={ val }}}</DisplayString>
+    <Expand>
+      <Item Name="[Negative]" ExcludeView="simple">_negative()</Item>
+      <Item Name="[IsNormal]" ExcludeView="simple">_is_normal()</Item>
+      <Item Name="[IsNan]" ExcludeView="simple" Condition="_is_nan()">true</Item>
+      <Item Name="[IsFinite]" ExcludeView="simple">_is_finite()</Item>
+      <Item Name="[uint16_t]" ExcludeView="simple">val</Item>
+      <Item Name="[Exponent]" ExcludeView="simple">_exponent()</Item>
+      <Item Name="[Biased Exponent]" ExcludeView="simple">_biased_exponent()</Item>
+      <Item Name="[Significand]" ExcludeView="simple">_significand()</Item>
+    </Expand>
+  </Type>
+</AutoVisualizer>

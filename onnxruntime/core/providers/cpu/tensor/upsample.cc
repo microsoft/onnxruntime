@@ -83,7 +83,7 @@ static std::vector<int64_t> UpsampleNearestSetupRank1InputMapping(
       if (input_dim0_idx < 0) input_dim0_idx = 0;
     }
 
-    input_mapping[narrow<size_t>(output_dim0_idx)]= input_dim0_idx;
+    input_mapping[narrow<size_t>(output_dim0_idx)] = input_dim0_idx;
   }
 
   return input_mapping;
@@ -170,7 +170,7 @@ static Status UpsampleNearestImpl(const T* input,
 
     for (int64_t output_dim0_idx = 0; output_dim0_idx < output_shape[0]; output_dim0_idx++) {
       int64_t input_dim0_idx = input_mapping[narrow<size_t>(output_dim0_idx)];
-      output[narrow<size_t>(output_dim0_idx)]= input_dim0_idx < 0 ? extrapolation_value : input[input_dim0_idx];
+      output[narrow<size_t>(output_dim0_idx)] = input_dim0_idx < 0 ? extrapolation_value : input[input_dim0_idx];
     }
 
     return Status::OK();
@@ -670,7 +670,7 @@ static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
   // pixel value in the output
   // (cache because we don't have to re-compute each time we come across the output width/output height value
   // while iterating the output image tensor
-  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) *
+  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float) *
                                       (output_depth + output_height + output_width);
 
   // Limit number of allocations to just 1

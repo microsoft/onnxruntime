@@ -41,8 +41,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& info)
     : CudaKernel(info), LongformerAttentionBase(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
   const cublasLtOrder_t InputOrders[2] = {CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_COL32};
   const cublasLtOrder_t weight_tiles_for_input_col32[2] = {CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4};
@@ -68,18 +66,10 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
   order_output_ = GetCublasLtOrderAttr(
       info, "order_output", 1, (const cublasLtOrder_t*)&order_input_,
       "QOrderedLongformerAttention: oder_output must be same as order_input");
-
-#else
-
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 }
 
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(4);
@@ -158,7 +148,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   int k = hidden_size;
 
   size_t qkv_count = (size_t)m * (size_t)n;
-  size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
+  size_t qkv_size = (size_t)batch_size * sequence_length * 3 * hidden_size * element_size;
   // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
   // TODO(tianleiwu): compact global_q only need batch_size * window * hidden_size * element_size buffer size.
   size_t qkv_3 = qkv_size + qkv_size + 2 * qkv_count * sizeof(int8_t);
@@ -263,13 +253,6 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), context->GetComputeStream());
-
-#else
-
-  ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 
   return Status::OK();
 }

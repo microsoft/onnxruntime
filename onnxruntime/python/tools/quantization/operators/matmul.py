@@ -1,4 +1,5 @@
 import itertools
+import logging
 
 import onnx
 from onnx import onnx_pb as onnx_proto
@@ -14,17 +15,19 @@ class QOpMatMul(QuantOperatorBase):
 
     def should_quantize(self):
         if not self.quantizer.should_quantize_node(self.node):
+            logging.debug(f"Ignore MatMul {self.node.name}]")
             return False
 
         if (not self.quantizer.is_float_tensor(self.node.input[1])) and (
             not self.quantizer.is_float_tensor(self.node.input[0])
         ):
+            logging.info(f"Ignore MatMul due to non float inputs {self.node.name}]")
             return False
 
         # do not quantize non-constant B matrices for matmul
         if self.quantizer.q_matmul_const_b_only:
             if not self.quantizer.find_initializer_in_path(self.node.input[1]):
-                print("Ignore MatMul due to non constant B: {}[{}]".format(self.quantizer.graph_scope, self.node.name))
+                logging.info(f"Ignore MatMul due to non constant B: {self.quantizer.graph_scope}[{self.node.name}]")
                 return False
         return True
 
@@ -61,7 +64,7 @@ class MatMulInteger(QOpMatMul):
         nodes.extend(nodes_weight)
 
         matmul_integer_output = node.output[0] + "_output_quantized"
-        matmul_integer_name = node.name + "_quant" if node.name != "" else ""
+        matmul_integer_name = node.name + "_quant" if node.name else ""
         matmul_integer_node = onnx.helper.make_node(
             "MatMulInteger",
             quantized_input_names + zero_point_names,
@@ -72,12 +75,13 @@ class MatMulInteger(QOpMatMul):
 
         # Add cast operation to cast matmulInteger output to float.
         cast_op_output = matmul_integer_output + "_cast_output"
+        otype = self.quantizer.get_tensor_type(node.output[0], mandatory=True)
         cast_node = onnx.helper.make_node(
             "Cast",
             [matmul_integer_output],
             [cast_op_output],
             matmul_integer_output + "_cast",
-            to=onnx_proto.TensorProto.FLOAT,
+            to=otype,
         )
         nodes.append(cast_node)
 
@@ -85,7 +89,7 @@ class MatMulInteger(QOpMatMul):
         assert len(scale_names) == 2
         scales_mul_op = (
             matmul_integer_name + "_scales_mul"
-            if matmul_integer_name != ""
+            if matmul_integer_name
             else scale_names[0] + "_" + scale_names[1] + "_mul"
         )
 
@@ -99,7 +103,7 @@ class MatMulInteger(QOpMatMul):
         # Add mul operation to multiply mul_scales_op result with output of MatMulInteger
         # and make the output of this node the same as output of original matmul node.
         output_scale_mul_op = ""
-        if matmul_integer_name != "":
+        if matmul_integer_name:
             output_scale_mul_op = matmul_integer_name + "_output_scale_mul"
         nodes.append(
             get_mul_node(
@@ -153,7 +157,7 @@ class QLinearMatMul(QOpMatMul):
             return super().quantize()
 
         qlinear_matmul_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_matmul_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_matmul_name = node.name + "_quant" if node.name else ""
 
         qlinear_matmul_inputs = []
         # Input 0
@@ -168,11 +172,23 @@ class QLinearMatMul(QOpMatMul):
         qlinear_matmul_inputs.append(output_scale_name)
         qlinear_matmul_inputs.append(output_zp_name)
 
+        domain = (
+            "com.microsoft"
+            if self.quantizer.weight_qType
+            in {
+                onnx_proto.TensorProto.FLOAT8E4M3FN,
+                onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
+                onnx_proto.TensorProto.FLOAT8E5M2,
+                onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
+            }
+            else ""
+        )
         qlinear_matmul_node = onnx.helper.make_node(
             "QLinearMatMul",
             qlinear_matmul_inputs,
             [qlinear_matmul_output],
             qlinear_matmul_name,
+            domain=domain,
         )
         nodes.append(qlinear_matmul_node)
 

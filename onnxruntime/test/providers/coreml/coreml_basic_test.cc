@@ -8,9 +8,10 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/current_test_name.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
-#include "test/util/include/test/test_environment.h"
+#include "test/util/include/test_environment.h"
 #include "test/util/include/test_utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -21,7 +22,6 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
@@ -30,6 +30,10 @@ namespace test {
 
 // We want to run UT on CPU only to get output value without losing precision to pass the verification
 static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
+
+static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(uint32_t flags = s_coreml_flags) {
+  return std::make_unique<CoreMLExecutionProvider>(flags);
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -76,14 +80,12 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
 
-  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
-                       dims_mul_x, values_mul_x, &ml_value_x);
+  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
-                       dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
-                       dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_z);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -91,17 +93,10 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Z", ml_value_z));
 
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            MakeCoreMLExecutionProvider(),
                             feeds);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
-      << "Some nodes should have been taken by the CoreML EP";
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
 #endif
 }
 
@@ -117,25 +112,58 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-
-  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
-                       dims_mul_x, values_mul_x, &ml_value_x);
+  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            MakeCoreMLExecutionProvider(),
                             feeds);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
-      << "Some nodes should have been taken by the CoreML EP";
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherWithScalarIndices) {
+  // For scalar inputs, the input shape is modified from [] -> [1] before passing the input to CoreML.
+  // This won't work for Gather because the output shape depends on the `indices` input shape which could be a scalar.
+  // Currently, we expect the CoreML EP to only take the Shape node in this graph (Gather -> Shape).
+  const auto model_file_name = ORT_TSTR("testdata/gather_with_scalar_indices_then_shape.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> X_shape = {5, 3, 4};
+  std::vector<float> X_data = gen.Uniform<float>(X_shape, 0.0f, 1.0f);
+  OrtValue X = CreateInputOrtValueOnCPU<float>(X_shape, X_data);
+  OrtValue indices = CreateInputOrtValueOnCPU<int64_t>(AsSpan<int64_t>({}), AsSpan<int64_t>({1}));
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            {{"X", X}, {"indices", indices}});
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, ShapeThenSliceAndGather) {
+  // This is a simple test model that provides the output of Shape to Slice and Gather.
+  // We expect the CoreML EP to support shape manipulations like this.
+  const auto model_file_name = ORT_TSTR("testdata/shape_then_slice_and_gather.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> X_shape = {5, 3, 4, 1, 2};
+  std::vector<float> X_data = gen.Uniform<float>(X_shape, 0.0f, 1.0f);
+  OrtValue X = CreateInputOrtValueOnCPU<float>(X_shape, X_data);
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            {{"X", X}},
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
 #endif
 }
 
@@ -151,23 +179,16 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
   std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, data, &ml_value);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("Input3", ml_value));
 
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.TestOrtFormatModel",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            MakeCoreMLExecutionProvider(),
                             feeds);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
-      << "Some nodes should have been taken by the CoreML EP";
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
 #endif
 }
 

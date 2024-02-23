@@ -1,5 +1,7 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-
+#include "core/framework/tensor_shape.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
 #include "gsl/gsl"
@@ -37,8 +39,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())
         .InputMemoryType(OrtMemTypeCPUInput, 1),  // scale_A
     DequantizeWithOrder);
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 void UpdateTileRequire(cublasLtOrder_t order, int64_t& row_tile, int64_t& col_tile) {
   switch (order) {
@@ -91,11 +91,7 @@ cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order
   return order;
 }
 
-#endif
-
 QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
   ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
@@ -104,17 +100,9 @@ QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
   ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_ROW,
               "Only CUBLASLT_ORDER_ROW is supported for order_input");
-
-#else
-
-  ORT_UNUSED_PARAMETER(info);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 }
 
 DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
   ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
@@ -130,18 +118,9 @@ DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(
               "Only CUBLASLT_ORDER_ROW are supported for order_output");
   ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32 || order_input_ == CUBLASLT_ORDER_ROW,
               "Only CUBLASLT_ORDER_COL32 or CUBLASLT_ORDER_ROW is supported for order_input");
-#else
-
-  ORT_UNUSED_PARAMETER(info);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
-
 }
 
 Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
   const Tensor& input_tensor = *context->Input<Tensor>(0);
   ORT_RETURN_IF_ERROR(CheckTensorOrder(
@@ -180,18 +159,9 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   }
 
   return Status::OK();
-
-#else
-
-  ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 }
 
 Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 
   const Tensor& input_tensor = *context->Input<Tensor>(0);
@@ -225,13 +195,6 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   }
 
   return Status::OK();
-
-#else
-
-  ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 }
 
 }  // namespace cuda

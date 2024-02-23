@@ -4,6 +4,7 @@
 #pragma once
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlEdgeShapes.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/tensorprotoutils.h"
@@ -35,21 +36,29 @@ bool InputTensorShapesDefinedOnNode(const onnxruntime::OpNodeProtoHelper<T>& nod
 
     for (uint32_t inputIndex = 0; inputIndex < inputCount; ++inputIndex)
     {
-        if (nodeInfo.GetInputType(inputIndex) && (nodeInfo.GetInputType(inputIndex)->value_case() == onnx::TypeProto::kTensorType))
+        auto input = nodeInfo.GetInputType(inputIndex);
+        if (input)
         {
-            if (!nodeInfo.GetInputType(inputIndex)->tensor_type().has_shape())
+            if (input->value_case() == onnx::TypeProto::kTensorType)
             {
-                return false;
-            }
-
-            const auto& shape = nodeInfo.GetInputType(inputIndex)->tensor_type().shape();
-
-            for (int input_dim = 0; input_dim < shape.dim_size(); ++input_dim)
-            {
-                if (!shape.dim(input_dim).has_dim_value())
+                if (!input->tensor_type().has_shape())
                 {
                     return false;
                 }
+
+                const auto& shape = input->tensor_type().shape();
+
+                for (int input_dim = 0; input_dim < shape.dim_size(); ++input_dim)
+                {
+                    if (!shape.dim(input_dim).has_dim_value())
+                    {
+                        return false;
+                    }
+                }
+            }
+            else if (input->value_case() == onnx::TypeProto::kSequenceType)
+            {
+                return false;
             }
         }
     }
@@ -84,42 +93,6 @@ public:
 };
 
 using AttributeMap = std::map<std::string, AttributeValue>;
-
-// Encapsulation of shapes across different edges of an operator.    Non-tensor
-// edges and unused edges have an empty array of dimensions.
-class EdgeShapes
-{
-public:
-    EdgeShapes() = default;
-
-    EdgeShapes(size_t count) : m_shapes(count) {}
-
-    const std::vector<uint32_t>& GetShape(size_t edgeIndex) const
-    {
-        return m_shapes[edgeIndex];
-    }
-
-    std::vector<uint32_t>& GetMutableShape(size_t edgeIndex)
-    {
-        return m_shapes[edgeIndex];
-    }
-
-    size_t EdgeCount() const { return m_shapes.size(); }
-
-    void Reset(size_t edge_count)
-    {
-        m_shapes.clear();
-        m_shapes.resize(edge_count);
-    }
-
-    bool operator!=(const EdgeShapes& other) const noexcept
-    {
-        return (m_shapes != other.m_shapes);
-    }
-
- private:
-    std::vector<std::vector<uint32_t>> m_shapes;
-};
 
 // Base class for ABI objects which may be "Closed", at which point calls will predictably
 // fail or return a dummy value.  This is used for transient ABI context objects which
@@ -164,9 +137,11 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         const EdgeShapes* inputShapesOverride,
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
-        MLOperatorTensorGetter& constantInputGetter
+        MLOperatorTensorGetter& constantInputGetter,
+        const onnxruntime::OpKernelContext* kernelContext = nullptr
         )
     :   m_impl(impl),
+        m_kernelContext(kernelContext),
         m_inputShapesOverride(inputShapesOverride),
         m_constantInputGetter(constantInputGetter),
         m_defaultAttributes(defaultAttributes)
@@ -217,6 +192,10 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
     HRESULT STDMETHODCALLTYPE GetInputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept;
     HRESULT STDMETHODCALLTYPE GetInputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept;
 
+    HRESULT STDMETHODCALLTYPE GetSequenceInputInfo(uint32_t inputIndex, uint32_t* inputCount, MLOperatorTensorDataType* dataType) const noexcept;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t* dimensionCount) const noexcept;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept;
+
     bool STDMETHODCALLTYPE IsInputValid(uint32_t inputIndex) const noexcept override;
     bool STDMETHODCALLTYPE IsOutputValid(uint32_t outputIndex) const noexcept override;
 
@@ -225,9 +204,15 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept;
 
+    HRESULT STDMETHODCALLTYPE TryGetConstantInputTensor(
+        uint32_t inputIndex,
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept;
+
  protected:
     // Lifetime is managed by the caller and guaranteed to outlive this class
     const onnxruntime::OpNodeProtoHelper<NodeInfoImpl_t>* m_impl = nullptr;
+    const onnxruntime::OpKernelContext* m_kernelContext = nullptr;
 
  private:
     template <MLOperatorAttributeType T>
@@ -319,9 +304,12 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
     const onnxruntime::Tensor* GetInterface() const { return nullptr; }
     onnxruntime::Tensor* GetInterface() { return nullptr; }
 
+    size_t GetTensorByteSize() const { return m_tensorByteSize; }
+
  private:
     size_t m_tensorByteSize = 0;
     std::unique_ptr<std::byte[]> m_unpackedTensor;
+    std::vector<uint8_t> m_unpackedExternalTensor;
     std::byte* m_dataPtr = nullptr;
 
     // Lifetime is managed by the caller and guaranteed to outlive this class
@@ -331,8 +319,8 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
 class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
-        Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
-        IMLOperatorTensorShapeDescription, IMLOperatorAttributes1>,
+        Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextNodeWrapperPrivate, IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
+        IMLOperatorTensorShapeDescription, IMLOperatorTensorShapeDescriptionPrivate, IMLOperatorAttributes1>,
     onnxruntime::null_type>
 {
  public:
@@ -346,7 +334,8 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         bool isInternalOperator,
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
-        MLOperatorTensorGetter& constantInputGetter
+        MLOperatorTensorGetter& constantInputGetter,
+        const onnxruntime::OpKernelContext* kernelContext = nullptr
     );
 
     // HasTensorShapeDescription returns false if and only if the kernel is registered using
@@ -374,6 +363,21 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         return E_NOTIMPL;
     }
 
+    // IMLOperatorKernelCreationContextNodeWrapperPrivate methods.
+
+    uint32_t STDMETHODCALLTYPE GetUtf8NameBufferSizeInBytes() const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetUtf8Name(uint32_t bufferSizeInBytes, char* name) const noexcept override;
+
+    uint32_t STDMETHODCALLTYPE GetWideNameBufferSizeInBytes() const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetWideName(uint32_t bufferSizeInBytes, wchar_t* name) const noexcept override;
+
+    HRESULT STDMETHODCALLTYPE GetExecutionProvider(
+        _Outptr_result_maybenull_ IUnknown** executionProvider
+        ) const noexcept override
+    {
+        return m_winmlProvider.CopyTo(executionProvider);
+    }
+
 private:
     // For shape info, in addition to the info
     const EdgeShapes* m_inferredOutputShapes = nullptr;
@@ -395,7 +399,7 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
         Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
-        IMLOperatorTensorShapeDescription, IMLOperatorAttributes1>,
+        IMLOperatorTensorShapeDescription, IMLOperatorTensorShapeDescriptionPrivate, IMLOperatorAttributes1>,
     onnxruntime::null_type>
 {
  public:
@@ -403,6 +407,7 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
         const onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> * protoHelper,
         const void* executionHandle,
         bool isInternalOperator,
+        const EdgeShapes* inputShapesOverrides,
         const EdgeShapes* inferredOutputShapes,
         const AttributeMap* defaultAttributes,
         DmlGraphNodeCreateInfo* graphNodeCreateInfo,
@@ -441,18 +446,36 @@ private:
     DmlGraphNodeCreateInfo* m_graphNodeCreateInfo = nullptr;
 };
 
-class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, public Closable
+class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOperatorKernelContextPrivate>, public Closable
 {
  public:
     ~OpKernelContextWrapper();
 
     OpKernelContextWrapper(onnxruntime::OpKernelContext* context, const onnxruntime::IExecutionProvider* provider, bool isInternalOperator, const EdgeShapes* outputShapes);
 
+    bool STDMETHODCALLTYPE IsSequenceInputTensor(uint32_t inputIndex) const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputInfo(uint32_t inputIndex, uint32_t* inputCount, MLOperatorTensorDataType* dataType) const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex, IMLOperatorTensor** tensor) const noexcept override;
+
+    HRESULT STDMETHODCALLTYPE PrepareSequenceOutput(
+        uint32_t outputIndex,
+        MLOperatorTensorDataType dataType) const noexcept override;
+
+    HRESULT STDMETHODCALLTYPE GetSequenceOutputTensor(
+        uint32_t outputIndex,
+        uint32_t sequenceIndex,
+        MLOperatorTensorDataType dataType,
+        uint32_t dimensions,
+        const uint32_t* dimensionSizes,
+        bool gpuOutput,
+        IMLOperatorTensor** tensor) const noexcept override;
+
     HRESULT STDMETHODCALLTYPE GetInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept override;
+
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, IMLOperatorTensor** tensor) noexcept override;
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, uint32_t dimensions, const uint32_t* dimensionSizes, IMLOperatorTensor** tensor) noexcept override;
 
-    HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data) const;
+    HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data) const noexcept override;
     HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data, uint64_t* allocId) const;
 
     void STDMETHODCALLTYPE GetExecutionInterface(IUnknown** executionInterface) const noexcept override;
@@ -462,6 +485,8 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
     std::vector<IMLOperatorTensor*> GetInputTensors();
     std::vector<IMLOperatorTensor*> GetOutputTensors(const EdgeShapes& outputShapes);
 
+    onnxruntime::OpKernelContext* GetOpKernelContext() { return m_impl; }
+
  protected:
     void ClearTempAllocations();
     void TransitionResourcesForOperatorIfRequired(bool isBeforeOp);
@@ -470,8 +495,8 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
     onnxruntime::OpKernelContext* m_impl = nullptr;
     const EdgeShapes* m_outputShapes = nullptr;
 
-    std::vector<ComPtr<TensorWrapper>> m_inputTensors;
-    std::vector<ComPtr<TensorWrapper>> m_outputTensors;
+    std::vector<std::vector<ComPtr<TensorWrapper>>> m_inputTensors;
+    std::vector<std::vector<ComPtr<TensorWrapper>>> m_outputTensors;
 
     const onnxruntime::IExecutionProvider* m_provider = nullptr;
     ComPtr<IWinmlExecutionProvider> m_winmlProvider;
@@ -535,7 +560,7 @@ class AbiOpKernel : public onnxruntime::OpKernel
         std::vector<std::byte> data;
     };
 
-    mutable std::vector<TensorContent> m_constantInputTensorContentsOfKernel;
+    mutable std::vector<std::variant<TensorContent, std::vector<TensorContent>>> m_constantInputTensorContentsOfKernel;
 
     mutable std::mutex m_mutex;
     mutable EdgeShapes m_inferredOutputShapes;
@@ -550,6 +575,12 @@ class AbiOpKernel : public onnxruntime::OpKernel
     ComPtr<IUnknown> m_abiExecutionObject;
 
     const AttributeMap* m_defaultAttributes = nullptr;
+
+private:
+    bool RequiredCpuInputChanged(const ComPtr<IMLOperatorTensor>& constantTensor, uint32_t index) const;
+    bool RequiredCpuInputChanged(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensorSequence, uint32_t index) const;
+    void FillConstantInputs(const ComPtr<IMLOperatorTensor>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const;
+    void FillConstantInputs(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const;
 };
 
 class MLSchemaInferenceContext final : public OpNodeInfoWrapper<
@@ -642,7 +673,7 @@ class MLSupportQueryContext final : public OpNodeInfoWrapper<
     // TODO - ...
 };
 
-onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type);
+onnxruntime::MLDataType ToMLDataType(::MLOperatorEdgeType edgeType, ::MLOperatorTensorDataType type);
 std::string ToTypeString(MLOperatorEdgeDescription desc);
 onnx::AttributeProto_AttributeType ToProto(MLOperatorAttributeType type);
 

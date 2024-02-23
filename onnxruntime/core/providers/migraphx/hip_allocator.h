@@ -12,10 +12,10 @@ namespace onnxruntime {
 class HIPAllocator : public IAllocator {
  public:
   HIPAllocator(int device_id, const char* name)
-    : IAllocator(
-        OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
-                      device_id, OrtMemTypeDefault)) {}
+      : IAllocator(
+            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
+                          device_id, OrtMemTypeDefault)) {}
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
@@ -49,14 +49,14 @@ class HIPExternalAllocator : public HIPAllocator {
   std::unordered_set<void*> reserved_;
 };
 
-//TODO: add a default constructor
+// TODO: add a default constructor
 class HIPPinnedAllocator : public IAllocator {
  public:
   HIPPinnedAllocator(int device_id, const char* name)
-    : IAllocator(
-          OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
-                        device_id, OrtMemTypeCPUOutput)) {}
+      : IAllocator(
+            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
+                          device_id, OrtMemTypeCPUOutput)) {}
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;

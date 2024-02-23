@@ -13,8 +13,8 @@ namespace training {
 // Return the shape of a tensor slice.
 TensorShapeVector GetSliceShape(
     gsl::span<const int64_t> shape,  // before-slicing tensor shape
-    const size_t slice_axis,            // axis to slice along
-    const size_t num_slices) {          // number of slices along the slicing axis
+    const size_t slice_axis,         // axis to slice along
+    const size_t num_slices) {       // number of slices along the slicing axis
   ORT_ENFORCE(shape.size() > 0);
   ORT_ENFORCE(slice_axis < shape.size());
   ORT_ENFORCE(num_slices > 0);

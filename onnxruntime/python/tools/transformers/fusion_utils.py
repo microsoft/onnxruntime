@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy
 from numpy import array_equal, ndarray
@@ -28,22 +28,51 @@ class FusionUtils:
         logger.debug(f"Did not cast graph input {input_name} to int32: found {graph_input is not None}")
         return False, input_name
 
-    def cast_input_to_int32(self, input_name: str):
-        cast_output = input_name + "_int32"
+    def cast_input(self, input_name: str, target_type="int32"):
+        output_name = input_name + "_" + target_type
+
+        if target_type == "int32":
+            to_type = int(TensorProto.INT32)
+        elif target_type == "float32":
+            to_type = int(TensorProto.FLOAT)
+        elif target_type == "float16":
+            to_type = int(TensorProto.FLOAT16)
+        else:
+            raise ValueError("Invalid target_type: {target_type}")
+
+        cast_node = self.add_cast_node(input_name, to_type, output_name)
+
+        return output_name, cast_node
+
+    def add_cast_node(
+        self,
+        input_name: str,
+        to_type: int,
+        output_name: Optional[str] = None,
+        output_name_to_node=None,
+        graph_name: Optional[str] = None,
+    ):
+        if output_name is None:
+            output_name = input_name + f"_cast_to_{to_type}"
 
         # Avoid consequent Cast nodes.
         inputs = [input_name]
-        output_name_to_node = self.model.output_name_to_node()
+        if output_name_to_node is None:
+            output_name_to_node = self.model.output_name_to_node()
         if input_name in output_name_to_node:
             parent_node = output_name_to_node[input_name]
             if parent_node and parent_node.op_type == "Cast":
                 inputs = [parent_node.input[0]]
 
-        cast_node = helper.make_node("Cast", inputs=inputs, outputs=[cast_output])
-        cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.INT32))])
-        self.model.add_node(cast_node)
+        cast_node = helper.make_node("Cast", inputs=inputs, outputs=[output_name])
 
-        return cast_output, cast_node
+        cast_node.attribute.extend([helper.make_attribute("to", to_type)])
+        self.model.add_node(cast_node, graph_name=graph_name)
+
+        return cast_node
+
+    def cast_input_to_int32(self, input_name: str):
+        return self.cast_input(input_name, "int32")
 
     def remove_cast_int32(self, input_name: str):
         input_name_to_nodes = self.model.input_name_to_nodes()
@@ -59,6 +88,44 @@ class FusionUtils:
                     output_name = node.output[0]
                     self.model.remove_node(node)
                     self.model.replace_input_of_all_nodes(output_name, input_name)
+
+    @staticmethod
+    def update_node_input(node, i, new_input_name, input_name_to_nodes):
+        old_input_reference = 0
+        if (node.input[i] in input_name_to_nodes) and node in input_name_to_nodes[node.input[i]]:
+            input_name_to_nodes[node.input[i]].remove(node)
+            old_input_reference = len(input_name_to_nodes[node.input[i]])
+
+        node.input[i] = new_input_name
+
+        if new_input_name in input_name_to_nodes:
+            input_name_to_nodes[new_input_name].append(node)
+        else:
+            input_name_to_nodes[new_input_name] = [node]
+
+        return old_input_reference
+
+    @staticmethod
+    def skip_parent(model: OnnxModel, node, parent_node, input_name_to_nodes, node_input_index=0, parent_input_index=0):
+        """
+        Before:
+              (input)-->parent-->node-->(output)
+        After:
+              (input)-->parent-->
+                |
+                +----->node-->(output)
+
+        This function returns a flag whether the parent node can be removed.
+        """
+
+        old_input_name = node.input[node_input_index]
+        new_input_name = parent_node.input[parent_input_index]
+        old_input_reference = FusionUtils.update_node_input(node, node_input_index, new_input_name, input_name_to_nodes)
+
+        # We can remove the first Transpose if its output is not used (linked to graph output or other nodes) anymore.
+        parent_can_be_removed = (old_input_reference == 0) and not model.find_graph_output(old_input_name)
+
+        return parent_can_be_removed
 
     @staticmethod
     def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
@@ -79,9 +146,7 @@ class FusionUtils:
                 value = helper.get_attribute_value(attr)
 
         if isinstance(expected_value, list):
-            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value, equal_nan=False
-            )
+            return (isinstance(value, (ndarray, list))) and array_equal(expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
@@ -121,7 +186,7 @@ class FusionUtils:
         Returns:
             bool: whether the check is passed or not
         """
-        if not node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+        if node.op_type not in {"QuantizeLinear", "DequantizeLinear"}:
             logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
 
         scale = model.get_constant_value(node.input[1])
@@ -168,18 +233,17 @@ class FusionUtils:
         value = self.model.get_constant_value(node.input[input_index])
 
         if isinstance(expected_value, list):
-            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value, equal_nan=False
-            )
+            return (isinstance(value, (ndarray, list))) and array_equal(expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
     def remove_identity_nodes(self):
         """Remove Identity nodes, except those right before graph output."""
         nodes_to_remove = []
+        graph_output_names = self.model.get_graphs_output_names()
         for node in self.model.nodes():
             if node.op_type == "Identity":
-                if node.output[0] not in self.model.get_graphs_output_names():
+                if node.output[0] not in graph_output_names:
                     self.model.replace_input_of_all_nodes(node.output[0], node.input[0])
                     nodes_to_remove.append(node)
 
@@ -215,7 +279,10 @@ class FusionUtils:
             graph_output_names = set(self.model.get_graphs_output_names())
             for node in nodes_to_remove:
                 if bool(set(node.output) & graph_output_names):
-                    if not bool(set(node.input) & graph_input_names):
+                    if (
+                        not bool(set(node.input) & graph_input_names)
+                        and len(self.model.input_name_to_nodes()[node.input[0]]) == 1  # parent has only one child
+                    ):
                         self.model.replace_output_of_all_nodes(node.input[0], node.output[0])
                     else:
                         continue

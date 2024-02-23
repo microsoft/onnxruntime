@@ -1,13 +1,12 @@
 import argparse
-import sys
 import os
-
+import sys
 from concurrent.futures import ThreadPoolExecutor
-from requests import Session
-from threading import Event, Thread
+from threading import Event, Thread  # noqa: F401
 
-from azureml.core import Workspace, Experiment, Run
 from azureml._run_impl.run_watcher import RunWatcher
+from azureml.core import Experiment, Run, Workspace  # noqa: F401
+from requests import Session
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -41,7 +40,7 @@ experiment = Experiment(workspace=ws, name=args.experiment)
 runs = [r for r in experiment.get_runs()]
 
 if len(runs) == 0:
-    print("No runs found in Experiment '{}'".format(args.experiment))
+    print(f"No runs found in Experiment '{args.experiment}'")
     sys.exit()
 
 run = runs[0]
@@ -49,7 +48,7 @@ if args.run is not None:
     try:
         run = next(r for r in runs if r.id == args.run)
     except StopIteration:
-        print("Run id '{}' not found in Experiment '{}'".format(args.run, args.experiment))
+        print(f"Run id '{args.run}' not found in Experiment '{args.experiment}'")
         sys.exit()
 
 # Optionally start synchronizing files from Run

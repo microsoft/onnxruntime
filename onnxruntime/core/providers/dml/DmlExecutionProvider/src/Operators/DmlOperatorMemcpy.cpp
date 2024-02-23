@@ -6,6 +6,7 @@
 namespace Dml
 {
 
+template <bool gpuOutput>
 class DmlOperatorMemcpy : public DmlOperator
 {
 public:
@@ -16,24 +17,46 @@ public:
     {
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 1, "MemcpyFromHost/ToHost expects 1 input tensor.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "MemcpyFromHost/ToHost expects 1 output tensor.");
-
-        DmlOperator::Initialize(kernelCreationContext);
     }
 
     void Compute(const MLOperatorKernelContext& kernelContext)
     {
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensors(kernelContext);
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensors(kernelContext);
-        assert(inputTensors.size() == 1);
-        assert(outputTensors.size() == 1);
 
-        if (!OperatorHelper::ContainsEmptyDimensions(MLOperatorTensor(inputTensors.front()).GetShape()))
+        if (kernelContext.IsSequenceInputTensor(0))
         {
-            ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
-                outputTensors.front(),
-                inputTensors.front()
-                ));
+            auto dataType = kernelContext.GetSequenceInputDataType(0);
+            kernelContext.PrepareSequenceOutput(0, dataType);
+
+            const uint32_t numTensors = kernelContext.GetSequenceInputCount(0);
+            inputTensors.reserve(numTensors);
+
+            for (uint32_t sequenceIndex = 0; sequenceIndex < numTensors; ++sequenceIndex)
+            {
+                auto* inputTensor = kernelContext.GetSequenceInputTensor(0, sequenceIndex).GetInterface().Get();
+                const uint32_t dimCount = inputTensor->GetDimensionCount();
+
+                std::vector<uint32_t> dimensions(dimCount);
+                inputTensor->GetShape(dimCount, dimensions.data());
+
+                inputTensors.push_back(inputTensor);
+                outputTensors.push_back(kernelContext.GetSequenceOutputTensor(
+                    0,
+                    sequenceIndex,
+                    inputTensor->GetTensorDataType(),
+                    dimCount,
+                    dimensions.data(),
+                    gpuOutput).GetInterface().Get());
+            }
         }
+        else
+        {
+            inputTensors = { kernelContext.GetInputTensor(0).GetInterface().Get() };
+            outputTensors = { kernelContext.GetOutputTensor(0).GetInterface().Get() };
+        }
+
+        ORT_THROW_IF_FAILED(m_executionProvider->CopyTensors(outputTensors, inputTensors));
     }
 
 private:
@@ -41,7 +64,7 @@ private:
 
 // MemcpyToHost is a special case which is hardcoded in MLOperatorAuthorImpl.cpp. If name changes this must be updated.
 // Special case makes sure that the output resource is created using the CPU allocator.
-DML_OP_DEFINE_CREATION_FUNCTION(MemcpyFromHost, DmlOperatorMemcpy);
-DML_OP_DEFINE_CREATION_FUNCTION(MemcpyToHost, DmlOperatorMemcpy);
+DML_OP_DEFINE_CREATION_FUNCTION(MemcpyFromHost, DmlOperatorMemcpy<true>);
+DML_OP_DEFINE_CREATION_FUNCTION(MemcpyToHost, DmlOperatorMemcpy<false>);
 
 } // namespace Dml

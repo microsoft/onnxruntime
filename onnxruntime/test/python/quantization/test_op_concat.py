@@ -9,10 +9,10 @@ import unittest
 import numpy as np
 from onnx import TensorProto, helper, numpy_helper, save
 from op_test_utils import (
-    InputFeedsNegOneZeroOne,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
+    input_feeds_neg_one_zero_one,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
@@ -87,17 +87,17 @@ class TestConcatModel(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         save(model, model_path)
 
-    def quantize_concat_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_concat_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "concat_fp32.onnx"
         self.construct_model(model_fp32_path)
-        data_reader = InputFeedsNegOneZeroOne(1, {"input": [1, 3, 15, 15]})
+        data_reader = input_feeds_neg_one_zero_one(1, {"input": [1, 3, 15, 15]})
 
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_q8_path = "concat_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qdq_path = "concat_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
+        model_q8_path = f"concat_{activation_type_str}{weight_type_str}.onnx"
+        model_q8_qdq_path = f"concat_{activation_type_str}{weight_type_str}_qdq.onnx"
 
         # Verify QOperator mode
         data_reader.rewind()

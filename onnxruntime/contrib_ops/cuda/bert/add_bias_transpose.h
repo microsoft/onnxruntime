@@ -24,12 +24,16 @@ namespace cuda {
 // format 3: (requires sequence_length = kv_sequence_length and qk_head_size = v_head_size when num_matrices == 3)
 //     input:   (batch_size, sequence_length, num_matrices, num_heads, head_size)
 //     output:  (num_matrices, batch_size, sequence_length, num_heads, head_size)
+// format 4: (requires qk_head_size = v_head_size)
+//     input:   (batch_size, sequence_length, num_heads, num_matrices, head_size)
+//     output:  (num_matrices, batch_size, sequence_length, num_heads, head_size)
+
 template <typename T>
 void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const T* input, const T* biases, T* output, bool enable_half4, const int v_head_size, T* qkv_add_bias = nullptr,
-    int total_matrix_count = -1);
+    int total_matrix_count = -1, bool do_rotary = false, int rotary_embedding = 0, int past_sequence_length = 0);
 
 // Add (bias) and Transpose for separated inputs of Q, K and V, and output Trt format.
 // For self attention:

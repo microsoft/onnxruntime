@@ -29,9 +29,9 @@ class Gemm : protected GemmBase, public XnnpackKernel {
  private:
   const Tensor* B_{nullptr};
 
-  int64_t M_=-1;
-  int64_t K_=-1;
-  int64_t N_=-1;
+  int64_t M_ = -1;
+  int64_t K_ = -1;
+  int64_t N_ = -1;
 
   bool C_matrix_exists_;
 
@@ -41,14 +41,6 @@ class Gemm : protected GemmBase, public XnnpackKernel {
 
   float alpha_;
   float beta_;
-
-#ifdef XNN_CACHE_ENABLE
-#if XNN_PLATFORM_JIT
-  xnn_code_cache code_cache_;
-#endif
-  xnn_caches xnn_caches_ = {0, 0};
-  xnn_weights_cache weights_cache_;
-#endif
 };
 
 }  // namespace xnnpack

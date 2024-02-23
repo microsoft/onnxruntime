@@ -105,7 +105,9 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis2) {
   input.AddTensor({1, 2}, {2, 3});
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {1, 2, 2}, {0, 2, 1, 3});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "axis 2 is not in valid range [-2,1]");
+
+  // TODO: Unskip when fixed #41968513
+  test.Run(OpTester::ExpectResult::kExpectFailure, "axis 2 is not in valid range [-2,1]", {kDmlExecutionProvider});
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis1_WithEmptyInput) {
@@ -134,8 +136,11 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_ScalarInputs) {
   input.AddTensor({}, {3});
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {3}, {1, 2, 3});
+
+  // TODO: Unskip when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Cannot concatenate scalars");
+           "Cannot concatenate scalars",
+           {kDmlExecutionProvider});
 }
 
 }  // namespace test

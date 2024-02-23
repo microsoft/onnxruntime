@@ -32,7 +32,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
 
   test.AddInput<float>("X", {H, W}, X);
   test.AddInput<float>("roi", {4}, roi);
-  test.AddInput<float>("", {0}, scales); // opset13 requires either 'sizes' or 'scales' must be provided, but not both of them
+  test.AddInput<float>("", {0}, scales);  // opset13 requires either 'sizes' or 'scales' must be provided, but not both of them
   test.AddInput<int64_t>("sizes", {2}, sizes);
 
   std::vector<float> Y = {7.600004f, 7.9f, 8.2f,
@@ -96,9 +96,9 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
                           10.0f, 10.0f, 10.0f};
 
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  //CUDA: result mismatch due to not implementing NHWC support
-  //TensorRT: results mismatch
-  //ROCm: results mismatch
+  // CUDA: result mismatch due to not implementing NHWC support
+  // TensorRT: results mismatch
+  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
@@ -187,7 +187,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  // DML: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_int8) {
@@ -214,7 +215,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
                            0, 0, 0};
 
   test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  test.Run();
+  // DML: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
@@ -236,7 +238,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   std::vector<float> Y = {2.66666651f, 4.3333331f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
@@ -530,7 +532,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
   test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  // DML: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
@@ -558,7 +561,9 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
   std::vector<int8_t> Y = {0, 2, -9};
 
   test.AddOutput<int8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
+  // TensorRT: results mismatch
+  // DML: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
@@ -778,7 +783,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_pytorch_half_pixel) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -1494,7 +1499,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
   std::vector<float> Y = {1.0f, 2.66666651f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
@@ -1554,7 +1559,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
 }
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
@@ -1770,6 +1775,48 @@ TEST(ResizeOpTest, ResizeOpTypeCheck_Ver18) {
   ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(18);
 }
 
+TEST(ResizeOpTest, ResizeOpHalfPixelSymmetricDownSample_ver19) {
+  OpTester test("Resize", 19);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel_symmetric");
+
+  constexpr int64_t N = 1, C = 1, H = 1, W = 4;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  std::vector<float> roi{};
+  test.AddInput<float>("roi", {0}, roi);
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 0.6f};
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.666667f, 3.333333f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpHalfPixelSymmetricUpSample_ver19) {
+  OpTester test("Resize", 19);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel_symmetric");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  std::vector<float> roi{};
+  test.AddInput<float>("roi", {0}, roi);
+  std::vector<float> scales{1.0f, 1.0f, 2.3f, 2.94f};
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 1.159864f, 1.5f, 1.840136f, 2.0f,
+                          1.565217f, 1.725081f, 2.065217f, 2.405353f, 2.565217f,
+                          2.434782f, 2.594647f, 2.934783f, 3.274919f, 3.434783f,
+                          3.0f, 3.159864f, 3.5f, 3.840136f, 4.0f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
 /*
  * Most of TestCase against Anti-aliasing will have the attribute of "exclude_outside" as 1.
  * It's as Pillow 's Resize is corresponding to ONNX op with exclude_outside equaling 1.
@@ -1823,6 +1870,8 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
       test.AddAttribute<float>("extrapolation_value", std::stof(v));
     } else if (k == "roi") {
       roi = parse_attr(v, 0.0f);
+    } else if (k == "antialias") {
+      test.AddAttribute<int64_t>("antialias", std::stoll(v));
     } else {
       throw std::invalid_argument("Unknown attribute");
     }
@@ -1842,11 +1891,14 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
   }
 
   test.AddOutput<T>("Y", output_shape, output_data);
-  // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.  
+  // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because dml implementation of antialias is slightly different and doesn't match in all cases.";
+  }
   std::vector<float> X(16);
   std::iota(X.begin(), X.end(), 1.f);
 
@@ -1865,7 +1917,6 @@ TEST(ResizeOpTest, Antialias_Bilinear_ExcludeOutside) {
                           12.1f, 13.3f, 14.5f};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
 }
-
 TEST(ResizeOpTest, Antialias_Bilinear_Scale_Is_All_1) {
   std::vector<float> X(3 * 4 * 5 * 6);
   std::iota(X.begin(), X.end(), 1.f);
@@ -1962,6 +2013,9 @@ TEST(ResizeOpTest, Antialias_NhwcBilinear_dtype) {
 }
 
 TEST(ResizeOpTest, Antialias_Trilinear_No_ExcludeOutside) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because dml implementation of antialias is slightly different and doesn't match in all cases.";
+  }
   std::vector<float> X(16 * 4);
   std::iota(X.begin(), X.end(), 0.f);
   std::vector<float> Y = {5.7272725f, 6.9545455f, 8.181818f, 10.636364f, 11.863636f,
@@ -1983,6 +2037,9 @@ TEST(ResizeOpTest, Antialias_Trilinear_ExcludeOutside) {
 }
 
 TEST(ResizeOpTest, Antialias_Trilinear_Scale_Is_11s_and_1s1) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because dml implementation of antialias is slightly different and doesn't match in all cases.";
+  }
   std::vector<float> X(16 * 4 * 4);
   std::iota(X.begin(), X.end(), 0.f);
   {
@@ -2071,6 +2128,9 @@ TEST(ResizeOpTest, Antialias_NHWCBicubic_ExcludeOutside) {
 }
 
 TEST(ResizeOpTest, Antialias_Linear_AlignCorners) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because dml implementation of antialias is slightly different and doesn't match in all cases.";
+  }
   std::vector<float> X(256);
   std::iota(X.begin(), X.end(), 0.0f);
 
@@ -2183,6 +2243,87 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
 
       },
       {4, 4, 4}, X, {3, 3, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Large_half_pixel) {
+  std::vector<float> X{0.f, 1.f, 2.f, 3.f, 4.f, 5.f};
+  std::vector<float> Y = {1.f, 4.f};
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> output_shape{1, 1, 2, 1};
+
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<int64_t>("exclude_outside", 0LL);
+  test.AddAttribute<int64_t>("antialias", 1LL);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 6, 1}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, output_shape);
+
+  // Have absolute tolerance because ort is slightly different results.
+  // DML implementation is equivalent to resize with variable input window size while ORT using a convolution approach.
+  // Absolute error is for ORT CPU.
+  test.AddOutput<float>("Y", output_shape, Y, false, /*rel_error*/ 0.0f, /*abs_error*/ 0.12f);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test without anti-aliasing for better comparison with DirectML
+TEST(ResizeOpTest, Axes_and_Scale_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {3.5f, 4.8333335f, 6.1666665f, 8.833333f, 10.166667f, 11.5f, 14.166667f,
+                          15.5f, 16.833334f, 24.833334f, 26.166666f, 27.5f, 30.166666f, 31.5f,
+                          32.833332f, 35.5f, 36.833332f, 38.166668f, 46.166668f, 47.5f, 48.833332f,
+                          51.5f, 52.833332f, 54.166668f, 56.833332f, 58.166668f, 59.5};
+  std::vector<float> roi{};
+  std::vector<float> scales{3 / 4.0f, 3 / 4.0f, 3 / 4.0f};
+  std::vector<int64_t> output_shape{1, 1, 3, 3, 3};
+  std::vector<int64_t> axes{2, 3, 4};
+
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<int64_t>("exclude_outside", 0LL);
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+  test.AddAttribute<int64_t>("antialias", 0LL);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales, true);
+
+  test.AddOutput<float>("Y", output_shape, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ResizeOpTest, Axes_and_Size_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {3.5f, 4.8333335f, 6.1666665f, 8.833333f, 10.166667f, 11.5f, 14.166667f,
+                          15.5f, 16.833334f, 24.833334f, 26.166666f, 27.5f, 30.166666f, 31.5f,
+                          32.833332f, 35.5f, 36.833332f, 38.166668f, 46.166668f, 47.5f, 48.833332f,
+                          51.5f, 52.833332f, 54.166668f, 56.833332f, 58.166668f, 59.5};
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> output_shape{1, 1, 3, 3, 3};
+  std::vector<int64_t> axes{2, 3, 4};
+
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<int64_t>("exclude_outside", 0LL);
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+  test.AddAttribute<int64_t>("antialias", 0LL);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {3}, {3, 3, 3});
+
+  test.AddOutput<float>("Y", output_shape, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 }  // namespace test

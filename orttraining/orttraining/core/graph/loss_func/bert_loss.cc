@@ -107,21 +107,21 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto)},
                                    {ONNX_NAMESPACE::MakeAttribute("batch_dims", static_cast<int64_t>(1))},
                                    "GATHERED_LM"));
- 
+
     ONNX_NAMESPACE::TensorProto t_proto;
     t_proto.add_dims(2);
     t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     t_proto.add_int64_data(static_cast<int64_t>(-1));
     t_proto.add_int64_data(prediction_arg->TypeAsProto()->tensor_type().shape().dim()[2].dim_value());
     new_nodes.emplace_back(NodeDef("Constant",
-                                  {},
-                                  {ArgDef("logit_reshape", nullptr)},
-                                  {ONNX_NAMESPACE::MakeAttribute("value", t_proto)}));
+                                   {},
+                                   {ArgDef("logit_reshape", nullptr)},
+                                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto)}));
 
     new_nodes.emplace_back(NodeDef("Reshape",
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto),
-                                    ArgDef("logit_reshape")},                // Inputs
-                                   {ArgDef("gathered_prediction_reshaped")}, // Outputs
+                                    ArgDef("logit_reshape")},                 // Inputs
+                                   {ArgDef("gathered_prediction_reshaped")},  // Outputs
                                    NodeAttributes(),
                                    "Reshape_gathered_prediction"));
 
@@ -131,14 +131,14 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     t_proto_label.add_int64_data(static_cast<int64_t>(-1));
 
     new_nodes.emplace_back(NodeDef("Constant",
-                                  {},
-                                  {ArgDef("label_reshape", nullptr)},
-                                  {ONNX_NAMESPACE::MakeAttribute("value", t_proto_label)}));
+                                   {},
+                                   {ArgDef("label_reshape", nullptr)},
+                                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto_label)}));
 
     new_nodes.emplace_back(NodeDef("Reshape",
                                    {ArgDef("masked_lm_ids", masked_lm_int64_type_proto),
-                                    ArgDef("label_reshape")},          // Inputs
-                                   {ArgDef("masked_lm_ids_reshaped")}, // Outputs
+                                    ArgDef("label_reshape")},           // Inputs
+                                   {ArgDef("masked_lm_ids_reshaped")},  // Outputs
                                    NodeAttributes(),
                                    "Reshape_label"));
 
@@ -148,8 +148,8 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
 
     new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",
                                    {ArgDef("gathered_prediction_reshaped"),
-                                    ArgDef("masked_lm_ids_reshaped")},              // Inputs
-                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)), // Outputs
+                                    ArgDef("masked_lm_ids_reshaped")},               // Inputs
+                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),  // Outputs
                                     ArgDef("probability_lm")},
                                    attrs,
                                    "Masked_LM_Loss"));
@@ -166,9 +166,9 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
 
     new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",
                                    {ArgDef(prediction_next_sentence),
-                                    ArgDef(next_sentence_labels, next_sentence_labels_type_proto)}, // Inputs
+                                    ArgDef(next_sentence_labels, next_sentence_labels_type_proto)},  // Inputs
                                    {ArgDef(nsp_loss, GetLossTypeProto(graph_defs)),
-                                    ArgDef("probability_ns", ns_prediction_arg->TypeAsProto())},    // Outputs
+                                    ArgDef("probability_ns", ns_prediction_arg->TypeAsProto())},  // Outputs
                                    {ONNX_NAMESPACE::MakeAttribute("reduction", "mean")},
                                    "Next_Sentence_Loss"));
   }

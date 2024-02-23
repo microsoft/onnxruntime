@@ -26,10 +26,6 @@
 
 namespace onnxruntime {
 
-namespace python {
-Environment& GetTrainingORTEnv();
-}
-
 namespace lazytensor {
 
 namespace py = pybind11;
@@ -59,7 +55,7 @@ bool IsFusable(const torch::jit::Node* node) {
         input->type()->isSubtypeOf(*c10::IntType::get()) &&
         input->node()->kind() != torch::jit::prim::Constant) {
       continue;
-    } else{
+    } else {
       if (input->node()->kind() == torch::jit::prim::Constant) {
         continue;
       }
@@ -304,11 +300,11 @@ static std::unique_ptr<onnxruntime::InferenceSession> CreateSession() {
 #ifdef USE_CUDA
   NvtxRange range(__func__);
 #endif
-  // Environment shared by all sessions.
-  static onnxruntime::Environment& pybind_default_env = onnxruntime::python::GetTrainingORTEnv();
   // All sessions use the same config.
   static onnxruntime::SessionOptions sess_opts;
-  return std::make_unique<onnxruntime::InferenceSession>(sess_opts, pybind_default_env);
+  // Query the singleton always, to make sure we detect shutdown
+  auto ort_env = onnxruntime::python::GetEnv();
+  return std::make_unique<onnxruntime::InferenceSession>(sess_opts, *ort_env);
 }
 
 static OrtDevice CheckAndGetTensorDevice(const at::ArrayRef<c10::IValue>& values) {

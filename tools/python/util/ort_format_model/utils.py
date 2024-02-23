@@ -47,7 +47,7 @@ def create_config_from_models(
             for opset in sorted(required_ops[domain].keys()):
                 ops = required_ops[domain][opset]
                 if ops:
-                    out.write("{};{};".format(domain, opset))
+                    out.write(f"{domain};{opset};")
                     if enable_type_reduction:
                         # type string is empty if op hasn't been seen
                         entries = [

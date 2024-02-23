@@ -14,7 +14,11 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
+#ifdef USE_ROCM
+constexpr int kThreadsPerBlock = 256;
+#else
+constexpr int kThreadsPerBlock = GPU_WARP_SIZE * 4;
+#endif
 constexpr int kThreadWorkSize = 4;
 
 // General case to compute the input(for Gather)/output(for Scatter) and indices data offset given the thread ID
@@ -91,13 +95,43 @@ struct OffsetCalculatorFor2D {
 
 template <class T>
 struct FuncAssignment {
-  __device__ __inline__ void operator()(T* a, const T* b) const { *a = *b; }
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    start_addr[index] = value;
+  }
+};
+
+template <class T>
+struct FuncAdd {
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_add(start_addr + index, value);
+  }
+};
+
+template <class T>
+struct FuncMul {
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_mul(start_addr + index, value);
+  }
+};
+
+template <class T>
+struct FuncMax {
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_max(start_addr + index, value);
+  }
+};
+
+template <class T>
+struct FuncMin {
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_min(start_addr + index, value);
+  }
 };
 
 template <typename T, typename TIndex, bool IsGather, typename OffsetCalcT, typename TFunc>
 __global__ void _GatherScatterElementsKernel(const T* src_data, const TIndex* indices_data, T* output_data,
                                              const int64_t input_dim_along_axis, const int64_t input_stride_along_axis,
-                                             const OffsetCalcT offset_calc, const TFunc& func, CUDA_LONG N) {
+                                             const OffsetCalcT offset_calc, const TFunc func, CUDA_LONG N) {
   CUDA_LONG start = kThreadsPerBlock * kThreadWorkSize * blockIdx.x + threadIdx.x;
   CUDA_LONG id;
   T value[kThreadWorkSize];
@@ -124,9 +158,9 @@ __global__ void _GatherScatterElementsKernel(const T* src_data, const TIndex* in
         CUDA_LONG input_offset = offsets[0] + static_cast<CUDA_LONG>(input_offset_along_axis * input_stride_along_axis);
 
         if (IsGather) {
-          func(value + work, src_data + input_offset);
+          func(value, static_cast<size_t>(work), src_data[input_offset]);
         } else {
-          func(output_data + input_offset, value + work);
+          func(output_data, static_cast<size_t>(input_offset), value[work]);
         }
       }
 
@@ -196,7 +230,7 @@ void GatherElementsImpl(cudaStream_t stream, const T* input_data, const TIndex* 
 template <typename T, typename TIndex, typename TFunc>
 Status ScatterElementsImplInternal(cudaStream_t stream, const T* input_data, const TIndex* indices_data,
                                    const T* updates_data, T* output_data, const GatherScatterElementsArgs& args,
-                                   const TFunc& func) {
+                                   const TFunc func) {
   if (input_data != output_data) {
     CUDA_RETURN_IF_ERROR(
         cudaMemcpyAsync(output_data, input_data, args.input_size * sizeof(T), cudaMemcpyDeviceToDevice, stream));
@@ -234,8 +268,24 @@ Status ScatterElementsImplInternal(cudaStream_t stream, const T* input_data, con
 template <typename T, typename TIndex>
 Status ScatterElementsImpl(cudaStream_t stream, const T* input_data, const TIndex* indices_data, const T* updates_data,
                            T* output_data, const GatherScatterElementsArgs& args) {
-  return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
-                                     FuncAssignment<T>());
+  if (args.operation == GatherScatterElementsArgs::Operation::NONE) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncAssignment<T>());
+  } else if (args.operation == GatherScatterElementsArgs::Operation::ADD) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncAdd<T>());
+  } else if (args.operation == GatherScatterElementsArgs::Operation::MUL) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncMul<T>());
+  } else if (args.operation == GatherScatterElementsArgs::Operation::MAX) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncMax<T>());
+  } else if (args.operation == GatherScatterElementsArgs::Operation::MIN) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncMin<T>());
+  } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported reduction operator.");
+  }
 }
 
 #define GATHER_SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                     \
@@ -263,22 +313,32 @@ GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(double)
 
 template <class T>
 struct FuncAtomicAdd {
-  __device__ __inline__ void operator()(T* a, const T* b) const { atomic_add(a, *b); }
+  FuncAtomicAdd(const size_t numel) : numel_(numel) {}
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    AtomicAdd(start_addr, index, numel_, value);
+  }
+
+  const size_t numel_;
 };
 
 template <typename T, typename TIndex>
-Status GatherElementsGradImpl(cudaStream_t stream, const TIndex* indices_data, const T* updates_data, T* output_data,
-                              const GatherScatterElementsArgs& args) {
+Status GatherElementsGradNonDeterministicImpl(cudaStream_t stream, const TIndex* indices_data, const T* updates_data,
+                                              T* output_data,
+                                              const GatherScatterElementsArgs& args) {
+  // Be noted: usage of AtomicAdd is not deterministic if there are duplicated indices to update.
+  // That's the reason we name this function as non-deterministic.
+
   // Give output_data as the input_data parameter by intention,
   // to skip input_data copy, which is not applicable for GatherElementsGrad.
+  // output_data's numel is same as input_data's numel.
   return ScatterElementsImplInternal(stream, output_data, indices_data, updates_data, output_data, args,
-                                     FuncAtomicAdd<T>());
+                                     FuncAtomicAdd<T>(static_cast<size_t>(args.input_size)));
 }
 
-#define GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                      \
-  template Status GatherElementsGradImpl<T, TIndex>(cudaStream_t stream, const TIndex* indices_data, \
-                                                    const T* updates_data, T* output_data,           \
-                                                    const GatherScatterElementsArgs& args);
+#define GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                      \
+  template Status GatherElementsGradNonDeterministicImpl<T, TIndex>(cudaStream_t stream, const TIndex* indices_data, \
+                                                                    const T* updates_data, T* output_data,           \
+                                                                    const GatherScatterElementsArgs& args);
 
 #define GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(T) \
   GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, int32_t)   \

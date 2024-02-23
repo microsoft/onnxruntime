@@ -430,13 +430,14 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
 
         for (uint32_t j = 0; j < opKernel->typeConstraints[i].allowedTypeCount; ++j)
         {
+            auto edgeType = opKernel->typeConstraints[i].allowedTypes[j].edgeType;
             // TODO - handle non-tensor types
-            if (opKernel->typeConstraints[i].allowedTypes[j].edgeType != MLOperatorEdgeType::Tensor)
+            if (edgeType == MLOperatorEdgeType::Undefined)
             {
                 ORT_THROW_IF_FAILED(E_NOTIMPL);
             }
 
-            types.push_back(ToTensorDataType(opKernel->typeConstraints[i].allowedTypes[j].tensorDataType));
+            types.push_back(ToMLDataType(edgeType, opKernel->typeConstraints[i].allowedTypes[j].tensorDataType));
         }
 
         builder.TypeConstraint(opKernel->typeConstraints[i].typeLabel, types);
@@ -490,6 +491,8 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     const onnxruntime::Node& node,
                     MLOperatorTensorGetter& constantInputGetter,
                     const void* executionHandle,
+                    const EdgeShapes* inputShapesOverrides,
+                    /*out*/ EdgeShapes* outputShapes,
                     /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
                 )
                 {
@@ -497,15 +500,15 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
 
                     // Use the same list of required constant inputs for the shape inferrer and the kernel.
-                    EdgeShapes outputShapes;
-                    InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, nullptr, outputShapes);
+                    InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, inputShapesOverrides, *outputShapes);
 
                     // Create the kernel while allowing input shape and output shape queries according to options
                     ComPtr<DmlGraphOpKernelInfoWrapper> kernelInfoWrapper = wil::MakeOrThrow<DmlGraphOpKernelInfoWrapper>(
                             &protoHelper,
                             executionHandle,
                             true,
-                            &outputShapes,
+                            inputShapesOverrides,
+                            outputShapes,
                             &defaultAttributesCapture,
                             graphNodeCreateInfo,
                             constantCpuInputCapture,

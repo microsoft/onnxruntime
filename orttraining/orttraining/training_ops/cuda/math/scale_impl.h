@@ -15,5 +15,5 @@ void Impl_Scale(
     const float scale_value,
     T* output_data,
     size_t count);
- }
+}
 }  // namespace onnxruntime

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -8,25 +8,26 @@
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession_SessionOptions.h"
-#ifdef WIN32
+#ifdef _WIN32
 #include <Windows.h>
 #else
 #include <dlfcn.h>
 #endif
 
 // Providers
-#define ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH 128
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
-#include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/tvm/tvm_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
-#include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
 #include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
 #ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
+#endif
+
+#ifdef USE_DNNL
+#include "core/providers/dnnl/dnnl_provider_options.h"
 #endif
 
 /*
@@ -317,7 +318,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeC
 
   // Iterate the handles, calling the appropriate close function
   for (jint i = 0; i < numHandles; i++) {
-#ifdef WIN32
+#ifdef _WIN32
     FreeLibrary((void*)handles[i]);
 #else
     dlclose((void*)handles[i]);
@@ -346,6 +347,85 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addFre
 
   // Release the string chars
   (*jniEnv)->ReleaseStringUTFChars(jniEnv,dimensionName,cName);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addExternalInitializers
+ * Signature: (JJ[Ljava/lang/String;[J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExternalInitializers
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jobjectArray namesArray, jlongArray handlesArray) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+
+  size_t arrLength = (*jniEnv)->GetArrayLength(jniEnv, handlesArray);
+
+  const char** names = allocarray(arrLength, sizeof(char*));
+  if (names == NULL) {
+    // Nothing to cleanup, return and throw exception
+    throwOrtException(jniEnv, 1, "Not enough memory");
+    return;
+  }
+  jobject* javaNameStrings = allocarray(arrLength, sizeof(jobject));
+  if (javaNameStrings == NULL) {
+    goto cleanup_names;
+  }
+  const OrtValue** initializers = allocarray(arrLength, sizeof(OrtValue*));
+  if (initializers == NULL) {
+    goto cleanup_java_input_strings;
+  }
+
+  // Extract a C array of longs which are pointers to the input tensors.
+  // The Java-side objects store native pointers as 64-bit longs, and on 32-bit systems
+  // we cannot cast the long array to a pointer array as they are different sizes,
+  // so we copy the longs applying the appropriate cast.
+  jlong* initializersArr = (*jniEnv)->GetLongArrayElements(jniEnv, handlesArray, NULL);
+
+  for (size_t i = 0; i < arrLength; i++) {
+    // Extract the string chars and cast the tensor
+    javaNameStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv, namesArray, (jint) i);
+    names[i] = (*jniEnv)->GetStringUTFChars(jniEnv, javaNameStrings[i], NULL);
+    initializers[i] = (const OrtValue*) initializersArr[i];
+  }
+
+  checkOrtStatus(jniEnv,api,api->AddExternalInitializers(options,names,initializers,arrLength));
+
+  // Release the java array copy of pointers to the tensors.
+  (*jniEnv)->ReleaseLongArrayElements(jniEnv, handlesArray, initializersArr, JNI_ABORT);
+  free(initializers);
+cleanup_java_input_strings:
+  // Release the Java strings
+  for (size_t i = 0; i < arrLength; i++) {
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaNameStrings[i], names[i]);
+  }
+  free(javaNameStrings);
+cleanup_names:
+  free(names);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addInitializer
+ * Signature: (JJLjava/lang/String;J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addInitializer
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring name, jlong tensorHandle) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+
+  // Extract the string chars
+  const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, name, NULL);
+
+  // Cast the onnx value
+  const OrtValue* tensor = (const OrtValue*) tensorHandle;
+
+  checkOrtStatus(jniEnv,api,api->AddInitializer(options,cName,tensor));
+
+  // Release the string chars
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,name,cName);
 }
 
 /*
@@ -430,12 +510,15 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUD
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnnl
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
     (void)jobj;
-  #ifdef USE_DNNL
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*) handle,useArena));
-  #else
-    (void)apiHandle;(void)handle;(void)useArena; // Parameters used when DNNL is defined.
+#ifdef USE_DNNL
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = useArena;  // Follow the user command
+    const OrtApi* api = (OrtApi*)apiHandle;
+    checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*)handle, &dnnl_options));
+#else
+    (void)apiHandle; (void)handle; (void)useArena; // Parameters used when DNNL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DNNL support.");
-  #endif
+#endif
 }
 
 /*
@@ -595,7 +678,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addArm
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCoreML
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint coreMLFlags) {
     (void)jobj;
-  #ifdef USE_CORE_ML
+  #ifdef USE_COREML
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CoreML((OrtSessionOptions*) handle, (uint32_t) coreMLFlags));
   #else
     (void)apiHandle;(void)handle;(void)coreMLFlags; // Parameters used when CoreML is defined.
@@ -632,33 +715,29 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   const char* epName = (*jniEnv)->GetStringUTFChars(jniEnv, jepName, NULL);
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-  size_t keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
+  int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
 
-  if (keyCount > ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH) {
-    throwOrtException(jniEnv, ORT_INVALID_ARGUMENT, "Too many provider options.");
-  }
+  const char** keyArray = (const char**)allocarray(keyCount, sizeof(const char*));
+  const char** valueArray = (const char**)allocarray(keyCount, sizeof(const char*));
+  jstring* jkeyArray = (jstring*)allocarray(keyCount, sizeof(jstring));
+  jstring* jvalueArray = (jstring*)allocarray(keyCount, sizeof(jstring));
 
-  const char* keyArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
-  const char* valueArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
-  jstring jkeyArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
-  jstring jvalueArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
-
-  for (size_t i = 0; i < keyCount; i++) {
-    // In this loop, it is type-safe to call (jsize)i since i is
-    // upper-bounded by keyCount (type: jsize) returned by GetArrayLength.
-    jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, (jsize)i));
-    jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, (jsize)i));
+  for (int i = 0; i < keyCount; i++) {
+    jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
+    jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
     keyArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkeyArray[i], NULL);
     valueArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalueArray[i], NULL);
   }
 
   checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, epName, keyArray, valueArray, keyCount));
 
-  for (size_t i = 0; i < keyCount; i++) {
+  for (int i = 0; i < keyCount; i++) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkeyArray[i], keyArray[i]);
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
   }
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, jepName, epName);
+  free((void*)keyArray);
+  free((void*)valueArray);
+  free((void*)jkeyArray);
+  free((void*)jvalueArray);
 }
-
-#undef ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH

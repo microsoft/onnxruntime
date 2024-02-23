@@ -15,7 +15,6 @@ std::vector<int64_t> BenchArgsVector(benchmark::State& state, size_t& start, siz
   return shape;
 }
 
-
 std::vector<float> RandomVectorUniform(std::vector<int64_t> shape, float min_value, float max_value) {
   int64_t sz = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
   if (sz <= 0) {
@@ -24,10 +23,9 @@ std::vector<float> RandomVectorUniform(std::vector<int64_t> shape, float min_val
   return RandomVectorUniform(static_cast<size_t>(sz), min_value, max_value);
 }
 
-// The Benchmark used here do not contains this as in newer version.
-// Use the code from newer version.
-void ArgsProduct(benchmark::internal::Benchmark* bench,
-                 const std::vector<std::vector<int64_t>>& arglists) {
+void ArgsProductWithFilter(benchmark::internal::Benchmark* bench,
+                           const std::vector<std::vector<int64_t>>& arglists,
+                           std::function<bool(const std::vector<int64_t>& args)> include_filter) {
   std::vector<std::size_t> indices(arglists.size(), 0);
   const std::size_t total = std::accumulate(
       std::begin(arglists), std::end(arglists), std::size_t{1},
@@ -40,7 +38,9 @@ void ArgsProduct(benchmark::internal::Benchmark* bench,
     for (std::size_t arg = 0; arg < arglists.size(); arg++) {
       args.push_back(arglists[arg][indices[arg]]);
     }
-    bench->Args(args);
+    if (include_filter(args)) {
+      bench->Args(args);
+    }
     args.clear();
 
     std::size_t arg = 0;

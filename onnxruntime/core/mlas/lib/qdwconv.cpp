@@ -41,6 +41,10 @@ MlasConvDepthwiseKernel(
 #elif defined(MLAS_NEON_INTRINSICS)
     const uint8x8_t InputZeroPointVector = vdup_n_u8(uint8_t(InputZeroPoint));
     const uint8x8_t FilterZeroPointVector = vdup_n_u8(uint8_t(FilterZeroPoint));
+#elif defined(MLAS_LSX_INTRINSICS)
+    const __m128i ZeroVector = __lsx_vldi(0);
+    const __m128i InputZeroPointVector = __lsx_vreplgr2vr_h(InputZeroPoint);
+    const __m128i FilterZeroPointVector = __lsx_vreplgr2vr_h(FilterZeroPoint);
 #endif
 
     while (OutputCount > 0) {
@@ -139,6 +143,54 @@ MlasConvDepthwiseKernel(
 
             vst1q_s32(&Output[0], Accumulator0);
             vst1q_s32(&Output[4], Accumulator1);
+            Output += 8;
+
+            ChannelOffset += 8;
+            c -= 8;
+        }
+#elif defined(MLAS_LSX_INTRINSICS)
+
+        while (c >= 8) {
+            __m128i Accumulator0 = __lsx_vldi(0);
+            __m128i Accumulator1 = __lsx_vldi(0);
+            size_t ChannelKernelOffset = ChannelOffset;
+
+            for (size_t k = 0; k < KernelSize; k++) {
+                __m128i InputVector = __lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0);
+                __lsx_vinsgr2vr_d(InputVector, 0, 1);
+                __m128i FilterVector =
+                    __lsx_vld((const __m128i*)&Filter[ChannelKernelOffset], 0);
+                __lsx_vinsgr2vr_d(FilterVector, 0, 1);
+
+                if (std::is_signed<InputType>::value) {
+                    InputVector = __lsx_vsrai_h(__lsx_vilvl_b(InputVector, ZeroVector), 8);
+                } else {
+                    InputVector = __lsx_vilvl_b(ZeroVector, InputVector );
+                }
+
+                if (std::is_signed<FilterType>::value) {
+                    FilterVector = __lsx_vsrai_h(__lsx_vilvl_b(FilterVector, ZeroVector), 8);
+                } else {
+                    FilterVector = __lsx_vilvl_b(ZeroVector, FilterVector);
+                }
+
+                InputVector = __lsx_vsub_h(InputVector, InputZeroPointVector);
+                FilterVector = __lsx_vsub_h(FilterVector, FilterZeroPointVector);
+
+                // N.B. Emulate PMULLD functionality on LSX by computing the low
+                // and high parts of the result and interleaving the results.
+                __m128i MultiplyLowWords = __lsx_vmul_h(InputVector, FilterVector);
+                __m128i MultiplyHighWords = __lsx_vmuh_h(InputVector, FilterVector);
+                __m128i Multiply0 = __lsx_vilvl_h(MultiplyHighWords, MultiplyLowWords);
+                __m128i Multiply1 = __lsx_vilvh_h(MultiplyHighWords, MultiplyLowWords);
+
+                Accumulator0 = __lsx_vadd_w(Accumulator0, Multiply0);
+                Accumulator1 = __lsx_vadd_w(Accumulator1, Multiply1);
+                ChannelKernelOffset += Channels;
+            }
+
+            __lsx_vst(Accumulator0, (__m128i*)&Output[0], 0);
+            __lsx_vst(Accumulator1, (__m128i*)&Output[4], 0);
             Output += 8;
 
             ChannelOffset += 8;

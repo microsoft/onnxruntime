@@ -2,12 +2,12 @@
 # Licensed under the MIT License.
 # _torch_module_pytorch.py
 
-from ._torch_module_interface import TorchModuleInterface
-
 from collections import OrderedDict
-import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Callable
+from typing import Callable, Iterator, Optional, Tuple, TypeVar
 
+import torch
+
+from ._torch_module_interface import TorchModuleInterface
 
 T = TypeVar("T", bound="torch.nn.Module")
 
@@ -83,7 +83,7 @@ class TorchModulePytorch(TorchModuleInterface):
     def _replicate_for_data_parallel(self):
         return self._original_module._replicate_for_data_parallel()
 
-    def add_module(self, name: str, module: Optional["Module"]) -> None:
+    def add_module(self, name: str, module: Optional["Module"]) -> None:  # noqa: F821
         self._original_module.add_module(name, module)
 
     @TorchModuleInterface.module.getter

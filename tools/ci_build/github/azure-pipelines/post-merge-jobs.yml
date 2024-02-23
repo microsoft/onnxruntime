@@ -1,8 +1,290 @@
 stages:
+- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+  - template: templates/web-ci.yml
+    parameters:
+      NpmPackagingMode: 'dev'
+      IsReleasePipeline: true
+      PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      BuildStaticLib: true
+      ExtraBuildArgs: ''
+      UseWebPoolName: true
+      WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
+
+# The follow section has 15 different build jobs that can be divided into 3 groups:
+# 1. Default CPU build with normal win32 linking, without ORT extension
+# 2. Default CPU build with wcos linking(use apiset), without ORT extension
+# 3. Default CPU build with normal win32 linking with ORT extension
+# Each group has 4 jobs that cover:
+# o Windows ARM64EC
+# o Windows ARM64
+# o Windows ARM
+# o Windows x64
+# o Windows x86
+# Now we don't have coverage for ARM64EC yet. Will add it.
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x86_default
+    buildArch: x86
+    msbuildPlatform: Win32
+    packageName: x86
+    buildparameter: --enable_onnx_tests
+    runTests: true
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm_default
+    buildArch: x64
+    msbuildPlatform: arm
+    packageName: arm
+    buildparameter: --arm  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm64_default
+    buildArch: x64
+    msbuildPlatform: arm64
+    packageName: arm64
+    buildparameter: --build_nodejs --arm64  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm64ec_default
+    buildArch: x64
+    msbuildPlatform: ARM64EC
+    packageName: arm64ec
+    buildparameter: --arm64ec  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x64_default
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs  --enable_onnx_tests
+    runTests: true
+    buildJava: true
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x86_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x86
+    msbuildPlatform: Win32
+    packageName: x86
+    buildparameter: --enable_onnx_tests --enable_wcos
+    runTests: true
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x64
+    msbuildPlatform: arm
+    packageName: arm
+    buildparameter: --arm  --enable_onnx_tests --enable_wcos --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm64_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x64
+    msbuildPlatform: arm64
+    packageName: arm64
+    buildparameter: --build_nodejs --enable_wcos --arm64  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm64ec_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x64
+    msbuildPlatform: ARM64EC
+    packageName: arm64ec
+    buildparameter: --enable_wcos --arm64ec  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x64_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs --enable_onnx_tests  --enable_wcos
+    runTests: true
+    buildJava: true
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x86_extension
+    artifact_name_suffix: '-extension'
+    buildArch: x86
+    msbuildPlatform: Win32
+    packageName: x86
+    buildparameter: --enable_onnx_tests
+    runTests: true
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm_extension
+    artifact_name_suffix: '-extension'
+    buildArch: x64
+    msbuildPlatform: arm
+    packageName: arm
+    buildparameter: --arm --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm64_extension
+    artifact_name_suffix: '-extension'
+    buildArch: x64
+    msbuildPlatform: arm64
+    packageName: arm64
+    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+#- template: templates/win-ci.yml
+#  parameters:
+#    DoCompliance: false
+#    DoEsrp: false
+#    stage_name_suffix: CPU_arm64ec_extension
+#    artifact_name_suffix: '-extension'
+#    buildArch: x64
+#    msbuildPlatform: ARM64EC
+#    packageName: arm64ec
+#    buildparameter: --arm64ec --use_extensions --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+#    runTests: false
+#    buildJava: false
+#    buildNodejs: false
+#    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x64_extension
+    artifact_name_suffix: '-extension'
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs --use_extensions  --enable_onnx_tests
+    runTests: true
+    buildJava: true
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
+  - stage: cuda_multi_gpu
+    dependsOn: []
+    jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_cuda.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: true
+        ORT_EP_NAME: CUDA
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-MultiA10
+        OnnxruntimeTestGpuDeviceId: 1
+
+- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
+  - stage: trt_multi_gpu
+    dependsOn: []
+    jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_trt.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: true
+        ORT_EP_NAME: TRT
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-MultiA10
+        OnnxruntimeTestGpuDeviceId: 1
+
 - stage: Mimalloc
-  dependsOn: []
+  dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -12,37 +294,35 @@ stages:
       isX86: false
       job_name_suffix: x64_mimalloc
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'Win-CPU-2021'
+      MachinePool: 'onnxruntime-Win-CPU-2022'
 
-- stage: NoAbseil
-  dependsOn: []
+- stage: MemoryProfiling
+  dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --cmake_extra_defines onnxruntime_DISABLE_ABSEIL=ON
+      additionalBuildFlags: --cmake_extra_defines onnxruntime_ENABLE_MEMORY_PROFILE=ON
       msbuildPlatform: x64
       isX86: false
-      job_name_suffix: x64_no_absl
-      RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
+      job_name_suffix: x64_no_memory_profiling
+      RunOnnxRuntimeTests: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'Win-CPU-2021'
+      MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: MinimalBuildWithNoExceptions
-  dependsOn: []
+  dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -52,17 +332,16 @@ stages:
       isX86: false
       job_name_suffix: x64_minimal_no_exception
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'Win-CPU-2021'
+      MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: DebugNodeInputsOutputs
-  dependsOn: []
+  dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -72,44 +351,45 @@ stages:
       isX86: false
       job_name_suffix: x64_debug_node_input_output
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'Win-CPU-2021'
+      MachinePool: 'onnxruntime-Win-CPU-2022'
 
+#Generate test coverage report and publish the data to a Cloud database. Only runs daily.
 - stage: CodeCoverage
-  dependsOn: []
+  dependsOn: [ ]
   jobs:
   - job: CodeCoverage
     workspace:
       clean: all
-    timeoutInMinutes:  150
+    timeoutInMinutes: 150
     variables:
       skipComponentGovernanceDetection: true
-    pool: 'Linux-CPU'
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     steps:
-      - template: templates/set-version-number-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
-      - task: CmdLine@2
-        inputs:
-          script: |
-            set -e
-            ln -s /data/models .
-            #Build onnxruntime and run the instrumented program(unitests)
-            LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
+    - task: CmdLine@2
+      inputs:
+        script: |
+          set -e
+          ln -s /data/models .
+          #Build onnxruntime and run the instrumented program(unitests)
+          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
 
-            cd Debug
-            ./onnxruntime_mlas_test
-            #Merge the mulitple prof data into a single indexed profile data file
-            llvm-profdata merge -sparse -o ort.profdata *.profraw
-            #Create coverage report, output the result to 'report.json'
-            llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+          cd Debug
+          ./onnxruntime_mlas_test
+          #Merge the multiple prof data into a single indexed profile data file
+          llvm-profdata merge -sparse -o ort.profdata *.profraw
+          #Create coverage report, output the result to 'report.json'
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
 
-            llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
-          workingDirectory: $(Build.BinariesDirectory)
+          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
+        workingDirectory: $(Build.BinariesDirectory)
 
+    - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
       - task: AzureCLI@2
         displayName: 'Azure CLI'
         inputs:
@@ -124,46 +404,16 @@ stages:
         inputs:
           targetPath: '$(Build.ArtifactStagingDirectory)'
           artifact: html
-
-  - job: Upload
-    workspace:
-      clean: all
-    pool: 'Win-CPU-2021'
-    variables:
-    - name: runCodesignValidationInjection
-      value: false
-    - name: skipComponentGovernanceDetection
-      value: true
-    dependsOn:
-    - CodeCoverage
-    condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    steps:
-    - checkout: self
-      submodules: false
-
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact'
-      inputs:
-        buildType: 'current'
-        artifactName: 'html'
-        targetPath: '$(Build.BinariesDirectory)'
-
-    - task: AzureFileCopy@4
-      displayName: 'AzureBlob File Copy'
-      inputs:
-        SourcePath: '$(Build.BinariesDirectory)\*'
-        azureSubscription: AIInfraBuildOnnxRuntimeOSS
-        Destination: AzureBlob
-        storage: onnxruntime
-        ContainerName: '$web'
+  - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+    - template: templates/upload-code-coverage-data.yml
 
 - stage: AndroidCustomBuildScript
-  dependsOn: []
+  dependsOn: [ ]
   jobs:
   - job: AndroidCustomBuildScript
     workspace:
       clean: all
-    pool: 'Linux-CPU'
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     variables:
       dockerImageTag: onnxruntime-android-custom-build
     steps:
@@ -191,3 +441,41 @@ stages:
         script: docker image rm $(dockerImageTag)
         workingDirectory: '$(Build.BinariesDirectory)'
       condition: succeededOrFailed()
+
+# We currently use static frameworks in the iOS packages.
+# This test validates that dynamic frameworks also work.
+- stage: IosDynamicFramework
+  dependsOn: []
+  jobs:
+  - job: IosDynamicFramework
+    timeoutInMinutes: 120
+    pool:
+      vmImage: "macOS-13"
+
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: "3.9"
+        addToPath: true
+        architecture: "x64"
+
+    - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: 14.3
+    - script: |
+        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+      displayName: "Install Python requirements"
+
+    - script: |
+        python tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
+          --build_dynamic_framework \
+          tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
+      displayName: "Build iOS dynamic framework"
+
+    - script: |
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Mobile
+      displayName: "Test pod with iOS dynamic framework"

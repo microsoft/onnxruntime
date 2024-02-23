@@ -15,5 +15,5 @@ class GistBinarizeDecoderOp final : public OpKernel {
   GistBinarizeDecoderOp(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
-}
-}  //namespace onnxruntime
+}  // namespace contrib
+}  // namespace onnxruntime

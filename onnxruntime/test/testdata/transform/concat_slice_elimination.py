@@ -1,8 +1,8 @@
-import random
+import random  # noqa: F401
 
 import numpy as np
 import onnx
-from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
+from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 batch = 3
 hidden_size = 4

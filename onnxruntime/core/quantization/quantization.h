@@ -5,7 +5,7 @@
 
 #include <cmath>
 #include <vector>
-
+#include <optional>
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
@@ -188,13 +188,14 @@ void Dequantize(const std::vector<T>& values,
 
 // Transpose the input and store it to a new allocated buffer.
 inline uint8_t* TransPoseInputData(const uint8_t* input,
-                                   BufferUniquePtr& buffer_holder,
+                                   std::optional<Tensor>& buffer_holder,
                                    AllocatorPtr& allocator,
                                    size_t M,
                                    size_t N) {
-  uint8_t* output = static_cast<uint8_t*>(allocator->Alloc(M * N * sizeof(uint8_t)));
+  TensorShape outputshape{static_cast<int64_t>(M), static_cast<int64_t>(N)};
+  buffer_holder.emplace(DataTypeImpl::GetType<uint8_t>(), outputshape, allocator);
+  uint8_t* output = buffer_holder->MutableData<uint8_t>();
   MlasTranspose(input, output, M, N);
-  buffer_holder.reset(output);
   return output;
 }
 

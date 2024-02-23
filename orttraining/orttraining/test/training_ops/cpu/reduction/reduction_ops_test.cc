@@ -195,7 +195,7 @@ TEST_P(ReductionOpTest, ReduceAllL2_BFloat16_BFloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -228,7 +228,7 @@ TEST_P(ReductionOpTest, ReduceAllL2_BFloat16_Float) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -259,7 +259,7 @@ TEST_P(ReductionOpTest, ReduceAllL2_Float_BFloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
@@ -275,7 +275,6 @@ void TestMultiTensorReduce(
   test.SetDeterminism(use_determinism);
 
   // Set up random number generator.
-  std::random_device random_device;
   std::mt19937 random_engine(0);
   std::uniform_real_distribution<float> dist(min, max);
   std::uniform_int_distribution<int64_t> dist_int(min_tensor_size, max_tensor_size);
@@ -295,7 +294,7 @@ void TestMultiTensorReduce(
     ws[i] = std::vector<float>(sizes[i]);
 
     for (int64_t j = 0; j < sizes[i]; ++j) {
-      ws[i][j] = 1.f;  //dist(random_engine);
+      ws[i][j] = 1.f;  // dist(random_engine);
       result += ws[i][j] * ws[i][j];
     }
 

@@ -7,11 +7,7 @@
 #include <random>
 #include "core/common/gsl.h"
 #include "core/framework/allocator.h"
-#include "core/framework/ort_value.h"
-
-#ifndef NDEBUG
-//#define DEBUG_GENERATION 1  // uncomment it for debugging beam search
-#endif
+#include "contrib_ops/cpu/utils/console_dumper.h"
 
 namespace onnxruntime {
 
@@ -42,6 +38,10 @@ struct IBeamSearchState {
                                        //   temp token: (batch_size * num_beams, 2 * num_beams)
                                        // in total, it will be:
                                        // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
+
+  gsl::span<int32_t> sequences_device;  // shape (2 * batch_size * max_length)
+
+  Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
 };
 
 struct IBeamSearchCpuState {
@@ -53,20 +53,22 @@ struct IBeamSearchCpuState {
   gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
   gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
   gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
+  gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
 };
 
 template <typename T>
 struct IGreedySearchState {
-  gsl::span<int32_t> sequences_space;         // shape (2, batch_size, max_length)
-  gsl::span<int32_t> sequence_lengths;        // shape (batch_size)
-  gsl::span<int32_t> next_positions;          // shape (batch_size, num_beams). Next position value for position_ids.
-  gsl::span<bool> eos_meet;                   // shape (batch_size)
-  gsl::span<T> next_token_scores;             // shape (batch_size, vocab_size)
-  gsl::span<int32_t> next_tokens;             // shape (batch_size)
-  gsl::span<T> temp_topk_scores_buffer;       // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1 (GPU only)
-  gsl::span<int32_t> temp_topk_tokens_buffer; // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1(GPU only)
+  gsl::span<int32_t> sequences_space;          // shape (2, batch_size, max_length)
+  gsl::span<int32_t> sequence_lengths;         // shape (batch_size)
+  gsl::span<int32_t> next_positions;           // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<bool> eos_meet;                    // shape (batch_size)
+  gsl::span<T> next_token_scores;              // shape (batch_size, vocab_size)
+  gsl::span<int32_t> next_tokens;              // shape (batch_size)
+  gsl::span<T> temp_topk_scores_buffer;        // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1 (GPU only)
+  gsl::span<int32_t> temp_topk_tokens_buffer;  // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1(GPU only)
   gsl::span<T> topk_scores_buffer;             // shape (batch_size), output buffer for topk stage 2 (GPU only)
   gsl::span<int32_t> topk_tokens_buffer;       // shape (batch_size), output buffer for topk stage 2 (GPU only)
+  Tensor staging_for_past_state_reorder;       // Tensor of shape (batch_size * num_beams(1), num_heads, max_length, head_size)
 };
 
 template <typename T>
@@ -91,43 +93,54 @@ struct ISamplingState {
   gsl::span<T> cumulative_probs;
 };
 
-class ISequences {
- public:
+struct ISequences {
   virtual ~ISequences() {}
   virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
+  virtual gsl::span<const int32_t> GetCurrentDeviceSequences() const = 0;  // Get all current beam_index sequences in one continuous block (to pass to CUDA)
+  virtual gsl::span<int32_t> GetNextDeviceSequences() = 0;                 // Get all next beam_index sequences in one continuous block (to pass to CUDA)
   virtual int GetSequenceLength() const = 0;
 };
 
-class ILogitsProcessorList {
- public:
+struct ILogitsProcessorList {
   virtual ~ILogitsProcessorList() {}
   virtual void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step) = 0;
 };
 
 // Interface for all scorers for beam search or beam sample.
-class IBeamScorer {
- public:
+struct IBeamScorer {
   virtual ~IBeamScorer() {}
 
-  virtual void Initialize(AllocatorPtr& allocator, int sequence_length) = 0;
-
-  virtual void Process(ISequences* sequences,
+  virtual void Process(ISequences& sequences,
                        gsl::span<const float>& next_scores,
                        gsl::span<const int32_t>& next_tokens,
                        gsl::span<const int32_t>& next_indices) = 0;
 
-  virtual void Finalize(ISequences* sequences,
+  virtual void Finalize(ISequences& sequences,
                         gsl::span<const float>& final_beam_scores,
                         Tensor* output_sequences,
                         Tensor* output_sequence_scores) = 0;
+
+  virtual void OutputScores(gsl::span<const float>& final_scores,
+                            Tensor* output_scores) = 0;
+
+  virtual bool IsDone() const = 0;                    // GPU version will return false here, as it asynchronously queues up the event
+  virtual bool IsDoneLater() const { return false; }  // GPU version waits for the asynchous result to complete here
+
+  virtual gsl::span<float> GetNextScores() = 0;
+  virtual gsl::span<int32_t> GetNextTokens() = 0;
+  virtual gsl::span<int32_t> GetNextIndicesCPU() = 0;
+  virtual gsl::span<int32_t> GetNextIndicesGPU() { return {}; }  // If this is non CPU, returns the device buffer of the indices
 };
 
 struct IGenerationParameters {
   static constexpr int kModelTypeGpt = 0;
   static constexpr int kModelTypeT5 = 1;
+  static constexpr int kModelTypeWhisper = 2;
+
+  static constexpr int kLogitsProcessorTypeWhisper = 1;
 
   // Parameters from node attributes
-  int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5
+  int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5; 2 for float inputs like Whisper
   int eos_token_id;
   int pad_token_id;
   int decoder_start_token_id;
@@ -143,6 +156,7 @@ struct IGenerationParameters {
   float repetition_penalty;
   int batch_size;       // deduce from first dimension of input_ids
   int sequence_length;  // deduce from second dimension of input_ids of GPT-2 or decoder_input_ids of T5
+  int logits_processor;
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
@@ -165,30 +179,24 @@ struct IGenerationParameters {
   int seed = 0;
   int min_tokens_to_keep = 1;
   bool custom_sampling = false;
-};
 
-class IConsoleDumper {
- public:
-  IConsoleDumper() : is_enabled_(true) {}
-  virtual ~IConsoleDumper() {}
-  void Disable() { is_enabled_ = false; }
-  bool IsEnabled() const { return is_enabled_; }
-  virtual void Print(const char* name, const float* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const size_t* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const = 0;
-  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const = 0;
-  virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const = 0;
-  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const = 0;
-  virtual void Print(const char* name, const Tensor& value) const = 0;
-  virtual void Print(const char* name, const OrtValue& value) const = 0;
-  virtual void Print(const char* name, int index, bool end_line) const = 0;
-  virtual void Print(const char* name, const std::string& value, bool end_line) const = 0;
+  // Parameters for whisper model
+  bool decoder_output_cross_qk = false;
+  gsl::span<const int32_t> extra_decoding_ids;
 
- protected:
-  bool is_enabled_;
+  // Token ids are defined below in the order that they appear in the tokenizer
+  int32_t translate_token_id = -1;
+  int32_t transcribe_token_id = -1;
+  int32_t start_of_lm_token_id = -1;
+  int32_t no_speech_token_id = -1;
+  int32_t no_timestamps_token_id = -1;
+  int32_t beginning_timestamp_token_id = -1;
+  void* no_speech_probs = nullptr;
+
+  int cross_qk_layer_head_input_id = -1;
+  int extra_decoding_ids_input_id = -1;
+  int cross_qk_output_id = -1;
+  int no_speech_probs_output_id = -1;
 };
 
 }  // namespace transformers

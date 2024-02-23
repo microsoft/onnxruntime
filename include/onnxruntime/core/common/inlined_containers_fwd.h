@@ -57,6 +57,7 @@
 namespace onnxruntime {
 #ifndef DISABLE_ABSEIL
 /// Inspired by LLVM SmallVector with ONNX Runtime adjustments for abseil.
+/// https://github.com/llvm/llvm-project/blob/a85b37d0ca819776c6034c2dbda2b21e54e3393a/llvm/include/llvm/ADT/SmallVector.h#L1128-L1179
 ///
 /// Helper class for calculating the default number of inline elements for
 /// `InlinedVector<T>`.
@@ -76,6 +77,9 @@ struct CalculateInlinedVectorDefaultInlinedElements {
   // 2. `sizeof(InlinedVector<T>) <= kPreferredInlinedVectorSizeof` unless
   // it contradicts 1.
   static constexpr size_t kPreferredInlinedVectorSizeof = 64;
+
+  // Largest allowed element size for default element count calculation.
+  static constexpr size_t kElementSizeCutoff = 256;
 
   // static_assert that sizeof(T) is not "too big".
   //
@@ -98,7 +102,7 @@ struct CalculateInlinedVectorDefaultInlinedElements {
   // happens on a 32-bit host and then fails due to sizeof(T) *increasing* on a
   // 64-bit host, is expected to be very rare.
   static_assert(
-      sizeof(absl::InlinedVector<T, 1>) <= kPreferredInlinedVectorSizeof,
+      sizeof(T) <= kElementSizeCutoff,
       "You are trying to use a default number of inlined elements for "
       "`InlinedVector<T>` but `sizeof(T)` is really big! Please use an "
       "explicit number of inlined elements with `InlinedVector<T, N>` to make "
@@ -106,8 +110,8 @@ struct CalculateInlinedVectorDefaultInlinedElements {
 
   // Discount the size of the header itself when calculating the maximum inline
   // bytes.
-  static constexpr size_t PreferredInlineBytes =
-      kPreferredInlinedVectorSizeof - (sizeof(absl::InlinedVector<T, 1>) - sizeof(T));
+  static constexpr size_t InlinedVectorHeaderSize = sizeof(absl::InlinedVector<T, 1>) - sizeof(T);
+  static constexpr size_t PreferredInlineBytes = kPreferredInlinedVectorSizeof - InlinedVectorHeaderSize;
   static constexpr size_t NumElementsThatFit = PreferredInlineBytes / sizeof(T);
   static constexpr size_t value =
       NumElementsThatFit == 0 ? 1 : NumElementsThatFit;

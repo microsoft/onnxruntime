@@ -31,9 +31,9 @@ typedef struct {
 typedef std::map<OpKernel*, ACLNEBatchNorm>::iterator BatchNormLayersIterator;
 
 template <typename T>
-class BatchNorm final : public OpKernel {
+class BatchNorm : public onnxruntime::BatchNorm<T> {
  public:
-  explicit BatchNorm(const OpKernelInfo& info) : OpKernel(info) {
+  explicit BatchNorm(const OpKernelInfo& info) : onnxruntime::BatchNorm<T>(info) {
     auto st = info.GetAttr<float>("epsilon", &epsilon_);
     ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
 
@@ -42,20 +42,18 @@ class BatchNorm final : public OpKernel {
   }
 
   ~BatchNorm() {
-	batchNormLayers.erase(this);
+    batchNormLayers.erase(this);
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  protected:
-   float epsilon_;
+  float epsilon_;
 
  private:
   ACLExecutionProvider* provider_;
   static thread_local std::map<OpKernel*, ACLNEBatchNorm> batchNormLayers;
 };
-
-
 
 }  // namespace acl
 }  // namespace onnxruntime

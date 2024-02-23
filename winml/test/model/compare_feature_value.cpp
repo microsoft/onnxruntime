@@ -7,24 +7,29 @@
 using namespace winrt::Windows::Foundation::Collections;
 using namespace winml;
 
-namespace CompareFeatureValuesHelper{
+namespace CompareFeatureValuesHelper {
 
 template <typename T>
 bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const double diff, const double tol) {
-  if (diff > tol) return false;
-  if (std::isnan(diff) && !(std::isnan(outvalue) && std::isnan(expected_value)) &&
-      !(std::isinf(outvalue) && std::isinf(expected_value)))
+  if (diff > tol)
+    return false;
+  if (std::isnan(diff) && !(std::isnan(outvalue) && std::isnan(expected_value)) && !(std::isinf(outvalue) && std::isinf(expected_value)))
     return false;
   return true;
 }
 
 bool CompareSequenceOfMapsStringToFloat(
-    IVectorView<IMap<winrt::hstring, float>> featureValue,
-    const Ort::Value& val,
-    double perSampleTolerance,
-    double relativePerSampleTolerance) {
+  IVectorView<IMap<winrt::hstring, float>> featureValue,
+  const Ort::Value& val,
+  double perSampleTolerance,
+  double relativePerSampleTolerance
+) {
   if (val.GetCount() != featureValue.Size()) {
-    printf("Map lengths are not the same! Got %d, expected %d\n", static_cast<int>(featureValue.Size()), static_cast<int>(val.GetCount()));
+    printf(
+      "Map lengths are not the same! Got %d, expected %d\n",
+      static_cast<int>(featureValue.Size()),
+      static_cast<int>(val.GetCount())
+    );
   }
 
   int expectedValSequenceIndex = 0;
@@ -40,8 +45,10 @@ bool CompareSequenceOfMapsStringToFloat(
     WINML_EXPECT_NO_THROW(mapExpectedOutputKeys = mapExpectedOutput.GetValue(0, allocator));
     WINML_EXPECT_NO_THROW(mapExpectedOutputValues = mapExpectedOutput.GetValue(1, allocator));
 
-    auto expectedOutputKeys = OrtValueHelpers::LoadTensorFromOrtValue(mapExpectedOutputKeys).as<TensorString>().GetAsVectorView();
-    auto expectedOutputValues = OrtValueHelpers::LoadTensorFromOrtValue(mapExpectedOutputValues).as<TensorFloat>().GetAsVectorView();
+    auto expectedOutputKeys =
+      OrtValueHelpers::LoadTensorFromOrtValue(mapExpectedOutputKeys).as<TensorString>().GetAsVectorView();
+    auto expectedOutputValues =
+      OrtValueHelpers::LoadTensorFromOrtValue(mapExpectedOutputValues).as<TensorFloat>().GetAsVectorView();
     for (uint32_t i = 0; i < expectedOutputKeys.Size(); i++) {
       expectedKvp[expectedOutputKeys.GetAt(i)] = expectedOutputValues.GetAt(i);
     }
@@ -67,4 +74,4 @@ bool CompareSequenceOfMapsStringToFloat(
   return true;
 }
 
-}
+}  // namespace CompareFeatureValuesHelper

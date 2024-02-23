@@ -6,14 +6,15 @@
 #include <set>
 #include <vector>
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
+#include "core/providers/rocm/rocm_graph.h"
 #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
+#include "core/providers/rocm/tunable/rocm_tuning_context.h"
 
 namespace onnxruntime {
 
@@ -25,56 +26,28 @@ class ROCMExecutionProvider : public IExecutionProvider {
   explicit ROCMExecutionProvider(const ROCMExecutionProviderInfo& info);
   virtual ~ROCMExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
-
   Status Sync() const override;
 
-  Status OnRunStart() override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
-  Status OnRunEnd(bool sync_stream) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The ROCM interface does not return anything interesting.
     return nullptr;
   }
 
-  rocblas_handle PerThreadRocblasHandle() {
+  rocblas_handle PerThreadDefaultRocblasHandle() {
     return GetPerThreadContext().RocblasHandle();
   }
 
-  miopenHandle_t PerThreadMiopenHandle() {
+  miopenHandle_t PerThreadDefaultMiopenHandle() {
     return GetPerThreadContext().MiopenHandle();
   }
 
   template <typename T>
   const T* GetConstOnes(size_t count, hipStream_t stream) {
     return GetPerThreadContext().template GetConstOnes<T>(count, stream);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
-    // In some ROCm async
-    if (count_or_bytes == 0)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput),
-                                        count_or_bytes);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -88,32 +61,37 @@ class ROCMExecutionProvider : public IExecutionProvider {
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
   int GetMiopenConvExhaustiveSearch() const { return info_.miopen_conv_exhaustive_search; }
   bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
-
   bool GetMiopenConvUseMaxWorkspace() const { return info_.miopen_conv_use_max_workspace; }
 
   ProviderOptions GetProviderOptions() const override {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
+                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
 
-  void EnableTunableOp();
-  void DisableTunableOp();
-  bool IsTunableOpEnabled() const;
+  ITuningContext* GetTuningContext() const override;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured() const override;
+  Status ReplayGraph() override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
   bool external_stream_ = false;
+  // only used when set user external stream or hip graph
   hipStream_t stream_ = nullptr;
 
   bool use_ep_level_unified_stream_ = false;
+
+  // the tuning context might be altered when calling into a TunableOp
+  mutable rocm::tunable::RocmTuningContext tuning_context_;
 
   class PerThreadContext final {
    public:
@@ -131,25 +109,41 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
     template <typename T>
     const T* GetConstOnes(size_t count, hipStream_t stream) {
-      if (std::is_same<T, float>::value) {
+      constexpr bool is_float = std::is_same<T, float>::value;
+      constexpr bool is_double = std::is_same<T, double>::value;
+      constexpr bool is_half = std::is_same<T, half>::value;
+      constexpr bool is_BFloat16 = std::is_same<T, BFloat16>::value;
+      if (is_float) {
         if (!constant_ones_float_) {
           constant_ones_float_ = rocm::CreateConstantOnes<float>();
         }
         return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream, count));
-      } else if (std::is_same<T, double>::value) {
+      } else if (is_double) {
         if (!constant_ones_double_) {
           constant_ones_double_ = rocm::CreateConstantOnes<double>();
         }
         return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream, count));
-      } else if (std::is_same<T, half>::value) {
+      } else if (is_half) {
         if (!constant_ones_half_) {
           constant_ones_half_ = rocm::CreateConstantOnes<half>();
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream, count));
+      } else if (is_BFloat16) {
+        if (!constant_ones_bfloat16_) {
+          constant_ones_bfloat16_ = rocm::CreateConstantOnes<BFloat16>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }
     }
+
+    bool IsGraphCaptureAllowed() const;
+    void CaptureBegin();
+    void CaptureEnd();
+    bool IsGraphCaptured() const;
+    Status ReplayGraph();
+    void IncrementRegularRunCountBeforeGraphCapture();
 
    private:
     rocblas_handle rocblas_handle_ = nullptr;
@@ -158,6 +152,19 @@ class ROCMExecutionProvider : public IExecutionProvider {
     std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
+    std::unique_ptr<rocm::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
+
+    // Hip graph with multi threads will be supported in the future, so hip_graph_
+    // is put under PerThreadContext.
+    ROCMGraph hip_graph_;
+    bool is_graph_captured_ = false;
+    int regular_run_count_before_graph_capture_ = 0;
+
+    // There is chance that the second regular run allocates GPU memory for causes like:
+    // (1) memory pattern is enabled. (2) arena allocation for stream.
+    // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
+    // to allocate enough memory in Arena before graph capturing.
+    const int min_num_runs_before_hip_graph_capture_ = 2;  // required min regular runs before graph capture for the necessary memory allocations.
   };
 
   using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;

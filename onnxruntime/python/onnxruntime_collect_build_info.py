@@ -35,7 +35,7 @@ def find_cudart_versions(build_env=False, build_cuda_version=None):
             status = cudart.cudaRuntimeGetVersion(ctypes.byref(version))
             if status != 0:
                 return None
-        except:  # noqa
+        except Exception:
             return None
 
         return version.value
@@ -93,7 +93,7 @@ def find_cudnn_supported_cuda_versions(build_env=False):
             # cudnn_ver = cudnn.cudnnGetVersion()
             cuda_ver = cudnn.cudnnGetCudartVersion()
             return cuda_ver
-        except:  # noqa
+        except Exception:
             return None
 
     # use set to avoid duplications

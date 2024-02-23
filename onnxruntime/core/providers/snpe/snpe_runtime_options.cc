@@ -11,13 +11,14 @@ namespace snpe {
 constexpr const char* OPT_RUNTIME = "runtime";
 constexpr const char* OPT_PRIORITY = "priority";
 constexpr const char* BUFFER_TYPE = "buffer_type";
+constexpr const char* ENABLE_INIT_CACHE = "enable_init_cache";
 
 void SnpeRuntimeOptions::ParseOptions() {
   if (const auto runtime_opt_it = runtime_options_.find(OPT_RUNTIME); runtime_opt_it != runtime_options_.end()) {
     runtime_target_ = SnpeRuntimeWrapper(runtime_opt_it->second);
-    LOGS_DEFAULT(INFO) << "Located user specified runtime target: " << runtime_opt_it->second;
+    LOGS_DEFAULT(VERBOSE) << "Located user specified runtime target: " << runtime_opt_it->second;
   }
-  LOGS_DEFAULT(INFO) << "Runtime target: " << runtime_target_.ToString();
+  LOGS_DEFAULT(VERBOSE) << "Runtime target: " << runtime_target_.ToString();
 
   // Option Priority
   if (const auto priority_opt_it = runtime_options_.find(OPT_PRIORITY); priority_opt_it != runtime_options_.end()) {
@@ -30,7 +31,7 @@ void SnpeRuntimeOptions::ParseOptions() {
       execution_priority_ = zdl::DlSystem::ExecutionPriorityHint_t::LOW;
     }
 
-    LOGS_DEFAULT(INFO) << "Located user specified execution priority " << priority_opt_it->second;
+    LOGS_DEFAULT(VERBOSE) << "Located user specified execution priority " << priority_opt_it->second;
   }
 
   // buffer type
@@ -48,6 +49,14 @@ void SnpeRuntimeOptions::ParseOptions() {
     } else {
       LOGS_DEFAULT(ERROR) << "Invalid buffer type: " << buffer_type_it->second;
       buffer_type_ = BufferType::UNKNOWN;
+    }
+    LOGS_DEFAULT(VERBOSE) << "Buffer type: " << buffer_type_it->second;
+  }
+
+  if (const auto enable_init_cache_pos = runtime_options_.find(ENABLE_INIT_CACHE); enable_init_cache_pos != runtime_options_.end()) {
+    if (enable_init_cache_pos->second == "1") {
+      enable_init_cache_ = true;
+      LOGS_DEFAULT(VERBOSE) << "enable_init_cache enabled.";
     }
   }
 }

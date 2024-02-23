@@ -42,10 +42,10 @@ aclDataType getACLTypeByMap(ONNX_NAMESPACE::TensorProto_DataType type) {
 }
 
 template <typename T>
-Status Cast<T>::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+Status Cast<T>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* X = ctx->Input<Tensor>(0);
 
-  Tensor* Y = context->Output(0, X->Shape());
+  Tensor* Y = ctx->Output(0, X->Shape());
 
   aclFormat format = ACL_FORMAT_ND;
   const aclDataType aclTypeX = getACLType<T>();
@@ -78,7 +78,7 @@ Status Cast<T>::ComputeInternal(OpKernelContext* context) const {
                                               ACL_ENGINE_SYS,
                                               ACL_COMPILE_SYS,
                                               NULL,
-                                              Stream()));
+                                              Stream(ctx)));
 
   return Status::OK();
 }

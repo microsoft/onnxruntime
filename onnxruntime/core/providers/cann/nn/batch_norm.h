@@ -20,7 +20,7 @@ class BatchNorm final : public CannKernel {
     ORT_ENFORCE(!is_training_mode_, "only supports inference mode");
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
   float epsilon_;

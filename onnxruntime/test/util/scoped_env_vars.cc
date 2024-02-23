@@ -55,7 +55,7 @@ Status GetEnvironmentVar(const std::string& name, optional<std::string>& value) 
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetEnvironmentVariableA() failed: ", dwErr);
   }
   if (kBufferSize < char_count) {
-    //Shouldn't reach here, 32767 is the max size.
+    // Shouldn't reach here, 32767 is the max size.
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetEnvironmentVariableA() failed: not enough memory");
   }
   buffer.resize(char_count);

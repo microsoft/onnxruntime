@@ -36,7 +36,7 @@ class LoggingEventRecord {
     return (const wchar_t*)(buffer_.data() + p->TaskNameOffset);
   }
 
-  static LoggingEventRecord CreateLoggingEventRecord(EVENT_RECORD* pEvent, DWORD& status);  
+  static LoggingEventRecord CreateLoggingEventRecord(EVENT_RECORD* pEvent, DWORD& status);
 };
 
 struct OpStat {
@@ -56,5 +56,3 @@ struct ProfilingInfo {
   std::unordered_map<std::wstring, OpStat> op_stat;
   std::vector<ULONG64> time_per_run;
 };
-
-

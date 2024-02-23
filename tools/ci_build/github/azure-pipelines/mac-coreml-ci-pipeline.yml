@@ -1,21 +1,67 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 jobs:
 - job: CoreML_CI
+  workspace:
+    clean: all
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-13'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
+    MACOSX_DEPLOYMENT_TARGET: '11.0'
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    CCACHE_DIR: '$(Pipeline.Workspace)/ccache'
   timeoutInMinutes: 120
   steps:
   - script: brew install coreutils ninja
     displayName: Install coreutils and ninja
 
-  - script: |
-      python3 tools/ci_build/build.py \
-      --build_dir build \
-      --skip_submodule_sync \
-      --cmake_generator=Ninja \
-      --parallel \
-      --build_shared_lib \
-      --config Debug \
-      --use_coreml
-    displayName: CoreML EP, Build and Test on macOS
+  - template: templates/use-xcode-version.yml
+
+  - template: templates/mac-build-step-with-cache.yml
+    parameters:
+      WithCache: true
+      Today: $(TODAY)
+      AdditionalKey: coreml
+      CacheDir: $(CCACHE_DIR)
+      BuildStep:
+      - script: |
+          set -e
+          python3 tools/ci_build/build.py \
+          --build_dir build \
+          --skip_submodule_sync \
+          --cmake_generator=Ninja \
+          --parallel --use_binskim_compliant_compile_flags \
+          --build_shared_lib \
+          --config Debug \
+          --use_cache \
+          --use_coreml
+        displayName: CoreML EP, Build and Test on macOS
+        env:
+          CCACHE_COMPILERCHECK: content

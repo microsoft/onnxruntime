@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -21,6 +22,7 @@ class MatMul final : public CudaKernel {
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
 
  private:
   const float alpha_;
@@ -29,5 +31,23 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_a_;
   const bool trans_batch_b_;
 };
+
+template <typename T>
+Status FuncMatMul(
+    // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+    // TODO: remove CudaKernel and OpKernelContext.
+    const CudaKernel* cuda_kernel,
+    // Do NOT use ctx to access inputs and outputs.
+    // Inputs and outputs are passed in as function arguments.
+    OpKernelContext* ctx,
+    const Tensor* A,
+    const Tensor* B,
+    float alpha,
+    bool trans_A,
+    bool trans_B,
+    bool trans_batch_A,
+    bool trans_batch_B,
+    Tensor* Y);
+
 }  // namespace cuda
 }  // namespace onnxruntime

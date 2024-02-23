@@ -81,7 +81,6 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
   auto p_saved_mean = reinterpret_cast<void*>(saved_mean_data);
   auto p_saved_inv_std = reinterpret_cast<void*>(saved_inv_std_data);
 
-
   const int64_t C = new_dims[1];
   IAllocatorUniquePtr<float> p_f_scale, p_f_B, p_f_running_mean, p_f_running_var, p_f_saved_mean, p_f_saved_inv_std;
 

@@ -4,7 +4,6 @@
 #include "gtest/gtest.h"
 
 #include "core/framework/tensor.h"
-#include "core/framework/allocatormgr.h"
 #include "core/quantization/quantization.h"
 #include "test/framework/test_utils.h"
 
@@ -99,25 +98,23 @@ void EnsureQuantizedTensorParam(const float scale, const T zero_point) {
   TensorShape shape({1});
 
   // First, create the scale tensor:
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-  auto num_bytes = shape.Size() * sizeof(float);
-  void* data = alloc->Alloc(num_bytes);
-  float* float_data = static_cast<float*>(data);
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  IAllocatorUniquePtr<float> buffer = IAllocator::MakeUniquePtr<float>(alloc, shape.Size());
+  float* float_data = buffer.get();
   float_data[0] = scale;
   Tensor scale_tensor(DataTypeImpl::GetType<float>(),
                       shape,
-                      data,
+                      float_data,
                       alloc->Info(),
                       /*offset=*/0);
 
   // Next, create the zero_point tensor:
-  auto T_num_bytes = shape.Size() * sizeof(T);
-  void* T_data = alloc->Alloc(T_num_bytes);
-  T* typed_data = static_cast<T*>(T_data);
+  IAllocatorUniquePtr<T> buffer2 = IAllocator::MakeUniquePtr<T>(alloc, shape.Size());
+  T* typed_data = buffer2.get();
   typed_data[0] = zero_point;
   Tensor zero_point_tensor(DataTypeImpl::GetType<T>(),
                            shape,
-                           T_data,
+                           typed_data,
                            alloc->Info(),
                            /*offset=*/0);
 

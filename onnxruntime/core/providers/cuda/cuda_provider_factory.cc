@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
@@ -16,9 +17,6 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#ifndef NDEBUG
-#include "core/providers/cuda/test/all_tests.h"
-#endif
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -28,7 +26,7 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace cuda {
 cuda::INcclService& GetINcclService();
 }
@@ -52,7 +50,7 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
-struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
+struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
     auto cuda_err = ::cudaGetDeviceCount(&num_devices);
@@ -85,8 +83,8 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return std::make_unique<CUDAAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
-    return std::make_unique<CUDAPinnedAllocator>(device_id, name);
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override {
+    return std::make_unique<CUDAPinnedAllocator>(name);
   }
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
@@ -109,8 +107,8 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
   }
 
-  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
-  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
+  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
     ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
@@ -164,7 +162,7 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     info = CUDAExecutionProviderInfo::FromProviderOptions(options);
   }
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
   cuda::INcclService& GetINcclService() override {
     return cuda::GetINcclService();
   }
@@ -179,38 +177,9 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return std::make_shared<CUDAProviderFactory>(info);
   }
 
-  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) override {
+  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
-
-#ifndef NDEBUG
-  bool TestAll() override {
-    // TestAll is the entry point of CUDA EP's insternal tests.
-    // Those internal tests are not directly callable from onnxruntime_test_all
-    // because CUDA EP is a shared library now.
-
-    // This is just one test. Call other test functions below.
-    if (!onnxruntime::cuda::test::TestDeferredRelease()) {
-      return false;
-    }
-
-    if (!onnxruntime::cuda::test::TestDeferredReleaseWithoutArena()) {
-      return false;
-    }
-
-    if (!onnxruntime::cuda::test::TestBeamSearchTopK()) {
-      return false;
-    }
-
-    if (!onnxruntime::cuda::test::TestGreedySearchTopOne()) {
-      return false;
-    }
-
-    // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
-    // back alive here.
-    return true;
-  }
-#endif
 } g_info;
 
 struct CUDA_Provider : Provider {
@@ -249,12 +218,25 @@ struct CUDA_Provider : Provider {
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
+    info.prefer_nhwc = params->prefer_nhwc;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
-    info.tunable_op.enabled = params->tunable_op_enabled;
+    info.tunable_op.enable = params->tunable_op_enable;
+    info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
+    info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
+    info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
+    info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
+    info.use_tf32 = params->use_tf32 != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
 
+  /**
+   * This function will be called by the C API UpdateCUDAProviderOptions().
+   *
+   * What this function does is equivalent to resetting the OrtCUDAProviderOptionsV2 instance with
+   * default CUDAExecutionProviderInf instance first and then set up the provided provider options.
+   * See CUDAExecutionProviderInfo::FromProviderOptions() for more details.
+   */
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
     auto internal_options = onnxruntime::CUDAExecutionProviderInfo::FromProviderOptions(options);
     auto& cuda_options = *reinterpret_cast<OrtCUDAProviderOptionsV2*>(provider_options);
@@ -265,11 +247,19 @@ struct CUDA_Provider : Provider {
     cuda_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cuda_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
     cuda_options.has_user_compute_stream = internal_options.has_user_compute_stream;
-    cuda_options.user_compute_stream = internal_options.user_compute_stream;
+    // The 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance can be set by C API UpdateCUDAProviderOptionsWithValue() as well.
+    // We only set the 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance if it is provided in options
+    if (options.find("has_user_compute_stream") != options.end()) {
+      cuda_options.user_compute_stream = internal_options.user_compute_stream;
+    }
     cuda_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
+    cuda_options.enable_skip_layer_norm_strict_mode = internal_options.enable_skip_layer_norm_strict_mode;
+    cuda_options.prefer_nhwc = internal_options.prefer_nhwc;
+    cuda_options.use_ep_level_unified_stream = internal_options.use_ep_level_unified_stream;
+    cuda_options.use_tf32 = internal_options.use_tf32;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
@@ -287,11 +277,8 @@ struct CUDA_Provider : Provider {
 
 } g_provider;
 
+CUDA_Provider* GetProvider() {
+  return &g_provider;
+}
+
 }  // namespace onnxruntime
-
-extern "C" {
-
-ORT_API(onnxruntime::Provider*, GetProvider) {
-  return &onnxruntime::g_provider;
-}
-}

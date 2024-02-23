@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "constant_of_shape.h"
 
 using namespace ::onnxruntime::common;

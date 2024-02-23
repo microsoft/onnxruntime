@@ -22,8 +22,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
-    "$(ONNXRUNTIME_ROOT}/core/quantization/*.h"
-    "$(ONNXRUNTIME_ROOT}/core/quantization/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/quantization/*.h"
+    "${ONNXRUNTIME_ROOT}/core/quantization/*.cc"
 )
 
 if(WIN32)
@@ -86,7 +86,12 @@ endif()
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
-
+if(WIN32)
+  if("cxx_std_23" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+    set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
+    target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
+  endif()
+endif()
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
@@ -107,7 +112,16 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
   endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)
+if (MSVC)
+    set(EIGEN_NATVIS_FILE ${eigen_SOURCE_DIR}/debug/msvc/eigen.natvis)
+    if (EXISTS ${EIGEN_NATVIS_FILE})
+      target_sources(
+          onnxruntime_common
+          INTERFACE $<BUILD_INTERFACE:${EIGEN_NATVIS_FILE}>)
+    endif()
+endif()
+
+onnxruntime_add_include_to_target(onnxruntime_common date::date ${WIL_TARGET})
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface
@@ -119,7 +133,6 @@ target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} 
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 
@@ -153,7 +166,7 @@ elseif(APPLE)
   if(CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
     set(X64 TRUE)
   endif()
-elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
+elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
       set(ARM TRUE)
@@ -176,6 +189,8 @@ elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
       set(ARM TRUE)
     elseif(dumpmachine_output MATCHES "^aarch64.*")
       set(ARM64 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+      set(RISCV64 TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
       set(X86 TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
@@ -185,7 +200,7 @@ elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 
-if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
+if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
   if((WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
     # msvc compiler report syntax error with cpuinfo arm source files
     # and cpuinfo does not have code for getting arm uarch info under windows
@@ -194,14 +209,15 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Using it mainly in ARM with Android.
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
     if (CPUINFO_SUPPORTED)
-      onnxruntime_add_include_to_target(onnxruntime_common cpuinfo)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
+      onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
     endif()
   endif()
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_common
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
+  install(TARGETS onnxruntime_common
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

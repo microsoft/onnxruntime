@@ -25,7 +25,7 @@ struct RunOptions {
   bool add_bad_shape = false;
   bool mixed_execution_providers = false;
   // Disable TensorRT because its parser fails, and it can't handle unknown dimensions
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
+  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
 };
 
 static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
@@ -248,10 +248,9 @@ static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const st
   auto status = graph.Resolve();
 
   if (failure_message.empty()) {
-    EXPECT_EQ(status, Status::OK());
+    EXPECT_STATUS_OK(status);
   } else {
-    EXPECT_TRUE(!status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(failure_message));
+    EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, failure_message);
   }
 
   return status;
@@ -411,7 +410,11 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
     // we want the CUDA provider to be first, and the CPU provider second. all except the Scan node should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_CUDA)
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif defined(USE_ROCM)
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
     test.Run(expect_result, failure_message, options.excluded_provider_types, nullptr, &execution_providers);
@@ -578,7 +581,7 @@ TEST(Scan9, DISABLED_BadShape) {
   ShortSequenceOneInBatchOneLoopStateVar(
       options,
       "Node:concat Output:concat_out_1 [ShapeInferenceError] Mismatch between number of source and target dimensions. "
-      "Source=2 Target=1");
+      "inferred=2 declared=1");
 }
 
 TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {
@@ -1162,7 +1165,11 @@ void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = fal
     // we want the CUDA provider to be first, and the CPU provider second. all except the Scan node should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_CUDA)
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif defined(USE_ROCM)
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types, nullptr,
@@ -1174,7 +1181,7 @@ void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = fal
 
 TEST_8_AND_9(UnknownDimInSubgraphOutput);
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(Scan, MixedExecutionProviders) {
   RunOptions options{};
   options.is_v8 = false;

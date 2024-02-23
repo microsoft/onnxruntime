@@ -46,7 +46,7 @@ inline HRESULT OrtErrorCodeToHRESULT(OrtErrorCode status) noexcept {
       auto error_message = ort_api->GetErrorMessage(_status);                                                  \
       HRESULT hresult = OrtErrorCodeToHRESULT(error_code);                                                     \
       telemetry_helper.LogRuntimeError(hresult, std::string(error_message), __FILE__, __FUNCTION__, __LINE__); \
-      auto message = _winml::Strings::HStringFromUTF8(error_message);                                           \
+      auto message = _winml::Strings::HStringFromUTF8(error_message);                                          \
       RoOriginateError(hresult, reinterpret_cast<HSTRING>(winrt::get_abi(message)));                           \
       return hresult;                                                                                          \
     }                                                                                                          \
@@ -60,7 +60,7 @@ inline HRESULT OrtErrorCodeToHRESULT(OrtErrorCode status) noexcept {
       auto error_message = ort_api->GetErrorMessage(_status);                                                  \
       HRESULT hresult = OrtErrorCodeToHRESULT(error_code);                                                     \
       telemetry_helper.LogRuntimeError(hresult, std::string(error_message), __FILE__, __FUNCTION__, __LINE__); \
-      auto message = _winml::Strings::HStringFromUTF8(error_message);                                           \
+      auto message = _winml::Strings::HStringFromUTF8(error_message);                                          \
       throw winrt::hresult_error(hresult, message);                                                            \
     }                                                                                                          \
   } while (0)

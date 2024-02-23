@@ -17,10 +17,11 @@ static void RunTest(const embedlayernorm::OpData& data,
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = DefaultRocmExecutionProvider().get() != nullptr;
   bool enable_dml = DefaultDmlExecutionProvider().get() != nullptr;
   bool enable_cpu = !use_float16;
 
-  if (enable_cpu || enable_cuda || enable_dml) {
+  if (enable_cpu || enable_cuda || enable_dml || enable_rocm) {
     // Input and output shapes
     //   Input 0 - input_ids          : (batch_size, sequence_size)
     //   Input 1 - segment_ids        : (batch_size, sequence_size)
@@ -92,7 +93,7 @@ static void RunTest(const embedlayernorm::OpData& data,
                                  ToFloat16(data.beta_data),
                                  /*is_initializer=*/true);
       tester.AddAttribute("epsilon", data.epsilon);
-      if (data.has_mask) {
+      if (data.has_mask && data.mask_data.size()) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
       }
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(data.output_data));
@@ -116,12 +117,17 @@ static void RunTest(const embedlayernorm::OpData& data,
       tester.AddInput<float>("gamma", gamma_dims, data.gamma_data, /*is_initializer=*/true);
       tester.AddInput<float>("beta", beta_dims, data.beta_data, /*is_initializer=*/true);
       tester.AddAttribute("epsilon", data.epsilon);
-      if (data.has_mask) {
+      if (data.has_mask && data.mask_data.size()) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
       }
       tester.AddOutput<float>("output", output_dims, data.output_data);
     }
-    tester.AddOutput<int32_t>("mask_index", mask_index_dims, data.mask_index_data);
+    tester.AddAttribute("mask_index_type", static_cast<int64_t>(data.mask_index_type));
+    if (data.mask_index_data.size()) {
+      tester.AddOutput<int32_t>("mask_index", mask_index_dims, data.mask_index_data);
+    } else {
+      tester.AddOptionalOutputEdge<int32_t>();
+    }
     if (sum_output) {
       std::vector<int64_t> embedding_sum_output_dims = output_dims;
       if (use_float16) {
@@ -142,6 +148,10 @@ static void RunTest(const embedlayernorm::OpData& data,
     if (enable_cuda) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    } else if (enable_rocm) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultRocmExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     } else if (enable_dml) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -183,6 +193,13 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum) {
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_Float16) {
   RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum(), true, true);
 }
+
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex(),
+          /* use_float16 = */ false,
+          /* sum_output = */ true);
+}
+
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
   RunTest(embedlayernorm::EmbedLayerNormBatch2());
 }

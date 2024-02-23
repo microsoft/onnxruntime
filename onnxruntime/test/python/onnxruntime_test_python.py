@@ -1,11 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# pylint: disable=C0116,W0212,R1720,C0114
+from __future__ import annotations
 
-# -*- coding: UTF-8 -*-
+import copy
+import ctypes
 import gc
 import os
+import pathlib
 import platform
+import queue
 import sys
 import threading
 import unittest
@@ -17,7 +20,7 @@ import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
-if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
+if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
     os.add_dll_directory(os.getcwd())
 
 available_providers = [provider for provider in onnxrt.get_available_providers()]
@@ -52,25 +55,63 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testTvmImported(self):
+    def run_model_with_input(self, session_object, input_name, input_value, iter_num, queue):
+        for _ in range(iter_num):
+            predict = session_object.run(None, {input_name: input_value})[0]
+            queue.put(max(predict.flatten().tolist()))
+
+    def load_cuda_lib(self):
+        cuda_lib = None
+        if sys.platform == "win32":
+            cuda_lib = "cuda.dll"
+        elif sys.platform == "linux":
+            cuda_lib = "libcuda.so"
+        elif sys.platform == "darwin":
+            cuda_lib = "libcuda.dylib"
+
+        if cuda_lib is not None:
+            try:
+                return ctypes.CDLL(cuda_lib)
+            except OSError:
+                pass
+        return None
+
+    def cuda_device_count(self, cuda_lib):
+        if cuda_lib is None:
+            return -1
+        num_device = ctypes.c_int()
+        cuda_lib.cuInit(0)
+        result = cuda_lib.cuDeviceGetCount(ctypes.byref(num_device))
+        if result != 0:
+            error_str = ctypes.c_char_p()
+            cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
+            print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+            return -1
+        return num_device.value
+
+    def test_tvm_imported(self):
         if "TvmExecutionProvider" not in onnxrt.get_available_providers():
             return
         import tvm
 
         self.assertTrue(tvm is not None)
 
-    def testModelSerialization(self):
+    def test_get_version_string(self):
+        self.assertIsNot(onnxrt.get_version_string(), None)
+
+    def test_get_build_info(self):
+        self.assertIsNot(onnxrt.get_build_info(), None)
+        self.assertIn("Build Info", onnxrt.get_build_info())
+
+    def test_model_serialization(self):
         try:
             so = onnxrt.SessionOptions()
             so.log_severity_level = 1
             so.logid = "TestModelSerialization"
             so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
-            onnxrt.InferenceSession(
-                get_name("mul_1.onnx"),
-                sess_options=so,
-                providers=["CPUExecutionProvider"],
-            )
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            os.remove(so.optimized_model_filepath)
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -80,22 +121,153 @@ class TestInferenceSession(unittest.TestCase):
             else:
                 raise onnxruntime_error
 
-    def testGetProviders(self):
+    def test_model_serialization_with_external_initializers(self):
+        try:
+            so = onnxrt.SessionOptions()
+            so.log_severity_level = 1
+            so.logid = "TestModelSerializationWithExternalInitializers"
+            so.optimized_model_filepath = "./model_with_external_initializers.onnx"
+            external_initializers_file = "external_initializers.bin"
+            so.add_session_config_entry(
+                "session.optimized_model_external_initializers_file_name", external_initializers_file
+            )
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            onnxrt.InferenceSession(get_name("mnist.onnx"), sess_options=so)
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            self.assertTrue(os.path.isfile(external_initializers_file))
+            os.remove(so.optimized_model_filepath)
+            os.remove(external_initializers_file)
+        except Fail as onnxruntime_error:
+            if (
+                str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
+                " compiled nodes. Please disable any execution providers which generate compiled nodes."
+            ):
+                pass
+            else:
+                raise onnxruntime_error
+
+    def test_model_serialization_with_external_initializers_to_directory(self):
+        try:
+            so = onnxrt.SessionOptions()
+            so.log_severity_level = 1
+            so.logid = "TestModelSerializationWithExternalInitializersToDirectory"
+            directory = "./testdata/"
+            so.optimized_model_filepath = os.path.join(directory, "model_with_external_initializers_in_dir.onnx")
+            external_initializers_file = "external_initializers_in_dir.bin"
+            so.add_session_config_entry(
+                "session.optimized_model_external_initializers_file_name", external_initializers_file
+            )
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            onnxrt.InferenceSession(get_name("mnist.onnx"), sess_options=so)
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
+            os.remove(so.optimized_model_filepath)
+            os.remove(os.path.join(directory, external_initializers_file))
+        except Fail as onnxruntime_error:
+            if (
+                str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
+                " compiled nodes. Please disable any execution providers which generate compiled nodes."
+            ):
+                pass
+            else:
+                raise onnxruntime_error
+
+    def test_model_serialization_with_original_external_initializers_to_directory(self):
+        try:
+            so = onnxrt.SessionOptions()
+            so.log_severity_level = 1
+            so.logid = "TestModelSerializationWithOriginalExternalInitializersToDirectory"
+            directory = "./testdata/"
+            so.optimized_model_filepath = os.path.join(directory, "model_opt_with_ext_data.onnx")
+            external_initializers_file = "model_opt_with_ext_data.bin"
+            so.add_session_config_entry(
+                "session.optimized_model_external_initializers_file_name", external_initializers_file
+            )
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
+            os.remove(so.optimized_model_filepath)
+            os.remove(os.path.join(directory, external_initializers_file))
+        except Fail as onnxruntime_error:
+            if (
+                str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
+                " compiled nodes. Please disable any execution providers which generate compiled nodes."
+            ):
+                pass
+            else:
+                raise onnxruntime_error
+
+    def test_model_serialization_with_original_external_initializers_to_current_directory(self):
+        optimized_model_filepath = "model_opt_with_ext_data_1.onnx"
+        external_initializers_file = "model_opt_with_ext_data_1.bin"
+        optimized_model_filepath_2 = "model_opt_with_ext_data_2.onnx"
+        external_initializers_file_2 = "model_opt_with_ext_data_2.bin"
+
+        so = onnxrt.SessionOptions()
+        so.log_severity_level = 1
+        so.logid = "TestModelSerializationWithOriginalExternalInitializersToCurrentDirectory"
+        so.optimized_model_filepath = optimized_model_filepath
+
+        so.add_session_config_entry(
+            "session.optimized_model_external_initializers_file_name", external_initializers_file
+        )
+
+        # TODO(anyone): Set this to 100 will cause test error since some tensor below the threshold
+        # still refers to the original external data file. We shall fix this issue so that the
+        # optimized model only refers to one external data file.
+        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "10")
+        session1 = onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
+        del session1
+        self.assertTrue(os.path.isfile(optimized_model_filepath))
+        self.assertTrue(os.path.isfile(external_initializers_file))
+
+        so2 = onnxrt.SessionOptions()
+        so2.log_severity_level = 1
+        so2.logid = "TestModelSerializationWithExternalInitializersInCurrentDirectory"
+        so2.optimized_model_filepath = optimized_model_filepath_2
+        so2.add_session_config_entry(
+            "session.optimized_model_external_initializers_file_name", external_initializers_file_2
+        )
+        so2.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "10")
+
+        # verify that we can load the optimized model with external data in current directory and save
+        # optimized model with external data to current directory.
+        session2 = onnxrt.InferenceSession(optimized_model_filepath, sess_options=so2)
+        del session2
+        self.assertTrue(os.path.isfile(optimized_model_filepath_2))
+        self.assertTrue(os.path.isfile(external_initializers_file_2))
+
+        # Remove model 1 to make sure optimized model 2 can be loaded independently from model 1
+        os.remove(optimized_model_filepath)
+        os.remove(external_initializers_file)
+
+        session3 = onnxrt.InferenceSession(optimized_model_filepath_2, sess_options=onnxrt.SessionOptions())
+        del session3
+
+        os.remove(optimized_model_filepath_2)
+        os.remove(external_initializers_file_2)
+
+    def test_get_providers(self):
         self.assertTrue("CPUExecutionProvider" in onnxrt.get_available_providers())
         # get_all_providers() returns the default EP order from highest to lowest.
         # CPUExecutionProvider should always be last.
-        self.assertTrue("CPUExecutionProvider" == onnxrt.get_all_providers()[-1])
+        self.assertTrue(onnxrt.get_all_providers()[-1] == "CPUExecutionProvider")
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         self.assertTrue("CPUExecutionProvider" in sess.get_providers())
 
-    def testEnablingAndDisablingTelemetry(self):
+    def test_enabling_and_disabling_telemetry(self):
         onnxrt.disable_telemetry_events()
 
         # no-op on non-Windows builds
         # may be no-op on certain Windows builds based on build configuration
         onnxrt.enable_telemetry_events()
 
-    def testSetProviders(self):
+    def test_deserialization_from_path_object(self):
+        # path object is allowed
+        onnxrt.InferenceSession(pathlib.Path(get_name("mul_1.onnx")), providers=available_providers)
+
+    def test_set_providers(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CUDAExecutionProvider"])
             # confirm that CUDA Provider is in list of registered providers.
@@ -105,7 +277,7 @@ class TestInferenceSession(unittest.TestCase):
             # confirm only CPU Provider is registered now.
             self.assertEqual(["CPUExecutionProvider"], sess.get_providers())
 
-    def testSetProvidersWithOptions(self):
+    def test_set_providers_with_options(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["TensorrtExecutionProvider"])
             self.assertIn("TensorrtExecutionProvider", sess.get_providers())
@@ -155,6 +327,20 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_engine_cache_path"], str(engine_cache_path))
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
 
+            from onnxruntime.capi import _pybind_state as C
+
+            session_options = C.get_default_session_options()
+
+            # TRT plugins registered as custom op domain should only be added once in session option regardless of number of session creation
+            sess1 = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"]
+            )
+            sess2 = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"]
+            )
+            self.assertIn("TensorrtExecutionProvider", sess1.get_providers())
+            self.assertIn("TensorrtExecutionProvider", sess2.get_providers())
+
             # We currently disable following test code since that not all test machines/GPUs have nvidia int8 capability
 
             """
@@ -169,12 +355,9 @@ class TestInferenceSession(unittest.TestCase):
             """
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
-            import ctypes
-            import sys
+            cuda_success = 0
 
-            CUDA_SUCCESS = 0
-
-            def runBaseTest1():
+            def run_base_test1():
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CUDAExecutionProvider"])
                 self.assertTrue("CUDAExecutionProvider" in sess.get_providers())
 
@@ -193,7 +376,7 @@ class TestInferenceSession(unittest.TestCase):
                     sess.get_providers(),
                 )
 
-            def runBaseTest2():
+            def run_base_test2():
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CUDAExecutionProvider"])
                 self.assertIn("CUDAExecutionProvider", sess.get_providers())
 
@@ -231,13 +414,21 @@ class TestInferenceSession(unittest.TestCase):
                             str(option_value),
                         )
 
+                test_get_and_set_option_with_values("enable_cuda_graph", ["1", "0"])
+
                 test_get_and_set_option_with_values("arena_extend_strategy", ["kNextPowerOfTwo", "kSameAsRequested"])
 
                 test_get_and_set_option_with_values("cudnn_conv_algo_search", ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
 
                 test_get_and_set_option_with_values("do_copy_in_default_stream", [0, 1])
 
-                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
+                test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
+
+                test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
+
+                test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
+
+                test_get_and_set_option_with_values("use_tf32", ["1", "0"])
 
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
@@ -247,6 +438,25 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_alloc"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_free"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_empty_cache"], "0")
+
+                option["user_compute_stream"] = "0"
+                sess.set_providers(["CUDAExecutionProvider"], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], "0")
+
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        s = torch.cuda.Stream()
+                        option["user_compute_stream"] = str(s.cuda_stream)
+                        sess.set_providers(["CUDAExecutionProvider"], [option])
+                        options = sess.get_provider_options()
+                        self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], str(s.cuda_stream))
+                        self.assertEqual(options["CUDAExecutionProvider"]["has_user_compute_stream"], "1")
+                except ImportError:
+                    print("torch is not installed, skip testing setting user_compute_stream from torch cuda stream")
+
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
@@ -270,27 +480,7 @@ class TestInferenceSession(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(["CUDAExecutionProvider"], [option])
 
-            def getCudaDeviceCount():
-                import ctypes
-
-                num_device = ctypes.c_int()
-                result = ctypes.c_int()
-                error_str = ctypes.c_char_p()
-
-                result = cuda.cuInit(0)
-                result = cuda.cuDeviceGetCount(ctypes.byref(num_device))
-                if result != CUDA_SUCCESS:
-                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
-                    print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
-                    return -1
-
-                return num_device.value
-
-            def setDeviceIdTest(i):
-                import ctypes
-
-                import onnxruntime as onnxrt
-
+            def set_device_id_test(i, cuda_lib):
                 device = ctypes.c_int()
                 result = ctypes.c_int()
                 error_str = ctypes.c_char_p()
@@ -302,22 +492,22 @@ class TestInferenceSession(unittest.TestCase):
                     ["CUDAExecutionProvider", "CPUExecutionProvider"],
                     sess.get_providers(),
                 )
-                result = cuda.cuCtxGetDevice(ctypes.byref(device))
-                if result != CUDA_SUCCESS:
-                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
-                    print("cuCtxGetDevice failed with error code %d: %s" % (result, error_str.value.decode()))
+                result = cuda_lib.cuCtxGetDevice(ctypes.byref(device))
+                if result != cuda_success:
+                    cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
+                    print(f"cuCtxGetDevice failed with error code {result}: {error_str.value.decode()}")
 
-                self.assertEqual(result, CUDA_SUCCESS)
+                self.assertEqual(result, cuda_success)
                 self.assertEqual(i, device.value)
 
-            def runAdvancedTest():
-                num_device = getCudaDeviceCount()
+            def run_advanced_test(cuda_lib):
+                num_device = self.cuda_device_count(cuda_lib)
                 if num_device < 0:
                     return
 
                 # Configure session to be ready to run on all available cuda devices
                 for i in range(num_device):
-                    setDeviceIdTest(i)
+                    set_device_id_test(i, cuda_lib)
 
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
 
@@ -333,26 +523,16 @@ class TestInferenceSession(unittest.TestCase):
                     option = {"invalid_option": 123}
                     sess.set_providers(["CUDAExecutionProvider"], [option])
 
-            libnames = ("libcuda.so", "libcuda.dylib", "cuda.dll")
-            for libname in libnames:
-                try:
-                    cuda = ctypes.CDLL(libname)
-                    runBaseTest1()
-                    runBaseTest2()
-                    runAdvancedTest()
-
-                except OSError:
-                    continue
-                else:
-                    break
-            else:
-                runBaseTest1()
-                runBaseTest2()
-                # raise OSError("could not load any of: " + ' '.join(libnames))
+            run_base_test1()
+            run_base_test2()
+            cuda = self.load_cuda_lib()
+            if cuda is not None:
+                print("run advanced_test")
+                run_advanced_test(cuda)
 
         if "ROCMExecutionProvider" in onnxrt.get_available_providers():
 
-            def runRocmOptionsTest():
+            def run_rocm_options_test():
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["ROCMExecutionProvider"])
                 self.assertIn("ROCMExecutionProvider", sess.get_providers())
                 options = sess.get_provider_options()
@@ -371,23 +551,120 @@ class TestInferenceSession(unittest.TestCase):
                             str(option_value),
                         )
 
-                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
+                test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
 
-            runRocmOptionsTest()
+                test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
-    def testInvalidSetProviders(self):
+                test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
+
+                test_get_and_set_option_with_values("enable_hip_graph", ["1", "0"])
+
+            run_rocm_options_test()
+
+    def test_invalid_set_providers(self):
         with self.assertRaises(RuntimeError) as context:
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
             sess.set_providers(["InvalidProvider"])
         self.assertTrue("Unknown Provider Type: InvalidProvider" in str(context.exception))
 
-    def testSessionProviders(self):
+    def test_session_providers(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             # create session from scratch, but constrain it to only use the CPU.
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
             self.assertEqual(["CPUExecutionProvider"], sess.get_providers())
 
-    def testRunModel(self):
+    def test_get_and_set_tuning_results(self):
+        def get_tuning_results_for_ep(sess, ep):  # without the outer list
+            tuning_results = sess.get_tuning_results()
+            self.assertGreaterEqual(len(tuning_results), 1)
+            tuning_results_for_this_ep = [t for t in tuning_results if t.get("ep") == ep]
+            self.assertEqual(len(tuning_results_for_this_ep), 1)
+            return tuning_results_for_this_ep[0]
+
+        probe_op_sig = "probe_but_not_an_op_signature"
+        probe_params_sig = "probe_but_not_an_params_signature"
+        probe_value = 10000000
+
+        def copy_tuning_results_with_probe(tr):
+            tr = copy.deepcopy(tr)
+            tr["results"][probe_op_sig] = {probe_params_sig: probe_value}
+            return tr
+
+        def assert_tuning_results_loaded(sess, ep):
+            tr = get_tuning_results_for_ep(sess, ep)
+            self.assertIn(probe_op_sig, tr["results"])
+            self.assertEqual(tr["results"][probe_op_sig], {probe_params_sig: probe_value})
+
+        def assert_tuning_results_not_loaded(sess, ep):
+            tr = get_tuning_results_for_ep(sess, ep)
+            self.assertNotIn(probe_op_sig, tr["results"])
+
+        def do_test_get_and_set_tuning_results(ep):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep])
+            tuning_results = get_tuning_results_for_ep(sess, ep)
+
+            self.assertIn("ep", tuning_results)
+            self.assertIn("results", tuning_results)
+            self.assertIn("validators", tuning_results)
+            self.assertIn("ORT_VERSION", tuning_results["validators"])
+            self.assertNotIn("NOT_A_VALIDATOR_KEY", tuning_results["validators"])
+
+            # invalid EP will be rejected
+            invalid_unknown_ep = copy_tuning_results_with_probe(tuning_results)
+            invalid_unknown_ep["ep"] = "UnknownEP"
+            sess.set_tuning_results([invalid_unknown_ep])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([invalid_unknown_ep], error_on_invalid=True)
+            self.assertIn("Cannot find execution provider UnknownEP", str(context.exception))
+            assert_tuning_results_not_loaded(sess, ep)
+
+            # missing validator key will be rejected
+            mismatched_validator_key_missing = copy_tuning_results_with_probe(tuning_results)
+            mismatched_validator_key_missing["validators"].pop("ORT_VERSION")
+            sess.set_tuning_results([mismatched_validator_key_missing])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([mismatched_validator_key_missing], error_on_invalid=True)
+            self.assertIn("ORT_VERSION", str(context.exception))
+            self.assertIn("is not provided for validation", str(context.exception))
+            assert_tuning_results_not_loaded(sess, ep)
+
+            mismatched_validator_key_extra = copy_tuning_results_with_probe(tuning_results)
+            mismatched_validator_key_extra["validators"]["NOT_A_VALIDATOR_KEY"] = "NOT_USED"
+            sess.set_tuning_results([mismatched_validator_key_extra])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([mismatched_validator_key_extra], error_on_invalid=True)
+            self.assertIn("NOT_A_VALIDATOR_KEY", str(context.exception))
+            self.assertIn("is unable to consume it", str(context.exception))
+            assert_tuning_results_not_loaded(sess, ep)
+
+            validation_failure = copy_tuning_results_with_probe(tuning_results)
+            validation_failure["validators"]["ORT_VERSION"] = "This is not a proper ORT_VERSION value!"
+            sess.set_tuning_results([validation_failure])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([validation_failure], error_on_invalid=True)
+            self.assertIn("Failed to load TuningResults", str(context.exception))
+            self.assertIn("version mismatch", str(context.exception))
+            assert_tuning_results_not_loaded(sess, ep)
+
+            loadable = copy_tuning_results_with_probe(tuning_results)
+            sess.set_tuning_results([loadable], error_on_invalid=True)
+            assert_tuning_results_loaded(sess, ep)
+
+        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+            do_test_get_and_set_tuning_results("CUDAExecutionProvider")
+
+        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
+            do_test_get_and_set_tuning_results("ROCMExecutionProvider")
+
+    def test_run_model_with_optional_sequence_input(self):
+        sess = onnxrt.InferenceSession(get_name("identity_opt.onnx"))
+        x = [np.array([1, 2, 3, 4, 5]).astype(np.float32)]
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+        res = sess.run([output_name], {input_name: x})
+        np.testing.assert_allclose(res[0], x)
+
+    def test_run_model(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
@@ -402,7 +679,38 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testRunModelFromBytes(self):
+    def test_run_async(self):
+        event = threading.Event()
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+
+        class MyData:
+            def __init__(self, id):
+                self.__id = id
+
+            def get_id(self):
+                return self.__id
+
+        my_data = MyData(123456)
+
+        def callback(res: np.ndarray, data: MyData, err: str) -> None:
+            self.assertEqual(len(err), 0)
+            self.assertEqual(len(res), 1)
+            self.assertEqual(data.get_id(), 123456)
+            np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+            event.set()
+
+        so = onnxrt.SessionOptions()
+        so.intra_op_num_threads = 2
+
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so, providers=available_providers)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        sess.run_async(["Y"], {"X": x}, callback, my_data)
+
+        event.wait(10)  # timeout in 10 sec
+        self.assertTrue(event.is_set())
+
+    def test_run_model_from_bytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
         sess = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
@@ -419,7 +727,7 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testRunModel2(self):
+    def test_run_model2(self):
         sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
@@ -434,7 +742,7 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testRunModel2Contiguous(self):
+    def test_run_model2_contiguous(self):
         sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
         x = np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)[:, [1, 0]]
         input_name = sess.get_inputs()[0].name
@@ -452,7 +760,7 @@ class TestInferenceSession(unittest.TestCase):
         rescontiguous = sess.run([output_name], {input_name: xcontiguous})
         np.testing.assert_allclose(output_expected, rescontiguous[0], rtol=1e-05, atol=1e-08)
 
-    def testRunModelMultipleThreads(self):
+    def test_run_model_multiple_threads(self):
         # Skip this test for a "pure" DML onnxruntime python wheel.
         # We keep this test enabled for instances where both DML and CUDA EPs are available
         # (Windows GPU CI pipeline has this config) - this test will pass because CUDA has higher precedence
@@ -482,7 +790,34 @@ class TestInferenceSession(unittest.TestCase):
             t1.join()
             t2.join()
 
-    def testListAsInput(self):
+        if "CUDAExecutionProvider" in available_providers:
+            cuda_options = {
+                "gpu_mem_limit": 2 * 1024 * 1024 * 1024,
+                "arena_extend_strategy": "kSameAsRequested",
+            }
+            model_path = "../models/zoo/opset7/ResNet18-v2/resnet18-v2-7.onnx"
+            if not os.path.exists(model_path):
+                print("cannot find resnet18-v2-7.onnx")
+                return
+            session = onnxrt.InferenceSession(model_path, providers=[("CUDAExecutionProvider", cuda_options)])
+            [thread_num, iter_num] = [4, 20]
+            q = queue.Queue()
+            input_name = session.get_inputs()[0].name
+            input_value = np.random.rand(1, 3, 224, 224).astype(np.float32)
+            workers = [
+                threading.Thread(target=self.run_model_with_input, args=(session, input_name, input_value, iter_num, q))
+                for idx in range(thread_num)
+            ]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
+
+            result = q.get()
+            while q.qsize() > 0:
+                self.assertEqual(result, q.get())
+
+    def test_list_as_input(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
@@ -490,18 +825,18 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testStringListAsInput(self):
+    def test_string_list_as_input(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], dtype=str).reshape((2, 2))
         x_name = sess.get_inputs()[0].name
         res = sess.run([], {x_name: x.tolist()})
         np.testing.assert_equal(x, res[0])
 
-    def testRunDevice(self):
+    def test_run_device(self):
         device = onnxrt.get_device()
         self.assertTrue("CPU" in device or "GPU" in device)
 
-    def testRunModelSymbolicInput(self):
+    def test_run_model_symbolic_input(self):
         sess = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=available_providers_without_tvm)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
@@ -518,7 +853,7 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testBooleanInputs(self):
+    def test_boolean_inputs(self):
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=available_providers)
         a = np.array([[True, True], [False, False]], dtype=bool)
         b = np.array([[True, False], [True, False]], dtype=bool)
@@ -550,7 +885,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {a_name: a, b_name: b})
         np.testing.assert_equal(output_expected, res[0])
 
-    def testStringInput1(self):
+    def test_string_input1(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], dtype=str).reshape((2, 2))
 
@@ -571,7 +906,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         np.testing.assert_equal(x, res[0])
 
-    def testStringInput2(self):
+    def test_string_input2(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["Olá", "你好", "여보세요", "hello"], dtype=str).reshape((2, 2))
 
@@ -592,7 +927,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         np.testing.assert_equal(x, res[0])
 
-    def testInputBytes(self):
+    def test_input_bytes(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array([b"this", b"is", b"identity", b"test"]).reshape((2, 2))
 
@@ -613,7 +948,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         np.testing.assert_equal(x, res[0].astype("|S8"))
 
-    def testInputObject(self):
+    def test_input_object(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], object).reshape((2, 2))
 
@@ -634,7 +969,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         np.testing.assert_equal(x, res[0])
 
-    def testInputVoid(self):
+    def test_input_void(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         # numpy 1.20+ doesn't automatically pad the bytes based entries in the array when dtype is np.void,
         # so we use inputs where that is the case
@@ -659,15 +994,16 @@ class TestInferenceSession(unittest.TestCase):
         expr = np.array([["must", "have"], ["same", "size"]], dtype=object)
         np.testing.assert_equal(expr, res[0])
 
-    def testRaiseWrongNumInputs(self):
+    def test_raise_wrong_num_inputs(self):
         with self.assertRaises(ValueError) as context:
             sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=onnxrt.get_available_providers())
             a = np.array([[True, True], [False, False]], dtype=bool)
-            res = sess.run([], {"input:0": a})
+            sess.run([], {"input:0": a})
+        self.assertIn(
+            "Required inputs (['input1:0']) are missing from input feed (['input:0'])", str(context.exception)
+        )
 
-        self.assertTrue("Model requires 2 inputs" in str(context.exception))
-
-    def testModelMeta(self):
+    def test_model_meta(self):
         model_path = "../models/opset8/test_squeezenet/model.onnx"
         if not os.path.exists(model_path):
             return
@@ -679,7 +1015,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual("", modelmeta.description)
         self.assertEqual("", modelmeta.graph_description)
 
-    def testProfilerWithSessionOptions(self):
+    def test_profiler_with_session_options(self):
         so = onnxrt.SessionOptions()
         so.enable_profiling = True
         sess = onnxrt.InferenceSession(
@@ -700,8 +1036,10 @@ class TestInferenceSession(unittest.TestCase):
                     self.assertTrue(tag in lines[i])
             self.assertTrue("]" in lines[-1])
 
-    def testProfilerGetStartTimeNs(self):
-        def getSingleSessionProfilingStartTime():
+        os.remove(profile_file)
+
+    def test_profiler_get_start_time_ns(self):
+        def get_single_session_profiling_start_time():
             so = onnxrt.SessionOptions()
             so.enable_profiling = True
             sess = onnxrt.InferenceSession(
@@ -709,19 +1047,21 @@ class TestInferenceSession(unittest.TestCase):
                 sess_options=so,
                 providers=onnxrt.get_available_providers(),
             )
-            return sess.get_profiling_start_time_ns()
+            start_time = sess.get_profiling_start_time_ns()
+            os.remove(sess.end_profiling())
+            return start_time
 
         # Get 1st profiling's start time
-        start_time_1 = getSingleSessionProfilingStartTime()
+        start_time_1 = get_single_session_profiling_start_time()
         # Get 2nd profiling's start time
-        start_time_2 = getSingleSessionProfilingStartTime()
+        start_time_2 = get_single_session_profiling_start_time()
         # Get 3rd profiling's start time
-        start_time_3 = getSingleSessionProfilingStartTime()
+        start_time_3 = get_single_session_profiling_start_time()
 
         # Chronological profiling's start time
         self.assertTrue(start_time_1 <= start_time_2 <= start_time_3)
 
-    def testGraphOptimizationLevel(self):
+    def test_graph_optimization_level(self):
         opt = onnxrt.SessionOptions()
         # default should be all optimizations optimization
         self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
@@ -734,9 +1074,9 @@ class TestInferenceSession(unittest.TestCase):
         a = np.array([[True, True], [False, False]], dtype=bool)
         b = np.array([[True, False], [True, False]], dtype=bool)
 
-        res = sess.run([], {"input1:0": a, "input:0": b})
+        sess.run([], {"input1:0": a, "input:0": b})
 
-    def testSequenceLength(self):
+    def test_sequence_length(self):
         sess = onnxrt.InferenceSession(get_name("sequence_length.onnx"), providers=available_providers_without_tvm)
         x = [
             np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3)),
@@ -757,7 +1097,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         self.assertEqual(output_expected, res[0])
 
-    def testSequenceConstruct(self):
+    def test_sequence_construct(self):
         sess = onnxrt.InferenceSession(
             get_name("sequence_construct.onnx"),
             providers=available_providers_without_tvm,
@@ -789,7 +1129,7 @@ class TestInferenceSession(unittest.TestCase):
 
         np.testing.assert_array_equal(output_expected, res[0])
 
-    def testSequenceInsert(self):
+    def test_sequence_insert(self):
         opt = onnxrt.SessionOptions()
         opt.execution_mode = onnxrt.ExecutionMode.ORT_SEQUENTIAL
         sess = onnxrt.InferenceSession(
@@ -819,13 +1159,13 @@ class TestInferenceSession(unittest.TestCase):
         )
         np.testing.assert_array_equal(output_expected, res[0])
 
-    def testOrtExecutionMode(self):
+    def test_ort_execution_mode(self):
         opt = onnxrt.SessionOptions()
         self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_SEQUENTIAL)
         opt.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
         self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
 
-    def testLoadingSessionOptionsFromModel(self):
+    def test_loading_session_options_from_model(self):
         try:
             os.environ["ORT_LOAD_CONFIG_FROM_MODEL"] = str(1)
             sess = onnxrt.InferenceSession(
@@ -849,6 +1189,8 @@ class TestInferenceSession(unittest.TestCase):
 
             self.assertEqual(session_options.enable_profiling, True)  # from the ORT config
 
+            os.remove(sess.end_profiling())
+
         except Exception:
             raise
 
@@ -856,7 +1198,7 @@ class TestInferenceSession(unittest.TestCase):
             # Make sure the usage of the feature is disabled after this test
             os.environ["ORT_LOAD_CONFIG_FROM_MODEL"] = str(0)
 
-    def testSessionOptionsAddFreeDimensionOverrideByDenotation(self):
+    def test_session_options_add_free_dimension_override_by_denotation(self):
         so = onnxrt.SessionOptions()
         so.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
         so.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
@@ -871,7 +1213,7 @@ class TestInferenceSession(unittest.TestCase):
         # Free dims with denotations - "DATA_BATCH" and "DATA_CHANNEL" have values assigned to them.
         self.assertEqual(input_shape, [3, 5, 5])
 
-    def testSessionOptionsAddFreeDimensionOverrideByName(self):
+    def test_session_options_add_free_dimension_override_by_name(self):
         so = onnxrt.SessionOptions()
         so.add_free_dimension_override_by_name("Dim1", 4)
         so.add_free_dimension_override_by_name("Dim2", 6)
@@ -886,14 +1228,14 @@ class TestInferenceSession(unittest.TestCase):
         # "Dim1" and "Dim2" have values assigned to them.
         self.assertEqual(input_shape, [4, 6, 5])
 
-    def testSessionOptionsAddConfigEntry(self):
+    def test_session_options_add_config_entry(self):
         so = onnxrt.SessionOptions()
         key = "CONFIG_KEY"
         val = "CONFIG_VAL"
         so.add_session_config_entry(key, val)
         self.assertEqual(so.get_session_config_entry(key), val)
 
-    def testInvalidSessionOptionsConfigEntry(self):
+    def test_invalid_session_options_config_entry(self):
         so = onnxrt.SessionOptions()
         invalide_key = "INVALID_KEY"
         with self.assertRaises(RuntimeError) as context:
@@ -902,7 +1244,7 @@ class TestInferenceSession(unittest.TestCase):
             "SessionOptions does not have configuration with key: " + invalide_key in str(context.exception)
         )
 
-    def testSessionOptionsAddInitializer(self):
+    def test_session_options_add_initializer(self):
         # Create an initializer and add it to a SessionOptions instance
         so = onnxrt.SessionOptions()
         # This initializer is different from the actual initializer in the model for "W"
@@ -928,7 +1270,7 @@ class TestInferenceSession(unittest.TestCase):
             )
         )
 
-    def testSessionOptionsAddExternalInitializers(self):
+    def test_session_options_add_external_initializers(self):
         # Create an external initializer data in OrtValue
         # This initializer will replace the initializer with external data reference in the graph
         ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(np.array([0, 0, 1, 1]).astype(np.int64))
@@ -941,26 +1283,26 @@ class TestInferenceSession(unittest.TestCase):
             providers=["CPUExecutionProvider"],
         )
 
-    def testRegisterCustomOpsLibrary(self):
+    def test_register_custom_ops_library(self):
         if sys.platform.startswith("win"):
             shared_library = "custom_op_library.dll"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         elif sys.platform.startswith("darwin"):
             shared_library = "libcustom_op_library.dylib"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         else:
             shared_library = "./libcustom_op_library.so"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_op_library", "custom_op_test.onnx")
         if not os.path.exists(custom_op_model):
-            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
 
         so1 = onnxrt.SessionOptions()
         so1.register_custom_ops_library(shared_library)
@@ -984,19 +1326,18 @@ class TestInferenceSession(unittest.TestCase):
         so2 = so1
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
-        sess2 = onnxrt.InferenceSession(
+        onnxrt.InferenceSession(
             custom_op_model, sess_options=so2, providers=available_providers_without_tvm_and_tensorrt
         )
 
         # Create another SessionOptions instance with the same shared library referenced
         so3 = onnxrt.SessionOptions()
         so3.register_custom_ops_library(shared_library)
-        sess3 = onnxrt.InferenceSession(
+        onnxrt.InferenceSession(
             custom_op_model, sess_options=so3, providers=available_providers_without_tvm_and_tensorrt
         )
 
-    def testOrtValue(self):
-
+    def test_ort_value(self):
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
@@ -1034,7 +1375,7 @@ class TestInferenceSession(unittest.TestCase):
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
 
-    def testOrtValue_ghIssue9799(self):
+    def test_ort_value_gh_issue9799(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             session = onnxrt.InferenceSession(
                 get_name("identity_9799.onnx"),
@@ -1048,7 +1389,7 @@ class TestInferenceSession(unittest.TestCase):
                 outs = session.run(output_names=["output"], input_feed=upstreams_onnxrt)[0]
                 self.assertTrue(np.allclose(inps, outs))
 
-    def testSparseTensorCooFormat(self):
+    def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         shape = [9, 9]
         values = np.array([1.0, 2.0, 3.0], dtype=np.float32)
@@ -1115,7 +1456,7 @@ class TestInferenceSession(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 sparse_tensor.to_cuda(cuda_device)
 
-    def testSparseTensorCsrFormat(self):
+    def test_sparse_tensor_csr_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         shape = [9, 9]
         values = np.array([1.0, 2.0, 3.0], dtype=np.float32)
@@ -1156,10 +1497,10 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(cuda_sparse_tensor.dense_shape(), shape)
             self.assertEqual(cuda_sparse_tensor.data_type(), "sparse_tensor(float)")
 
-    def testRunModelWithCudaCopyStream(self):
+    def test_run_model_with_cuda_copy_stream(self):
         available_providers = onnxrt.get_available_providers()
 
-        if not "CUDAExecutionProvider" in available_providers:
+        if "CUDAExecutionProvider" not in available_providers:
             print("Skipping testRunModelWithCudaCopyStream when CUDA is not available")
         else:
             # adapted from issue #4829 for a race condition when copy is not on default stream
@@ -1175,14 +1516,14 @@ class TestInferenceSession(unittest.TestCase):
 
             session = onnxrt.InferenceSession(get_name("issue4829.onnx"), providers=providers)
             shape = np.array([2, 2], dtype=np.int64)
-            for iteration in range(100000):
-                result = session.run(output_names=["output"], input_feed={"shape": shape})
+            for _iteration in range(100000):
+                session.run(output_names=["output"], input_feed={"shape": shape})
 
-    def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
+    def test_shared_allocator_using_create_and_register_allocator(self):
         # Create and register an arena based allocator
 
         # To create an OrtArenaCfg using non-default parameters, use one of below templates:
-        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes option
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes/max_power_of_two_extend_bytes option
         # ort_arena_cfg = onnxrt.OrtArenaCfg({"max_mem": -1, ""arena_extend_strategy": 1, etc..})
         ort_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",
@@ -1212,7 +1553,25 @@ class TestInferenceSession(unittest.TestCase):
             providers=onnxrt.get_available_providers(),
         )
 
-    def testMemoryArenaShrinkage(self):
+        if "CUDAExecutionProvider" in available_providers:
+            cuda_mem_info = onnxrt.OrtMemoryInfo(
+                "Cuda",
+                onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+                0,
+                onnxrt.OrtMemType.DEFAULT,
+            )
+            ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1)
+            onnxrt.create_and_register_allocator_v2("CUDAExecutionProvider", cuda_mem_info, {}, ort_arena_cfg)
+            so3 = onnxrt.SessionOptions()
+            so3.log_severity_level = 1
+            so3.add_session_config_entry("session.use_env_allocators", "1")
+            onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so3,
+                providers=onnxrt.get_available_providers(),
+            )
+
+    def test_memory_arena_shrinkage(self):
         if platform.architecture()[0] == "32bit" or "ppc" in platform.machine() or "powerpc" in platform.machine():
             # on x86 or ppc builds, the CPU allocator does not use an arena
             print("Skipping testMemoryArenaShrinkage in 32bit or powerpc platform.")
@@ -1245,7 +1604,7 @@ class TestInferenceSession(unittest.TestCase):
                 )
                 sess2.run([], {input_name: x}, ro2)
 
-    def testCheckAndNormalizeProviderArgs(self):
+    def test_check_and_normalize_provider_args(self):
         from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args
 
         valid_providers = ["a", "b", "c"]
@@ -1297,7 +1656,7 @@ class TestInferenceSession(unittest.TestCase):
         # provider options unsupported mixed specification
         check_failure([("a", {1: 2})], [{3: 4}])
 
-    def testRegisterCustomEPsLibrary(self):
+    def test_register_custom_e_ps_library(self):
         from onnxruntime.capi import _pybind_state as C
 
         available_eps = C.get_available_providers()
@@ -1315,12 +1674,12 @@ class TestInferenceSession(unittest.TestCase):
             shared_library = "./libtest_execution_provider.so"
 
         if not os.path.exists(shared_library):
-            raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+            raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
         if not os.path.exists(custom_op_model):
-            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
 
         session_options = C.get_default_session_options()
         sess = C.InferenceSession(session_options, custom_op_model, True, True)
@@ -1337,7 +1696,7 @@ class TestInferenceSession(unittest.TestCase):
         )
         print("Create session with customize execution provider successfully!")
 
-    def testCreateAllocator(self):
+    def test_create_allocator(self):
         def verify_allocator(allocator, expected_config):
             for key, val in expected_config.items():
                 if key == "max_mem":
@@ -1350,6 +1709,8 @@ class TestInferenceSession(unittest.TestCase):
                     self.assertEqual(allocator.max_dead_bytes_per_chunk, val)
                 elif key == "initial_growth_chunk_size_bytes":
                     self.assertEqual(allocator.initial_growth_chunk_size_bytes, val)
+                elif key == "max_power_of_two_extend_bytes":
+                    self.assertEqual(allocator.max_power_of_two_extend_bytes, val)
                 else:
                     raise ValueError("Invalid OrtArenaCfg option: " + key)
 
@@ -1373,6 +1734,61 @@ class TestInferenceSession(unittest.TestCase):
         }
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
+
+        # Verify key-value pair initialization
+        expected_kvp_allocator = {
+            "max_mem": 32,
+            "arena_extend_strategy": 11,
+            "initial_chunk_size_bytes": 18,
+            "max_dead_bytes_per_chunk": 14,
+            "initial_growth_chunk_size_bytes": 12,
+            "max_power_of_two_extend_bytes": 17,
+        }
+        ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
+        verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
+
+    def test_multiple_devices(self):
+        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+            cuda_lib = self.load_cuda_lib()
+            cuda_devices = self.cuda_device_count(cuda_lib)
+            if cuda_devices <= 1:
+                return
+
+            # https://github.com/microsoft/onnxruntime/issues/18432. Make sure device Id is properly set
+            # Scenario 1, 3 sessions created with differnt device Id under IOBinding
+            sessions = []
+            for i in range(3):
+                sessions.append(
+                    onnxrt.InferenceSession(
+                        get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": i % 2})]
+                    )
+                )
+
+            for i in range(3):
+                binding = sessions[i].io_binding()
+                image = np.ones([1, 1, 28, 28], np.float32)
+                image_on_gpu = onnxrt.OrtValue.ortvalue_from_numpy(image, "cuda", i % 2)
+
+                binding.bind_ortvalue_input("Input3", image_on_gpu)
+                binding.bind_output(name="Plus214_Output_0", device_type="cuda", device_id=i % 2)
+
+                binding.synchronize_inputs()
+                sessions[i].run_with_iobinding(binding)
+                binding.synchronize_outputs()
+
+            # Scenario 2, 2 normal sessions created with different device Id
+            device0_session = onnxrt.InferenceSession(
+                get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": 0})]
+            )
+            device1_session = onnxrt.InferenceSession(
+                get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": 1})]
+            )
+            image = {
+                "Input3": np.ones([1, 1, 28, 28], np.float32),
+            }
+            device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
+            device1_session.run(output_names=["Plus214_Output_0"], input_feed=image)
+            device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@
 
 #include "core/framework/debug_node_inputs_outputs_utils.h"
 #include "core/framework/print_tensor_utils.h"
+#include "core/framework/print_tensor_statistics_utils.h"
 #include <iomanip>
 #include <cctype>
 #include <string>
@@ -60,6 +61,9 @@ bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
 template <typename T>
 void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_options) {
   onnxruntime::utils::PrintCpuTensor<T>(tensor, dump_options.snippet_threshold, dump_options.snippet_edge_items);
+  if (dump_options.dump_flags & NodeDumpOptions::DumpFlags::StatisticsData) {
+    onnxruntime::utils::PrintCpuTensorStats<T>(tensor);
+  }
 }
 
 PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOptions& dump_options) {
@@ -335,7 +339,7 @@ void DumpTensor(
     if (tensor_location.device.Type() == OrtDevice::GPU) {
       const auto& execution_providers = session_state.GetExecutionProviders();
       const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-      auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
+      auto cpu_allocator = session_state.GetAllocator(cpu_execution_provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
       Tensor cpu_tensor{data_type, tensor.Shape(), cpu_allocator};
       const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
       auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);
@@ -375,6 +379,9 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     }
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpNodePlacement, true)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::NodePlacement;
+    }
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpStatisticsData, false)) {
+      opts.dump_flags |= NodeDumpOptions::DumpFlags::StatisticsData;
     }
 
     opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);

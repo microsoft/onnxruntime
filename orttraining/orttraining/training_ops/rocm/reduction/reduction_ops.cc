@@ -35,7 +35,7 @@ template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const {
   const Tensor* X = ctx->Input<Tensor>(0);
 
-  //override the attribute value with the input value for reduction_axes
+  // override the attribute value with the input value for reduction_axes
   const Tensor* axes_tensor = ctx->Input<Tensor>(1);
   ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
   ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
@@ -58,7 +58,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, miope
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
-  return ReduceComputeCore<T, ReduceTensorIndices>(*rocm_ep_, *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
+  return ReduceComputeCore<T, ReduceTensorIndices>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction, ctx->GetComputeStream());
 }
 
@@ -69,7 +69,7 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICE
 
   const Tensor* X = ctx->Input<Tensor>(0);
 
-  //override the attribute value with the input value for reduction_axes
+  // override the attribute value with the input value for reduction_axes
   const Tensor* axes_tensor = ctx->Input<Tensor>(1);
   ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
   auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);

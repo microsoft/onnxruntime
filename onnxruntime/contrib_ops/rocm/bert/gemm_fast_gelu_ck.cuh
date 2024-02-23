@@ -8,6 +8,8 @@
 #include <vector>
 
 #ifdef USE_COMPOSABLE_KERNEL
+#include "core/providers/rocm/composable_kernel_common.h"
+
 #include "ck/ck.hpp"
 #include "ck/library/tensor_operation_instance/gpu/gemm_add_fastgelu.hpp"
 #include "ck/library/tensor_operation_instance/gpu/gemm_fastgelu.hpp"
@@ -19,7 +21,6 @@
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 
 using onnxruntime::rocm::ToHipType;
-using onnxruntime::rocm::tunable::Op;
 
 namespace onnxruntime {
 namespace contrib {
@@ -29,20 +30,8 @@ namespace internal {
 
 #ifdef USE_COMPOSABLE_KERNEL
 
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
-
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
+using onnxruntime::rocm::CKDataTypeAdaptor;
+using onnxruntime::rocm::CKBlasOpAdaptor;
 
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
@@ -51,9 +40,11 @@ using Nop = ck::tensor_operation::element_wise::PassThrough;
 using AddFastGelu = ck::tensor_operation::element_wise::AddFastGelu;
 using FastGelu = ck::tensor_operation::element_wise::FastGelu;
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKGemmAddFastGeluTypeStringAndOps() {
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceGemmAddFastGelu = ck::tensor_operation::device::DeviceGemmMultipleD<
       ALayout, BLayout, ck::Tuple<Row>, Row,
       CKDataType, CKDataType, ck::Tuple<CKDataType>, CKDataType,
@@ -70,7 +61,7 @@ auto GetCKGemmAddFastGeluTypeStringAndOps() {
       auto zero = ToHipType<T>::FromFloat(0.0f);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->alpha != one || params->beta != zero || params->bias == nullptr,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0 and bias != nullptr", params->Signature());
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0 and bias != nullptr");
 
       auto nop = Nop{};
       auto addfastgelu = AddFastGelu{};
@@ -79,8 +70,8 @@ auto GetCKGemmAddFastGeluTypeStringAndOps() {
                                            params->lda, params->ldb, std::array<ck::index_t, 1>{0}, params->ldc,
                                            nop, nop, addfastgelu);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+                                                impl->GetTypeString(), " does not support the params");
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemmfastgelu_op)));
@@ -88,9 +79,11 @@ auto GetCKGemmAddFastGeluTypeStringAndOps() {
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKGemmFastGeluTypeStringAndOps() {
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceGemmFastGelu = ck::tensor_operation::device::DeviceGemmMultipleD<
       ALayout, BLayout, ck::Tuple<>, Row,
       CKDataType, CKDataType, ck::Tuple<>, CKDataType,
@@ -107,7 +100,7 @@ auto GetCKGemmFastGeluTypeStringAndOps() {
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->alpha != one || params->beta != zero || params->bias != nullptr,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0 and bias == nullptr", params->Signature());
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0 and bias == nullptr");
 
       auto nop = Nop{};
       auto fastgelu = FastGelu{};
@@ -120,8 +113,8 @@ auto GetCKGemmFastGeluTypeStringAndOps() {
                                            params->ldc,
                                            nop, nop, fastgelu);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+                                                impl->GetTypeString(), " does not support the params");
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemmfastgelu_op)));

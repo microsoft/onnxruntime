@@ -6,5 +6,5 @@
 namespace onnxruntime {
 namespace test {
 bool DnnlHasBF16Support();
-} // namespace test
+}  // namespace test
 }  // namespace onnxruntime

@@ -15,6 +15,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/utils.h"
 
 namespace onnxruntime {
@@ -52,7 +53,7 @@ class IdentityOp final : public OpKernel {
 
       const void* source = X->DataRaw(X_type);
       void* target = Y->MutableDataRaw(X_type);
-      //If source and target pointers are not equal, we need to copy the data.
+      // If source and target pointers are not equal, we need to copy the data.
       if (target != source) {
         if (!X->IsDataTypeString()) {
           memcpy(target, source, SafeInt<size_t>(shape.Size()) * X_type->Size());
@@ -89,21 +90,20 @@ class IdentityOp final : public OpKernel {
       // processing Tensors.
       if (X != output) {
         output->SetType(X->DataType());
+        output->Reserve(X->Size());
 
         AllocatorPtr alloc;
         auto status = context->GetTempSpaceAllocator(&alloc);
         if (!status.IsOK()) {
           ORT_THROW("Unable to get an allocator");
         }
-        std::vector<Tensor> tensors;
-        for (auto it = X->begin(), end = X->end(); it != end; ++it) {
-          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
-          size_t bytes = it->SizeInBytes();
-          memcpy(tmp.MutableDataRaw(), it->DataRaw(), bytes);
-          tensors.push_back(std::move(tmp));
-        }
 
-        output->SetElements(std::move(tensors));
+        for (auto it = X->begin(), end = X->end(); it != end; ++it) {
+          auto& it_tensor = it->Get<Tensor>();
+          Tensor tmp(it_tensor.DataType(), it_tensor.Shape(), alloc);
+          CopyCpuTensor(&it_tensor, &tmp);
+          output->Add(std::move(tmp));
+        }
       }
     }
 
@@ -111,4 +111,4 @@ class IdentityOp final : public OpKernel {
   }
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

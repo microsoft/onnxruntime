@@ -73,10 +73,10 @@ struct LowMax {
 template <>
 struct LowMax<MLFloat16> {
   static MLFloat16 low() {
-    return MLFloat16(math::floatToHalf(std::numeric_limits<float>::lowest()));
+    return MLFloat16::FromBits(math::floatToHalf(std::numeric_limits<float>::lowest()));
   }
   static MLFloat16 max() {
-    return MLFloat16(math::floatToHalf(std::numeric_limits<float>::max()));
+    return MLFloat16::FromBits(math::floatToHalf(std::numeric_limits<float>::max()));
   }
 };
 }  // namespace clip_internal

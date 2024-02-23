@@ -1,10 +1,39 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 resources:
   repositories:
   - repository: manylinux
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 jobs:
 - job: Linux_Build
@@ -12,9 +41,9 @@ jobs:
   workspace:
     clean: all
   variables:
-    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    CCACHE_DIR: $(Agent.TempDirectory)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  pool: Linux-CPU-2019
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
@@ -24,64 +53,55 @@ jobs:
     clean: true
     submodules: recursive
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '16.x'
-
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuildaten
+      Repository: 'onnxruntimecpubuildaten'
+      UseImageCacheContainerRegistry: true
+      UsePipelineCache: false
 
-  - task: Cache@2
-    inputs:
-      key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(CCACHE_DIR)
-      cacheHitVar: CACHE_RESTORED
-      restoreKeys: |
-        "$(TODAY)" | "$(Build.SourceBranch)"
-        "$(TODAY)" |
-    displayName: Cach Task
-
-  - script: |
-      sudo mkdir -p $(Pipeline.Workspace)/ccache
-    condition: ne(variables.CACHE_RESTORED, 'true')
-    displayName: Create Cache Dir
-
-  - task: CmdLine@2
-    displayName: 'build'
-    inputs:
-      script: |
-        mkdir -p $HOME/.onnx
-        docker run --rm \
-          --volume /data/onnx:/data/onnx:ro \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume $(Pipeline.Workspace)/ccache:/cache \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          -e CCACHE_DIR=/cache \
-          onnxruntimecpubuildaten \
-          /bin/bash -c "
-              set -ex; \
-              ccache -z; \
-              ccache -s; \
-              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                --build_dir /build --cmake_generator Ninja \
-                --config Release \
-                --skip_submodule_sync \
-                --build_shared_lib \
-                --parallel \
-                --build_wheel \
-                --skip_tests \
-                --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON \
-                --use_cache; \
-              ccache -s"
-      workingDirectory: $(Build.SourcesDirectory)
+  - template: templates/linux-build-step-with-cache.yml
+    parameters:
+      WithCache: true
+      Today: $(TODAY)
+      AdditionalKey: ort_aten
+      CacheDir: $(CCACHE_DIR)
+      ChangeEveryCommit: true
+      BuildStep:
+        - task: CmdLine@2
+          displayName: 'build'
+          inputs:
+            script: |
+              mkdir -p $HOME/.onnx
+              docker run --rm \
+                --volume /data/onnx:/data/onnx:ro \
+                --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                --volume $(Build.BinariesDirectory):/build \
+                --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+                --volume $(CCACHE_DIR):/cache \
+                -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+                -e NIGHTLY_BUILD \
+                -e BUILD_BUILDNUMBER \
+                -e CCACHE_DIR=/cache \
+                onnxruntimecpubuildaten \
+                /bin/bash -c "
+                    set -ex; \
+                    ccache -s; \
+                    /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                      --build_dir /build --cmake_generator Ninja \
+                      --config Release \
+                      --skip_submodule_sync \
+                      --build_shared_lib \
+                      --parallel --use_binskim_compliant_compile_flags \
+                      --build_wheel \
+                      --skip_tests \
+                      --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON \
+                      --use_cache; \
+                      ccache -sv; \
+                      ccache -z"
+            workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: 'install ort_torch_ext and launch test'
@@ -106,10 +126,14 @@ jobs:
                 --config Release \
                 --skip_submodule_sync \
                 --build_shared_lib \
-                --parallel \
+                --parallel --use_binskim_compliant_compile_flags \
                 --build_wheel \
                 --test \
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON"
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/explicitly-defined-final-tasks.yml
+
+  - script: |
+      df -h
+    displayName: check disk space

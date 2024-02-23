@@ -9,6 +9,7 @@
 #include <cmath>
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/common/path.h"
 #include "core/framework/allocator.h"
 #include "core/optimizer/graph_transformer.h"
@@ -70,7 +71,7 @@ class Initializer final {
     return data_.Shape().GetDims();
   }
 
-  int64_t size() const { return data_.Shape().Size(); }
+  size_t size() const { return narrow<size_t>(data_.Shape().Size()); }
 
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)
   Initializer& add(float value);
@@ -85,10 +86,9 @@ class Initializer final {
 
   Initializer& sqrt();
 
-  void scale_by_axis(const Initializer& other, int axis);
+  void scale_by_axis(const Initializer& other, int axis, bool column_major = false);
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
  private:
-
   std::string name_;
   Tensor data_;
 };

@@ -1,29 +1,42 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import <Foundation/Foundation.h>
+#include "core/providers/coreml/model/host_utils.h"
 
-#include <string>
-#include "host_utils.h"
+#import <Foundation/Foundation.h>
 
 namespace onnxruntime {
 namespace coreml {
 namespace util {
 
 bool HasRequiredBaseOS() {
-  // This may look strange, but it is required "@available(macOS ....)" to safe-guard some code
-  // otherwise the compiler will spit -Wunsupported-availability-guard
-  if (HAS_VALID_BASE_OS_VERSION)
-    return true;
-  else
-    return false;
+  return CoreMLVersion() >= 3;
+}
+
+int32_t CoreMLVersion() {
+  if (HAS_COREML7_OR_LATER)
+    return 7;
+  if (HAS_COREML6_OR_LATER)
+    return 6;
+  if (HAS_COREML5_OR_LATER)
+    return 5;
+  if (HAS_COREML4_OR_LATER)
+    return 4;
+  if (HAS_COREML3_OR_LATER)
+    return 3;
+
+  return -1;
 }
 
 std::string GetTemporaryFilePath() {
-  // Get temporary directory.
+  // Get temporary directory for user.
   NSURL* temporary_directory_url = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
   // Generate a Unique file name to use.
   NSString* temporary_filename = [[NSProcessInfo processInfo] globallyUniqueString];
+
+  // make it easy to see who generated it
+  temporary_filename = [@"onnxruntime-" stringByAppendingString:temporary_filename];
+
   // Create URL to that file.
   NSURL* temporary_file_url = [temporary_directory_url URLByAppendingPathComponent:temporary_filename];
 

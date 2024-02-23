@@ -40,7 +40,7 @@ def run(
     cmd = [*args]
 
     _log.info(
-        "Running subprocess in '{0}'\n  {1}".format(cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in cmd]))
+        "Running subprocess in '{}'\n  {}".format(cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in cmd]))
     )
 
     def output(is_stream_captured):
@@ -57,6 +57,6 @@ def run(
         shell=shell,
     )
 
-    _log.debug("Subprocess completed. Return code: {}".format(completed_process.returncode))
+    _log.debug(f"Subprocess completed. Return code: {completed_process.returncode}")
 
     return completed_process

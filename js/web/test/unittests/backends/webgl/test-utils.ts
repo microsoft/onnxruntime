@@ -4,7 +4,7 @@
 import {WebGLContext} from '../../../../lib/onnxjs/backends/webgl/webgl-context';
 
 export function createAscendingArray(size: number): Float32Array {
-  return new Float32Array(Array.from({length: size}, (v, i) => (i + 1)));
+  return new Float32Array(Array.from({length: size}, (_v, i) => (i + 1)));
 }
 
 // Returns an array by injecting 3 zeros after every element in the input array to be used for creating unpacked
@@ -19,7 +19,7 @@ export function generateArrayForUnpackedTexture(input: Float32Array): Float32Arr
 
 // create a webgl texture and fill it with the array content
 export function createTextureFromArray(
-    glContext: WebGLContext, dataArray: Float32Array, type: GLenum, width: number, height: number): WebGLTexture {
+    glContext: WebGLContext, dataArray: Float32Array, width: number, height: number): WebGLTexture {
   const gl = glContext.gl;
 
   // create the texture

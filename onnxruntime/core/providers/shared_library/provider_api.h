@@ -22,7 +22,7 @@
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/float8.h"
 #include "core/framework/float16.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
@@ -64,7 +64,11 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_UINT64 = 13,
   TensorProto_DataType_COMPLEX64 = 14,
   TensorProto_DataType_COMPLEX128 = 15,
-  TensorProto_DataType_BFLOAT16 = 16
+  TensorProto_DataType_BFLOAT16 = 16,
+  TensorProto_DataType_FLOAT8E4M3FN = 17,
+  TensorProto_DataType_FLOAT8E4M3FNUZ = 18,
+  TensorProto_DataType_FLOAT8E5M2 = 19,
+  TensorProto_DataType_FLOAT8E5M2FNUZ = 20
 };
 
 enum TensorProto_DataLocation : int {
@@ -80,7 +84,9 @@ enum Version : int {
   IR_VERSION_2019_1_22 = 4,
   IR_VERSION_2019_3_18 = 5,
   IR_VERSION_2019_9_19 = 6,
-  IR_VERSION = 7
+  IR_VERSION_2020_5_8 = 7,
+  IR_VERSION_2021_7_31 = 8,
+  IR_VERSION = 9
 };
 
 enum OperatorStatus : int {
@@ -89,12 +95,15 @@ enum OperatorStatus : int {
 };
 
 // onnx Protobuf types (All of these are direct mappings to the onnx types except for the Repeated*Field ones which map to a Repeated*Field type)
-struct int64s;  // RepeatedField
+struct int64s;    // RepeatedField
+struct float32s;  // RepeatedField
 struct AttributeProto;
 struct GraphProto;
 struct ModelProto;
 struct NodeProto;
 struct SparseTensorProto;
+struct StringStringEntryProto;
+struct StringStringEntryProtos;  // RepeatedPtrField
 struct TensorProto;
 struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
@@ -107,6 +116,9 @@ struct TypeProto_Sequence;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
+struct InferenceContext;
+class GraphInferencer;
+using InferenceFunction = std::function<void(InferenceContext&)>;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -126,6 +138,7 @@ struct Logger;
 struct Capture;
 }  // namespace logging
 struct ComputeCapability;
+struct ConfigOptions;
 struct DataTransferManager;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
@@ -135,7 +148,7 @@ struct KernelDefBuilder;
 struct KernelRegistry;
 struct Function;
 struct Graph;
-struct GraphViewer;
+class GraphViewer;
 enum class DataLayout;
 struct Model;
 struct Path;
@@ -148,8 +161,9 @@ struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
 struct SparseTensor;
-struct TensorSeq;
+class TensorSeq;
 class SessionState;
+class ModelMetadefIdGenerator;
 
 class If;
 class Loop;
@@ -173,8 +187,10 @@ class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
+class TritonOp;
 class AdamWOptimizerBase;
 class SGDOptimizerV2Base;
+class ShrunkenGatherCommon;
 }  // namespace contrib
 
 class UnsqueezeBase;
@@ -232,15 +248,18 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kMSInternalNHWCDomain = "com.ms.internal.nhwc";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
+constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
+constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
@@ -251,10 +270,10 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
@@ -315,6 +334,16 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() { re
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FN>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
+#endif
 }  // namespace utils
 
 // This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.
@@ -330,6 +359,9 @@ void InitProviderOrtApi();
 #define LOGS_CATEGORY(logger, severity, category)                                                                        \
   if ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::onnxruntime::logging::DataType::SYSTEM)) \
   CREATE_MESSAGE(logger, severity, category, ::onnxruntime::logging::DataType::SYSTEM)->Stream()
+
+#define LOGS(logger, severity) \
+  LOGS_CATEGORY(logger, severity, ::onnxruntime::logging::Category::onnxruntime)
 
 #define LOGS_DEFAULT_CATEGORY(severity, category) \
   LOGS_CATEGORY(::onnxruntime::logging::LoggingManager::DefaultLogger(), severity, category)

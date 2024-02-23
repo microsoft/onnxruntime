@@ -42,12 +42,12 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                                                DataTypeImpl::GetTensorType<uint64_t>(),
                                                                DataTypeImpl::GetTensorType<std::string>(),
                                                                DataTypeImpl::GetTensorType<bool>()}))
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Size);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Size,
-    13,
+    13, 18,
     KernelDefBuilder().TypeConstraint("T",
                                       std::vector<MLDataType>({DataTypeImpl::GetTensorType<float>(),
                                                                DataTypeImpl::GetTensorType<double>(),
@@ -61,7 +61,26 @@ ONNX_CPU_OPERATOR_KERNEL(
                                                                DataTypeImpl::GetTensorType<uint64_t>(),
                                                                DataTypeImpl::GetTensorType<std::string>(),
                                                                DataTypeImpl::GetTensorType<bool>()}))
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    Size);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Size,
+    19,
+    KernelDefBuilder().TypeConstraint("T",
+                                      std::vector<MLDataType>({DataTypeImpl::GetTensorType<float>(),
+                                                               DataTypeImpl::GetTensorType<double>(),
+                                                               DataTypeImpl::GetTensorType<int8_t>(),
+                                                               DataTypeImpl::GetTensorType<int16_t>(),
+                                                               DataTypeImpl::GetTensorType<int32_t>(),
+                                                               DataTypeImpl::GetTensorType<int64_t>(),
+                                                               DataTypeImpl::GetTensorType<uint8_t>(),
+                                                               DataTypeImpl::GetTensorType<uint16_t>(),
+                                                               DataTypeImpl::GetTensorType<uint32_t>(),
+                                                               DataTypeImpl::GetTensorType<uint64_t>(),
+                                                               DataTypeImpl::GetTensorType<std::string>(),
+                                                               DataTypeImpl::GetTensorType<bool>()}))
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Size);
 
 }  // namespace onnxruntime

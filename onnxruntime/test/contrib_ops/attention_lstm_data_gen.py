@@ -3,12 +3,12 @@
 
 import tensorflow as tf
 
-batchSize = 2
+batchSize = 2  # noqa: N816
 
-memMaxStep = 3
-memDepth = 3
-queryMaxStep = 4
-queryDepth = 3
+memMaxStep = 3  # noqa: N816
+memDepth = 3  # noqa: N816
+queryMaxStep = 4  # noqa: N816
+queryDepth = 3  # noqa: N816
 am_attn_size: int = 2
 cell_hidden_size = 3
 aw_attn_size: int = 2
@@ -50,7 +50,7 @@ with tf.variable_scope(root_variable_scope):
         ),
     )
 
-    querySeqLen = tf.Variable(
+    querySeqLen = tf.Variable(  # noqa: N816
         tf.constant([queryMaxStep - 1, queryMaxStep - 2], tf.int32),
         name="query_seq_len",
     )
@@ -82,7 +82,7 @@ with tf.variable_scope(root_variable_scope):
         ),
     )
 
-    memSeqLen = tf.Variable(tf.constant([memMaxStep, memMaxStep - 1], dtype=tf.int32), name="mem_seq_len")
+    memSeqLen = tf.Variable(tf.constant([memMaxStep, memMaxStep - 1], dtype=tf.int32), name="mem_seq_len")  # noqa: N816
 
     with tf.variable_scope("fwBahdanau"):
         fw_mem_layer_weights = tf.get_variable(

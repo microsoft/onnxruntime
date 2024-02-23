@@ -2,6 +2,7 @@
 VERS_1.0 {
   global:
     GetProvider;
+    _binary_*;
 
   # Hide everything else.
   local:

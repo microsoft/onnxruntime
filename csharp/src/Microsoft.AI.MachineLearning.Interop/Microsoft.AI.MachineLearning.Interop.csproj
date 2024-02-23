@@ -4,10 +4,10 @@
     <ProjectName>Microsoft.AI.MachineLearning.Interop</ProjectName>
     <TargetFramework>net5.0-windows10.0.17763.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    
+
     <Platform>Any CPU</Platform>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
- 
+
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\..\..\build\Windows</OnnxRuntimeBuildDirectory>
     <BuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</BuildOutputDir>
     <WindowsAIInteropOutputDir>$(BuildOutputDir)\Microsoft.AI.MachineLearning.Interop</WindowsAIInteropOutputDir>
@@ -40,7 +40,7 @@
     <Message Text="Generating $(ProjectName) CS projection sources with command:" />
     <Message Text="$(CsWinRTCommand)" />
     <Exec Command="$(CsWinRTCommand)" />
-    
+
     <ItemGroup>
       <Compile Include="$(ProjectDir)Generated Files/*.cs" Exclude="@(Compile)" />
     </ItemGroup>

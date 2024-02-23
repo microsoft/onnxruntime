@@ -11,7 +11,7 @@ import {createPackedReshape3DProgramInfoLoader, isReshapeCheap, processDims3D} f
 import {encodeAsUint8} from './ops/uint8-encode';
 import {createUnpackProgramInfoLoader} from './ops/unpack';
 import {WebGLSessionHandler} from './session-handler';
-import {Encoder} from './texture-data-encoder';
+import {EncoderUsage} from './texture-data-encoder';
 import {calculateTextureWidthAndHeight, createTextureLayoutFromShape, createTextureLayoutFromTextureType} from './texture-layout';
 import {Artifact, ProgramInfo, ProgramInfoLoader, TextureData, TextureLayout, TextureType} from './types';
 
@@ -101,7 +101,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
 
   /**
    * Create a TextureData object from a tensor.
-   * Usage = Encoder.Usage.UploadOnly.
+   * Usage = EncoderUsage.UploadOnly.
    * If a related texture data is found in cache, returns it;
    * Otherwise:
    *   Creates a new texture layout if not provided;
@@ -156,7 +156,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
               buffer.set(tensor.numberData.subarray(oldOffset, oldOffset + oldRowSize), newOffset);
             }
           }
-          return this.createTextureData(adjustedLayout, tensor.type, buffer, tensor, Encoder.Usage.UploadOnly);
+          return this.createTextureData(adjustedLayout, tensor.type, buffer, tensor, EncoderUsage.UploadOnly);
         }
       }
 
@@ -164,10 +164,10 @@ export class WebGLInferenceHandler implements InferenceHandler {
         const unpackedTextureLayout =
             createTextureLayoutFromShape(this.session.layoutStrategy, tensor.dims, 1, [], {reverseWH: true});
         const unpackedTextureData = this.createTextureData(
-            unpackedTextureLayout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
+            unpackedTextureLayout, tensor.type, tensor.numberData, tensor, EncoderUsage.UploadOnly);
         td = this.pack(unpackedTextureData);
       } else {
-        td = this.createTextureData(layout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
+        td = this.createTextureData(layout, tensor.type, tensor.numberData, tensor, EncoderUsage.UploadOnly);
       }
     }
     return td;
@@ -175,7 +175,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
 
   /**
    * Create a TextureData object using the given data and bind to the given tensor.
-   * Usage = Encoder.Usage.UploadOnly.
+   * Usage = EncoderUsage.UploadOnly.
    * NOTE: this function is a hack for Conv implementation. should remove this function, after rewriting Conv
    * implementation by Graph.Transformer
    * @param dataType the tensor data type
@@ -184,12 +184,12 @@ export class WebGLInferenceHandler implements InferenceHandler {
    */
   createTextureDataFromLayoutBindTensor(
       layout: TextureLayout, dataType: Tensor.DataType, data: Tensor.NumberType, tensor: Tensor): TextureData {
-    return this.createTextureData(layout, dataType, data, tensor, Encoder.Usage.UploadOnly);
+    return this.createTextureData(layout, dataType, data, tensor, EncoderUsage.UploadOnly);
   }
 
   private createTextureData(
       layout: TextureLayout, dataType: Tensor.DataType, data?: Tensor.NumberType, tensor?: Tensor,
-      usage?: Encoder.Usage): TextureData {
+      usage?: EncoderUsage): TextureData {
     Logger.verbose('InferenceHandler', `Creating TextureData: layout:[${JSON.stringify(layout)}]`);
     const texture = this.session.textureManager.createTextureFromLayout(dataType, layout, data, usage);
     return this.createTextureDataFromTexture(layout, dataType, texture, tensor);

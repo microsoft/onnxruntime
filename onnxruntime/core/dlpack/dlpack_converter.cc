@@ -208,7 +208,7 @@ struct OrtDLManagedTensor {
 
 static void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
 
-//This function should use smart pointers inside
+// This function should use smart pointers inside
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26409)

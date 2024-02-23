@@ -64,6 +64,10 @@ constexpr float SigmoidGrad(float dy, float y) {
 constexpr float TanhGrad(float dy, float y) {
   return dy * (1 - y * y);
 }
+
+constexpr float LeakyReluGrad(float dy, float y, float alpha) {
+  return dy * (y > 0.0f ? 1.0f : alpha);
+}
 }  // namespace
 #endif
 
@@ -112,15 +116,27 @@ TEST_F(ActivationOpTest, Relu) {
       "Relu",
       input_values_double,
       [](double x) { return std::max(x, 0.0); },
-      {},
+      {}, {},
       /*is_tensorrt_supported=*/false);
   TestActivationOp<int8_t>(
       "Relu",
       input_values_int8,
       [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },
-      {},
+      {}, {},
       /*is_tensorrt_supported=*/false,
       /*opset_version= */ 14);
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  TestActivationOp<MLFloat16>(
+      "Relu",
+      input_values_fp16,
+      [](MLFloat16 x) {
+        if (x.ToFloat() > 0.0f) return x;
+        return MLFloat16();
+      },
+      {}, {},
+      /*is_tensorrt_supported=*/false,
+      /*opset_version= */ 11);
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -223,7 +239,7 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -267,7 +283,7 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -307,7 +323,7 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -337,18 +353,18 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif  //USE_CUDA || USE_ROCM || USE_DNNL
+#endif  // USE_CUDA || USE_ROCM || USE_DNNL
 
 #if defined(USE_DNNL)
 TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
   OpTester test("LeakyRelu", 16);
-  float alpha = 0.01f; // oneDNN set alpha equal to 0.01
+  float alpha = 0.01f;  // oneDNN set alpha equal to 0.01
   auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
 
   std::vector<float> X = input_values.front();
@@ -386,15 +402,39 @@ TEST_F(ActivationOpTest, Celu) {
       // TODO: Investigate why gcc 4 fails to compile without the explicit cast
       [alpha](float x) { return std::max(0.0f, x) + std::min(0.0f, alpha * (static_cast<float>(exp(x / alpha)) - 1)); },
       // Disable on TensorRT as it seems like it doesn't yet support Celu
-      {{"alpha", alpha}}, false, 12);
+      {{"alpha", alpha}}, {}, false, 12);
 }
+
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
   TestActivationOp<float>("LeakyRelu",
                           input_values,
                           [alpha](float x) { return (x >= 0) ? x : alpha * x; },
-                          {{"alpha", alpha}});
+                          {{"alpha", alpha}}, {});
 }
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+TEST_F(ActivationOpTest, LeakyRelu_fp16) {
+  OpTester test("LeakyRelu", 11);
+  float alpha = 0.01f;  // oneDNN set alpha equal to 0.01
+  auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<MLFloat16> bf_X(X.size());
+  ConvertFloatToMLFloat16(X.data(), bf_X.data(), (int)X.size());
+  std::vector<MLFloat16> bf_Y(Y.size());
+  ConvertFloatToMLFloat16(Y.data(), bf_Y.data(), (int)Y.size());
+
+  test.AddInput<MLFloat16>("X", dims, bf_X);
+  test.AddOutput<MLFloat16>("Y", dims, bf_Y);
+  test.Run();
+}
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 TEST_F(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
@@ -402,7 +442,7 @@ TEST_F(ActivationOpTest, ThresholdedRelu) {
       "ThresholdedRelu",
       input_values,
       [alpha](float x) { return (x >= alpha) ? x : 0; },
-      {{"alpha", alpha}}, true, 10);
+      {{"alpha", alpha}}, {}, true, 10);
 }
 
 TEST_F(ActivationOpTest, Selu) {
@@ -412,7 +452,7 @@ TEST_F(ActivationOpTest, Selu) {
   TestActivationOp<float>("Selu",
                           input_values,
                           [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                          {{"alpha", alpha}, {"gamma", gamma}});
+                          {{"alpha", alpha}, {"gamma", gamma}}, {});
 }
 
 TEST_F(ActivationOpTest, Selu_Attributes) {
@@ -422,7 +462,7 @@ TEST_F(ActivationOpTest, Selu_Attributes) {
   TestActivationOp<float>("Selu",
                           input_values,
                           [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                          {{"alpha", alpha}, {"gamma", gamma}});
+                          {{"alpha", alpha}, {"gamma", gamma}}, {});
 }
 
 TEST_F(ActivationOpTest, Selu_GH10726) {
@@ -432,7 +472,7 @@ TEST_F(ActivationOpTest, Selu_GH10726) {
   TestActivationOp<float>("Selu",
                           {{1.f, -1.f}},
                           [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                          {{"alpha", alpha}, {"gamma", gamma}});
+                          {{"alpha", alpha}, {"gamma", gamma}}, {});
 }
 
 TEST_F(ActivationOpTest, PRelu) {
@@ -497,7 +537,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel3D) {
   test.AddInput<float>("X", x_dims, inputs);
   test.AddInput<float>("slope", slope_dims, slopes);
   test.AddOutput<float>("Y", x_dims, outputs);
-  test.Run();
+  // QNN has some issue with the broadcast support
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
@@ -524,7 +565,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
     test.AddInput<float>("X", x_dims, inputs);
     test.AddInput<float>("slope", slope_dims, slopes, slope_is_initializer);
     test.AddOutput<float>("Y", x_dims, outputs);
-    test.Run();
+    // QNN has some issue with the broadcast support
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
   };
 
   test(true /* slope_is_initializer */, 5, 4, 3, 2);
@@ -546,6 +588,9 @@ TEST_F(ActivationOpTest, Softplus) {
 }
 
 TEST_F(ActivationOpNoInfTest, Softsign) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 1, which exceeds threshold";
@@ -580,7 +625,7 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
 
         return result;
       },
-      {}, false);  // Disable TensorRT because result mismatches
+      {}, {}, false);  // Disable TensorRT because result mismatches
 }
 
 #if defined(ENABLE_TRAINING_OPS)
@@ -630,6 +675,51 @@ TEST(TanhGradInferenceTest, Basic) {
         return TanhGrad(dy, y);
       },
       {}, 1, kMSDomain);
+}
+
+TEST(LeakyReluGradInferenceTest, Basic) {
+  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+  float alpha = 0.5f;
+
+  TestElementwiseGradientOp(
+      "LeakyReluGrad",
+      {{"dY", dY}, {"Y", y_vals}},
+      [alpha](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], y = params[1];
+
+        return LeakyReluGrad(dy, y, alpha);
+      },
+      {{"alpha", alpha}}, 1, kMSDomain);
+}
+#endif
+
+// Remove DNNL from running this test because DNNL Gelu op seems not check domain for kernel implementation.
+// It will run the DNNL Gelu op which only be part of standard of Gelu-20 op.
+#if !defined(USE_DNNL) && !defined(USE_QNN)
+TEST_F(ActivationOpTest, ONNX_Gelu) {
+  TestActivationOp<float>(
+      "Gelu",
+      input_values,
+      [](float x) { return 0.5 * x * (1 + erf(x * M_SQRT1_2)); }, {},
+      {{"approximate", "none"}}, true, 20);
+
+  TestActivationOp<float>(
+      "Gelu",
+      input_values,
+      [](float x) { return 0.5 * x * (1 + erf(x * M_SQRT1_2)); },
+      {},
+      {/*default value of approximate attribute is none */}, true, 20);
+
+  TestActivationOp<float>(
+      "Gelu",
+      input_values,
+      [](float x) {
+        return 0.5 * x * (1 + tanh(sqrt(2 / M_PI) * (x + 0.044715 * x * x * x)));
+      },
+      {},
+      {{"approximate", "tanh"}}, true, 20);
 }
 #endif
 

@@ -150,24 +150,24 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),           \
       class_name<T>);
 
-#define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
-  template <>                                                                                                    \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare;                                                                        \
-    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
-    Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
-        Stream(context),                                                                                         \
-        prepare.output_rank_or_simple_broadcast,                                                                 \
-        &prepare.lhs_padded_strides,                                                                             \
+#define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                \
+  template <>                                                                                           \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                        \
+    BinaryElementwisePreparation prepare;                                                               \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                    \
+    Impl_##x<typename ToCudaType<T>::MappedType>(                                                       \
+        Stream(context),                                                                                \
+        prepare.output_rank_or_simple_broadcast,                                                        \
+        &prepare.lhs_padded_strides,                                                                    \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),     \
-        &prepare.rhs_padded_strides,                                                                             \
+        &prepare.rhs_padded_strides,                                                                    \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->Data<T>()),     \
-        &prepare.fdm_output_strides,                                                                             \
-        prepare.fdm_H,                                                                                           \
-        prepare.fdm_C,                                                                                           \
+        &prepare.fdm_output_strides,                                                                    \
+        prepare.fdm_H,                                                                                  \
+        prepare.fdm_C,                                                                                  \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()), \
-        prepare.output_tensor->Shape().Size());                                                                  \
-    return Status::OK();                                                                                         \
+        prepare.output_tensor->Shape().Size());                                                         \
+    return Status::OK();                                                                                \
   }
 
 #define BINARY_OP_VERSIONED_TYPED(name, startver, endver, T) \
@@ -528,8 +528,8 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-//Greater op output tensor type is bool, so it cannot directly fit in the macros
-//for other elementwise ops
+// Greater op output tensor type is bool, so it cannot directly fit in the macros
+// for other elementwise ops
 template <typename T, typename CudaT>
 Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const {
   BinaryElementwisePreparation prepare;
@@ -551,8 +551,8 @@ Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCo
   return Status::OK();
 }
 
-//Greater op output tensor type is bool, so it cannot directly fit in the macros
-//for other elementwise ops
+// Greater op output tensor type is bool, so it cannot directly fit in the macros
+// for other elementwise ops
 template <typename T>
 Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
   return this->CompareMethod(context, &ImplT2_Greater);
@@ -563,22 +563,22 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
   return this->CompareMethod(context, &ImplT2_Equal);
 }
 
-//Less op output tensor type is bool, so it cannot directly fit in the macros
-//for other elementwise ops
+// Less op output tensor type is bool, so it cannot directly fit in the macros
+// for other elementwise ops
 template <typename T>
 Status Less<T>::ComputeInternal(OpKernelContext* context) const {
   return this->CompareMethod(context, &ImplT2_Less);
 }
 
-//GreaterOrEqual op output tensor type is bool, so it cannot directly fit in the macros
-//for other elementwise ops
+// GreaterOrEqual op output tensor type is bool, so it cannot directly fit in the macros
+// for other elementwise ops
 template <typename T>
 Status GreaterOrEqual<T>::ComputeInternal(OpKernelContext* context) const {
   return this->CompareMethod(context, &ImplT2_GreaterOrEqual);
 }
 
-//LessOrEqual op output tensor type is bool, so it cannot directly fit in the macros
-//for other elementwise ops
+// LessOrEqual op output tensor type is bool, so it cannot directly fit in the macros
+// for other elementwise ops
 template <typename T>
 Status LessOrEqual<T>::ComputeInternal(OpKernelContext* context) const {
   return this->CompareMethod(context, &ImplT2_LessOrEqual);

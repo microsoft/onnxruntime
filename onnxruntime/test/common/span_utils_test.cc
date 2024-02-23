@@ -15,7 +15,7 @@ void f(gsl::span<const int64_t> s) {
   std::copy(s.begin(), s.end(), std::ostream_iterator<int64_t>(std::cout, ", "));
   std::cout << std::endl;
 }
-}
+}  // namespace
 
 TEST(Common, SpanUtilsTests) {
   {
@@ -28,8 +28,8 @@ TEST(Common, SpanUtilsTests) {
   }
 
   {
-    AsSpan({1, 2, 3}); // -> gsl::span<const int>
-    f(AsSpan<int64_t>({1, 2, 3})); //  -> gsl::span<const int64_t>
+    AsSpan({1, 2, 3});              // -> gsl::span<const int>
+    f(AsSpan<int64_t>({1, 2, 3}));  //  -> gsl::span<const int64_t>
   }
 
   {

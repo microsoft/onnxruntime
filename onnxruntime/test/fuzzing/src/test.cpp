@@ -325,8 +325,9 @@ int main(int argc, char* argv[]) {
           std::chrono::seconds time_in_sec{test_time_out};
           std::chrono::hours time_in_hrs{test_time_out};
           std::chrono::system_clock::time_point end_time{curr_time};
-          end_time += scale == timeScale::Hrs ? time_in_hrs
-                                              : scale == timeScale::Min ? time_in_min : time_in_sec;
+          end_time += scale == timeScale::Hrs   ? time_in_hrs
+                      : scale == timeScale::Min ? time_in_min
+                                                : time_in_sec;
           Logger::testLog << "Starting Test" << Logger::endl;
           while (curr_time < end_time) {
             try {

@@ -10,12 +10,46 @@
 namespace onnxruntime {
 namespace training {
 namespace api {
+
+struct ModelIdentifiers {
+  // ModelIdentifiers struct enables an easy way to store and identify the models used for training, evaluation
+  // and model updates(optimizer model).
+  // The model can be specified by a path to the model file or by a span of bytes containing the model data.
+  // Training model is required, evaluation and optimizer models are optional.
+  std::variant<std::string, gsl::span<const uint8_t>> train_model;
+  std::variant<std::optional<std::string>, gsl::span<const uint8_t>> eval_model;
+  std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optim_model;
+
+  ModelIdentifiers(std::variant<std::string, gsl::span<const uint8_t>> training_model,
+                   std::variant<std::optional<std::string>, gsl::span<const uint8_t>> evaluation_model,
+                   std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optimzer_model)
+      : train_model(training_model), eval_model(evaluation_model), optim_model(optimzer_model) {}
+
+  bool IsModelAvailable(const std::variant<std::optional<std::string>, gsl::span<const uint8_t>>& model) const {
+    if ((std::holds_alternative<std::optional<std::string>>(model) &&
+         std::get<std::optional<std::string>>(model).has_value()) ||
+        (std::holds_alternative<gsl::span<const uint8_t>>(model) &&
+         std::get<gsl::span<const uint8_t>>(model).size() > 0)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool IsEvalModelAvailable() const {
+    return IsModelAvailable(eval_model);
+  }
+
+  bool IsOptimizerModelAvailable() const {
+    return IsModelAvailable(optim_model);
+  }
+};
+
 namespace utils {
 
 // Get names of graph inputs and outputs
 void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
-                              std::vector<std::string>& input_names,
-                              std::vector<std::string>& output_names);
+                              InlinedVector<std::string>& input_names,
+                              InlinedVector<std::string>& output_names);
 // Fetch the parameter name from suffix: name = param_name+suffix,
 // returns True if suffix is present in name else False
 bool GetParamNameFromSuffix(const std::string& name, const std::string& suffix, std::string& param_name);
@@ -25,7 +59,7 @@ bool GetParamNameFromSuffix(const std::string& name, const std::string& suffix, 
 bool GetParamNameFromGradient(const std::string& grad_name, std::string& param_name);
 
 // Allocate OrtValue like the input ortvalue on the same device
-Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val);
+Status CreateZeroValuedOrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val);
 
 // Create OrtValue from a single value of type T
 template <typename T>
@@ -34,7 +68,7 @@ void WrapInOrtValue(T value,
                     AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
+  static AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
   TensorShape shape({1});
   auto element_type = DataTypeImpl::GetType<T>();
@@ -47,35 +81,13 @@ void WrapInOrtValue(T value,
                    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
 
-// Create OrtValue on CPU out of provided inputs
 template <typename T>
-static void CreateInputOrtValue(gsl::span<const int64_t> dims,
-                                const std::vector<T>& value,
-                                OrtValue* p_ortvalue,
-                                AllocatorPtr alloc = nullptr) {
-  static CPUExecutionProviderInfo info;
-  static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
-
-  TensorShape shape(dims);
-  assert(shape.Size() == static_cast<int64_t>(value.size()));
-  auto element_type = DataTypeImpl::GetType<T>();
-  auto allocator = alloc ? alloc : cpu_allocator;
-  auto p_tensor = std::make_unique<Tensor>(element_type, shape, allocator);
-
-  // TODO: Handle memcpy for other allocators
-  if (value.size() > 0 && !alloc) {  // using CPU allocator
-    memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
-  }
-
-  p_ortvalue->Init(p_tensor.release(),
-                   DataTypeImpl::GetType<Tensor>(),
-                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-}
-
-template <typename T>
-T GetValue(OrtValue& ort_value) {
+T GetScalarFromOrtValue(OrtValue& ort_value) {
   const Tensor& tensor = ort_value.Get<Tensor>();
+  const TensorShape& shape = tensor.Shape();
+  size_t dim_count = shape.NumDimensions();
+  // Be noted: TensorShape returns 1 for rank 0 tensor.
+  ORT_ENFORCE(shape.Size() == 1 && (dim_count == 0 || dim_count == 1));
   T val;
   if (DataTypeImpl::GetType<T>() == tensor.DataType()) {
     val = *(tensor.template Data<T>());

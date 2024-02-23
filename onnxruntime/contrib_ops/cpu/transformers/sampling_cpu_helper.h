@@ -154,12 +154,12 @@ Status Sample(AllocatorPtr& allocator,
                                                         *sampled_idx));
   // TODO: update presense_mask()
 #ifdef DEBUG_GENERATION
-    dumper->Print("sampled_idx", *sampled_idx);
+  dumper->Print("sampled_idx", *sampled_idx);
 #endif
 
   return Status::OK();
 }
 
-} // namespace SamplingCudaHelper
-} // namespace contrib
-} // namespace onnxruntime
+}  // namespace SamplingCpuHelper
+}  // namespace contrib
+}  // namespace onnxruntime

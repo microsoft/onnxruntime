@@ -7,10 +7,10 @@ namespace onnxruntime {
 namespace contrib {
 ONNX_OPERATOR_KERNEL_EX(
     GistBinarizeEncoder,
-	kMSDomain,
+    kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().Alias(0,0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().Alias(0, 0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     GistBinarizeEncoderOp);
 
 Status GistBinarizeEncoderOp::Compute(OpKernelContext* context) const {
@@ -30,5 +30,5 @@ Status GistBinarizeEncoderOp::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(target != nullptr);
   return Status::OK();
 }
-}
-}
+}  // namespace contrib
+}  // namespace onnxruntime

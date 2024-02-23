@@ -32,7 +32,7 @@ class QAttention : public OpKernel, public AttentionCPUBase {
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
-  BufferUniquePtr packed_weights_;
+  IAllocatorUniquePtr<void> packed_weights_;
   size_t packed_weights_size_;
   TensorShape weight_shape_;
   bool weights_is_signed_;
@@ -90,14 +90,14 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
 
   const size_t loop_len = 3 * static_cast<size_t>(num_heads_);
   size_t packed_weights_data_size = packed_weights_size_ * loop_len;
-  auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_data_size));
+
+  packed_weights_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weights_data_size, true);
+  std::byte* packed_weights_data = static_cast<std::byte*>(packed_weights_.get());
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
-
-  packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(std::move(alloc)));
 
   for (size_t i = 0; i < loop_len; i++) {
     MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data);
@@ -160,7 +160,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor,
-                                                 nullptr,  // extra_add_qk
+                                                 nullptr,  // relative_position_bias
                                                  nullptr   // parameters
                                                  ));
 
@@ -288,9 +288,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past_tensor, output,
-                        batch_size, sequence_length,
-                        head_size, head_size, hidden_size, nullptr, context);
+  return ApplyAttention(Q, K, V, mask_index, past_tensor, nullptr /* past_key */, nullptr /* past_value*/,
+                        output, nullptr /* present_key */, nullptr /* present_value */,
+                        batch_size, sequence_length, sequence_length,
+                        head_size, head_size, hidden_size, nullptr /* rel_pos_bias */, context);
 }
 
 }  // namespace contrib

@@ -78,7 +78,7 @@ export interface Backend {
 const backendsCache: Map<string, Backend> = new Map();
 
 export const backend: {[name: string]: Backend} = {
-  webgl: new WebGLBackend(),
+  webgl: new WebGLBackend()
 };
 
 /**

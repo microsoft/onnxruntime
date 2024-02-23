@@ -29,9 +29,9 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Conv)::Evaluate(
   info.GetAttrOrDefault<int64_t>("group", &group, 1);
   info.GetAttrOrDefault<std::string>("auto_pad", &auto_pad, "NOTSET");
 
-  ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<int64_t>("kernel_shape", kernel_shape));
   ORT_ENFORCE(kernel_shape.size() <= 2, "Only support 1D/2D convolution currently!");
-  ORT_ENFORCE(info.GetAttrs<int64_t>("strides", strides).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<int64_t>("strides", strides));
 
   dilations = info.GetAttrs<int64_t>("dilations", dilations).IsOK() ? dilations : std::vector<int64_t>(kernel_shape.size(), 1);
   ORT_ENFORCE(dilations == std::vector<int64_t>(kernel_shape.size(), 1), "Only support dilation is 1 currently");

@@ -21,8 +21,8 @@ common::Status FindDevicesForValues(const SessionState& session_state,
   devices.resize(names.size());
 
   for (size_t i = start_at, end = names.size(); i < end; ++i) {
-    const auto& location = utils::FindMemoryInfoForValue(session_state, names[i]);
-    devices[i] = location.device;
+    const auto& location = utils::FindDeviceForValue(session_state, names[i]);
+    devices[i] = location;
   }
 
   return Status::OK();

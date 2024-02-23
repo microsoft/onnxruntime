@@ -2,7 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <d3d12.h>
+
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+
+interface IDMLCompiledOperator;
+struct DML_BUFFER_BINDING;
+struct DML_BINDING_DESC;
 
 namespace Dml
 {
@@ -37,7 +44,7 @@ namespace Dml
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputTensors
             ) const noexcept = 0;
-        
+
         STDMETHOD(ExecuteOperator)(
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
@@ -53,6 +60,7 @@ namespace Dml
             ) const noexcept = 0;
 
         STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept = 0;
+        STDMETHOD(CopyTensors)(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept = 0;
 
         STDMETHOD(FillTensorWithPattern)(
             IMLOperatorTensor* dst,
@@ -68,6 +76,7 @@ namespace Dml
         STDMETHOD(AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode, ID3D12Resource **d3dResource, IUnknown* *pooledResource)) const noexcept = 0;
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept = 0;
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept = 0;
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept = 0;
     };
 } // namespace Dml

@@ -29,7 +29,6 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
     const auto beta = node.GetAttributes().find("beta");
     if ((*beta).second.f() != 1.0) break;
 
-
     const NodeArg* A_arg = input_defs[0];
     const NodeArg* B_arg = input_defs[1];
     const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
@@ -79,7 +78,7 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
   return supported;
 }
 
-Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
+Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*enable_caches*/ true) {
   const auto& node{Node()};
 
   info.GetAttrOrDefault<float>("alpha", &alpha_, 1.f);
@@ -120,7 +119,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   if (input_idx == 1) {
     B_ = &tensor;
     if (C_matrix_exists_) {
-        return Status::OK();
+      return Status::OK();
     }
   }
 
@@ -145,20 +144,15 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
       trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
       trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
       trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_stride,
-      B_->Data<float>(),             // const float* kernel,
-      bias_Data,                                                  // const float* bias,
-      output_min,
-      output_max,
+      B_->Data<float>(),                                           // const float* kernel,
+      bias_Data,                                                   // const float* bias,
+      output_min, output_max,
       flags,
-  #ifdef XNN_CACHE_ENABLE
-      &xnn_caches_,
-  #else
-      0,
-  #endif
+      GetCodeCache(), GetWeightsCache(),
       &p);
 
   if (status != xnn_status_success) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
   }
   op0_.reset(p);
 
@@ -166,20 +160,25 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 }
 
 Status Gemm::Compute(OpKernelContext* context) const {
-  pthreadpool_t t_pool = GetThreadPool();
+  pthreadpool_t threadpool = GetThreadPool();
   const auto* A = context->Input<Tensor>(0);
   auto Y = context->Output(0, {M_, N_});
 
   // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
-  if (M_ == 0 || N_ == 0)
+  if (M_ == 0 || N_ == 0) {
     return Status::OK();
+  }
 
-  xnn_status status = xnn_setup_fully_connected_nc_f32(
-      op0_.get(),
-      trans_A_ == CblasNoTrans ? M_ : K_,  // Number of rows to multiply
-      A->Data<float>(),
-      Y->MutableData<float>(),
-      t_pool);
+  xnn_status status = xnn_reshape_fully_connected_nc_f32(op0_.get(),
+                                                         // Number of rows to multiply
+                                                         trans_A_ == CblasNoTrans ? M_ : K_,
+                                                         threadpool);
+
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_f32 returned ", status);
+  }
+
+  status = xnn_setup_fully_connected_nc_f32(op0_.get(), A->Data<float>(), Y->MutableData<float>());
 
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_f32 returned ", status);
@@ -193,7 +192,15 @@ Status Gemm::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 7, 12, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 7, 8, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  Gemm);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 9, 10, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  Gemm);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Gemm, kOnnxDomain, 11, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   Gemm);
 

@@ -139,10 +139,7 @@ __launch_bounds__(thread_block_size) __global__ void BeamSearchOnlineTopKStage2K
   input_tokens += vector_id * k * parts_per_beam;
 
   TopK<T, max_k> thread_topk;
-  for (int i = 0; i < max_k; ++i) {
-    thread_topk.key[i] = -1;
-    thread_topk.value[i] = NumericLimits<T>::Min();
-  }
+  thread_topk.Init();
 
   for (int idx = thread_id; idx < k * parts_per_beam; idx += thread_block_size) {
     value_shared_buf[idx] = input_values[idx];
@@ -291,7 +288,7 @@ void LaunchBatchTopKKernel(const T* topk_scores,
                            int32_t num_beams,
                            int32_t k,
                            cudaStream_t stream) {
-  ORT_ENFORCE(k <= 256, "LaunchBatchTopKKernel doesn't support k >= 256");
+  ORT_ENFORCE(k <= 64, "LaunchBatchTopKKernel doesn't support k >= 64");
 
 #define BatchTopKKernelLauncher(K)                                          \
   BatchTopKKernel<T, I, K, 32><<<batch_size, 32, 0, stream>>>(topk_scores,  \
@@ -311,12 +308,8 @@ void LaunchBatchTopKKernel(const T* topk_scores,
     BatchTopKKernelLauncher(16);
   } else if (k <= 32) {
     BatchTopKKernelLauncher(32);
-  } else if (k <= 64) {
-    BatchTopKKernelLauncher(64);
-  } else if (k <= 128) {
-    BatchTopKKernelLauncher(128);
   } else {
-    BatchTopKKernelLauncher(256);
+    BatchTopKKernelLauncher(64);
   }
 }
 
@@ -325,36 +318,6 @@ template void LaunchBatchTopKKernel(const float* topk_scores,
                                     int32_t* next_indices,
                                     int32_t* next_tokens,
                                     float* next_scores,
-                                    int32_t batch_size,
-                                    int32_t num_beams,
-                                    int32_t k,
-                                    cudaStream_t stream);
-
-template void LaunchBatchTopKKernel(const float* topk_scores,
-                                    const int64_t* topk_tokens,
-                                    int32_t* next_indices,
-                                    int32_t* next_tokens,
-                                    float* next_scores,
-                                    int32_t batch_size,
-                                    int32_t num_beams,
-                                    int32_t k,
-                                    cudaStream_t stream);
-
-template void LaunchBatchTopKKernel(const half* topk_scores,
-                                    const int32_t* topk_tokens,
-                                    int32_t* next_indices,
-                                    int32_t* next_tokens,
-                                    half* next_scores,
-                                    int32_t batch_size,
-                                    int32_t num_beams,
-                                    int32_t k,
-                                    cudaStream_t stream);
-
-template void LaunchBatchTopKKernel(const half* topk_scores,
-                                    const int64_t* topk_tokens,
-                                    int32_t* next_indices,
-                                    int32_t* next_tokens,
-                                    half* next_scores,
                                     int32_t batch_size,
                                     int32_t num_beams,
                                     int32_t k,
@@ -422,21 +385,6 @@ template void BeamSearchTopK(
     float* tmp_values_2st_stage,
     int32_t* tmp_indices_2st_stage,
     float* output_values,
-    int32_t* output_tokens,
-    int32_t* output_indices,
-    cudaStream_t stream);
-
-template void BeamSearchTopK(
-    const half* input,
-    int32_t batch_size,
-    int32_t num_beams,
-    int32_t vocab_size,
-    int32_t k,
-    half* tmp_values_1st_stage,
-    int32_t* tmp_indices_1st_stage,
-    half* tmp_values_2st_stage,
-    int32_t* tmp_indices_2st_stage,
-    half* output_values,
     int32_t* output_tokens,
     int32_t* output_indices,
     cudaStream_t stream);

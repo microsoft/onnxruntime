@@ -4,7 +4,7 @@
 import {Tensor} from '../../../tensor';
 import {WebGLInferenceHandler} from '../inference-handler';
 
-export const shape = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+export const shape = (_inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   validateInputs(inputs);
   return [new Tensor([inputs[0].dims.length], 'int32', undefined, undefined, new Int32Array(inputs[0].dims))];
 };

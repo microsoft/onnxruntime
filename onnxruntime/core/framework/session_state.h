@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
@@ -42,12 +44,6 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/program_region.h"
 #endif
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 
@@ -99,7 +95,8 @@ class SessionState {
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr,
+               AllocatorMap* parent_allocators = nullptr);
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -129,7 +126,14 @@ class SessionState {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& location) const noexcept;
 
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
-  AllocatorPtr GetAllocator(OrtDevice device) const noexcept;
+  AllocatorPtr GetAllocator(const OrtDevice& device) const noexcept;
+
+  /*
+   * Get allocators.
+   */
+  const AllocatorMap& GetAllocators() const { return *allocators_; }
+
+  void UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>&);
 
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
@@ -162,7 +166,7 @@ class SessionState {
 #endif
 
 #ifdef ENABLE_TRAINING
-// This is referenced in training::TrainingSession. Should be removed when this class is removed.
+  // This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -307,6 +311,10 @@ class SessionState {
     return parent_;
   }
 
+  // Clear all removable attributes if they exists.
+  // The function logs the list of removable attributes for every node.
+  void PruneRemovableAttributes();
+
   size_t GetNumberOfPrepacksCounter() const {
     return number_of_prepacks_counter_;
   }
@@ -349,8 +357,6 @@ class SessionState {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
-  void SetupAllocators();
-
   // Populate OrtValueNameIdxMap and create the graph viewer.
   void CreateGraphInfo();
 
@@ -384,7 +390,7 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                  const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING
@@ -434,22 +440,17 @@ class SessionState {
     }
   };
 
-  // using std::map as OrtMemoryInfo would need a custom hash function to be used with std::unordered_map,
+  // using std::map as OrtDevice would need a custom hash function to be used with std::unordered_map,
   // and as this isn't considered performance critical currently it's not worth the maintenance overhead of adding one.
   // We do get an allocator from ExecutionFrame so this is looked up frequently, however there most likely aren't many
   // entries in the map
-  //
-  // NOTE: We store a delegate to get the allocator to support scenarios such as the CUDA EP where a thread_local
-  // allocator is returned.
-  //
-  // TODO: The CUDA EP may not need to use the per-thread allocator for allocations that would use this map
-  // (e.g. primarily from ExecutionFrame and utils::Copy{Inputs|Outputs}AcrossDevices). It does need it
-  // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
-  // directly instead of going through CUDAExecutionProvider::GetAllocator.
-  // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(int id, OrtMemType mem_type)>,
-           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
-      allocators_;
+  // SessionState will contain other SessionState objects for subgraph. The unique ptr will be initialized only the
+  // SessionState object is in the parent graph, the raw pointer will be initialized when session state is in parent
+  // graph (from the unique ptr) or in the subgraph (from the raw pointer from parent session state). The raw pointer
+  // will be used all the way to access std::map<OrtDevice, AllocatorPtr>, unique pointer is only releasing the resource
+  // when the parent session state is releasing.
+  std::unique_ptr<AllocatorMap> allocators_unique_ptr_;
+  AllocatorMap* allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
 

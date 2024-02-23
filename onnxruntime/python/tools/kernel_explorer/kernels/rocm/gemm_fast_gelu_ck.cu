@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_ck.h"
-
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -25,7 +23,7 @@ namespace py = pybind11;
 namespace onnxruntime {
 
 #ifdef USE_COMPOSABLE_KERNEL
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class CKGemmFastGelu : public IKernelExplorer {
  public:
   CKGemmFastGelu(BlasOp opa, BlasOp opb,
@@ -37,10 +35,9 @@ class CKGemmFastGelu : public IKernelExplorer {
                  double beta,
                  DeviceArray& c, int64_t ldc)
       : params_{} {
-    auto supports_a = opa == BlasOp::N ? std::is_same_v<ALayout, Row> : std::is_same_v<ALayout, Col>;
-    auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
-    ORT_ENFORCE(supports_a && supports_b);
+    ORT_ENFORCE(opa == OpA && opb == OpB);
 
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
@@ -49,21 +46,21 @@ class CKGemmFastGelu : public IKernelExplorer {
     params_.m = m;
     params_.n = n;
     params_.k = k;
-    params_.alpha = alpha;
+    params_.alpha = static_cast<float>(alpha);
     params_.a = static_cast<T*>(a.ptr());
     params_.lda = lda;
     params_.b = static_cast<T*>(b.ptr());
     params_.ldb = ldb;
     params_.bias = static_cast<T*>(bias.ptr());
-    params_.beta = beta;
+    params_.beta = static_cast<float>(beta);
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    for (auto&& [type_string, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
-    for (auto&& [type_string, op] : GetCKGemmFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKGemmFastGeluTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -91,40 +88,38 @@ class CKGemmFastGelu : public IKernelExplorer {
 
  private:
   using ParamsT = GemmFastGeluParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
   size_t selected_op_{};
 };
 
-#define REGISTER_OP(type, alayout, blayout, layout_string)                                         \
-  py::class_<CKGemmFastGelu<type, alayout, blayout>>(m, "CKGemmFastGelu_" #type "_" layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                     \
-                    double,                                                                        \
-                    DeviceArray&, int64_t,                                                         \
-                    DeviceArray&, int64_t,                                                         \
-                    DeviceArray&,                                                                  \
-                    double,                                                                        \
-                    DeviceArray&, int64_t>())                                                      \
-      .def("SetRepeats", &CKGemmFastGelu<type, alayout, blayout>::SetRepeats)                      \
-      .def("Profile", &CKGemmFastGelu<type, alayout, blayout>::Profile)                            \
-      .def("Run", &CKGemmFastGelu<type, alayout, blayout>::Run)                                    \
-      .def("ListOps", &CKGemmFastGelu<type, alayout, blayout>::ListOps)                            \
-      .def("SelectOp", &CKGemmFastGelu<type, alayout, blayout>::SelectOp);
+#define REGISTER_OP(type, opa, opb, layout_string)                                         \
+  py::class_<CKGemmFastGelu<type, opa, opb>>(m, "CKGemmFastGelu_" #type "_" layout_string) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                             \
+                    double,                                                                \
+                    DeviceArray&, int64_t,                                                 \
+                    DeviceArray&, int64_t,                                                 \
+                    DeviceArray&,                                                          \
+                    double,                                                                \
+                    DeviceArray&, int64_t>())                                              \
+      .def("SetRepeats", &CKGemmFastGelu<type, opa, opb>::SetRepeats)                      \
+      .def("Profile", &CKGemmFastGelu<type, opa, opb>::Profile)                            \
+      .def("Run", &CKGemmFastGelu<type, opa, opb>::Run)                                    \
+      .def("ListOps", &CKGemmFastGelu<type, opa, opb>::ListOps)                            \
+      .def("SelectOp", &CKGemmFastGelu<type, opa, opb>::SelectOp);
 
-#define REGISTER_OP_FOR_ALL_TRANSAB(type) \
-  REGISTER_OP(type, Row, Row, "NN");      \
-  REGISTER_OP(type, Row, Col, "NT");      \
-  REGISTER_OP(type, Col, Row, "TN");      \
-  REGISTER_OP(type, Col, Col, "TT");
+#define REGISTER_OP_FOR_ALL_TRANSAB(type)        \
+  REGISTER_OP(type, BlasOp::N, BlasOp::N, "NN"); \
+  REGISTER_OP(type, BlasOp::N, BlasOp::T, "NT"); \
+  REGISTER_OP(type, BlasOp::T, BlasOp::N, "TN"); \
+  REGISTER_OP(type, BlasOp::T, BlasOp::T, "TT");
 
-void InitComposableKernelGemmFastGelu(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_TRANSAB(float);
   REGISTER_OP_FOR_ALL_TRANSAB(half);
 }
-#else
-void InitComposableKernelGemmFastGelu(py::module) {}
 #endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

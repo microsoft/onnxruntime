@@ -336,11 +336,18 @@ REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int32_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, float, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, double, Equal);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, bool, Equal);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, int32_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, int64_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, float, Equal);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, double, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, int32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, float, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, double, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, int32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, float, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, double, Equal);
+using string = std::string;
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, string, Equal);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, float, LessOrEqual);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, double, LessOrEqual);
@@ -370,7 +377,7 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 8, 12, float, Mean_8);
 REG_ELEMENTWISE_TYPED_KERNEL(Mean, 13, float, Mean_8);
 
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint8_t, BitShift);
-//REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
+// REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint32_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint64_t, BitShift);
 
@@ -848,7 +855,12 @@ struct Max_8::ComputeImpl {
         }};
 
     int input_count = inst.Node().InputArgCount().front();
-    UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+    // TODO: Parallelize across spans in UntypedBroadcastVariadic to avoid specific logic here
+    if (input_count == 2) {
+      UntypedBroadcastTwo(*context, funcs, 1.0);
+    } else {
+      UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+    }
 
     return Status::OK();
   }
@@ -955,7 +967,7 @@ Status Xor::Compute(OpKernelContext* context) const {
       },
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<bool>() =
-            per_iter_bh.EigenInput0<bool>().array() ^ per_iter_bh.EigenInput1<bool>().array();
+            per_iter_bh.EigenInput0<bool>().array() != per_iter_bh.EigenInput1<bool>().array();
       }};
 
   UntypedBroadcastTwo(*context, funcs, 1.0);
@@ -1192,16 +1204,16 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status BitwiseAnd<T>::Compute(OpKernelContext* context) const {
-  ProcessBroadcastSpanFuncs funcs {
+  ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         const T X = per_iter_bh.ScalarInput0<T>();
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
         std::transform(Y.begin(), Y.end(), output.begin(),
-            [X](T y) {
-                return std::bit_and<T>()(X, y);
-            });
+                       [X](T y) {
+                         return std::bit_and<T>()(X, y);
+                       });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
@@ -1209,9 +1221,9 @@ Status BitwiseAnd<T>::Compute(OpKernelContext* context) const {
         auto output = per_iter_bh.OutputSpan<T>();
 
         std::transform(X.begin(), X.end(), output.begin(),
-            [Y](T x) {
-                return static_cast<T>(std::bit_and<T>()(x, Y));
-            });
+                       [Y](T x) {
+                         return static_cast<T>(std::bit_and<T>()(x, Y));
+                       });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
@@ -1220,7 +1232,7 @@ Status BitwiseAnd<T>::Compute(OpKernelContext* context) const {
 
         std::transform(X.begin(), X.end(), Y.begin(), output.begin(), std::bit_and<T>());
       }};
-  
+
   UntypedBroadcastTwo(*context, funcs, 1.0f);
   return Status::OK();
 }
@@ -1306,7 +1318,7 @@ Status BitwiseXor<T>::Compute(OpKernelContext* context) const {
 }
 
 template <typename T>
-  class Sin final : public OpKernel {
+class Sin final : public OpKernel {
  public:
   Sin(const OpKernelInfo& info) : OpKernel(info) {
   }
@@ -1580,14 +1592,24 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
           per_iter_bh.OutputEigen<float>() = input0 * per_iter_bh.EigenInput1<float>().array();
       },
       [](BroadcastHelper& per_iter_bh) {
-        auto input0 = per_iter_bh.EigenInput0<float>();
-        float input1 = per_iter_bh.ScalarInput1<float>();
-        per_iter_bh.OutputEigen<float>() = (input0.array() > 0).select(input0, input0 * input1);
+        const float* input0 = per_iter_bh.EigenInput0<float>().data();
+        const float input1 = per_iter_bh.ScalarInput1<float>();
+        float* output = per_iter_bh.OutputEigen<float>().data();
+        size_t size = per_iter_bh.OutputEigen<float>().size();
+        for (size_t i = 0; i < size; i++) {
+          output[i] = static_cast<float>(input0[i] > 0) * input0[i] +
+                      (1.0f - static_cast<float>(input0[i] > 0)) * input0[i] * input1;
+        }
       },
       [](BroadcastHelper& per_iter_bh) {
-        auto input0 = per_iter_bh.EigenInput0<float>();
-        auto input1 = per_iter_bh.EigenInput1<float>();
-        per_iter_bh.OutputEigen<float>() = (input0.array() > 0).select(input0, input0.cwiseProduct(input1));
+        const float* input0 = per_iter_bh.EigenInput0<float>().data();
+        const float* input1 = per_iter_bh.EigenInput1<float>().data();
+        float* output = per_iter_bh.OutputEigen<float>().data();
+        size_t size = per_iter_bh.OutputEigen<float>().size();
+        for (size_t i = 0; i < size; i++) {
+          output[i] = static_cast<float>(input0[i] > 0) * input0[i] +
+                      (1.0f - static_cast<float>(input0[i] > 0)) * input0[i] * input1[i];
+        }
       }};
 
   UntypedBroadcastTwo(*context, funcs, 1.0);
@@ -1832,7 +1854,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(Y.begin(), Y.end(), output.begin(),
                        [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
-                         return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
+                         return MLFloat16(std::fmod(X_fl, y.ToFloat()));
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1842,7 +1864,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(X.begin(), X.end(), output.begin(),
                        [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
-                         return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
+                         return MLFloat16(std::fmod(x.ToFloat(), Y_fl));
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1852,9 +1874,9 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](const MLFloat16& x, const MLFloat16& y) {
-                         auto x_fl = math::halfToFloat(x.val);
-                         auto y_fl = math::halfToFloat(y.val);
-                         return MLFloat16(math::floatToHalf(std::fmod(x_fl, y_fl)));
+                         auto x_fl = x.ToFloat();
+                         auto y_fl = y.ToFloat();
+                         return MLFloat16(std::fmod(x_fl, y_fl));
                        });
       }};
 

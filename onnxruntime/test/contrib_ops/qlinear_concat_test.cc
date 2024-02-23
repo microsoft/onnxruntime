@@ -143,7 +143,6 @@ TEST(QLinearConcatU8, ExpectFail_WrongZeroPointType_1) {
   QLinearConcat3InputsU8({true, true, true}, FailByWrongZeroPointType);
 }
 
-
 void QLinearConcat3InputsS8(std::vector<bool> is_const_inputs, QLinearConcatFailCause fail_by = NoFail) {
   std::vector<int64_t> y_shape = {2, 6, 3};
   std::vector<std::vector<int64_t>> x_shapes = {
@@ -216,13 +215,13 @@ TEST(QLinearConcatS8, ExpectFail_WrongZeroPointType_1) {
 void QLinearConcatOneInputS8(std::vector<bool> is_const_inputs, QLinearConcatFailCause fail_by = NoFail) {
   std::vector<int64_t> y_shape = {2, 1, 3};
   std::vector<std::vector<int64_t>> x_shapes = {{2, 1, 3}};
-  std::vector<std::vector<int8_t>> x_vecs = { {0, -2, 3, -5, 127, -128} };
+  std::vector<std::vector<int8_t>> x_vecs = {{0, -2, 3, -5, 127, -128}};
   std::vector<int8_t> x_zero_points = {0};
   std::vector<float> x_scales = {1.0};
 
   float y_scale = 0.25;
   int8_t y_zero_point = 0;
-  std::vector<int8_t> y_vec = { 0, -8, 12, -20, 127, -128 };
+  std::vector<int8_t> y_vec = {0, -8, 12, -20, 127, -128};
 
   RunQLinearConcat<int8_t>(x_shapes, x_vecs, 1, x_scales, x_zero_points, y_shape, y_vec, y_scale, y_zero_point,
                            is_const_inputs, fail_by);

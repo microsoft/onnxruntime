@@ -9,4 +9,4 @@ namespace armnn_ep {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }
-}
+}  // namespace onnxruntime

@@ -46,6 +46,8 @@ class PerformanceRunner {
   ~PerformanceRunner();
   Status Run();
 
+  void LogSessionCreationTime();
+
   inline const PerformanceResult& GetResult() const { return performance_result_; }
 
   inline void SerializeResult() const {
@@ -106,6 +108,7 @@ class PerformanceRunner {
  private:
   std::chrono::time_point<std::chrono::high_resolution_clock> session_create_start_;
   std::chrono::time_point<std::chrono::high_resolution_clock> session_create_end_;
+  PerformanceResult initial_inference_result_;
   PerformanceResult performance_result_;
   PerformanceTestConfig performance_test_config_;
   std::unique_ptr<TestModelInfo> test_model_info_;

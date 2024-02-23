@@ -37,6 +37,5 @@ void QlinearBuildLookupTable(uint8_t* table,
 template <typename TOutput>
 void QLinearLookupTableTransform(const uint8_t* x, const TOutput* table, TOutput* y, size_t n);
 
-
 }  // namespace contrib
 }  // namespace onnxruntime

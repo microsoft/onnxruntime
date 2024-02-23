@@ -29,7 +29,7 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, co
 #ifdef ENABLE_TRAINING_CORE
   // allow Dropout elimination when:
   //    1. ratio input is an initializer of 0
-	//    2. ratio input is not a graph input, so it cannot be overridden
+  //    2. ratio input is not a graph input, so it cannot be overridden
 
   // support opset 12 and above for ort training
   if (graph_utils::MatchesOpSinceVersion(node, {12, 13}) && node.InputDefs().size() > 1) {

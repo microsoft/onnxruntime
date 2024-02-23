@@ -8,7 +8,10 @@ import csv
 import logging
 import os
 import random
+import sys
+import time
 import timeit
+from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from enum import Enum
@@ -30,6 +33,7 @@ class Precision(Enum):
     FLOAT32 = "fp32"
     FLOAT16 = "fp16"
     INT8 = "int8"
+    INT4 = "int4"
 
     def __str__(self):
         return self.value
@@ -81,7 +85,8 @@ def create_onnxruntime_session(
     num_threads=-1,
     enable_profiling=False,
     verbose=False,
-    provider_options={},  # map execution provider name to its option
+    enable_mlas_gemm_fastmath_arm64_bfloat16=False,
+    provider_options={},  # map execution provider name to its option  # noqa: B006
 ):
     session = None
     try:
@@ -132,8 +137,11 @@ def create_onnxruntime_session(
         if provider_options:
             providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
 
+        if enable_mlas_gemm_fastmath_arm64_bfloat16:
+            sess_options.add_session_config_entry("mlas.enable_gemm_fastmath_arm64_bfloat16", "1")
+
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
-    except:
+    except Exception:
         logger.error("Exception", exc_info=True)
 
     return session
@@ -170,7 +178,7 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
 
     logger.info(f"PyTorch Version:{torch.__version__}")
     logger.info(f"Transformers Version:{transformers.__version__}")
-    logger.info(f"Onnxruntime Version:{onnxruntime.__version__}")
+    logger.info(f"OnnxRuntime Version:{onnxruntime.__version__}")
 
     # Support three major versions of PyTorch and OnnxRuntime, and up to 9 months of transformers.
     assert version.parse(torch.__version__) >= version.parse("1.10.0")
@@ -185,12 +193,12 @@ def get_latency_result(latency_list, batch_size):
 
     return {
         "test_times": len(latency_list),
-        "latency_variance": "{:.2f}".format(latency_variance),
-        "latency_90_percentile": "{:.2f}".format(numpy.percentile(latency_list, 90) * 1000.0),
-        "latency_95_percentile": "{:.2f}".format(numpy.percentile(latency_list, 95) * 1000.0),
-        "latency_99_percentile": "{:.2f}".format(numpy.percentile(latency_list, 99) * 1000.0),
-        "average_latency_ms": "{:.2f}".format(latency_ms),
-        "QPS": "{:.2f}".format(throughput),
+        "latency_variance": f"{latency_variance:.2f}",
+        "latency_90_percentile": f"{numpy.percentile(latency_list, 90) * 1000.0:.2f}",
+        "latency_95_percentile": f"{numpy.percentile(latency_list, 95) * 1000.0:.2f}",
+        "latency_99_percentile": f"{numpy.percentile(latency_list, 99) * 1000.0:.2f}",
+        "average_latency_ms": f"{latency_ms:.2f}",
+        "QPS": f"{throughput:.2f}",
     }
 
 
@@ -245,8 +253,11 @@ def output_summary(results, csv_filename, args):
         ]
         data_names = []
         for batch_size in args.batch_sizes:
-            for sequence_length in args.sequence_lengths:
-                data_names.append(f"b{batch_size}_s{sequence_length}")
+            if args.sequence_lengths == [""]:
+                data_names.append(f"b{batch_size}")
+            else:
+                for sequence_length in args.sequence_lengths:
+                    data_names.append(f"b{batch_size}_s{sequence_length}")
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
         csv_writer.writeheader()
@@ -273,7 +284,10 @@ def output_summary(results, csv_filename, args):
                                             assert row[k] == headers[k]
                                     b = result["batch_size"]
                                     s = result["sequence_length"]
-                                    row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                                    if s:
+                                        row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                                    else:
+                                        row[f"b{b}"] = result["average_latency_ms"]
                             if row:
                                 csv_writer.writerow(row)
 
@@ -282,12 +296,16 @@ def output_summary(results, csv_filename, args):
 
 def output_fusion_statistics(model_fusion_statistics, csv_filename):
     with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
-        column_names = ["model_filename", "datetime", "transformers", "torch"] + list(
-            next(iter(model_fusion_statistics.values())).keys()
-        )
+        column_names = [
+            "model_filename",
+            "datetime",
+            "transformers",
+            "torch",
+            *list(next(iter(model_fusion_statistics.values())).keys()),
+        ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
-        for key in model_fusion_statistics.keys():
+        for key in model_fusion_statistics:
             model_fusion_statistics[key]["datetime"] = str(datetime.now())
             model_fusion_statistics[key]["transformers"] = transformers.__version__
             model_fusion_statistics[key]["torch"] = torch.__version__
@@ -325,13 +343,9 @@ def inference_ort_with_io_binding(
     # Bind inputs and outputs to onnxruntime session
     io_binding = ort_session.io_binding()
     # Bind inputs to device
-    for name in ort_inputs.keys():
+    for name in ort_inputs:
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
-        input_type = (
-            IO_BINDING_DATA_TYPE_MAP[str(ort_inputs[name].dtype)]
-            if str(ort_inputs[name].dtype) in IO_BINDING_DATA_TYPE_MAP
-            else data_type
-        )
+        input_type = IO_BINDING_DATA_TYPE_MAP.get(str(ort_inputs[name].dtype), data_type)
         io_binding.bind_input(
             name,
             np_input.device.type,
@@ -371,7 +385,7 @@ def inference_ort_with_io_binding(
     return result
 
 
-def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
+def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):  # noqa: N802
     # Allocate output tensors with the largest test size needed. So the allocated memory can be reused
     # for each test run.
 
@@ -429,76 +443,141 @@ def get_gpu_info() -> Optional[List[Dict[str, Any]]]:
         return None
 
 
-def measure_memory(is_gpu, func):
-    class MemoryMonitor:
-        def __init__(self, keep_measuring=True):
-            self.keep_measuring = keep_measuring
+class MemoryMonitor(ABC):
+    def __init__(self, keep_measuring=True):
+        self.keep_measuring = keep_measuring
 
-        def measure_cpu_usage(self):
-            import psutil
+    def measure_cpu_usage(self):
+        import psutil
 
-            max_usage = 0
+        max_usage = 0
+        while True:
+            max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
+            sleep(0.005)  # 5ms
+            if not self.keep_measuring:
+                break
+        return max_usage
+
+    @abstractmethod
+    def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+        raise NotImplementedError()
+
+
+class CudaMemoryMonitor(MemoryMonitor):
+    def __init__(self, keep_measuring=True):
+        super().__init__(keep_measuring)
+
+    def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+        from py3nvml.py3nvml import (
+            NVMLError,
+            nvmlDeviceGetCount,
+            nvmlDeviceGetHandleByIndex,
+            nvmlDeviceGetMemoryInfo,
+            nvmlDeviceGetName,
+            nvmlInit,
+            nvmlShutdown,
+        )
+
+        max_gpu_usage = []
+        gpu_name = []
+        try:
+            nvmlInit()
+            device_count = nvmlDeviceGetCount()
+            if not isinstance(device_count, int):
+                logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")
+                return None
+
+            max_gpu_usage = [0 for i in range(device_count)]
+            gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(device_count)]
             while True:
-                max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
+                for i in range(device_count):
+                    info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
+                    if isinstance(info, str):
+                        logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")
+                        return None
+                    max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
                 sleep(0.005)  # 5ms
                 if not self.keep_measuring:
                     break
-            return max_usage
+            nvmlShutdown()
+            return [
+                {
+                    "device_id": i,
+                    "name": gpu_name[i],
+                    "max_used_MB": max_gpu_usage[i],
+                }
+                for i in range(device_count)
+            ]
+        except NVMLError as error:
+            logger.error("Error fetching GPU information using nvml: %s", error)
+            return None
 
-        def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
-            from py3nvml.py3nvml import (
-                NVMLError,
-                nvmlDeviceGetCount,
-                nvmlDeviceGetHandleByIndex,
-                nvmlDeviceGetMemoryInfo,
-                nvmlDeviceGetName,
-                nvmlInit,
-                nvmlShutdown,
-            )
 
-            max_gpu_usage = []
-            gpu_name = []
-            try:
-                nvmlInit()
-                device_count = nvmlDeviceGetCount()
-                if not isinstance(device_count, int):
-                    logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")
-                    return None
+class RocmMemoryMonitor(MemoryMonitor):
+    def __init__(self, keep_measuring=True):
+        super().__init__(keep_measuring)
+        rocm_smi_path = "/opt/rocm/libexec/rocm_smi"
+        if os.path.exists(rocm_smi_path):
+            if rocm_smi_path not in sys.path:
+                sys.path.append(rocm_smi_path)
+        try:
+            import rocm_smi
 
-                max_gpu_usage = [0 for i in range(device_count)]
-                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(device_count)]
-                while True:
-                    for i in range(device_count):
-                        info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
-                        if isinstance(info, str):
-                            logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")
-                            return None
-                        max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
-                    sleep(0.005)  # 5ms
-                    if not self.keep_measuring:
-                        break
-                nvmlShutdown()
-                return [
-                    {
-                        "device_id": i,
-                        "name": gpu_name[i],
-                        "max_used_MB": max_gpu_usage[i],
-                    }
-                    for i in range(device_count)
-                ]
-            except NVMLError as error:
-                logger.error("Error fetching GPU information using nvml: %s", error)
-                return None
+            self.rocm_smi = rocm_smi
+            self.rocm_smi.initializeRsmi()
+        except ImportError:
+            self.rocm_smi = None
 
-    monitor = MemoryMonitor(False)
+    def get_used_memory(self, dev):
+        if self.rocm_smi is None:
+            return -1
+        return self.rocm_smi.getMemInfo(dev, "VRAM")[0] / 1024 / 1024
+
+    def measure_gpu_usage(self):
+        if self.rocm_smi is None:
+            return None
+
+        device_count = len(self.rocm_smi.listDevices()) if self.rocm_smi is not None else 0
+        max_gpu_usage = [0 for i in range(device_count)]
+        gpu_name = [f"GPU{i}" for i in range(device_count)]
+        while True:
+            for i in range(device_count):
+                max_gpu_usage[i] = max(max_gpu_usage[i], self.get_used_memory(i))
+            time.sleep(0.005)  # 5ms
+            if not self.keep_measuring:
+                break
+        return [
+            {
+                "device_id": i,
+                "name": gpu_name[i],
+                "max_used_MB": max_gpu_usage[i],
+            }
+            for i in range(device_count)
+        ]
+
+
+def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
+    memory_monitor_type = None
+    if monitor_type == "rocm":
+        memory_monitor_type = RocmMemoryMonitor
+    else:
+        memory_monitor_type = CudaMemoryMonitor
+
+    monitor = memory_monitor_type(False)
 
     if is_gpu:
-        memory_before_test = monitor.measure_gpu_usage()
+        if start_memory is not None:
+            memory_before_test = start_memory
+        else:
+            memory_before_test = monitor.measure_gpu_usage()
         if memory_before_test is None:
             return None
 
+        if func is None:
+            return memory_before_test
+
         with ThreadPoolExecutor() as executor:
-            monitor = MemoryMonitor()
+            monitor = memory_monitor_type()
             mem_thread = executor.submit(monitor.measure_gpu_usage)
             try:
                 fn_thread = executor.submit(func)
@@ -523,10 +602,16 @@ def measure_memory(is_gpu, func):
         return None
 
     # CPU memory
-    memory_before_test = monitor.measure_cpu_usage()
+    if start_memory is not None:
+        memory_before_test = start_memory
+    else:
+        memory_before_test = monitor.measure_cpu_usage()
+
+    if func is None:
+        return memory_before_test
 
     with ThreadPoolExecutor() as executor:
-        monitor = MemoryMonitor()
+        monitor = memory_monitor_type()
         mem_thread = executor.submit(monitor.measure_cpu_usage)
         try:
             fn_thread = executor.submit(func)
@@ -543,6 +628,7 @@ def get_ort_environment_variables():
     # Environment variables might impact ORT performance on transformer models. Note that they are for testing only.
     env_names = [
         "ORT_DISABLE_FUSED_ATTENTION",
+        "ORT_ENABLE_FUSED_CAUSAL_ATTENTION",
         "ORT_DISABLE_FUSED_CROSS_ATTENTION",
         "ORT_DISABLE_TRT_FLASH_ATTENTION",
         "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION",

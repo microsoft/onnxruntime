@@ -1,1 +1,1 @@
-from .loss_scaler import LossScaler, DynamicLossScaler
+from .loss_scaler import DynamicLossScaler, LossScaler  # noqa: F401

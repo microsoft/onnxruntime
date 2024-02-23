@@ -4,7 +4,6 @@ from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
-    BiasToQuantize,
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,
@@ -34,7 +33,7 @@ class ConvInteger(QuantOperatorBase):
         # Add tensors for the shape to be reshaped to
         weight = find_by_name(node.input[1], model.initializer())
         if weight is None:
-            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
+            raise ValueError(f"Expected {node.input[1]} to be an initializer")
 
         # Add reshape for correct broadcase
         output = node.output[0]
@@ -79,7 +78,7 @@ class ConvInteger(QuantOperatorBase):
         nodes.extend(nodes_weight)
 
         conv_integer_output = node.output[0] + "_output_quantized"
-        conv_integer_name = node.name + "_quant" if node.name != "" else ""
+        conv_integer_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:
@@ -90,19 +89,20 @@ class ConvInteger(QuantOperatorBase):
         nodes.append(conv_integer_node)
 
         # Add cast operation to cast convInteger output to float.
+        onnx_type = self.quantizer.get_tensor_type(node.output[0], mandatory=True)
         cast_op_output = conv_integer_output + "_cast_output"
         cast_node = onnx.helper.make_node(
             "Cast",
             [conv_integer_output],
             [cast_op_output],
             conv_integer_output + "_cast",
-            to=onnx_proto.TensorProto.FLOAT,
+            to=onnx_type,  # TODO: FLOAT ot FLOAT16
         )
         nodes.append(cast_node)
 
         # Add mul operation to multiply scales of two inputs.
         assert len(scale_names) == 2
-        if conv_integer_name != "":
+        if conv_integer_name:
             scales_mul_op = conv_integer_name + "_scales_mul"
         else:
             scales_mul_op = scale_names[0] + "_" + scale_names[1] + "_mul"
@@ -119,7 +119,7 @@ class ConvInteger(QuantOperatorBase):
 
         # Add mul operation to multiply mul_scales_op result with output of ConvInteger
         # and make the output of this node the same as output of original conv node.
-        output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name != "" else ""
+        output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name else ""
         nodes.append(
             get_mul_node(
                 [cast_op_output, scales_mul_op_output],
@@ -158,7 +158,7 @@ class QLinearConv(QuantOperatorBase):
                 nodes,
             ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
-                node.input[1], onnx_proto.TensorProto.INT8, 0
+                node.input[1], onnx_proto.TensorProto.INT8, 0  # self.quantizer.weight_qType?
             )
             quantized_input_names.append(quant_weight_tuple[0])
             zero_point_names.append(quant_weight_tuple[1])
@@ -188,11 +188,13 @@ class QLinearConv(QuantOperatorBase):
         quantized_bias_name = ""
         bias_present = False
         if len(node.input) == 3:
+            if self.quantizer.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+                raise RuntimeError("Quantization to FLOAT8E4M3FN for operator Conv is not supported.")
             quantized_bias_name = self.quantizer.quantize_bias_static(node.input[2], node.input[0], node.input[1])
             bias_present = True
 
         qlinear_conv_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name != "" else ""
+        qlinear_conv_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:
@@ -238,7 +240,7 @@ class QDQConv(QDQOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert node.op_type == "Conv"
+        assert node.op_type == "Conv" or node.op_type == "ConvTranspose"
 
         self.quantizer.quantize_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:

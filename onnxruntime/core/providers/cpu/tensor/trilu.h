@@ -13,7 +13,7 @@ class Trilu final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
-   bool upper_;
+  bool upper_;
 };
 
 }  // namespace onnxruntime

@@ -73,8 +73,8 @@ class NodeUnit {
   Node::EdgeConstIterator OutputEdgesEnd(size_t index) const;
 
  private:
-  const std::vector<const Node*> q_nodes_;       // q-nodes for this NodeUnit
-  const std::vector<const Node*> dq_nodes_;   // dq nodes for this NodeUnit, not all inputs
+  const std::vector<const Node*> q_nodes_;   // q-nodes for this NodeUnit
+  const std::vector<const Node*> dq_nodes_;  // dq nodes for this NodeUnit, not all inputs
   const Node& target_node_;
   const Type type_;
 

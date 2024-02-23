@@ -3,7 +3,7 @@
 
 #include "internal_testing_execution_provider.h"
 
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -13,7 +13,7 @@
 #include "core/graph/model.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 
 #include <queue>
 
@@ -24,54 +24,82 @@
 namespace onnxruntime {
 namespace internal_testing_ep {
 
+// NHWC Conv requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+// the 'utils::' breaks the kernel registration macros
+constexpr const char* internal_testing_ep = utils::kInternalTestingExecutionProvider;
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 11, Conv);
+
+// register static kernels we have implementations for
+static std::unique_ptr<KernelRegistry> RegisterKernels() {
+  auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
+
+  ORT_THROW_IF_ERROR(kernel_registry->Register(
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep,
+                                                            kMSInternalNHWCDomain, 11, Conv)>()));
+
+  return kernel_registry;
+}
+
+namespace {
+// static kernel registration helpers
+
+class DummyKernel : public OpKernel {
+ public:
+  DummyKernel(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext*) const override {
+    ORT_NOT_IMPLEMENTED("Dummy kernel is only intended for testing model initialization and not execution");
+  }
+};
+
+onnxruntime::common::Status DummyCreateKernel(FuncManager& /*func_mgr*/, const OpKernelInfo& info,
+                                              std::unique_ptr<OpKernel>& out) {
+  auto kernel = std::make_unique<DummyKernel>(info);
+  out = std::move(kernel);
+  return Status::OK();
+}
+
+// register dummy kernel for node
+void RegisterDummyStaticKernel(KernelRegistry& registry, const Node& node) {
+  KernelDefBuilder builder;
+  builder.SetName(node.OpType())
+      .SetDomain(node.Domain())
+      .SinceVersion(node.SinceVersion())
+      .Provider(internal_testing_ep);
+
+  ORT_THROW_IF_ERROR(registry.Register(builder, DummyCreateKernel));
+}
+}  // namespace
+
+#else
+static std::unique_ptr<KernelRegistry> RegisterKernels() {
+  return nullptr;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
 constexpr const char* INTERNAL_TESTING_EP = "InternalTestingEP";
 
 InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,
                                                                    const std::unordered_set<std::string>& stop_ops,
                                                                    DataLayout preferred_layout)
-    : IExecutionProvider{utils::kInternalTestingExecutionProvider, true},
+    : IExecutionProvider{utils::kInternalTestingExecutionProvider},
       ep_name_{INTERNAL_TESTING_EP},
       ops_{ops},
       stop_ops_{stop_ops},
-      preferred_layout_{preferred_layout} {
+      preferred_layout_{preferred_layout},
+      kernel_registry_{RegisterKernels()} {
 }
 
-AllocatorPtr InternalTestingExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
-  // replicate setup that some EPs have with a local allocator
-  if (mem_type == OrtMemTypeDefault) {
-    return local_allocator_;
-  } else {
-    return IExecutionProvider::GetAllocator(device_id, mem_type);
-  }
-}
-
-// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
-void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
-  if (!cpu_alloc) {
-    // use shared allocator if available
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
-    if (!cpu_alloc) {
-      // create our allocator
-      AllocatorCreationInfo allocator_info(
-          [](int) {
-            return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
-                                                                OrtAllocatorType::OrtDeviceAllocator));
-          });
-
-      cpu_alloc = CreateAllocator(allocator_info);
-
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-
-    local_allocator_ = cpu_alloc;
-    InsertAllocator(cpu_alloc);
-  }
+std::vector<AllocatorPtr> InternalTestingExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo allocator_info(
+      [](int) {
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
+                                                            OrtAllocatorType::OrtDeviceAllocator));
+      });
+  return std::vector<AllocatorPtr>{CreateAllocator(allocator_info)};
 }
 
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}
@@ -82,7 +110,7 @@ DataLayout InternalTestingExecutionProvider::GetPreferredLayout() const {
 
 std::vector<std::unique_ptr<ComputeCapability>>
 InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                const IKernelLookup& /*kernel_lookup*/) const {
+                                                const IKernelLookup& kernel_lookup) const {
   // find nodes that have ops in our supported list
   std::unordered_set<const Node*> supported_static_nodes;
   std::unordered_set<const Node*> supported_compiled_nodes;
@@ -91,17 +119,32 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
   std::for_each(topo_nodes.cbegin(), topo_nodes.cend(),
                 [&, this](NodeIndex node_index) {
                   const Node* node = graph_viewer.GetNode(node_index);
-                  bool supported = ops_.count(node->OpType()) != 0;
-                  if (supported) {
+                  if (take_all_nodes_) {
                     if (enable_static_kernels_) {
-                      // we have a static kernel for Conv
-                      if (node->OpType() == "Conv") {
-                        supported_static_nodes.insert(node);
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+                      supported_static_nodes.insert(node);
+                      if (kernel_lookup.LookUpKernel(*node) == nullptr) {
+                        RegisterDummyStaticKernel(*kernel_registry_, *node);
                       }
+#else
+            ORT_UNUSED_PARAMETER(kernel_lookup);
+#endif
+                    } else {
+                      supported_compiled_nodes.insert(node);
                     }
+                  } else {
+                    bool supported = ops_.count(node->OpType()) != 0;
+                    if (supported) {
+                      if (enable_static_kernels_) {
+                        // we have an explicit static kernel for Conv
+                        if (node->OpType() == "Conv") {
+                          supported_static_nodes.insert(node);
+                        }
+                      }
 
-                    // all kernels can potentially be compiled in this test setup
-                    supported_compiled_nodes.insert(node);
+                      // all kernels can potentially be compiled in this test setup
+                      supported_compiled_nodes.insert(node);
+                    }
                   }
                 });
 
@@ -120,7 +163,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
       bool request_node = false;
       if (node->GetExecutionProviderType() == "") {
         // unassigned node. check if we can handle it.
-        if (node->Domain() == kOnnxDomain && node->OpType() == "Conv") {
+        if (take_all_nodes_ || node->Domain() == kOnnxDomain && node->OpType() == "Conv") {
           request_node = true;
         }
       } else if (node->GetExecutionProviderType() == Type()) {
@@ -169,7 +212,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
   // create functor to generate a guaranteed unique metadef id
   auto generate_metadef_name = [this, &graph_viewer]() {
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     return ep_name_ + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
   };
@@ -196,7 +239,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
 
     if (preferred_layout_ == DataLayout::NHWC) {
       const GraphViewer& graph_viewer = node_and_viewer.filtered_graph;
-      auto layout_sensitive_ops = layout_transformer::GetORTLayoutSensitiveOps();
+      auto layout_sensitive_ops = layout_transformation::GetORTLayoutSensitiveOps();
       for (const auto& unfused_node : graph_viewer.Nodes()) {
         if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSInternalNHWCDomain) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -257,48 +300,10 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
-template <>
-KernelCreateInfo BuildKernelCreateInfo<void>() {
-  KernelCreateInfo info;
-  return info;
-}
-
-// the 'utils::' breaks the kernel registration macros
-constexpr const char* internal_testing_ep = utils::kInternalTestingExecutionProvider;
-
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 11, Conv);
-
-std::unique_ptr<KernelRegistry> RegisterKernels() {
-  auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
-
-  // make Android build happy...
-  // it doesn't count the usage of internal_testing_ep in the macros and generates a warning.
-  static_cast<void>(internal_testing_ep);
-
-  static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep,
-                                                            kMSInternalNHWCDomain, 11, Conv)>,
-  };
-
-  for (auto& function_table_entry : function_table) {
-    KernelCreateInfo info = function_table_entry();
-    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
-      ORT_THROW_IF_ERROR(kernel_registry->Register(std::move(info)));
-    }
-  }
-
-  return kernel_registry;
-}
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
 std::shared_ptr<KernelRegistry> InternalTestingExecutionProvider::GetKernelRegistry() const {
 #if !defined(ORT_MINIMAL_BUILD)
   if (enable_static_kernels_) {
-    static std::shared_ptr<KernelRegistry> registry = RegisterKernels();
-    return registry;
+    return kernel_registry_;
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
   return nullptr;

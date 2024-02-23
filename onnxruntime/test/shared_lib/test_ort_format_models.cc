@@ -3,7 +3,7 @@
 
 // custom ops are only supported in a minimal build if explicitly enabled
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-
+#include <absl/base/config.h>
 #include "core/common/common.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -16,10 +16,10 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
-                          const std::vector<Input>& inputs, const char* output_name,
-                          const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y,
-                          Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
+[[maybe_unused]] static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
+                                           const std::vector<Input>& inputs, const char* output_name,
+                                           const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y,
+                                           Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
@@ -27,6 +27,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   auto cuda_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(cuda_compute_stream);
   session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
+  session_options.DisableCpuMemArena();
   ORT_UNUSED_PARAMETER(cuda_compute_stream);
 #endif
   Ort::Session session(env, model_uri.c_str(), session_options);
@@ -65,7 +66,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
 TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   const std::basic_string<ORTCHAR_T> onnx_file = ORT_TSTR("testdata/foo_1.onnx");
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
@@ -80,7 +81,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 #else
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   // convert to ort by loading the onnx model
@@ -120,12 +121,12 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 
 // the saved ORT format model has the CPU EP assigned to the custom op node, so we only test if we're not using the
 // CUDA EP for the test.
-#ifndef USE_CUDA
+#if !defined(USE_CUDA) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
 TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
 
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   //  load the ORT format model and execute it
@@ -138,6 +139,26 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   // model adds 1, 2, 3, 4, 5, 6 to the input values
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {7.0f, 7.0f, 7.0f, 7.0f, 7.0f, 7.0f};
+
+  TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
+}
+
+TEST(OrtFormatCustomOpTests, LoadOrtModelStandaloneCustomOpImplementation) {
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
+
+  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&standalone_op);
+
+  // load the ORT format model and execute it
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
 }

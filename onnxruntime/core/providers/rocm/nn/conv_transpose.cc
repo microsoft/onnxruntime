@@ -16,7 +16,7 @@ namespace rocm {
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T>);                                                                   \
+      ConvTranspose<T, false>);                                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       ConvTranspose,                                                                       \
       kOnnxDomain,                                                                         \
@@ -24,20 +24,20 @@ namespace rocm {
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T>);
+      ConvTranspose<T, false>);
 
 REGISTER_KERNEL_TYPED(float)
 // not yet supported in MIOpen
-//REGISTER_KERNEL_TYPED(double)
+// REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-template <typename T>
-Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, bool NHWC>
+Status ConvTranspose<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
   return DoConvTranspose(context, false);
 }
 
-template <typename T>
-Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
+template <typename T, bool NHWC>
+Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   const Tensor* X = context->Input<Tensor>(0);
@@ -93,10 +93,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       }
       s_.y_dims = gsl::make_span(y_dims);
 
-      if (w_dims_changed)
-	{
-	  ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, MiopenTensor::GetDataType<HipT>()));
-	}
+      if (w_dims_changed) {
+        ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, MiopenTensor::GetDataType<HipT>()));
+      }
 
       // Special case when there is a dim value of 0 in the shape.
       // Return only after we have cached the following for subsequent runs :
@@ -147,7 +146,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
             &perf,
             algo_search_workspace.get(),
             AlgoSearchWorkspaceSize,
-	    false));
+            false));
         s_.cached_benchmark_bwd_results.insert(x_dims, {perf.bwd_data_algo, perf.memory});
       }
 
@@ -181,8 +180,8 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         miopenConvolutionBackwardData(
             GetMiopenHandle(context),
             &alpha,
-	    s_.x_tensor,
-	    x_data,
+            s_.x_tensor,
+            x_data,
             s_.w_desc,
             w_data,
             s_.conv_desc,

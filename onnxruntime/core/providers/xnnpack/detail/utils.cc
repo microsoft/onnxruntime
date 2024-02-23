@@ -25,7 +25,7 @@ const char* OpTypeToString(OpComputeType opCtype) {
     case op_compute_type_fp16:
       return "fp16";
     case op_compute_type_qs8_per_channel:
-      return "qc8";
+      return "qs8_qc8w";
     case op_compute_type_qs8:
       return "qs8";
     case op_compute_type_qu8:
@@ -356,7 +356,7 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
         if (zero_tensor != nullptr) {
           Initializer zp_val(*zero_tensor, node_unit.ModelPath());
           auto zero_points = zp_val.DataAsSpan<int8_t>();
-          for (int64_t i = 0; i < zp_val.size(); i++) {
+          for (size_t i = 0; i < zp_val.size(); i++) {
             if (zero_points[i] != 0) {
               LOGS_DEFAULT(VERBOSE) << "only support 0 as zero point for per-channel quantization, "
                                     << "zero_points[" << i << "] has value: " << zero_points[i];

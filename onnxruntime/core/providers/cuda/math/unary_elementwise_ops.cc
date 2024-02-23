@@ -57,18 +57,18 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Not<T>);
 
-#define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                                    \
-  template <>                                                                                              \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
-    UnaryElementwisePreparation p;                                                                         \
-    ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                           \
-    Impl_##x(                                                                                              \
-        Stream(context),                                                                                   \
+#define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                           \
+  template <>                                                                                     \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                  \
+    UnaryElementwisePreparation p;                                                                \
+    ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                  \
+    Impl_##x(                                                                                     \
+        Stream(context),                                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->MutableData<T>()), \
-        p.output_tensor->Shape().Size());                                                                  \
-                                                                                                           \
-    return Status::OK();                                                                                   \
+        p.output_tensor->Shape().Size());                                                         \
+                                                                                                  \
+    return Status::OK();                                                                          \
   }
 
 #define UNARY_OP_VERSIONED_TYPED(name, startver, endver, T) \
@@ -99,6 +99,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
 // F: float
 // D: double
 // O: bool
+// X: BFloat16
 
 #define UNARY_OP_VERSIONED_HFD(name, startver, endver)        \
   UNARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
@@ -124,12 +125,18 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   UNARY_OP_TYPED(name, ver, float)     \
   UNARY_OP_TYPED(name, ver, double)
 
+#define UNARY_OP_HFDX(name, ver)       \
+  UNARY_OP_TYPED(name, ver, MLFloat16) \
+  UNARY_OP_TYPED(name, ver, BFloat16)  \
+  UNARY_OP_TYPED(name, ver, float)     \
+  UNARY_OP_TYPED(name, ver, double)
+
 #define UNARY_OP_CSILHFD(name, ver)  \
   UNARY_OP_TYPED(name, ver, int8_t)  \
   UNARY_OP_TYPED(name, ver, int16_t) \
   UNARY_OP_TYPED(name, ver, int32_t) \
   UNARY_OP_TYPED(name, ver, int64_t) \
-  UNARY_OP_HFD(name, ver)
+  UNARY_OP_HFDX(name, ver)
 
 #define UNARY_OP_BWUZCSILHFD(name, ver) \
   UNARY_OP_TYPED(name, ver, uint8_t)    \
@@ -153,10 +160,11 @@ UNARY_OP_CSILHFD(Neg, 13)
 UNARY_OP_HFD(Floor, 13)
 UNARY_OP_HFD(Ceil, 13)
 UNARY_OP_HFD(Reciprocal, 13)
-UNARY_OP_HFD(Sqrt, 13)
+UNARY_OP_HFDX(Sqrt, 13)
 UNARY_OP_HFD(Log, 13)
 UNARY_OP_HFD(Exp, 13)
 UNARY_OP_HFD(Erf, 13)
+UNARY_OP_BWUZCSILHFD(Sign, 13)
 
 UNARY_LOGICALOP_NOT_TYPED(1, bool)
 UNARY_OP_HFD(Round, 11)

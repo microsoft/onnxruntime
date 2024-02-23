@@ -6,59 +6,54 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- stage: Python_Packaging
+- stage: "Python_Packaging_ROCm60_Release"
   jobs:
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.2.3'
-  - template: templates/rocm.yml
-    parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.2.3'
+      RocmVersion: '6.0'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.2.3'
+      RocmVersion: '6.0'
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.3.2'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.8'
-      RocmVersion: '5.3.2'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.9'
-      RocmVersion: '5.3.2'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.4'
+      PythonVersion: '3.10'
+      RocmVersion: '6.0'
+
+- stage: "Python_Packaging_ROCm60_Debug"
+  jobs:
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.4'
+      RocmVersion: '6.0'
+      BuildConfig: 'Debug'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.4'
+      RocmVersion: '6.0'
+      BuildConfig: 'Debug'
   - template: templates/rocm.yml
     parameters:
-      PythonVersion: '3.7'
-      RocmVersion: '5.4'
-      BuildConfig: 'RelWithDebInfo'
+      PythonVersion: '3.10'
+      RocmVersion: '6.0'
+      BuildConfig: 'Debug'
+
+- stage: "Python_Packaging_ROCm57_Release"
+  condition: ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')
+  jobs:
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.4'
-      BuildConfig: 'RelWithDebInfo'
+      RocmVersion: '5.7'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.4'
-      BuildConfig: 'RelWithDebInfo'
+      RocmVersion: '5.7'
+  - template: templates/rocm.yml
+    parameters:
+      PythonVersion: '3.10'
+      RocmVersion: '5.7'

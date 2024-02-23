@@ -10,7 +10,7 @@
 
 #include <cuda.h>
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 namespace onnxruntime {
 namespace test {
@@ -240,14 +240,8 @@ static std::vector<int8_t> transpose(const T& src, size_t h, size_t w) {
 }
 
 TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
-  int cuda_runtime_version = 0;
-  // Need 11.4 or higher cuda runtime
-  if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
-    return;
-  }
-
-  // Needs Turing or higher architecture
-  if (NeedSkipIfCudaArchLowerThan(750)) {
+  // Needs Turing architecture
+  if (NeedSkipIfCudaArchLowerThan(750) || NeedSkipIfCudaArchGreaterEqualThan(800)) {
     return;
   }
 
@@ -278,7 +272,7 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
   test_qorder.AddInput<float>("scale_values_gemm", {}, {attn_out_scale}, true);
   test_qorder.AddInput<int32_t>("mask_index", {batch_size, sequence_len}, input_mask.data(), input_mask.size());
   test_qorder.AddOptionalInputEdge<int8_t>();  // past
-  test_qorder.AddOptionalInputEdge<float>();   // extra_add
+  test_qorder.AddOptionalInputEdge<float>();   // relative_position_bias
 
   test_qorder.AddOutput<int8_t>("output", {batch_size, sequence_len, hidden_size}, attn_out_q8.data(), attn_out_q8.size());
 

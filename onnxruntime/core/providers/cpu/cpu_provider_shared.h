@@ -8,8 +8,13 @@ class LongformerAttentionBase;
 class AttentionBase;
 namespace transformers {
 class BeamSearch;
+class WhisperBeamSearch;
 class GreedySearch;
 class Sampling;
+struct BeamSearchParameters;
+struct GreedySearchParameters;
+struct SamplingParameters;
+struct WhisperBeamSearchParameters;
 }  // namespace transformers
 }  // namespace contrib
 
@@ -19,6 +24,8 @@ class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareF
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
 class contrib__AdamWOptimizerBase__Prepare;
 class contrib__SGDOptimizerV2Base__Prepare;
+
+using PadsVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize * 2>;
 
 struct ProviderHostCPU {
   // From cpu/tensor/gatherbase.h
@@ -39,7 +46,11 @@ struct ProviderHostCPU {
                                                const TensorShape& indice_shape,
                                                const TensorShape& update_shape) = 0;
   // From cpu/tensor/padbase.h
-  virtual Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) = 0;
+  virtual Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) = 0;
+
+  virtual void PadBase__ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                                    PadsVector& pads) = 0;
+
   // From cpu/tensor/split.h
   virtual Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                               int& after_dims_including_split_axis, int& after_dims_excluding_split,
@@ -63,6 +74,10 @@ struct ProviderHostCPU {
   virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) = 0;
 
   // From cpu/tensor/slice.h
+  virtual Status SliceBase__FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                                              TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                                              TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) = 0;
+
   virtual Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                               gsl::span<const int64_t> raw_ends,
                                               gsl::span<const int64_t> raw_axes,
@@ -145,7 +160,7 @@ struct ProviderHostCPU {
                                             const TensorShape& bias_shape,
                                             const Tensor*& mask_index,
                                             const Tensor* past,
-                                            const Tensor* extra_add_qk,
+                                            const Tensor* relative_position_bias,
                                             void* parameters,
                                             const int max_threads_per_block,
                                             const Tensor* past_seq_len) = 0;
@@ -165,6 +180,15 @@ struct ProviderHostCPU {
                                                         const SessionState& session_state,
                                                         const std::string& attribute_name,
                                                         const SessionState& subgraph_session_state) = 0;
+  virtual Status WhisperBeamSearch__Compute(const contrib::transformers::WhisperBeamSearch* p, OpKernelContext* ctx) = 0;
+
+  virtual void BeamSearchParameters__ParseFromAttributes(contrib::transformers::BeamSearchParameters* p, const OpKernelInfo& info) = 0;
+
+  virtual void GreedySearchParameters__ParseFromAttributes(contrib::transformers::GreedySearchParameters* p, const OpKernelInfo& info) = 0;
+
+  virtual void SamplingParameters__ParseFromAttributes(contrib::transformers::SamplingParameters* p, const OpKernelInfo& info) = 0;
+
+  virtual void WhisperBeamSearchParameters__ParseFromAttributes(contrib::transformers::WhisperBeamSearchParameters* p, const OpKernelInfo& info) = 0;
 
   // GreedySearch
   virtual void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) = 0;
@@ -194,6 +218,12 @@ struct ProviderHostCPU {
   virtual Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx, contrib__AdamWOptimizerBase__Prepare& prepare) = 0;
   // From cpu/optimizer/sgdbase.h
   virtual Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx, contrib__SGDOptimizerV2Base__Prepare& prepare) = 0;
+
+  // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+  // 2). this is needed by inference for other purpose.
+  virtual void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p,
+                                                         const Tensor* input_tensor, const Tensor* indices_tensor,
+                                                         int64_t axis_in) const = 0;
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -205,6 +235,15 @@ struct ProviderHostCPU {
   virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
   virtual Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) = 0;
 #endif
+
+#ifdef ENABLE_TRITON
+  virtual Status contrib__TritonOp__Compute(const contrib::TritonOp* p, OpKernelContext* context) = 0;
+  virtual bool contrib__IsTritonOpExecutorInitialized() = 0;
+  virtual Status contrib__ExecuteTritonOpByFuncName(
+      OpKernelContext* p_ctx, const std::string& func_name, size_t input_count, size_t output_count,
+      const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) = 0;
+#endif
+
 #endif
 };
 
@@ -277,9 +316,23 @@ inline void wait_event_in_tensor(const Tensor& event_id_tensor) { return g_host_
 
 // From aten_op.h
 inline bool IsATenOperatorExecutorInitialized() { return g_host_cpu.contrib__IsATenOperatorExecutorInitialized(); }
-inline Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) { return g_host_cpu.contrib__ExecuteReduceSumATen(p_ctx, axes, keepdims); }
+inline Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
+  return g_host_cpu.contrib__ExecuteReduceSumATen(p_ctx, axes, keepdims);
+}
 }  // namespace contrib
 #endif  // ENABLE_TRAINING
+
+#ifdef ENABLE_TRITON
+namespace contrib {
+inline bool IsTritonOpExecutorInitialized() { return g_host_cpu.contrib__IsTritonOpExecutorInitialized(); }
+inline Status ExecuteTritonOpByFuncName(OpKernelContext* p_ctx, const std::string& func_name, size_t input_count,
+                                        size_t output_count,
+                                        const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) {
+  return g_host_cpu.contrib__ExecuteTritonOpByFuncName(p_ctx, func_name, input_count, output_count, kwargs);
+}
+}  // namespace contrib
+#endif  // ENABLE_TRITON
+
 #endif  // USE_CUDA || USE_ROCM
 #endif
 

@@ -11,7 +11,7 @@ class SessionScope;
 
 class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  BarrierStep(size_t id);
+  BarrierStep(size_t id, NodeIndex node_index);
 
   Status Execute(StreamExecutionContext& ctx,
                  size_t /*stream_idx*/,
@@ -20,17 +20,14 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
                  bool& continue_flag) override;
 
   std::string ToString() const override;
-#ifdef ENABLE_TRAINING
-  // Only applicable when using PartialExecutor
-  bool IsBarrier() const override;
-#endif
+
  private:
   size_t barrier_id_{0};
 };
 
 class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx);
+  WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx, NodeIndex node_index);
 
   Status Execute(StreamExecutionContext& ctx,
                  size_t stream_idx,
@@ -56,14 +53,11 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
                  bool& continue_flag) override;
 
   std::string ToString() const override;
-
- private:
-  NodeIndex node_index_{0};
 };
 
 class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  ActivateNotificationStep(NotificationIndex notification_index);
+  ActivateNotificationStep(NotificationIndex notification_index, NodeIndex node_index);
 
   Status Execute(StreamExecutionContext& ctx,
                  size_t stream_idx,
@@ -79,7 +73,7 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
 
 class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  TriggerDownstreamStep(size_t trigger_point_index);
+  TriggerDownstreamStep(size_t trigger_point_index, NodeIndex node_index);
   Status Execute(StreamExecutionContext& ctx,
                  size_t /*stream_idx*/,
                  SessionScope& session_scope,

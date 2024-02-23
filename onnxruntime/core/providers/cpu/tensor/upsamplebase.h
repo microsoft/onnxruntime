@@ -41,7 +41,7 @@ enum ResizeCoordinateTransformationMode {
   TF_HALF_PIXEL_FOR_NN = 3,
   ALIGN_CORNERS = 4,
   TF_CROP_AND_RESIZE = 5,
-  CoordinateTransformationModeCount = 6,
+  HALF_PIXEL_SYMMETRIC = 6,
 };
 
 enum ResizeNearestMode {
@@ -50,7 +50,6 @@ enum ResizeNearestMode {
   ROUND_PREFER_CEIL = 2,
   FLOOR = 3,
   CEIL = 4,
-  NearestModeCount = 5,
 };
 
 enum class AspectRatioPolicy {
@@ -78,7 +77,7 @@ class UpsampleBase {
 
     auto input_count = info.GetInputCount();
     if (input_count == 1) {  // opset < 10
-      ORT_ENFORCE(info.GetAttrs<float>("scales", scales_).IsOK());
+      ORT_THROW_IF_ERROR(info.GetAttrs<float>("scales", scales_));
       ORT_THROW_IF_ERROR(ScalesValidation(scales_, mode_));
       scales_cached_ = true;
     }
@@ -237,7 +236,10 @@ class UpsampleBase {
     if (coordinate_transform_mode_name == "half_pixel") {
       return HALF_PIXEL;
     }
-    ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supportted!");
+    if (coordinate_transform_mode_name == "half_pixel_symmetric") {
+      return HALF_PIXEL_SYMMETRIC;
+    }
+    ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supported!");
   }
 
   GetOriginalCoordinateFunc GetOriginalCoordinateFromResizedCoordinate(
@@ -265,6 +267,15 @@ class UpsampleBase {
                           ? roi_start * (length_original - 1) +
                                 (x_resized * (roi_end - roi_start) * (length_original - 1)) / (length_resized - 1)
                           : 0.5 * (roi_start + roi_end) * (length_original - 1);
+          return static_cast<float>(orig);
+        };
+      case HALF_PIXEL_SYMMETRIC:
+        return [](float x_resized, float x_scale, float length_resized, float length_original, float, float) {
+          float output_width = x_scale * length_original;
+          float adjustment = length_resized / output_width;
+          float center = length_original / 2;
+          float offset = center * (1 - adjustment);
+          auto orig = offset + (x_resized + 0.5) / x_scale - 0.5;
           return static_cast<float>(orig);
         };
       default:  // "half_pixel"
@@ -341,7 +352,7 @@ class UpsampleBase {
                             (scales.size() == 4 && scales[0] == 1 && scales[3] == 1) ||
                             scales.size() == 3 ||
                             (scales.size() == 5 && scales[0] == 1 && scales[1] == 1),
-                        "'Linear' mode only support:\n"
+                        "'Linear' mode only supports:\n"
                         "  * 2-D inputs or\n"
                         "  * 3-D inputs ('Bilinear', 'Trilinear') or\n"
                         "  * 4-D inputs with the corresponding outermost 2 scale values being 1"

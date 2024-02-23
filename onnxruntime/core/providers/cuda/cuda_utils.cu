@@ -72,6 +72,10 @@ template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
 template std::unique_ptr<IConstantBuffer<double>> CreateConstantOnes<double>();
 template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>();
 template std::unique_ptr<IConstantBuffer<BFloat16>> CreateConstantOnes<BFloat16>();
+#if !defined(DISABLE_FLOAT8_TYPES)
+template std::unique_ptr<IConstantBuffer<Float8E4M3FN>> CreateConstantOnes<Float8E4M3FN>();
+template std::unique_ptr<IConstantBuffer<Float8E5M2>> CreateConstantOnes<Float8E5M2>();
+#endif
 
 #define SPECIALIZED_FILL(T) \
   template void Fill<T>(cudaStream_t stream, T * output, T value, int64_t count);
@@ -84,6 +88,10 @@ SPECIALIZED_FILL(float)
 SPECIALIZED_FILL(double)
 SPECIALIZED_FILL(__half)
 SPECIALIZED_FILL(BFloat16)
+#if !defined(DISABLE_FLOAT8_TYPES)
+SPECIALIZED_FILL(Float8E4M3FN)
+SPECIALIZED_FILL(Float8E5M2)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_ck.h"
-
 #include <pybind11/stl.h>
 
 #include <memory>
@@ -25,7 +23,7 @@ namespace py = pybind11;
 namespace onnxruntime {
 
 #ifdef USE_COMPOSABLE_KERNEL
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class CKGemm : public IKernelExplorer {
  public:
   CKGemm(BlasOp opa, BlasOp opb,
@@ -36,10 +34,9 @@ class CKGemm : public IKernelExplorer {
          double beta,
          DeviceArray& c, int64_t ldc)
       : params_{} {
-    auto supports_a = opa == BlasOp::N ? std::is_same_v<ALayout, Row> : std::is_same_v<ALayout, Col>;
-    auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
-    ORT_ENFORCE(supports_a && supports_b);
+    ORT_ENFORCE(opa == OpA && opb == OpB);
 
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
@@ -48,16 +45,24 @@ class CKGemm : public IKernelExplorer {
     params_.m = m;
     params_.n = n;
     params_.k = k;
-    params_.alpha = alpha;
+    params_.alpha = static_cast<float>(alpha);
     params_.a = static_cast<T*>(a.ptr());
     params_.lda = lda;
     params_.b = static_cast<T*>(b.ptr());
     params_.ldb = ldb;
-    params_.beta = beta;
+    params_.beta = static_cast<float>(beta);
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    for (auto&& [type_string, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKGemmTypeStringAndOps<T, OpA, OpB>()) {
+      type_strings_.emplace_back(std::move(type_string));
+      ops_.emplace_back(std::move(op));
+    }
+    for (auto&& [type_string, op] : GetCKStreamKGemmTypeStringAndOps<T, OpA, OpB>()) {
+      type_strings_.emplace_back(std::move(type_string));
+      ops_.emplace_back(std::move(op));
+    }
+    for (auto&& [type_string, op] : GetCKSplitKGemmTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -86,14 +91,14 @@ class CKGemm : public IKernelExplorer {
 
  private:
   using ParamsT = GemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
   size_t selected_op_{};
 };
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class CKStridedBatchedGemm : public IKernelExplorer {
  public:
   CKStridedBatchedGemm(
@@ -106,10 +111,9 @@ class CKStridedBatchedGemm : public IKernelExplorer {
       DeviceArray& c, int64_t ldc, int64_t stride_c,
       int64_t batch)
       : params_{} {
-    auto supports_a = opa == BlasOp::N ? std::is_same_v<ALayout, Row> : std::is_same_v<ALayout, Col>;
-    auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
-    ORT_ENFORCE(supports_a && supports_b);
+    ORT_ENFORCE(opa == OpA && opb == OpB);
 
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
@@ -118,20 +122,20 @@ class CKStridedBatchedGemm : public IKernelExplorer {
     params_.m = m;
     params_.n = n;
     params_.k = k;
-    params_.alpha = alpha;
+    params_.alpha = static_cast<float>(alpha);
     params_.a = static_cast<T*>(a.ptr());
     params_.lda = lda;
     params_.stride_a = stride_a;
     params_.b = static_cast<T*>(b.ptr());
     params_.ldb = ldb;
     params_.stride_b = stride_b;
-    params_.beta = beta;
+    params_.beta = static_cast<float>(beta);
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
     params_.stride_c = stride_c;
     params_.batch = batch;
 
-    for (auto&& [type_string, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -160,61 +164,59 @@ class CKStridedBatchedGemm : public IKernelExplorer {
 
  private:
   using ParamsT = StridedBatchedGemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
   size_t selected_op_{};
 };
 
-#define REGISTER_OP_COMMON(type, dtype, alayout, blayout, layout_string)           \
-  py::class_<type<dtype, alayout, blayout>>(m, #type "_" #dtype "_" layout_string) \
-      .def("SetRepeats", &type<dtype, alayout, blayout>::SetRepeats)               \
-      .def("Profile", &type<dtype, alayout, blayout>::Profile)                     \
-      .def("Run", &type<dtype, alayout, blayout>::Run)                             \
-      .def("ListOps", &type<dtype, alayout, blayout>::ListOps)                     \
-      .def("SelectOp", &type<dtype, alayout, blayout>::SelectOp)
+#define REGISTER_OP_COMMON(type, dtype, opa, opb, layout_string)           \
+  py::class_<type<dtype, opa, opb>>(m, #type "_" #dtype "_" layout_string) \
+      .def("SetRepeats", &type<dtype, opa, opb>::SetRepeats)               \
+      .def("Profile", &type<dtype, opa, opb>::Profile)                     \
+      .def("Run", &type<dtype, opa, opb>::Run)                             \
+      .def("ListOps", &type<dtype, opa, opb>::ListOps)                     \
+      .def("SelectOp", &type<dtype, opa, opb>::SelectOp)
 
-#define REGISTER_CKGEMM(dtype, alayout, blayout, layout_string)      \
-  REGISTER_OP_COMMON(CKGemm, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,       \
-                    double,                                          \
-                    DeviceArray&, int64_t,                           \
-                    DeviceArray&, int64_t,                           \
-                    double,                                          \
+#define REGISTER_CKGEMM(dtype, opa, opb, layout_string)        \
+  REGISTER_OP_COMMON(CKGemm, dtype, opa, opb, layout_string)   \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
+                    double,                                    \
+                    DeviceArray&, int64_t,                     \
+                    DeviceArray&, int64_t,                     \
+                    double,                                    \
                     DeviceArray&, int64_t>());
 
-#define REGISTER_CKGEMM_FOR_ALL_TRANSAB(dtype) \
-  REGISTER_CKGEMM(dtype, Row, Row, "NN");      \
-  REGISTER_CKGEMM(dtype, Row, Col, "NT");      \
-  REGISTER_CKGEMM(dtype, Col, Row, "TN");      \
-  REGISTER_CKGEMM(dtype, Col, Col, "TT");
+#define REGISTER_CKGEMM_FOR_ALL_TRANSAB(dtype)        \
+  REGISTER_CKGEMM(dtype, BlasOp::N, BlasOp::N, "NN"); \
+  REGISTER_CKGEMM(dtype, BlasOp::N, BlasOp::T, "NT"); \
+  REGISTER_CKGEMM(dtype, BlasOp::T, BlasOp::N, "TN"); \
+  REGISTER_CKGEMM(dtype, BlasOp::T, BlasOp::T, "TT");
 
-#define REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, alayout, blayout, layout_string)      \
-  REGISTER_OP_COMMON(CKStridedBatchedGemm, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                     \
-                    double,                                                        \
-                    DeviceArray&, int64_t, int64_t,                                \
-                    DeviceArray&, int64_t, int64_t,                                \
-                    double,                                                        \
-                    DeviceArray&, int64_t, int64_t,                                \
+#define REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, opa, opb, layout_string)      \
+  REGISTER_OP_COMMON(CKStridedBatchedGemm, dtype, opa, opb, layout_string) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,             \
+                    double,                                                \
+                    DeviceArray&, int64_t, int64_t,                        \
+                    DeviceArray&, int64_t, int64_t,                        \
+                    double,                                                \
+                    DeviceArray&, int64_t, int64_t,                        \
                     int64_t>());
 
-#define REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(dtype) \
-  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Row, Row, "NN");      \
-  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Row, Col, "NT");      \
-  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Col, Row, "TN");      \
-  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Col, Col, "TT");
+#define REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(dtype)        \
+  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, BlasOp::N, BlasOp::N, "NN"); \
+  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, BlasOp::N, BlasOp::T, "NT"); \
+  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, BlasOp::T, BlasOp::N, "TN"); \
+  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, BlasOp::T, BlasOp::T, "TT");
 
-void InitComposableKernelGemm(py::module m) {
+KE_REGISTER(m) {
   REGISTER_CKGEMM_FOR_ALL_TRANSAB(float);
   REGISTER_CKGEMM_FOR_ALL_TRANSAB(half);
 
   REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(float);
   REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(half);
 }
-#else
-void InitComposableKernelGemm(py::module) {}
 #endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

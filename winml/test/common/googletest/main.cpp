@@ -8,14 +8,13 @@
 #include "runtimeParameters.h"
 
 namespace RuntimeParameters {
-std::unordered_map<std:: string, std::string> Parameters;
+std::unordered_map<std::string, std::string> Parameters;
 }
 
 namespace {
 void usage(char** argv, int failedArgument) {
   std::cerr << "Unrecognized argument: " << argv[failedArgument] << "\n"
-            << "Usage:\n\t"
-            << argv[0] << " [/p:parameterName=parameterValue ...]\n";
+            << "Usage:\n\t" << argv[0] << " [/p:parameterName=parameterValue ...]\n";
 }
 
 bool parseArgument(const std::string& argument) {

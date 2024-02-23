@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
+#include "utils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245 5208)
@@ -9,8 +10,15 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <ngraph/ngraph.hpp>
+
+#include "openvino/core/deprecated.hpp"
+#define IN_OV_COMPONENT
+#define NGRAPH_LEGACY_HEADER_INCLUDED
 #include <ngraph/frontend/onnx_import/onnx.hpp>
+
+#undef NGRAPH_LEGACY_HEADER_INCLUDED
+#undef IN_OV_COMPONENT
+
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__
@@ -20,7 +28,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-//Gets the input count of given node
+// Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
   int count = 0;
   for (const auto& input : node->InputDefs()) {
@@ -33,18 +41,20 @@ int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set)
   return count;
 }
 
-//Ops which are supported only in models(as intermediate nodes) and not in unit tests
+// Ops which are supported only in models(as intermediate nodes) and not in unit tests
 bool IsOpSupportedOnlyInModel(std::string name) {
   std::set<std::string> ops_supported_only_in_model = {
       "Cast",
       "Concat",
       "ConstantOfShape",
       "Dropout",
+      "Einsum",
       "Expand",
       "EyeLike",
       "Exp",
       "GatherND",
       "Identity",
+      "LayerNormalization",
       "NonMaxSuppression",
       "NonZero",
       "Not",
@@ -87,14 +97,15 @@ int GetOnnxOpSet(const GraphViewer& graph_viewer) {
 
 std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_opset) {
   std::map<std::string, std::set<std::string>> ng_supported_ops;
+  OPENVINO_SUPPRESS_DEPRECATED_START
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {"LSTM"};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {"LSTM"};  // Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
   }
-
+  OPENVINO_SUPPRESS_DEPRECATED_END
   return ng_supported_ops;
 }
 
@@ -103,7 +114,8 @@ std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_op
  * supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph
  */
 std::vector<std::vector<NodeIndex>>
-GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
+GetPartitionedClusters(const std::vector<NodeIndex>& topological_order,
+                       const std::vector<NodeIndex>& unsupported_nodes) {
   std::vector<std::vector<NodeIndex>> ng_clusters;
 
   auto prev = topological_order.begin();
@@ -121,7 +133,7 @@ GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const st
     }
   }
 
-  //Tail
+  // Tail
   std::vector<NodeIndex> this_cluster{prev, topological_order.end()};
   if (!this_cluster.empty()) {
     ng_clusters.push_back(std::move(this_cluster));
@@ -130,7 +142,10 @@ GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const st
   return ng_clusters;
 }
 
-void IdentifyConnectedNodes(const GraphViewer& graph_viewer, NodeIndex curr_node_index, std::vector<NodeIndex>& cluster, std::vector<NodeIndex>& sub_cluster) {
+void IdentifyConnectedNodes(const GraphViewer& graph_viewer,
+                            NodeIndex curr_node_index,
+                            std::vector<NodeIndex>& cluster,
+                            std::vector<NodeIndex>& sub_cluster) {
   if (std::find(cluster.begin(), cluster.end(), curr_node_index) == cluster.end())
     return;
 
@@ -165,12 +180,12 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                const std::unordered_set<std::string>& ng_required_initializers,
                                /*out*/ std::vector<std::string>& cluster_graph_inputs,
                                /*out*/ std::vector<std::string>& cluster_inputs,
-                               /*out*/ std::vector<std::string>& constant_inputs,
                                /*out*/ std::vector<std::string>& cluster_outputs) {
   std::unordered_set<std::string> input_args;
   std::vector<std::string> ordered_input_args;
   std::unordered_set<std::string> output_args;
   std::unordered_set<std::string> external_output_args;
+  std::vector<std::string> constant_inputs;
 
   for (const auto& node_idx : cluster) {
     const auto& node = graph_viewer.GetNode(node_idx);
@@ -195,7 +210,8 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
       const auto& ext_node = graph_viewer.GetNode((*it).Index());
 
       if (std::find(cluster.begin(), cluster.end(), ext_node->Index()) == cluster.end()) {
-        // Node is external to this_cluster. Search through its inputs to find the output that is generated by this_cluster.
+        // Node is external to this_cluster. Search through its inputs to
+        // find the output that is generated by this_cluster.
         std::set<std::string> ext_node_inputs;
         ext_node->ForEachDef(
             [&ext_node_inputs](const NodeArg& arg, bool is_input) {
@@ -214,7 +230,7 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     }
   }
 
-  //Extract initializers used by this_cluster.
+  // Extract initializers used by this_cluster.
   std::unordered_set<std::string> original_graph_inputs;
   for (const auto& node_arg : graph_viewer.GetInputsIncludingInitializers()) {
     original_graph_inputs.insert(node_arg->Name());

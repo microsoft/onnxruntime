@@ -11,7 +11,7 @@ steps:
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
-        versionSpec: 3.7
+        versionSpec: 3.8
 
     - task: PythonScript@0
       displayName: 'Validate Package'

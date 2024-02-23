@@ -8,7 +8,7 @@ import pathlib
 # need this before the mobile helper imports for some reason
 logging.basicConfig(format="%(levelname)s:  %(message)s")
 
-from .mobile_helpers import check_model_can_use_ort_mobile_pkg, usability_checker  # noqa
+from .mobile_helpers import check_model_can_use_ort_mobile_pkg, usability_checker  # noqa: E402
 
 
 def check_usability():
@@ -20,7 +20,7 @@ def check_usability():
 
     parser.add_argument(
         "--config_path",
-        help="Path to required operators and types configuration used to build " "the pre-built ORT mobile package.",
+        help="Path to required operators and types configuration used to build the pre-built ORT mobile package.",
         required=False,
         type=pathlib.Path,
         default=check_model_can_use_ort_mobile_pkg.get_default_config_path(),

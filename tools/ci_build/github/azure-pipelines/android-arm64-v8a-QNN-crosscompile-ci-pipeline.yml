@@ -1,0 +1,113 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
+parameters:
+- name: QnnSdk
+  displayName: QNN SDK version
+  type: string
+  default: qnn-v2.19.2.240210
+
+jobs:
+- job: Build_QNN_EP
+  pool: onnxruntime-qnn-ubuntu-2004-cpu
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+
+  variables:
+    - name: QNN_SDK_ROOT
+      value: /data/qnnsdk/${{parameters.QnnSdk}}
+
+  steps:
+  - task: UsePythonVersion@0
+    displayName: Use Python $(pythonVersion)
+    inputs:
+      versionSpec: $(pythonVersion)
+
+  - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+    displayName: Install coreutils and ninja
+
+  - script: sudo chmod go+rw /dev/kvm
+    displayName: Update permissions to KVM
+
+  - script: |
+      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+      export ANDROID_HOME=/usr/local/lib/android/sdk
+      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
+      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
+    displayName: set Android ENVs
+
+  - script: |
+      set -e -x
+      rm -rf /tmp/scripts
+      cp -r tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts /tmp
+      /tmp/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed -d cmake/deps.txt
+      python3 tools/ci_build/build.py \
+        --config Release \
+        --android \
+        --build_dir build_qnn \
+        --android_sdk_path $ANDROID_HOME \
+        --android_ndk_path $ANDROID_NDK_HOME \
+        --android_abi=x86_64 \
+        --android_api=31 \
+        --parallel \
+        --use_qnn \
+        --qnn_home $(QNN_SDK_ROOT) \
+        --cmake_generator=Ninja \
+        --skip_tests --path_to_protoc_exe $(Build.BinariesDirectory)/installed/bin/protoc
+    displayName: Build QNN EP
+
+  - script: |
+      mkdir -p build_qnn/Release/testdata/QNN/node_tests
+      cp -r cmake/external/onnx/onnx/backend/test/data/node/test_basic_conv_with_padding build_qnn/Release/testdata/QNN/node_tests
+    displayName: Initialize test directories
+
+  # This is commented out for now. The emulator runs correctly, onnx_test_runner is executable, and the test passes
+  # with the CPU EP but returns 139 when attempting to use the QNN EP. Maybe some QNN EP parameters need to be provided?
+  #
+  # - template: templates/use-android-emulator.yml
+  #   parameters:
+  #     create: true
+  #     start: true
+
+  # - task: CmdLine@2
+  #   inputs:
+  #     script: |
+  #       set -e -x
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb push onnx_test_runner /data/local/tmp/
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb push testdata/QNN/node_tests/test_basic_conv_with_padding /data/local/tmp/
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb shell "chmod +x /data/local/tmp/onnx_test_runner"
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb shell "/data/local/tmp/onnx_test_runner -v /data/local/tmp/test_basic_conv_with_padding"
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb shell "/data/local/tmp/onnx_test_runner -v -e qnn /data/local/tmp/test_basic_conv_with_padding"
+  #     workingDirectory: build_qnn/Release
+  #   displayName: Run test_basic_conv_with_padding on emulator
+
+  # - template: templates/use-android-emulator.yml
+  #   parameters:
+  #     stop: true

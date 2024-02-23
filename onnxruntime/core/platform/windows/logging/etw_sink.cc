@@ -22,7 +22,7 @@
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
 
-//See: https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
+// See: https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
 #ifdef _TlgPragmaUtf8Begin
 #undef _TlgPragmaUtf8Begin
 #define _TlgPragmaUtf8Begin
@@ -58,42 +58,107 @@ TRACELOGGING_DEFINE_PROVIDER(etw_provider_handle, "ONNXRuntimeTraceLoggingProvid
 #pragma warning(pop)
 #endif
 
-// Class to unregister ETW provider at shutdown.
-// We expect one static instance to be created for the lifetime of the program.
-class EtwRegistrationManager {
- public:
-  static EtwRegistrationManager& Register() {
-    const HRESULT etw_status = ::TraceLoggingRegister(etw_provider_handle);
+EtwRegistrationManager& EtwRegistrationManager::Instance() {
+  static EtwRegistrationManager instance;
+  instance.LazyInitialize();
+  return instance;
+}
 
-    if (FAILED(etw_status)) {
-      ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
+bool EtwRegistrationManager::IsEnabled() const {
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return is_enabled_;
+}
+
+UCHAR EtwRegistrationManager::Level() const {
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return level_;
+}
+
+Severity EtwRegistrationManager::MapLevelToSeverity() {
+  switch (level_) {
+    case TRACE_LEVEL_NONE:
+      return Severity::kFATAL;  // There is no none severity option
+    case TRACE_LEVEL_VERBOSE:
+      return Severity::kVERBOSE;
+    case TRACE_LEVEL_INFORMATION:
+      return Severity::kINFO;
+    case TRACE_LEVEL_WARNING:
+      return Severity::kWARNING;
+    case TRACE_LEVEL_ERROR:
+      return Severity::kERROR;
+    case TRACE_LEVEL_CRITICAL:
+      return Severity::kFATAL;
+    default:
+      return Severity::kVERBOSE;
+  }
+}
+
+ULONGLONG EtwRegistrationManager::Keyword() const {
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return keyword_;
+}
+
+HRESULT EtwRegistrationManager::Status() const {
+  return etw_status_;
+}
+
+void EtwRegistrationManager::RegisterInternalCallback(const EtwInternalCallback& callback) {
+  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  callbacks_.push_back(callback);
+}
+
+void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
+    _In_ LPCGUID SourceId,
+    _In_ ULONG IsEnabled,
+    _In_ UCHAR Level,
+    _In_ ULONGLONG MatchAnyKeyword,
+    _In_ ULONGLONG MatchAllKeyword,
+    _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
+    _In_opt_ PVOID CallbackContext) {
+  auto& manager = EtwRegistrationManager::Instance();
+  {
+    std::lock_guard<OrtMutex> lock(manager.provider_change_mutex_);
+    manager.is_enabled_ = (IsEnabled != 0);
+    manager.level_ = Level;
+    manager.keyword_ = MatchAnyKeyword;
+  }
+  manager.InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+}
+
+EtwRegistrationManager::~EtwRegistrationManager() {
+  ::TraceLoggingUnregister(etw_provider_handle);
+}
+
+EtwRegistrationManager::EtwRegistrationManager() {
+}
+
+void EtwRegistrationManager::LazyInitialize() {
+  if (!initialized_) {
+    std::lock_guard<OrtMutex> lock(init_mutex_);
+    if (!initialized_) {  // Double-check locking pattern
+      initialized_ = true;
+      etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
+      if (FAILED(etw_status_)) {
+        ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
+      }
     }
-
-    // return an instance that is just used to unregister as the program exits
-    static EtwRegistrationManager instance(etw_status);
-    return instance;
   }
+}
 
-  const HRESULT Status() const noexcept {
-    return etw_status_;
+void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
+                                             ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
+                                             PVOID CallbackContext) {
+  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  for (const auto& callback : callbacks_) {
+    callback(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
-
-  ~EtwRegistrationManager() {
-    ::TraceLoggingUnregister(etw_provider_handle);
-  }
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwRegistrationManager);
-
-  EtwRegistrationManager(const HRESULT status) noexcept : etw_status_{status} {}
-  const HRESULT etw_status_;
-};
+}
 
 void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
   UNREFERENCED_PARAMETER(timestamp);
 
   // register on first usage
-  static EtwRegistrationManager& etw_manager = EtwRegistrationManager::Register();
+  static EtwRegistrationManager& etw_manager = EtwRegistrationManager::Instance();
 
   // do something (not that meaningful) with etw_manager so it doesn't get optimized out
   // as we want an instance around to do the unregister
@@ -101,9 +166,8 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
     return;
   }
 
-  // Do we want to output Verbose level messages via ETW at any point it time?
   // TODO: Validate if this filtering makes sense.
-  if (message.Severity() <= Severity::kVERBOSE || message.DataType() == DataType::USER) {
+  if (message.DataType() == DataType::USER) {
     return;
   }
 
@@ -114,11 +178,13 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
   // TraceLoggingWrite requires (painfully) a compile time constant for the TraceLoggingLevel,
   // forcing us to use an ugly macro for the call.
 #define ETW_EVENT_NAME "ONNXRuntimeLogEvent"
-#define TRACE_LOG_WRITE(level)                                                             \
-  TraceLoggingWrite(etw_provider_handle, ETW_EVENT_NAME, TraceLoggingLevel(level),         \
-                    TraceLoggingString(logger_id.c_str(), "logger"),                       \
-                    TraceLoggingString(message.Category(), "category"),                    \
-                    TraceLoggingString(message.Location().ToString().c_str(), "location"), \
+#define TRACE_LOG_WRITE(level)                                                                                      \
+  TraceLoggingWrite(etw_provider_handle, ETW_EVENT_NAME,                                                            \
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)), \
+                    TraceLoggingLevel(level),                                                                       \
+                    TraceLoggingString(logger_id.c_str(), "logger"),                                                \
+                    TraceLoggingString(message.Category(), "category"),                                             \
+                    TraceLoggingString(message.Location().ToString().c_str(), "location"),                          \
                     TraceLoggingString(message.Message().c_str(), "message"))
 
   const auto severity{message.Severity()};

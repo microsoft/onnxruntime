@@ -395,8 +395,8 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset) {
 }
 
 /*******************
-* Legacy tests from LotusRT
-*/
+ * Legacy tests from LotusRT
+ */
 class DeepCpuGruOpTestContext {
  public:
   DeepCpuGruOpTestContext(std::string direction,
@@ -553,7 +553,7 @@ void DeepCpuGruOpTestContext::RunTest(const std::vector<float>& X,
                                       const std::vector<float>& expected_Y,
                                       const std::vector<float>& expected_Y_h,
                                       const bool linear_before_reset) {
-  //run with and without output_sequence
+  // run with and without output_sequence
   RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
              expected_Y, expected_Y_h,
              input_size_, batch_size, hidden_dim_, seq_length,

@@ -45,12 +45,20 @@
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 #include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
+
+// Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
+// 2). this is needed by inference for other purpose.
+#include "contrib_ops/cpu/tensor/shrunken_gather.h"
 #endif
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/controlflow/record.h"
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
+#endif
+
+#ifdef ENABLE_TRITON
+#include "orttraining/training_ops/cpu/triton/triton_op.h"
 #endif
 
 #include "cpu_provider_shared.h"
@@ -79,7 +87,13 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                        const TensorShape& indice_shape,
                                        const TensorShape& update_shape) override { return ScatterND::ValidateShapes(input_shape, indice_shape, update_shape); }
   // From cpu/tensor/padbase.h (direct)
-  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+
+  void PadBase__ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                            PadsVector& pads) override {
+    PadBase::ComputePads(ctx, data_rank, pads_data, pads);
+  }
+
   // From cpu/tensor/split.h (direct)
   Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                       int& after_dims_including_split_axis, int& after_dims_excluding_split,
@@ -107,6 +121,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
   // From cpu/tensor/slice.h (direct)
+  Status SliceBase__FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                                      TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                                      TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) override {
+    return SliceBase::FlattenOutputDims(input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims);
+  }
+
   Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                       gsl::span<const int64_t> raw_ends,
                                       gsl::span<const int64_t> raw_axes,
@@ -198,12 +218,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                     const TensorShape& bias_shape,
                                     const Tensor*& mask_index,
                                     const Tensor* past,
-                                    const Tensor* extra_add_qk,
+                                    const Tensor* relative_position_bias,
                                     void* parameters,
                                     const int max_threads_per_block,
                                     const Tensor* past_seq_len) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
-                                                  extra_add_qk,
+                                                  relative_position_bias,
                                                   parameters,
                                                   max_threads_per_block,
                                                   past_seq_len);
@@ -229,6 +249,26 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                 const SessionState& subgraph_session_state) override {
     return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name,
                                                                             subgraph_session_state);
+  }
+
+  Status WhisperBeamSearch__Compute(const contrib::transformers::WhisperBeamSearch* p, OpKernelContext* ctx) override {
+    return p->contrib::transformers::WhisperBeamSearch::Compute(ctx);
+  }
+
+  void BeamSearchParameters__ParseFromAttributes(contrib::transformers::BeamSearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::BeamSearchParameters::ParseFromAttributes(info);
+  }
+
+  void GreedySearchParameters__ParseFromAttributes(contrib::transformers::GreedySearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::GreedySearchParameters::ParseFromAttributes(info);
+  }
+
+  void SamplingParameters__ParseFromAttributes(contrib::transformers::SamplingParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::SamplingParameters::ParseFromAttributes(info);
+  }
+
+  void WhisperBeamSearchParameters__ParseFromAttributes(contrib::transformers::WhisperBeamSearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::WhisperBeamSearchParameters::ParseFromAttributes(info);
   }
 
   void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override {
@@ -275,6 +315,11 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return p->SGDOptimizerV2Base::PrepareForCompute(ctx,
                                                     reinterpret_cast<contrib::SGDOptimizerV2Base::Prepare&>(prepare));
   }
+  void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p, const Tensor* input_tensor,
+                                                 const Tensor* indices_tensor, int64_t axis_in) const override {
+    return p->ShrunkenGatherCommon::CheckInput(input_tensor, indices_tensor, axis_in);
+  }
+
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -291,6 +336,19 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
     return contrib::ExecuteReduceSumATen(p_ctx, axes, keepdims);
   }
 #endif
+
+#ifdef ENABLE_TRITON
+  Status contrib__TritonOp__Compute(const contrib::TritonOp* p, OpKernelContext* context) override {
+    return p->TritonOp::Compute(context);
+  }
+  bool contrib__IsTritonOpExecutorInitialized() override { return contrib::IsTritonOpExecutorInitialized(); }
+  Status contrib__ExecuteTritonOpByFuncName(
+      OpKernelContext* p_ctx, const std::string& func_name, size_t input_count, size_t output_count,
+      const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) override {
+    return contrib::ExecuteTritonOpByFuncName(p_ctx, func_name, input_count, output_count, kwargs);
+  }
+#endif
+
 #endif
 };
 #if defined(_MSC_VER) && !defined(__clang__)

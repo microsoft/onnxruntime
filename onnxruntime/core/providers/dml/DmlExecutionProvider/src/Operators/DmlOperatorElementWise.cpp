@@ -89,7 +89,7 @@ void SetFusedActivation(T& opDesc, const DML_OPERATOR_DESC* fusedActivation)
 
 template<>
 void SetFusedActivation(DML_ELEMENT_WISE_ADD1_OPERATOR_DESC& opDesc, const DML_OPERATOR_DESC* fusedActivation)
-{                
+{
     opDesc.FusedActivation = fusedActivation;
 }
 
@@ -118,7 +118,7 @@ public:
         DML_OPERATOR_DESC opDescDesc = { ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc};
 
         if (fusedActivation != std::nullopt)
-        {    
+        {
             // Activation is only fused for two-input sum operators
             ORT_THROW_HR_IF(E_INVALIDARG, opDescDesc.Type != DML_OPERATOR_ELEMENT_WISE_ADD1 || kernelInfo.GetInputCount() > 2);
 
@@ -160,7 +160,7 @@ public:
 
         std::optional<ActivationOperatorDesc> fusedActivation = FusionHelpers::TryGetFusedActivationDesc(kernelInfo);
         DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
-        
+
         // Activation is only fused for two-input sum operators
         ORT_THROW_HR_IF(E_INVALIDARG, fusedActivation != std::nullopt && inputCount != 2);
 
@@ -294,7 +294,7 @@ public:
             meanDesc.ATensor = &inputDescs[0];
             meanDesc.BTensor = &inputDescs[1];
             meanDesc.OutputTensor = &outputDescs[0];
-            
+
             SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_MEAN, &meanDesc}, kernelInfo);
         }
         else
@@ -447,7 +447,7 @@ public:
         opDesc.OutputTensor = outputDescs.data();
         // MinMaxDataType will always be equal to inputDataTensorDataType
         // Assigning minMaxDataType to inputDataTensorDataType because this field
-        // has to be assigned even if program does not go through below conditional 
+        // has to be assigned even if program does not go through below conditional
         // logic for some corner test case
         // Same applies to min and max value.
         opDesc.MinMaxDataType = this->m_inputTensorDescs[0].GetDmlDataType();
@@ -458,7 +458,7 @@ public:
         {
             ReadScalarTensorData(kernelInfo.GetConstantInputTensor(1), /*out*/ &opDesc.Min.Bytes, sizeof(opDesc.Min.Bytes));
         }
-        if (kernelInfo.IsInputValid(2)) 
+        if (kernelInfo.IsInputValid(2))
         {
             ReadScalarTensorData(kernelInfo.GetConstantInputTensor(2), /*out*/ &opDesc.Max.Bytes, sizeof(opDesc.Max.Bytes));
         }
@@ -479,17 +479,37 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 2);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
-        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+        auto constExpTensor = kernelInfo.TryGetConstantCpuInputTensor(1);
+        if (constExpTensor && constExpTensor->GetTotalElementCount() == 1)
+        {
+            std::vector<std::optional<uint32_t>> kernelInputIndices = {0};
 
-        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+            Initialize(kernelInfo, kernelInputIndices, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
 
-        DML_ELEMENT_WISE_POW_OPERATOR_DESC opDesc = {};
-        opDesc.InputTensor = &inputDescs[0];
-        opDesc.ExponentTensor = &inputDescs[1];
-        opDesc.OutputTensor = &outputDescs[0];
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_POW, &opDesc}, kernelInfo);
+            DML_ELEMENT_WISE_CONSTANT_POW_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.OutputTensor = &outputDescs[0];
+            opDesc.Exponent = static_cast<float>(ReadScalarTensorCastToFloat64(*constExpTensor));
+
+            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CONSTANT_POW, &opDesc}, kernelInfo);
+        }
+        else
+        {
+            Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+            DML_ELEMENT_WISE_POW_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.ExponentTensor = &inputDescs[1];
+            opDesc.OutputTensor = &outputDescs[0];
+
+            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_POW, &opDesc}, kernelInfo);
+        }
     }
 };
 
@@ -499,13 +519,16 @@ class DmlOperatorElementwiseQLinear : public DmlOperator
 public:
     DmlOperatorElementwiseQLinear(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 3);
+
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount()  == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt);
 
         std::vector<uint32_t> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
         const uint32_t outputShapeDimCount = gsl::narrow_cast<uint32_t>(outputShape.size());
-
-        Initialize(kernelInfo, std::nullopt, std::nullopt);
+        const DML_TENSOR_DATA_TYPE inputDataType = m_inputTensorDescs[0].GetDmlDataType();
+        bool hasZeroPointTensor = kernelInfo.IsInputValid(2);
 
         uint32_t axis = 0;
 
@@ -521,9 +544,14 @@ public:
             axis = Dml::HandleNegativeAxis(signedAxis, outputShapeDimCount, /*validateAxis*/ false);
         }
 
-        // Explicitly reshape each of the inputs after the first input (scale and zero point tensors).
+        // Explicitly reshape each of the inputs after the first input (scale tensor and optional zero point tensor).
         for (uint32_t index = 1, inputCount = gsl::narrow_cast<uint32_t>(m_inputTensorDescs.size()); index < inputCount; ++index)
         {
+            if (!kernelInfo.IsInputValid(index))
+            {
+                continue;
+            }
+
             auto edgeDesc = kernelInfo.GetInputEdgeDescription(index);
             assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
@@ -538,7 +566,11 @@ public:
             {
                 ML_CHECK_VALID_ARGUMENT(axis < outputShapeDimCount);
                 uint32_t broadcastAxisLength = outputShape[axis];
-                ML_CHECK_VALID_ARGUMENT(inputTensorShape[0] == broadcastAxisLength);
+                ML_CHECK_VALID_ARGUMENT(
+                    (inputTensorShape[0] == broadcastAxisLength) ||
+                    // Treat as broadcast dimension to match CPU behavior.
+                    (inputTensorShape[0] == 1)
+                );
                 inputTensorShape.insert(inputTensorShape.begin(), axis, 1);
                 inputTensorShape.insert(inputTensorShape.end(), outputShapeDimCount - 1 - axis, 1);
             }
@@ -563,9 +595,8 @@ public:
         TOperatorDesc opDesc = {};
         opDesc.InputTensor = &inputDescs[0];
         opDesc.ScaleTensor = &inputDescs[1];
-        opDesc.ZeroPointTensor = &inputDescs[2];
+        opDesc.ZeroPointTensor = hasZeroPointTensor ? &inputDescs[2] : nullptr;
         opDesc.OutputTensor = &outputDescs[0];
-
         SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
     }
 };
@@ -720,6 +751,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Asinh,            DmlOperatorElementwiseUnary<DM
 DML_OP_DEFINE_CREATION_FUNCTION(Acosh,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ACOSH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Atanh,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ATANH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Erf,              DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ERF_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(BitwiseNot,       DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_BIT_NOT_OPERATOR_DESC>);
 
 // Binary operators:
 DML_OP_DEFINE_CREATION_FUNCTION(Greater,          DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_LOGICAL_GREATER_THAN_OPERATOR_DESC>);
@@ -734,6 +766,9 @@ DML_OP_DEFINE_CREATION_FUNCTION(Add,              DmlOperatorElementwiseBinary<D
 DML_OP_DEFINE_CREATION_FUNCTION(Sub,              DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_SUBTRACT_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Mul,              DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_MULTIPLY_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Div,              DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_DIVIDE_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(BitwiseAnd,       DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_BIT_AND_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(BitwiseOr,        DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_BIT_OR_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(BitwiseXor,       DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_BIT_XOR_OPERATOR_DESC>);
 
 // Binary operators that support >2 inputs:
 DML_OP_DEFINE_CREATION_FUNCTION(Sum,              DmlOperatorElementwiseBinaryLoop<DML_ELEMENT_WISE_ADD_OPERATOR_DESC>);

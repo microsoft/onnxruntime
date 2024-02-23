@@ -7,7 +7,6 @@
 #include "core/common/status.h"
 #include "core/framework/float16.h"
 #include "core/common/status.h"
-#include "core/framework/allocatormgr.h"
 #include "gpu_data_transfer.h"
 
 namespace onnxruntime {

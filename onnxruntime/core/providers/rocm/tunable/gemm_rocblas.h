@@ -36,50 +36,38 @@ class RocblasHandleStreamGuard {
 #ifdef USE_ROCBLAS_EXTENSION_API
 
 template <typename T>
-constexpr rocblas_datatype RocBlasDataTypeFor(const T*) {
-  static_assert(sizeof(T) == -1, "Unsupported type for rocBLAS operation.");
-  // The code below should be unreachable due to the static_assert above.
-  // But the compiler doesn't like not having a return statement, so we
-  // return something sensible.
+constexpr rocblas_datatype RocBlasDataTypeFor();
+
+template <>
+constexpr rocblas_datatype RocBlasDataTypeFor<float>() {
   return rocblas_datatype_f32_r;
 }
 
 template <>
-constexpr rocblas_datatype RocBlasDataTypeFor<float>(const float*) {
-  return rocblas_datatype_f32_r;
-}
-
-template <>
-constexpr rocblas_datatype RocBlasDataTypeFor<half>(const half*) {
+constexpr rocblas_datatype RocBlasDataTypeFor<half>() {
   return rocblas_datatype_f16_r;
 }
 
 template <>
-constexpr rocblas_datatype RocBlasDataTypeFor<double>(const double*) {
+constexpr rocblas_datatype RocBlasDataTypeFor<double>() {
   return rocblas_datatype_f64_r;
 }
 
 template <>
-constexpr rocblas_datatype RocBlasDataTypeFor<BFloat16>(const BFloat16*) {
+constexpr rocblas_datatype RocBlasDataTypeFor<BFloat16>() {
   return rocblas_datatype_bf16_r;
 }
 
 template <typename T>
-constexpr rocblas_datatype RocBlasComputeTypeFor(const T*) {
-  static_assert(sizeof(T) == -1, "Unsupported type for rocBLAS operation.");
-  // The code below should be unreachable due to the static_assert above.
-  // But the compiler doesn't like not having a return statement, so we
-  // return something sensible.
+constexpr rocblas_datatype RocBlasComputeTypeFor();
+
+template <>
+constexpr rocblas_datatype RocBlasComputeTypeFor<float>() {
   return rocblas_datatype_f32_r;
 }
 
 template <>
-constexpr rocblas_datatype RocBlasComputeTypeFor<float>(const float*) {
-  return rocblas_datatype_f32_r;
-}
-
-template <>
-constexpr rocblas_datatype RocBlasComputeTypeFor<half>(const half*) {
+constexpr rocblas_datatype RocBlasComputeTypeFor<half>() {
   // Note that we're returning the _compute_ type for a given datatype.
   // As of 12/2022, using compute type FP16 for 16-bit floats was much
   // slower than using compute type FP32. So we use FP32 compute even for
@@ -89,12 +77,12 @@ constexpr rocblas_datatype RocBlasComputeTypeFor<half>(const half*) {
 }
 
 template <>
-constexpr rocblas_datatype RocBlasComputeTypeFor<double>(const double*) {
+constexpr rocblas_datatype RocBlasComputeTypeFor<double>() {
   return rocblas_datatype_f64_r;
 }
 
 template <>
-constexpr rocblas_datatype RocBlasComputeTypeFor<BFloat16>(const BFloat16*) {
+constexpr rocblas_datatype RocBlasComputeTypeFor<BFloat16>() {
   // Note that we're returning the _compute_ type for a given datatype.
   // As of 12/2022, using compute type FP16 for 16-bit floats was much
   // slower than using compute type FP32. So we use FP32 compute even for
@@ -104,117 +92,235 @@ constexpr rocblas_datatype RocBlasComputeTypeFor<BFloat16>(const BFloat16*) {
 }
 
 template <typename T>
-class IndexedRocBlasGemmOp {
- public:
-  IndexedRocBlasGemmOp()
-      : index_(0) {}
-  IndexedRocBlasGemmOp(int index)
-      : index_(index) {}
+auto DoCastForHalfOrBfloat16(const T fp) {
+  return fp;
+}
 
-  Status operator()(const GemmParams<T>* params) {
-    RocblasHandleStreamGuard guard(params->handle, params->stream);
-    return ROCBLAS_CALL(
-        rocblas_gemm_ex(
-            params->handle,
-            params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-            params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-            params->n, params->m, params->k,
-            &(params->alpha),
-            params->b, RocBlasDataTypeFor(params->b), params->ldb,
-            params->a, RocBlasDataTypeFor(params->a), params->lda,
-            &(params->beta),
-            params->c, RocBlasDataTypeFor(params->c), params->ldc,
-            params->c, RocBlasDataTypeFor(params->c), params->ldc,
-            RocBlasComputeTypeFor(params->a),
-            rocblas_gemm_algo_standard,
-            index_,
-            rocblas_gemm_flags_none));
-  }
+template <>
+inline auto DoCastForHalfOrBfloat16<half>(const half fp) {
+  // alpha and beta should be the same as compute_type, in half case it is float.
+  float h = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(&fp));
+  return h;
+}
 
-  Status IsSupported(const GemmParams<T>*) {
-    return Status::OK();
-  }
-
- private:
-  int index_;
-};
+template <>
+inline auto DoCastForHalfOrBfloat16<BFloat16>(const BFloat16 fp) {
+  // alpha and beta should be the same as compute_type, in bfloat16 case it is float.
+  float h = fp.ToFloat();
+  return h;
+}
 
 template <typename T>
-class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
- public:
-  RocBlasGemmTunableOp() {
-    // Ensure that the default implementation is always present
-    this->RegisterOp(IndexedRocBlasGemmOp<T>{0});
+auto GetRocBlasGemmTypeStringAndOps() {
+  rocblas_handle handle;
+  ROCBLAS_CALL_THROW(rocblas_create_handle(&handle));
+
+  int solution_size;
+  auto input_output_type = RocBlasDataTypeFor<T>();
+  auto compute_type = RocBlasComputeTypeFor<T>();
+
+  // Get the number of available solutions
+  ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions_by_type(handle,
+                                                           input_output_type,
+                                                           input_output_type,
+                                                           compute_type,
+                                                           rocblas_gemm_flags_none,
+                                                           nullptr,
+                                                           &solution_size));
+
+  std::vector<int> solutions(solution_size);
+
+  // Get the list of available solutions
+  ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions_by_type(handle,
+                                                           input_output_type,
+                                                           input_output_type,
+                                                           compute_type,
+                                                           rocblas_gemm_flags_none,
+                                                           solutions.data(),
+                                                           &solution_size));
+
+  ROCBLAS_CALL_THROW(rocblas_destroy_handle(handle));
+
+  // Sort the solutions in ascending order to make the solution vector deterministic across runs
+  std::sort(solutions.begin(), solutions.end());
+
+  std::vector<std::pair<std::string, Op<GemmParams<T>>>> ret;
+  for (size_t i = 0; i < solutions.size(); ++i) {
+    auto solution = solutions[i];
+    auto rocblas_gemm_op = [=](const GemmParams<T>* params) -> Status {
+      auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+      auto h_b = DoCastForHalfOrBfloat16(params->beta);
+      auto status = rocblas_gemm_ex(
+          params->handle,
+          params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+          params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+          params->n, params->m, params->k,
+          &h_a,
+          params->b, input_output_type, params->ldb,
+          params->a, input_output_type, params->lda,
+          &h_b,
+          params->c, input_output_type, params->ldc,
+          params->c, input_output_type, params->ldc,
+          compute_type,
+          rocblas_gemm_algo_solution_index,
+          solution,
+          rocblas_gemm_flags_none);
+
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          status != rocblas_status_success,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
+
+      return Status::OK();
+    };
+    ret.emplace_back(std::make_pair(
+        onnxruntime::MakeString("RocBlasGemm_", i, "_sol_", solution), std::move(rocblas_gemm_op)));
   }
+  return ret;
+}
 
-  Status IsSupported(const GemmParams<T>* params) {
-    ORT_UNUSED_PARAMETER(params);
-    return Status::OK();
+template <typename T>
+auto GetRocBlasBatchedGemmTypeStringAndOps() {
+  rocblas_handle handle;
+  ROCBLAS_CALL_THROW(rocblas_create_handle(&handle));
+
+  int solution_size;
+  auto input_output_type = RocBlasDataTypeFor<T>();
+  auto compute_type = RocBlasComputeTypeFor<T>();
+
+  // Get the number of available solutions
+  ROCBLAS_CALL_THROW(rocblas_gemm_batched_ex_get_solutions_by_type(handle,
+                                                                   input_output_type,
+                                                                   input_output_type,
+                                                                   compute_type,
+                                                                   rocblas_gemm_flags_none,
+                                                                   nullptr,
+                                                                   &solution_size));
+
+  std::vector<int> solutions(solution_size);
+
+  // Get the list of available solutions
+  ROCBLAS_CALL_THROW(rocblas_gemm_batched_ex_get_solutions_by_type(handle,
+                                                                   input_output_type,
+                                                                   input_output_type,
+                                                                   compute_type,
+                                                                   rocblas_gemm_flags_none,
+                                                                   solutions.data(),
+                                                                   &solution_size));
+
+  ROCBLAS_CALL_THROW(rocblas_destroy_handle(handle));
+
+  // Sort the solutions in ascending order to make the solution vector deterministic across runs
+  std::sort(solutions.begin(), solutions.end());
+
+  std::vector<std::pair<std::string, Op<BatchedGemmParams<T>>>> ret;
+  for (size_t i = 0; i < solutions.size(); ++i) {
+    auto solution = solutions[i];
+    auto rocblas_gemm_op = [=](const BatchedGemmParams<T>* params) -> Status {
+      auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+      auto h_b = DoCastForHalfOrBfloat16(params->beta);
+      auto status = rocblas_gemm_batched_ex(
+          params->handle,
+          params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+          params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+          params->n, params->m, params->k,
+          &h_a,
+          params->bs, input_output_type, params->ldb,
+          params->as, input_output_type, params->lda,
+          &h_b,
+          params->cs, input_output_type, params->ldc,
+          params->cs, input_output_type, params->ldc,
+          params->batch,
+          compute_type,
+          rocblas_gemm_algo_solution_index,
+          solution,
+          rocblas_gemm_flags_none);
+
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          status != rocblas_status_success,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
+
+      return Status::OK();
+    };
+    ret.emplace_back(std::make_pair(
+        onnxruntime::MakeString("RocBlasBatchedGemm_", i, "_sol_", solution), std::move(rocblas_gemm_op)));
   }
+  return ret;
+}
 
- protected:
-  virtual int FindFastest(const GemmParams<T>* params) override {
-    auto solution_indices = this->GetSolutions(params);
-    std::vector<Op<GemmParams<T>>> candidates;
-    for (int solution_idx : solution_indices) {
-      candidates.emplace_back(IndexedRocBlasGemmOp<T>{solution_idx});
-    }
+template <typename T>
+auto GetRocBlasStridedBatchedGemmTypeStringAndOps() {
+  rocblas_handle handle;
+  ROCBLAS_CALL_THROW(rocblas_create_handle(&handle));
 
-    auto id = this->FindFastestImpl(params, candidates);
-    // memoize the result
-    this->RegisterOp(std::move(candidates[id]));
-    return this->ops_.size() - 1;
+  int solution_size;
+  auto input_output_type = RocBlasDataTypeFor<T>();
+  auto compute_type = RocBlasComputeTypeFor<T>();
+
+  // Get the number of available solutions
+  ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions_by_type(handle,
+                                                           input_output_type,
+                                                           input_output_type,
+                                                           compute_type,
+                                                           rocblas_gemm_flags_none,
+                                                           nullptr,
+                                                           &solution_size));
+
+  std::vector<int> solutions(solution_size);
+
+  // Get the list of available solutions
+  ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions_by_type(handle,
+                                                           input_output_type,
+                                                           input_output_type,
+                                                           compute_type,
+                                                           rocblas_gemm_flags_none,
+                                                           solutions.data(),
+                                                           &solution_size));
+
+  ROCBLAS_CALL_THROW(rocblas_destroy_handle(handle));
+
+  // Sort the solutions in ascending order to make the solution vector deterministic across runs
+  std::sort(solutions.begin(), solutions.end());
+
+  std::vector<std::pair<std::string, Op<StridedBatchedGemmParams<T>>>> ret;
+  for (size_t i = 0; i < solutions.size(); ++i) {
+    auto solution = solutions[i];
+    auto rocblas_gemm_op = [=](const StridedBatchedGemmParams<T>* params) -> Status {
+      auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+      auto h_b = DoCastForHalfOrBfloat16(params->beta);
+      auto status = rocblas_gemm_strided_batched_ex(
+          params->handle,
+          params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+          params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+          params->n, params->m, params->k,
+          &h_a,
+          params->b, input_output_type, params->ldb, params->stride_b,
+          params->a, input_output_type, params->lda, params->stride_a,
+          &h_b,
+          params->c, input_output_type, params->ldc, params->stride_c,
+          params->c, input_output_type, params->ldc, params->stride_c,
+          params->batch,
+          compute_type,
+          rocblas_gemm_algo_solution_index,
+          solution,
+          rocblas_gemm_flags_none);
+
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          status != rocblas_status_success,
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
+
+      return Status::OK();
+    };
+    ret.emplace_back(std::make_pair(
+        onnxruntime::MakeString("RocBlasStridedBatchedGemm_", i, "_sol_", solution), std::move(rocblas_gemm_op)));
   }
+  return ret;
+}
 
- private:
-  std::vector<int> GetSolutions(const GemmParams<T>* params) {
-    int num_solutions = 0;
-    // Get the number of candidate solutions
-    ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions(
-        params->handle,
-        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-        params->n, params->m, params->k,
-        &(params->alpha),
-        params->b, RocBlasDataTypeFor(params->b), params->ldb,
-        params->a, RocBlasDataTypeFor(params->a), params->lda,
-        &(params->beta),
-        params->c, RocBlasDataTypeFor(params->c), params->ldc,
-        params->c, RocBlasDataTypeFor(params->c), params->ldc,
-        RocBlasComputeTypeFor(params->a),
-        rocblas_gemm_algo_standard,
-        rocblas_gemm_flags_none,
-        NULL,
-        &num_solutions));
-
-    // Get the actual candidate solutions
-    std::vector<int> solutions(num_solutions);
-    ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions(
-        params->handle,
-        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
-        params->n, params->m, params->k,
-        &(params->alpha),
-        params->b, RocBlasDataTypeFor(params->b), params->ldb,
-        params->a, RocBlasDataTypeFor(params->a), params->lda,
-        &(params->beta),
-        params->c, RocBlasDataTypeFor(params->c), params->ldc,
-        params->c, RocBlasDataTypeFor(params->c), params->ldc,
-        RocBlasComputeTypeFor(params->a),
-        rocblas_gemm_algo_standard,
-        rocblas_gemm_flags_none,
-        solutions.data(),
-        &num_solutions));
-
-    return solutions;
-  }
-};
-
-#endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
+#endif  // USE_ROCBLAS_EXTENSION_API
 
 template <typename T>
 Status RocBlasGemmOp(const GemmParams<T>* params) {
-  RocblasHandleStreamGuard guard(params->handle, params->stream);
+  RocblasHandleStreamGuard guard(params->handle, params->StreamHandle());
   // NOTE: rocblas assumes the storage is column-majored, swapping A and B makes it have the same interface
   // as those with row-majored convention. That is, if you treat the storage as row-majored but view the matrices as
   // transposed, then by using the property Transpose(A*B) = Tranpose(B)*Transpose(A), the correctness is obvious.
@@ -232,7 +338,7 @@ Status RocBlasGemmOp(const GemmParams<T>* params) {
 
 template <typename T>
 Status RocBlasBatchedGemmOp(const BatchedGemmParams<T>* params) {
-  RocblasHandleStreamGuard guard(params->handle, params->stream);
+  RocblasHandleStreamGuard guard(params->handle, params->StreamHandle());
   return ROCBLAS_CALL(rocblasGemmBatchedHelper(
       params->handle,
       params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
@@ -248,7 +354,7 @@ Status RocBlasBatchedGemmOp(const BatchedGemmParams<T>* params) {
 
 template <typename T>
 Status RocBlasStridedBatchedGemmOp(const StridedBatchedGemmParams<T>* params) {
-  RocblasHandleStreamGuard guard(params->handle, params->stream);
+  RocblasHandleStreamGuard guard(params->handle, params->StreamHandle());
   return ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
       params->handle,
       params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,

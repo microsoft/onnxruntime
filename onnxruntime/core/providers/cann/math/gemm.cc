@@ -11,10 +11,10 @@ namespace onnxruntime {
 namespace cann {
 
 template <typename T>
-Status Gemm<T>::ComputeInternal(OpKernelContext* context) const {
-  const auto* A = context->Input<Tensor>(0);
-  const auto* B = context->Input<Tensor>(1);
-  const auto* C = context->Input<Tensor>(2);
+Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
+  const auto* A = ctx->Input<Tensor>(0);
+  const auto* B = ctx->Input<Tensor>(1);
+  const auto* C = ctx->Input<Tensor>(2);
 
   GemmHelper helper(A->Shape(), trans_A_, B->Shape(), trans_B_, C != nullptr ? C->Shape() : TensorShape({}));
   if (!helper.State().IsOK())
@@ -24,13 +24,13 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* context) const {
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
 
-  auto* Y = context->Output(0, {M, N});
+  auto* Y = ctx->Output(0, {M, N});
 
   // broadcast C if needed.
   if (beta_ != 0 && C != nullptr) {
     if (C->Shape().Size() == 1) {
       // C is (), (1,) or (1, 1), fill the scalar to Y
-      ORT_RETURN_IF_ERROR(Fill<T>(Y, const_cast<void*>(C->DataRaw())));
+      ORT_RETURN_IF_ERROR(Fill<T>(Y, const_cast<void*>(C->DataRaw()), Stream(ctx)));
     } else if (C->Shape() == Y->Shape()) {
       // C is (M, N), no broadcast needed.
       CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(Y->MutableDataRaw(),
@@ -38,10 +38,10 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* context) const {
                                             const_cast<void*>(C->DataRaw()),
                                             Y->SizeInBytes(),
                                             ACL_MEMCPY_DEVICE_TO_DEVICE,
-                                            Stream()));
+                                            Stream(ctx)));
     } else {
       // others, broadcast needed.
-      ORT_RETURN_IF_ERROR(Broadcast<T>(C, Y, Y->MutableDataRaw()));
+      ORT_RETURN_IF_ERROR(Broadcast<T>(C, Y, Y->MutableDataRaw(), Stream(ctx)));
     }
   }
 
@@ -49,8 +49,8 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* context) const {
 
   T alpha = ToCannType<T>::FromFloat(alpha_);
   T beta = ToCannType<T>::FromFloat(beta_);
-  IAllocatorUniquePtr<void> pAlpha = GetScratchBuffer<void>(sizeof(T));
-  IAllocatorUniquePtr<void> pBeta = GetScratchBuffer<void>(sizeof(T));
+  IAllocatorUniquePtr<void> pAlpha = GetScratchBuffer<void>(sizeof(T), ctx->GetComputeStream());
+  IAllocatorUniquePtr<void> pBeta = GetScratchBuffer<void>(sizeof(T), ctx->GetComputeStream());
   CANN_RETURN_IF_ERROR(aclrtMemcpy(pAlpha.get(), sizeof(T), &alpha, sizeof(T), ACL_MEMCPY_HOST_TO_DEVICE));
   CANN_RETURN_IF_ERROR(aclrtMemcpy(pBeta.get(), sizeof(T), &beta, sizeof(T), ACL_MEMCPY_HOST_TO_DEVICE));
 
@@ -67,7 +67,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* context) const {
       pBeta.get(),
       Y->MutableDataRaw(), -1, aclType,
       ACL_COMPUTE_HIGH_PRECISION,
-      Stream()));
+      Stream(ctx)));
 
   return Status::OK();
 }

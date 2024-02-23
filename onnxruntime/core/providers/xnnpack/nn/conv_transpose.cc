@@ -81,29 +81,34 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
-  pthreadpool_t t_pool = GetThreadPool();
+  pthreadpool_t threadpool = GetThreadPool();
 
   auto output_pad_0 = gsl::narrow_cast<uint32_t>(conv_transpose_attrs_.output_padding[0]);
   auto output_pad_1 = gsl::narrow_cast<uint32_t>(conv_transpose_attrs_.output_padding[1]);
   xnn_status status = xnn_status_invalid_state;
-  if (conv_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_setup_deconvolution2d_nhwc_f32(
-        op0_.get(), N, H, W,
-        output_pad_0,
-        output_pad_1, X.Data<float>(), Y->MutableData<float>(),
-        t_pool /*threadpool*/);
-  } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
-    status = xnn_setup_deconvolution2d_nhwc_qs8(
-        op0_.get(), N, H, W,
-        output_pad_0,
-        output_pad_1, X.Data<int8_t>(), Y->MutableData<int8_t>(),
-        t_pool /*threadpool*/);
+
+  auto reshape_fn = xnn_reshape_deconvolution2d_nhwc_f32;
+  if (conv_type_ == OpComputeType::op_compute_type_qs8) {
+    reshape_fn = xnn_reshape_deconvolution2d_nhwc_qs8;
   } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
-    status = xnn_setup_deconvolution2d_nhwc_qu8(
-        op0_.get(), N, H, W,
-        output_pad_0,
-        output_pad_1, X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
-        t_pool /*threadpool*/);
+    reshape_fn = xnn_reshape_deconvolution2d_nhwc_qu8;
+  }
+
+  status = reshape_fn(op0_.get(), N, H, W, output_pad_0, output_pad_1,
+                      /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+                      threadpool);
+
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_deconvolution2d_nhwc_",
+                           OpTypeToString(conv_type_), " returned ", status);
+  }
+
+  if (conv_type_ == OpComputeType::op_compute_type_fp32) {
+    status = xnn_setup_deconvolution2d_nhwc_f32(op0_.get(), X.Data<float>(), Y->MutableData<float>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
+    status = xnn_setup_deconvolution2d_nhwc_qs8(op0_.get(), X.Data<int8_t>(), Y->MutableData<int8_t>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
+    status = xnn_setup_deconvolution2d_nhwc_qu8(op0_.get(), X.Data<uint8_t>(), Y->MutableData<uint8_t>());
   }
 
   if (status != xnn_status_success) {
@@ -111,7 +116,7 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
                            OpTypeToString(conv_type_), " returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), t_pool);
+  status = xnn_run_operator(op0_.get(), threadpool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

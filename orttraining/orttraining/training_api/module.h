@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <string>
 #include "core/session/inference_session.h"
+#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -19,6 +21,8 @@ struct Parameter {
 
   // Return the mutable data.
   OrtValue& Data() { return data_; }
+  Status CopyTo(const DataTransferManager* data_transfer_manager, OrtValue& data) const;
+  Status CopyFrom(const DataTransferManager* data_transfer_manager, const OrtValue& data);
   const std::string& Name() const { return name_; }
 
   // Returns whether this parameter is trainable or not.
@@ -32,7 +36,6 @@ struct Parameter {
   // Reset and release the gradient buffer of this Parameter greedily.
   Status ResetGrad();
 
- protected:
   Status SetGrad(const std::string& gradient_name, const OrtValue& param_grad);
 
  private:
@@ -50,39 +53,64 @@ struct ModuleCheckpointState {
  public:
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
   const DataTransferManager* train_session_data_transfer_mgr;
+  bool is_nominal_state = false;
 };
 
+struct CheckpointState;
+
+/**
+ * @brief Module class for running training forward and backward.
+ *
+ * This class is responsible for running forward and backward.
+ * It does NOT own the parameters but only holds a weak reference to the passed
+ * 'CheckpointState' in the constructor.
+ *
+ * During initialization, if the Parameter (stored in `CheckpointState`)'s
+ * device does not match the target device, it will re-create the tensor on the
+ * target device and update the Parameter's data in place. The 'target device'
+ * is extracted from node placement.
+ *
+ * Currently, we only support load checkpoints from the constructor;
+ * no public API to load state dict after Module instance is created.
+ */
 struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
-  Module(const std::string& train_model_path_or_bytes,
-         const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+  // The model and checkpoint state can be provided as a file path or a byte array
+  Module(const ModelIdentifiers& model_identifiers,
+         CheckpointState* state,
          const onnxruntime::SessionOptions& session_options,
          const Environment& env,
          const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
+         gsl::span<OrtCustomOpDomain* const> op_domains = gsl::span<OrtCustomOpDomain* const>());
+
+  ~Module();
 
   // Return the trainable/nontrainable parameters
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will raise an exception.
   std::vector<std::shared_ptr<Parameter>> Parameters() const;
 
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> NamedParameters() const {
-    return named_parameters_;
-  }
+  // Return the trainable/nontrainable parameters as a map
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will raise an exception.
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> NamedParameters() const;
 
   // Reset and release the gradient buffer of all trainable params lazily.
   Status LazyResetGrad();
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs.
-  // Gradients will be accumulated within the Parameter object
+  // Gradients will be accumulated within the Parameter object.
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will return an error.
   Status TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
 
   // Eval Step – does forward computation. This will use a separate inference session
   // and take in a separate inference graph, while sharing the parameters
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will return an error.
   Status EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
-
-  // Return the states of the module as a map.
-  Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
   // Returns the output count for training graph
   size_t GetTrainingModelOutputCount() const noexcept;
@@ -100,15 +128,23 @@ struct Module {
   size_t GetParametersSize(const bool trainable_only = true) const;
 
   // Copy parameters onto contiguous buffer held by parameters_buffer
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will return an error.
   Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only = true);
 
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
+  // This function is responsible for completing the nominal checkpoint state. The checkpoint
+  // state will no longer be nominal after the successful completion of this function.
   Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
-  // inferencing, and serialize to given path
+  // inferencing, and serialize to given path.
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will return an error.
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
+#endif
 
   // Returns the user input count for training graph
   size_t GetTrainingModelInputCount() const noexcept;
@@ -122,21 +158,47 @@ struct Module {
   // Returns the user input name for eval graph at given index
   std::string GetEvalModelInputName(size_t index) const;
 
+  // Returns the input definitions of the Training model
+  std::pair<common::Status, const InputDefList*> GetTrainingModelInputs() const noexcept;
+
+  // Returns the input definitions of the Eval model
+  std::pair<common::Status, const InputDefList*> GetEvalModelInputs() const noexcept;
+
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
-  std::vector<std::string> train_input_names_;
-  std::vector<std::string> train_output_names_;
-  std::vector<std::string> eval_input_names_;
-  std::vector<std::string> eval_output_names_;
-  std::vector<std::string> weight_names_;
-  std::vector<OrtValue> weights_;
-  std::vector<OrtValue> gradients_;
+
+  struct TrainInputNames {
+   private:
+    InlinedVector<std::string> train_input_names_;
+    InlinedVector<size_t> train_input_index_offsets_;  // offset range[[0], [1]) = user input names
+                                                       // offset range[[1], [2]) = weights input names
+                                                       // offset range[[2], [3]) = gradient input names
+   public:
+    TrainInputNames() = default;
+    TrainInputNames(gsl::span<const std::string> user_input_names,
+                    gsl::span<const std::string> weights_input_names,
+                    gsl::span<const std::string> gradient_input_names);
+
+    gsl::span<const std::string> AllInputNames() const;
+    gsl::span<const std::string> UserInputNames() const;
+    gsl::span<const std::string> WeightsInputNames() const;
+    gsl::span<const std::string> GradientInputNames() const;
+  };
+
+  TrainInputNames train_input_names_;
+  InlinedVector<std::string> train_output_names_;
+  InlinedVector<std::string> eval_input_names_;
+  InlinedVector<std::string> eval_output_names_;
+
+  InlinedVector<OrtValue> weights_;
+  InlinedVector<OrtValue> gradients_;
+
+  CheckpointState* state_;  // Non owning pointer to the state.
+
   bool accumulate_gradient_ = false;
-  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
-  std::string eval_model_path_;
-  size_t train_user_input_count_;
-  size_t eval_user_input_count_;
+  std::optional<std::string> eval_model_path_;
+  size_t eval_user_input_count_{0U};
 };
 
 }  // namespace api

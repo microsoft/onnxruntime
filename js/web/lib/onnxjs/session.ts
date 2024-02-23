@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {readFile} from 'fs';
-import {promisify} from 'util';
+import {readFile} from 'node:fs/promises';
 
 import {resolveBackend, SessionHandlerType} from './backend';
 import {ExecutionPlan} from './execution-plan';
@@ -60,9 +59,9 @@ export class Session {
       this._model = new Model();
       if (typeof arg === 'string') {
         const isOrtFormat = arg.endsWith('.ort');
-        if (typeof fetch === 'undefined') {
+        if (typeof process !== 'undefined' && process.versions && process.versions.node) {
           // node
-          const buf = await promisify(readFile)(arg);
+          const buf = await readFile(arg);
           this.initialize(buf, isOrtFormat);
         } else {
           // browser

@@ -3,24 +3,23 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _logger
-
 import os
-import torch
-import warnings
-
 from enum import IntFlag
+from logging import Logger
 from typing import Optional
+
+import torch
+
+from . import _logger, _utils
+from ._fallback_exceptions import wrap_exception  # noqa: F401
 from ._fallback_exceptions import (
+    ORTModuleDeviceException,
     ORTModuleFallbackException,
     ORTModuleInitException,
-    ORTModuleDeviceException,
     ORTModuleIOError,
-    ORTModuleTorchModelException,
     ORTModuleONNXModelException,
-    wrap_exception,
+    ORTModuleTorchModelException,
 )
-from . import _utils
 
 
 class _FallbackPolicy(IntFlag):
@@ -52,7 +51,7 @@ class _FallbackPolicy(IntFlag):
         return _FallbackPolicy.FALLBACK_DISABLE in self
 
 
-class _FallbackManager(object):
+class _FallbackManager:
     """Manages fallbacks based on incoming exceptions and specified policies
 
     The basic algorithm is based on a dictionary whose keys are the supported fallback policies
@@ -68,8 +67,7 @@ class _FallbackManager(object):
     be raised to the user, terminating execution
     """
 
-    def __init__(self, pytorch_module: torch.nn.Module, policy: _FallbackPolicy, retry: bool):
-
+    def __init__(self, pytorch_module: torch.nn.Module, policy: _FallbackPolicy, retry: bool, logger: Logger):
         self._original_module = pytorch_module
 
         # Read policy from environment variable for testing purposes
@@ -104,6 +102,8 @@ class _FallbackManager(object):
         self.policy = policy
         self.retry = retry
         self._exception = None
+        self._raised_fallback_exception = False
+        self._logger = logger
 
     def handle_exception(
         self, exception: Exception, log_level: _logger.LogLevel, override_policy: Optional[_FallbackPolicy] = None
@@ -133,20 +133,15 @@ class _FallbackManager(object):
                     and type(exception) in self._policy_exception_map[policy.value]
                 )
             ):
-
-                if log_level <= _logger.LogLevel.INFO:
-                    warnings.warn(f"Fallback for policy {policy.name} is pending.", UserWarning)
+                self._logger.info(f"Fallback for policy {policy.name} is pending.")
 
                 # ORTModuleInitException exceptions do not call `fallback()` through `GraphExecutionManager`,
                 # Instead, it fallbacks to PyTorch implicitly through `ORTModule._torch_module = TorchModulePytorch(module)`
-                if log_level <= _logger.LogLevel.WARNING and policy == _FallbackPolicy.FALLBACK_BAD_INITIALIZATION:
-                    warnings.warn(
-                        (
-                            f"Fallback to PyTorch due to exception {type(exception)} was triggered. "
-                            "Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. "
-                            f"See details below:\n\n{_utils.get_exception_as_string(exception)}"
-                        ),
-                        UserWarning,
+                if policy == _FallbackPolicy.FALLBACK_BAD_INITIALIZATION:
+                    self._logger.warning(
+                        f"Fallback to PyTorch due to exception {type(exception)} was triggered. "
+                        "Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. "
+                        f"See details below:\n\n{_utils.get_exception_as_string(exception)}"
                     )
 
                 self._exception = exception
@@ -174,17 +169,21 @@ class _FallbackManager(object):
 
         assert self.is_pending(), "`fallback` can only be called when there is a pending fallback"
 
-        if log_level <= _logger.LogLevel.WARNING:
-            warnings.warn(
-                (
-                    f"Fallback to PyTorch due to exception {type(self._exception)} was triggered. "
-                    "Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. "
-                    f"See details below:\n\n{_utils.get_exception_as_string(self._exception)}"
-                ),
-                UserWarning,
+        if not self._raised_fallback_exception:
+            exception_type = type(self._exception)
+            exception_string = _utils.get_exception_as_string(self._exception)
+
+            # This warning will not be raised again if retry is not enabled
+            self._logger.warning(
+                f"Fallback to PyTorch due to exception {exception_type} was triggered. "
+                "Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. "
+                f"See details below:\n\n{exception_string}"
             )
 
-        # Pending fallbacks are resetted to enforce retries
+            self._raised_fallback_exception = True
+
+        # Pending fallbacks are reset to enforce retries
         if self.retry:
+            self._raised_fallback_exception = False
             self._exception = None
         return self._original_module(*inputs, **kwargs)

@@ -1,44 +1,31 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/safeint.h>
-#include <core/framework/tensorprotoutils.h>
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
-#include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/common/safeint.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
-
-#ifdef __APPLE__
+#include "core/providers/common.h"
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
-#include "builder_utils.h"
-#endif
-
-#include "base_op_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/coreml/shape_utils.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class GemmOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
- private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
                          const logging::Logger& /* logger */) const override;
 };
 
-// Add operator related
-
-#ifdef __APPLE__
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
   const auto& input_defs(node.InputDefs());
@@ -71,7 +58,7 @@ static Status GetTensorFloatDataTransposed(const ONNX_NAMESPACE::TensorProto& te
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                             const logging::Logger& /* logger */) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
@@ -89,7 +76,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // Add weight (b of MatMul)
     std::vector<float> b_transposed;
     ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(b_tensor, b_transposed));
-    CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed.data(), b_transposed.size());
+    CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed);
   } else {  // Gemm
     NodeAttrHelper helper(node);
     const auto transB = helper.Get("transB", 0);
@@ -98,7 +85,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       coreml_inner_product->set_outputchannels(b_shape[1]);
       std::vector<float> b_transposed;
       ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(b_tensor, b_transposed));
-      CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed.data(), b_transposed.size());
+      CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed);
     } else {
       coreml_inner_product->set_inputchannels(b_shape[1]);
       coreml_inner_product->set_outputchannels(b_shape[0]);
@@ -120,9 +107,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif
-
-// Operator support related
 
 bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
@@ -146,6 +130,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       return false;
     }
 
+    // TODO is it ok if the shape is dynamic and empty?
     if (Product(a_shape) == 0) {
       LOGS(logger, VERBOSE) << "A must be non-empty";
       return false;

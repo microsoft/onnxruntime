@@ -7,7 +7,7 @@ from logging import getLogger
 import numpy as np
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
-from onnx import TensorProto, helper, numpy_helper
+from onnx import helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -43,17 +43,17 @@ class FusionGptAttentionPastBase(Fusion):
         #             |
         #         {present}
         gather = self.model.get_parent(concat_v, 0, output_name_to_node)
-        if gather.op_type != "Gather":
+        if gather is None or gather.op_type != "Gather":
             logger.debug("match_past_pattern_1: expect Gather for past")
             return None
 
-        if not self.model.find_constant_input(gather, 1) == 1:
+        if self.model.find_constant_input(gather, 1) != 1:
             logger.debug("match_past_pattern_1: expect indices=1 for Gather of past")
             return None
         past = gather.input[0]
 
         parent = self.model.get_parent(concat_k, 0, output_name_to_node)
-        if parent.op_type == "Gather":
+        if parent and parent.op_type == "Gather":
             gather_past_k = parent
         else:
             past_k_nodes = self.model.match_parent_path(concat_k, ["Transpose", "Gather"], [0, 0])
@@ -62,7 +62,7 @@ class FusionGptAttentionPastBase(Fusion):
                 return None
             gather_past_k = past_k_nodes[-1]
 
-        if not self.model.find_constant_input(gather_past_k, 0) == 1:
+        if self.model.find_constant_input(gather_past_k, 0) != 1:
             logger.debug("match_past_pattern_1: expect indices=0 for Gather k of past")
             return None
         past_k = gather_past_k.input[0]
@@ -95,12 +95,12 @@ class FusionGptAttentionPastBase(Fusion):
         #               {present}
         #
         squeeze = self.model.get_parent(concat_v, 0, output_name_to_node)
-        if squeeze.op_type != "Squeeze":
+        if squeeze is None or squeeze.op_type != "Squeeze":
             logger.debug("match_past_pattern_2: expect Squeeze as parent of concat_v")
             return None
 
         split = self.model.get_parent(squeeze, 0, output_name_to_node)
-        if split.op_type != "Split":
+        if split is None or split.op_type != "Split":
             logger.debug("match_past_pattern_2: expect Split for past path")
             return None
 
@@ -239,7 +239,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 [0, None, 0, 0, 0, 0, 0],
                 output_name_to_node=output_name_to_node,
                 return_indice=return_indice,
-            )  # yapf: disable
+            )
         else:
             qkv_nodes = self.model.match_parent_path(
                 normalize_node,
@@ -247,7 +247,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 [None, 0, 0, 0, 0, 0],
                 output_name_to_node=output_name_to_node,
                 return_indice=return_indice,
-            )  # yapf: disable
+            )
 
         if qkv_nodes is None:
             return
@@ -335,7 +335,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
         # (2) SkipLayerNorm fusion was turned ON but upstream layer's LayerNorm + Add was not
         # fused into a SkipLayerNorm. This can happen if the shapes to the Add node are different.
         # So, keep the following check if SkipLayerNorm fusion is turned ON or OFF.
-        if another_input is not None and not another_input in layernorm_before_attention.input:
+        if another_input is not None and another_input not in layernorm_before_attention.input:
             logger.debug("Upstream Add and (Skip)LayerNormalization shall have one same input")
             return
 
@@ -361,7 +361,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                     "Div",
                 ],
                 [1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
-            )  # yapf: disable
+            )
             if mask_nodes is None:
                 logger.debug("fuse_attention: failed to match unidirectional mask path")
                 return
@@ -414,7 +414,7 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                         ),  # useless cast and reshape are removed.
                     ],
                     output_name_to_node,
-                )  # yapf: disable
+                )
                 if input_mask_nodes is None:
                     logger.debug("fuse_attention: failed to match input attention mask path")
                     return
@@ -423,27 +423,27 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                     if mul_val != -10000:
                         self.mask_filter_value = mul_val
 
-            mask_nodes = self.model.match_parent_path(
+            i, mask_nodes, _ = self.model.match_parent_paths(
                 where_qk,
                 [
-                    "Cast",
-                    "Slice",
-                    "Slice",
-                    "Unsqueeze",
-                    "Sub",
-                    "Squeeze",
-                    "Slice",
-                    "Shape",
+                    (
+                        ["Cast", "Slice", "Slice", "Unsqueeze", "Sub", "Squeeze", "Slice", "Shape"],
+                        [0, 0, 0, 1, 0, 0, 0, 0],
+                    ),
+                    # For Transformers >= 4.27, causal mask uses torch.bool instead of torch.uint8, so no Cast to bool.
+                    (
+                        ["Slice", "Slice", "Unsqueeze", "Sub", "Squeeze", "Slice", "Shape"],
+                        [0, 0, 1, 0, 0, 0, 0],
+                    ),
                 ],
-                [0, 0, 0, 1, 0, 0, 0, 0],
                 output_name_to_node,
-            )  # yapf: disable
+            )
             if mask_nodes is None:
                 # TODO: match mask path for GPT2LMHeadModel_BeamSearchStep.
                 logger.debug("fuse_attention: failed to match mask path")
                 return
 
-            slice_mask = mask_nodes[2]
+            slice_mask = mask_nodes[2 if i == 0 else 1]
 
             div_or_concat = self.model.get_parent(mask_nodes[-1], 0, output_name_to_node)
             if div_or_concat.op_type == "Div":
@@ -457,12 +457,16 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 logger.debug("fuse_attention: failed to match mask path")
 
         # Validate that the mask data is either lower triangular (unidirectional) or all ones
-        mask_data = numpy_helper.to_array(self.model.get_initializer(slice_mask.input[0]))
+        mask_data = self.model.get_constant_value(slice_mask.input[0])
         if not (
-            len(mask_data.shape) == 4 and mask_data.shape[:2] == (1, 1) and mask_data.shape[2] == mask_data.shape[3]
+            isinstance(mask_data, np.ndarray)
+            and len(mask_data.shape) == 4
+            and mask_data.shape[:2] == (1, 1)
+            and mask_data.shape[2] == mask_data.shape[3]
         ):
             logger.debug("fuse_attention: skip since mask shape is not 1x1xWxW")
             return
+
         if np.allclose(mask_data, np.ones_like(mask_data)):
             is_unidirectional = False
         elif not np.allclose(mask_data, np.tril(np.ones_like(mask_data))):

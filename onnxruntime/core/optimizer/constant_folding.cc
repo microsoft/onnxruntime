@@ -4,9 +4,11 @@
 #include <limits>
 
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
+#include "core/optimizer/utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
 
@@ -16,10 +18,12 @@ namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  bool skip_dequantize_linear,
+                                 const ConfigOptions& config_options,
                                  const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                  const InlinedHashSet<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
       skip_dequantize_linear_(skip_dequantize_linear),
+      config_options_(config_options),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
 }
@@ -89,6 +93,45 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
   return is_concrete_shape;  // convert to constant if this is true
 }
 
+// This function inlines the appropriate subgraph. It does not literally fold it.
+static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Logger& logger, bool& folded) {
+  folded = false;
+  // First, find out which subgraph to inline
+  // We need to fetch the constant argument.
+  assert(if_node.InputDefs().size() == 1);
+  const auto* condition_def = if_node.InputDefs()[0];
+
+  // We need to check if the condition is a constant.
+  constexpr bool check_outer_scope_true = true;
+  const ONNX_NAMESPACE::TensorProto* initializer =
+      graph.GetConstantInitializer(condition_def->Name(), check_outer_scope_true);
+  if (initializer == nullptr) {
+    return Status::OK();
+  }
+
+  // This is a boolean initializer with a single element.
+  Initializer condition{*initializer};
+  ORT_RETURN_IF_NOT(condition.size() == 1, "If node condition initializer: `", condition_def->Name(),
+                    "' is expected to have a single boolean element");
+
+  const bool condition_value = *condition.data<bool>();
+
+  auto status = graph.InlineIfSubgraph(condition_value, if_node, logger);
+
+  if (!status.IsOK()) {
+    LOGS(logger, WARNING) << "Unable to constant fold. InlineIfSubgraph failed "
+                          << " node '" << if_node.Name() << "': "
+                          << status.ErrorMessage();
+    return status;
+  }
+
+  graph_utils::RemoveNodeOutputEdges(graph, if_node);
+  graph.RemoveNode(if_node.Index());
+
+  folded = true;
+  return status;
+}
+
 Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   bool have_updated_nodes = false;
   GraphViewer graph_viewer(graph);
@@ -106,11 +149,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-    // avoid to constant fold DequantizeLinear for QDQ format
-    if (skip_dequantize_linear_ && node->OpType().compare("DequantizeLinear") == 0) {
-      continue;
-    }
-
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     // Updating a node may allow shape inferencing to infer output shapes of following nodes,
@@ -122,30 +160,69 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     bool converted_to_constant = false;
-    if (node->OpType().compare("Shape") == 0) {
+    if (node->OpType().compare("If") == 0) {
+      // This process constant folds the If node only,
+      // but inlines the nodes of the corresponding branch graph.
+      // It does not convert the node to a constant in a common sense.
+      // We call it constant folding because the `If` node constant condition
+      // may enable us to inline the corresponding branch graph.
+      bool folded = false;
+      ORT_RETURN_IF_ERROR(ConstantFoldIfNode(graph, *node, logger, folded));
+      if (folded) {
+        // Node removal is done within ConstantFoldIfNode()
+        modified = true;
+        have_updated_nodes = true;
+      }
+    } else if (node->OpType().compare("Shape") == 0) {
       converted_to_constant = ConstantFoldShapeNode(graph, *node);
     } else {
       InitializedTensorSet constant_inputs;
 
-      // we currently constant fold using the CPU EP only.
-      // if the node is assigned to a different EP we can run it if it's an ONNX op as we have CPU based
-      // implementations for all ONNX ops. If the node/op is from a different op domain or if the CPU implementation
-      // does not support the specific input type(s) required by the node (currently we only support a subset of
-      // types in some CPU kernels) then we can't proceed with constant folding for the node.
-      auto ep_type = node->GetExecutionProviderType();
-      bool cpu_ep = ep_type == kCpuExecutionProvider;
-      if (!cpu_ep && node->Domain() != kOnnxDomain) {
+      // Check if constant folding can be applied on this node.
+      const auto can_constant_fold_node = [&](const Node& n, bool skip_inputs_constant_check = false) {
+        return graph_utils::IsSupportedProvider(n, GetCompatibleExecutionProviders()) &&
+               optimizer_utils::IsOperationDeterministic(n.Domain(), n.OpType()) &&
+               // constant folding does not support executing a node that includes subgraphs (control flow operators,
+               // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
+               // by the Recurse call above
+               !n.ContainsSubgraph() &&
+               (skip_inputs_constant_check ||
+                graph_utils::AllNodeInputsAreConstant(graph, n, constant_inputs, excluded_initializers_));
+      };
+
+      if (!can_constant_fold_node(*node)) {
         continue;
       }
 
-      // Check if constant folding can be applied on this node.
-      if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
-          !optimizer_utils::IsOperationDeterministic(node->Domain(), node->OpType()) ||
-          // constant folding does not support executing a node that includes subgraphs (control flow operators,
-          // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
-          // by the Recurse call above
-          node->ContainsSubgraph() || !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs, excluded_initializers_)) {
-        continue;
+      // if skip_dequantize_linear is true we want to maintain QDQ node units so avoid constant folding
+      // DequantizeLinear unless we can fold the whole QDQ node unit
+      if (skip_dequantize_linear_ && node->OpType() == "DequantizeLinear") {
+        bool can_constant_fold_qdq_node_unit = false;
+
+        // Simplest scenario where the whole QDQ node unit of (DQ -> X -> Q) can be constant folded is if:
+        //   - the DQ node does not produce a graph output, and its output is only consumed by X
+        //   - X is a deterministic node with a single input and single output
+        //   - the output from X is not a graph output and is only consumed by a Q node
+        if (optimizer_utils::CheckOutputEdges(graph, *node, 1)) {  // DQ does not produce graph output, single consumer
+          const Node& node_x = *node->OutputNodesBegin();
+          if (node_x.InputDefs().size() == 1 &&
+              node_x.OutputDefs().size() == 1 &&
+              optimizer_utils::CheckOutputEdges(graph, node_x, 1)) {
+            const Node& probably_q = *node_x.OutputNodesBegin();
+
+            if (probably_q.OpType() == "QuantizeLinear") {
+              // the inputs to these nodes are not const yet, but will be if we constant fold,
+              // so set skip_const_check to simulate that having happened
+              constexpr bool skip_const_check = true;
+              can_constant_fold_qdq_node_unit = can_constant_fold_node(node_x, skip_const_check) &&
+                                                can_constant_fold_node(probably_q, skip_const_check);
+            }
+          }
+        }
+
+        if (!can_constant_fold_qdq_node_unit) {
+          continue;
+        }
       }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -163,18 +240,31 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
       }
 
-      // override the EP assigned to the node so that it will use the CPU kernel for Compute.
-      if (!cpu_ep) {
+      const bool node_on_cpu_ep = node->GetExecutionProviderType() == kCpuExecutionProvider;
+
+      std::unique_ptr<const OpKernel> kernel;
+
+      if (!node_on_cpu_ep) {
+        // We need to copy the string here instead of taking a reference to it since node->SetExecutionProviderType
+        // will change the value of the reference
+        auto ep_type = node->GetExecutionProviderType();
+
+        // override the EP assigned to the node so that it will use the CPU kernel for Compute.
         node->SetExecutionProviderType(kCpuExecutionProvider);
-      }
 
-      auto kernel = info.CreateKernel(node);
+        kernel = info.CreateKernel(node, config_options_);
 
-      // undo the EP change to the value that was assigned at graph partitioning time
-      if (!cpu_ep) {
+        // undo the EP change to the value that was assigned at graph partitioning time
         node->SetExecutionProviderType(ep_type);
+      } else {
+        kernel = info.CreateKernel(node, config_options_);
       }
 
+      // We currently constant fold using the CPU EP only.
+      // If we can't find a CPU kernel for this node, then we can't proceed with constant folding.
+      //
+      // TODO(adrianlizarraga): Support constant folding with other execution providers. For example, we may be able
+      // to use a CUDA kernel to constant fold operators with data types not supported by the CPU EP kernel.
       if (kernel == nullptr) {
         LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
                               << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";

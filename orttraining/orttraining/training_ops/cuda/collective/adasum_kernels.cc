@@ -30,7 +30,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   // Allocate temp scratch buffer in cpu space.
   AllocatorPtr allocator;
-  allocator = Info().GetAllocator(0, OrtMemTypeCPU);
+  allocator = Info().GetAllocator(OrtMemTypeCPU);
   auto data_buffer = allocator->Alloc(total_recv_buffer_len);
   BufferUniquePtr data_buffer_ptr(data_buffer, BufferDeleter(allocator));
 

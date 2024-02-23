@@ -104,5 +104,5 @@ inline Ort::Value Value::CreateTensor(const std::vector<int64_t>& shape, ONNXTen
   return Ort::Value::CreateTensor(allocator, shape.data(), shape.size(), type);
 }
 
-}
-}
+}  // namespace Experimental
+}  // namespace Ort

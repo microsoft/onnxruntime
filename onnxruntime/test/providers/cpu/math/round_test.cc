@@ -25,8 +25,8 @@ TEST(RoundTest, SimpleTestDouble) {
 
 TEST(RoundTest, SimpleTestFloat16) {
   OpTester test("Round", 11, onnxruntime::kOnnxDomain);
-  test.AddInput<MLFloat16>("x", {5}, {MLFloat16(math::floatToHalf(0.9f)), MLFloat16(math::floatToHalf(2.5f)), MLFloat16(math::floatToHalf(2.3f)), MLFloat16(math::floatToHalf(1.5f)), MLFloat16(math::floatToHalf(-4.5f))});
-  test.AddOutput<MLFloat16>("y", {5}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(-4.0f))});
+  test.AddInput<MLFloat16>("x", {5}, {MLFloat16(0.9f), MLFloat16(2.5f), MLFloat16(2.3f), MLFloat16(1.5f), MLFloat16(-4.5f)});
+  test.AddOutput<MLFloat16>("y", {5}, {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(-4.0f)});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 

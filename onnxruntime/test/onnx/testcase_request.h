@@ -118,5 +118,5 @@ class TestCaseRequestContext {
   mutable bool finished_ = false;
 };
 
-}  //namespace test
+}  // namespace test
 }  // namespace onnxruntime
