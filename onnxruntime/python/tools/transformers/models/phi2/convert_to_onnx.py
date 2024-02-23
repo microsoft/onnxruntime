@@ -519,7 +519,7 @@ def main():
         [p.start() for p in processes]
         [p.join() for p in processes]
 
-    if args.run_example:
+    if args.run_example or args.run_benchmark:
         from inference_example import run_phi2
 
         if args.fp16_gpu_sm8x:
