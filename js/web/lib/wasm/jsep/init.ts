@@ -24,14 +24,9 @@ class TensorViewImpl implements TensorView {
       throw new Error('Invalid data type');
     }
     const elementCount = ShapeUtil.size(this.dims);
-    const hasFloat16Array = typeof Float16Array !== 'undefined';
-    if (hasFloat16Array) {
-      return elementCount === 0 ? new Float16Array() :
-                                  new Float16Array(this.module.HEAP8.buffer, this.data, elementCount);
-    } else {
-      return elementCount === 0 ? new Uint16Array() :
-                                  new Uint16Array(this.module.HEAP8.buffer, this.data, elementCount);
-    }
+    const float16viewConstructor = typeof Float16Array !== 'undefined' ? Float16Array : Uint16Array;
+    return elementCount === 0 ? new float16viewConstructor() :
+                                new float16viewConstructor(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   getFloat32Array(): Float32Array {
