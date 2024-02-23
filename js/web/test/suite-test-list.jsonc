@@ -1379,6 +1379,7 @@
       "gelu.jsonc",
       "pad.jsonc",
       "pad-big.jsonc",
+      "pad-f16.jsonc",
       "pow.jsonc",
       "pow_int32.jsonc",
       "pow-big-number.jsonc",
