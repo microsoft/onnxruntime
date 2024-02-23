@@ -15,8 +15,8 @@ namespace cuda {
  * This implementation assumes there is common indices and
  * reduction is not needed. The code does not check that condition.
  * However in that case, the same output element could be accessed
- * from different thread at the same time and the final value
- * is likely to be correct.
+ * from different threads at the same time and the final value
+ * is unlikely to be correct.
  */
 class ScatterNDDisjointAndNoReduction final : public CudaKernel {
  public:
@@ -27,7 +27,7 @@ class ScatterNDDisjointAndNoReduction final : public CudaKernel {
 /**
  * This is an implementation derived from the first one.
  * It does atomic operation to handle conflicts.
- * The result is likely to be correction if the reduction is none
+ * The result is unlikely to be correct if the reduction is none
  * as there is no guarantee that the final value will be the one
  * corresponding to the highest visited index.
  * TODO: change the implementation of avoid conflicts.
