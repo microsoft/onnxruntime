@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 import re
-import sys
 from dataclasses import dataclass
 from itertools import product
 

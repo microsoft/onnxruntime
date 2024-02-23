@@ -62,7 +62,7 @@ KE_REGISTER(m) {
 #ifdef USE_COMPOSABLE_KERNEL
     return true;
 #else
-        return false;
+    return false;
 #endif
   });
 
@@ -70,7 +70,7 @@ KE_REGISTER(m) {
 #ifdef USE_HIPBLASLT
     return true;
 #else
-        return false;
+    return false;
 #endif
   });
 
@@ -78,7 +78,7 @@ KE_REGISTER(m) {
 #ifndef DISABLE_FLOAT8_TYPES
     return true;
 #else
-        return false;
+    return false;
 #endif
   });
 }

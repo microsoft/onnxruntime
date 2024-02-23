@@ -6,18 +6,18 @@
 """This file provides wrapper for native _kernel_explorer.so library and benchmark reporter for operator"""
 
 from __future__ import annotations
-from typing import Callable
 
 import ctypes
-import os
 import json
+import os
 import sys
 from abc import abstractmethod
-from argparse import ArgumentParser, Action
+from argparse import Action, ArgumentParser
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from functools import wraps
+from typing import Callable
 
 build_dir = os.environ.get("KERNEL_EXPLORER_BUILD_DIR", None)
 if build_dir is None:
@@ -71,7 +71,7 @@ _libraries = [ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL) for lib_path in lib
 del library_files_to_load, library_to_load
 
 # pylint: disable=wrong-import-position, disable=unused-import
-import _kernel_explorer  # noqa: E402, F401
+import _kernel_explorer  # noqa: E402
 
 # pylint: disable=wrong-import-position, disable=unused-import, disable=wildcard-import
 from _kernel_explorer import *  # noqa: F403, E402
@@ -84,8 +84,8 @@ class _KeContext:
     pattern = "*"
 
     # mapping the module to dispatch to
-    dispatchable = {}
-    instance_dispatchable = {}  # can be filter with pattern
+    dispatchable: dict | None = None
+    instance_dispatchable: dict | None = None  # can be filter with pattern
 
     dispatch_depth = 0
 
@@ -94,6 +94,8 @@ class _KeContext:
 
 
 _ke_context = _KeContext()
+_ke_context.dispatchable = {}
+_ke_context.instance_dispatchable = {}
 
 
 # Benchmark Reporter
@@ -300,7 +302,8 @@ def dispatchable(f: Callable | None = None, *, pattern_arg: int | None = None):
             if _ke_context.save_tuning_results is not None:
                 try:
                     trs = _kernel_explorer.get_collected_tuning_results()
-                    json.dump(trs, open(_ke_context.save_tuning_results, "x"))
+                    with open(_ke_context.save_tuning_results, "x") as f:
+                        json.dump(trs, f)
                 finally:
                     pass
 
@@ -313,8 +316,9 @@ def dispatchable(f: Callable | None = None, *, pattern_arg: int | None = None):
                     return ret
                 try:
                     trs = _kernel_explorer.get_collected_tuning_results()
-                finally:
                     return trs
+                finally:
+                    pass
 
         return ret
 

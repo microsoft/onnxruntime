@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import sys
 from dataclasses import dataclass
 
 import kernel_explorer as ke
