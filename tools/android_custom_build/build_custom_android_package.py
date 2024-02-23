@@ -93,7 +93,7 @@ def parse_args():
         default=[],
         help="An environment variable definition to set when running the Docker container. "
         "This may be specified multiple times. The values are provided to `docker run` via the --env option. "
-        "Refer to the `docker run` --env documentation for more information."
+        "Refer to the `docker run` --env documentation for more information.",
     )
 
     parser.add_argument(
