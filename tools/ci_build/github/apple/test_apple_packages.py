@@ -130,6 +130,10 @@ def _test_apple_packages(args):
 
             simulator_device_info = json.loads(simulator_device_info)
 
+            # Xcode UI tests seem to be flaky: https://github.com/orgs/community/discussions/68807
+            # Add a couple of retries in the optimistic hope this error is transient.
+            #   ios_package_testUITests-Runner Failed to initialize for UI testing:
+            #   Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 "Timed out while loading Accessibility."
             subprocess.run(
                 [
                     "xcrun",
@@ -141,6 +145,8 @@ def _test_apple_packages(args):
                     "ios_package_test",
                     "-destination",
                     f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
+                    "-retry-tests-on-failure",
+                    "-test-iterations 3"
                 ],
                 shell=False,
                 check=True,
