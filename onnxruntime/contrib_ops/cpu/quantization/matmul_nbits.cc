@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdint>
+#include <type_traits>
+#include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
@@ -9,6 +12,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
+#include "matmul_nbits_impl.h"
 
 #ifdef ORT_NEURAL_SPEED
 #include "contrib_ops/cpu/quantization/neural_speed_gemm.h"
@@ -258,10 +262,13 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->Input<Tensor>(3);
+  const Tensor* reorder_idx = ctx->Input<Tensor>(4);
+
   const auto* scales_data = scales->Data<float>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -281,8 +288,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  const bool has_single_b_matrix = std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(),
-                                               [](size_t offset) { return offset == 0; });
+  const bool has_single_b_matrix = (reorder_idx_data == nullptr) &&
+                                   (!zero_points || !zero_points->IsDataType<float>()) && std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(), [](size_t offset) { return offset == 0; });
 
   if (has_single_b_matrix) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
@@ -328,22 +335,50 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const uint8_t* b_data = b->Data<uint8_t>();
 
   const size_t ldb = helper.Ldb(true);
-
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
-  // dequantize b, only 4b quantization is supported for now
-  MlasDequantizeBlockwise<float, 4>(
-      tmp_b_data_ptr.get(),               // dequantized output
-      b_data,                             // quantized input
-      scales_data,                        // quantization scales
-      zero_points_data,                   // quantization zero points
-      static_cast<int32_t>(block_size_),  // quantization block size
-      column_wise_quant_,                 // columnwise quantization or row-wise
-      static_cast<int32_t>(K_),           // number of rows in quantized input
-      static_cast<int32_t>(N_),           // number of columns in quantized input
-      thread_pool);
-
+  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
+    // dequantize b, only 4b quantization is supported for now
+    MlasDequantizeBlockwise<float, 4>(
+        tmp_b_data_ptr.get(),                           // dequantized output
+        b_data,                                         // quantized input
+        scales_data,                                    // quantization scales
+        static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+        static_cast<int32_t>(block_size_),              // quantization block size
+        column_wise_quant_,                             // columnwise quantization or row-wise
+        static_cast<int32_t>(K_),                       // number of rows in quantized input
+        static_cast<int32_t>(N_),                       // number of columns in quantized input
+        thread_pool);
+  } else {
+    ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
+    // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
+    if ((zero_points && zero_points->IsDataType<float>())) {
+      DequantizeBlockwise<float, float>(
+          tmp_b_data_ptr.get(),                         // dequantized output
+          b_data,                                       // quantized input
+          scales_data,                                  // quantization scales
+          static_cast<const float*>(zero_points_data),  // quantization zero points
+          reorder_idx_data,
+          static_cast<int32_t>(block_size_),  // quantization block size
+          column_wise_quant_,                 // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),           // number of rows in quantized input
+          static_cast<int32_t>(N_),           // number of columns in quantized input
+          thread_pool);
+    } else {
+      DequantizeBlockwise<float, uint8_t>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          reorder_idx_data,
+          static_cast<int32_t>(block_size_),  // quantization block size
+          column_wise_quant_,                 // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),           // number of rows in quantized input
+          static_cast<int32_t>(N_),           // number of columns in quantized input
+          thread_pool);
+    }
+  }
 #if 0  // for debug
   auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
   MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);

@@ -214,7 +214,7 @@ class HQQWeightOnlyQuantizer:
             ori_int_tensor = ori_int_tensor.T
             pack_tensor = pack_tensor.T
         if bits in [2, 4, 8]:
-            compress_ratio = 32 // bits
+            compress_ratio = pack_tensor.dtype.itemsize * 8 // bits
             for j in range(0, compress_ratio):
                 pack_tensor[0:] |= ori_int_tensor[j::compress_ratio] << (bits * (j))
         else:
@@ -224,15 +224,14 @@ class HQQWeightOnlyQuantizer:
     def quantize_internal(
         self, tensor, bits=4, channel_wise=True, group_size=64, optimize=True, round_zero=True, axis=1
     ):
-        if group_size is not None:
-            assert is_divisible(tensor.numel(), group_size), (
-                "group_size should be divisble by the total tensor dimensions. shape: "
-                + str(tensor.shape)
-                + ", group_size: "
-                + str(group_size)
-            )
-
         weight = tensor.float()
+        ori_shape = weight.shape
+
+        pad_len = (group_size - ori_shape[axis] % group_size) % group_size
+        if axis == 1:
+            weight = torch.nn.functional.pad(weight, (0, pad_len), "constant", 0)
+        else:
+            weight = torch.nn.functional.pad(weight, (0, 0, 0, pad_len), "constant", 0)
         shape = weight.shape
 
         # Reshape for grouping
@@ -254,6 +253,11 @@ class HQQWeightOnlyQuantizer:
         # Note: here we work with the inverse of the scale to avoid division and quantize instead via weight*scale + zero, the scale is inverted later on.
         # clamp to avoid half-precision problems
         scale = (max_v / (_max - _min)).clamp(max=2e4)
+        #!!!!!!!!!!!!!!!
+        min_max_axis = _max - _min
+        if (min_max_axis == 0).sum().item() > 0:
+            min_max_axis[min_max_axis == 0] = max_v
+            scale = (max_v / min_max_axis).clamp(max=2e4)
         zero = -_min * scale
 
         if round_zero:
@@ -278,7 +282,7 @@ class HQQWeightOnlyQuantizer:
         # cleanup
         del weight, _min, _max
 
-        return w_q.T, scale.T.to(tensor.dtype), zero.T.to(tensor.dtype)
+        return w_q, scale.to(tensor.dtype), zero.to(tensor.dtype)
 
     def quantize(self, node: NodeProto, graph_stack: list[GraphProto]):
         """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
@@ -302,10 +306,13 @@ class HQQWeightOnlyQuantizer:
         quant_weight_torch, scales_torch, zero_points_torch = self.quantize_internal(
             b_array_torch.T, bits=self.config.bits, group_size=self.config.block_size
         )
+        quant_weight_torch = quant_weight_torch.contiguous()
+        scales_torch = scales_torch.contiguous()
+        zero_points_torch = zero_points_torch.contiguous()
 
         packed_torch = torch.zeros(
-            (quant_weight_torch.shape[0] // 8, quant_weight_torch.shape[1]),
-            dtype=torch.int32,
+            (quant_weight_torch.shape[0], quant_weight_torch.shape[1] // 2),
+            dtype=torch.uint8,
             device=quant_weight_torch.device,
         )
         self.pack_on_row_fast_248bit(packed_torch, quant_weight_torch, self.config.bits)
@@ -334,7 +341,6 @@ class HQQWeightOnlyQuantizer:
         kwargs["N"] = cols
         kwargs["bits"] = self.config.bits
         kwargs["block_size"] = self.config.block_size
-        kwargs["packing"] = "hqq"
 
         matmul_q4_node = onnx.helper.make_node(
             "MatMulNBits",
@@ -452,8 +458,6 @@ class MatMul4BitsQuantizer:
     def __init__(
         self,
         model: ModelProto | str,
-        block_size: int,
-        is_symmetric: bool,
         accuracy_level: int | None = None,
         nodes_to_exclude=None,
         algo_config: WeightOnlyQuantConfig = None,
@@ -462,12 +466,12 @@ class MatMul4BitsQuantizer:
             nodes_to_exclude = []
         self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
         self.model_path = model if isinstance(model, str) else None
-        self.block_size = block_size
-        self.is_symmetric = is_symmetric
         self.accuracy_level = accuracy_level
         self.nodes_to_exclude = set(nodes_to_exclude)
-        self.algo_config = algo_config
         self.node_quantizer = None
+        if algo_config is None:
+            algo_config = DefaultWeightOnlyQuantConfig(block_size=32, is_symmetric=False, accuracy_level=accuracy_level)
+        self.algo_config = algo_config
         if algo_config.algorithm == "HQQ":
             self.node_quantizer = HQQWeightOnlyQuantizer(self.algo_config)
         elif algo_config.algorithm == "DEFAULT":
@@ -523,8 +527,8 @@ class MatMul4BitsQuantizer:
         q4_node_config = {}
         template_config_q4 = {
             "bits": 4,
-            "group_size": self.block_size,
-            "scheme": "sym" if self.is_symmetric else "asym",
+            "group_size": self.algo_config.block_size,
+            "scheme": "sym" if self.algo_config.is_symmetric else "asym",
         }
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
@@ -688,13 +692,15 @@ if __name__ == "__main__":
         quant_config = DefaultWeightOnlyQuantConfig(
             block_size=args.block_size, is_symmetric=args.symmetric, accuracy_level=args.accuracy_level
         )
+    elif args.quant_method == "rtn":
+        quant_config = RTNWeightOnlyQuantConfig()
+    elif args.quant_method == "gptq":
+        quant_config = GPTQWeightOnlyQuantConfig(block_size=args.block_size)
     else:
-        quant_config = None
+        raise ValueError(f"Unsupported quantization method: {args.quant_method}")
 
     quant = MatMul4BitsQuantizer(
         model=model,
-        block_size=args.block_size,
-        is_symmetric=args.symmetric,
         accuracy_level=args.accuracy_level,
         nodes_to_exclude=args.nodes_to_exclude,
         algo_config=quant_config,
