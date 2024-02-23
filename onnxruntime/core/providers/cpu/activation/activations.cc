@@ -113,13 +113,11 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
   return Status(ONNXRUNTIME, FAIL, "unknown kernel type");
 }
 
-template
-Status ElementWiseRangedTransform<float>::Create(const std::string& type, const NodeAttributes& attributes,
-std::unique_ptr<ElementWiseRangedTransform<float>>& out);
+template Status ElementWiseRangedTransform<float>::Create(const std::string& type, const NodeAttributes& attributes,
+                                                          std::unique_ptr<ElementWiseRangedTransform<float>>& out);
 
-template
-Status ElementWiseRangedTransform<MLFloat16>::Create(const std::string& type, const NodeAttributes& attributes,
-std::unique_ptr<ElementWiseRangedTransform<MLFloat16>>& out);
+template Status ElementWiseRangedTransform<MLFloat16>::Create(const std::string& type, const NodeAttributes& attributes,
+                                                              std::unique_ptr<ElementWiseRangedTransform<MLFloat16>>& out);
 }  // namespace functors
 
 namespace functors {
