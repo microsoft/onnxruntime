@@ -7652,7 +7652,7 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
       builder.AddNode("Reshape", {data_arg, reshape_arg}, {reshape_out});
 
       // Create Gather-1 Ops
-      auto* gather_index_1 = builder.MakeInitializer<int64_t>({{1}}, {static_cast<int64_t>(-2)});
+      auto* gather_index_1 = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(-2)});
       auto* gather_out_1 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
       builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
           .AddAttribute("axis", static_cast<int64_t>(2));
@@ -7663,7 +7663,7 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
 
       // Create Gather-2 Ops
-      auto* gather_index_2 = builder.MakeInitializer<int64_t>({{1}}, {static_cast<int64_t>(-1)});
+      auto* gather_index_2 = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(-1)});
       auto* gather_out_2 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
       builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
           .AddAttribute("axis", static_cast<int64_t>(2));
@@ -7730,7 +7730,7 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Invalid) {
       builder.AddNode("Reshape", {data_arg, reshape_arg}, {reshape_out});
 
       // Create Gather-1 Ops
-      auto* gather_index_1 = builder.MakeInitializer<int64_t>({{1}}, {static_cast<int64_t>(-2)});
+      auto* gather_index_1 = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(-2)});
       auto* gather_out_1 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
       builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
           .AddAttribute("axis", static_cast<int64_t>(2));
