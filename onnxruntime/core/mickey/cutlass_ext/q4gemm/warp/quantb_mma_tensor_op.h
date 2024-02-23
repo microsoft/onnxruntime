@@ -68,81 +68,6 @@ namespace warp {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace internal {
-
-template <typename T, typename S, int N, FloatRoundStyle Round>
-struct ConvertAndPack {
-
-  using Converter = NumericArrayConverter<T, S, N, Round>;
-
-  CUTLASS_HOST_DEVICE
-  Array<T, N> operator()(Array<S, N> const &source) {
-    Converter converter;
-
-    return converter(source);
-  }
-};
-
-template <typename T, int N, FloatRoundStyle Round>
-struct ConvertAndPack<T, T, N, Round> {
-
-  CUTLASS_HOST_DEVICE
-  Array<T, N> operator()(Array<T, N> const &source) {
-    return source;
-  }
-};
-
-template <int N, FloatRoundStyle Round>
-struct ConvertAndPack<bfloat16_t, float, N, Round> {
-
-  using Converter = NumericArrayConverter<bfloat16_t, float, N, Round>;
-
-  CUTLASS_HOST_DEVICE
-  Array<bfloat16_t, N> operator()(Array<float, N> const &source) {
-    Converter converter;
-
-    Array<float, N> tmp;
-
-    CUTLASS_PRAGMA_UNROLL
-    for (int i = 0; i < N; ++i) {
-      int idx = (((i << 1) & 2) | ((i >> 1) & 1) | (i & 0xfffffffc));
-      tmp[i] = source[idx];
-    }
-
-    return converter(tmp);
-  }
-};
-
-template <int N, FloatRoundStyle Round>
-struct ConvertAndPack<half_t, float, N, Round> {
-
-  using Converter = NumericArrayConverter<half_t, float, N, Round>;
-
-  CUTLASS_HOST_DEVICE
-  Array<half_t, N> operator()(Array<float, N> const &source) {
-    Converter converter;
-
-    Array<float, N> tmp;
-
-    CUTLASS_PRAGMA_UNROLL
-    for (int i = 0; i < N; ++i) {
-      int idx = (((i << 1) & 2) | ((i >> 1) & 1) | (i & 0xfffffffc));
-      tmp[i] = source[idx];
-    }
-
-    return converter(tmp);
-  }
-};
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-
-} // namespace internal
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math instructions.
 template <
   /// Size of the Gemm problem - concept: gemm::GemmShape<>
@@ -292,13 +217,13 @@ public:
 
   // TODO This is an expanding iterator, it needs to replicate the quantization parameters
   // to all threads in the warp.
-  using IteratorQScale = QuantBMetaMmaTensorOpTileIterator<
+  using IteratorQMeta = QuantBMetaMmaTensorOpTileIterator<
     MatrixShape<Shape::kK, Shape::kN>, QuantBlocking, ElementQScale, SmemLayoutQScale,
     ElementQOffset, SmemLayoutQOffset,
     ArchMmaOperator, kThreadCount, kPartitionsK>;
 
-  using FragmentQScale = typename IteratorQScale::FragmentScale;
-  using FragmentQOffset = typename IteratorQScale::FragmentOffset;
+  using FragmentQScale = typename IteratorQMeta::FragmentScale;
+  using FragmentQOffset = typename IteratorQMeta::FragmentOffset;
 
   /// Number of mma operations performed
   using MmaIterations = MatrixShape<
@@ -419,7 +344,7 @@ public:
 
     Array<uint8_t, FragmentB::kElements * 2> const *ptr_B =
         reinterpret_cast<Array<uint8_t, FragmentB::kElements * 2> const *>(&B);
-    IteratorQScale::dequant(scales, offsets, *ptr_B, dst_B);
+    IteratorQMeta::dequant(scales, offsets, *ptr_B, dst_B);
   }
 };
 

@@ -327,7 +327,7 @@ class QuantBMmaBase {
   typename Operator::IteratorB warp_tile_iterator_B_;
 
   /// Iterator to load a warp-scoped tile of quant scales from shared memory
-  typename Operator::IteratorQScale warp_tile_iterator_QScale_;
+  typename Operator::IteratorQMeta warp_tile_iterator_QScale_;
 
 public:
 

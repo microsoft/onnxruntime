@@ -197,7 +197,7 @@ public:
       //    16b gemm (kNumBsPerCoreTileFragement == 2)
       //    2 B operand tiles per mma (kBTilesPerMma == 2)
       //    (1,n) quantization blocking
-      // The weight and offset tensor is prepacked to reduce load instructions.
+      // The scale and offset tensors are prepacked to reduce the number of load instructions.
       return make_Coord((lane_id % CoreTile::kContiguous) * 4,
          lane_id / CoreTile::kContiguous);
     } else {
@@ -356,7 +356,7 @@ public:
       //    16b gemm (kNumBsPerCoreTileFragement == 2)
       //    2 B operand tiles per mma (kBTilesPerMma == 2)
       //    (1,n) quantization blocking
-      // The weight and offset tensor is prepacked to reduce load instructions.
+      // The scale and offset tensors are prepacked to reduce the number of load instructions needed
       const int row = lane_position_.row();
       const int column = lane_position_.column() / BlockingShape::kColumn;
 
@@ -545,14 +545,6 @@ public:
   /// Advances the pointer
   CUTLASS_HOST_DEVICE
   QuantBMetaMmaTensorOpTileIterator &operator++() {
-    // This is for operand B, so advance on the K dimension
-    lane_position_ += make_Coord(MetaTile::TileShapeB::kRow, 0);
-    return *this;
-  }
-
-  /// Advances the pointer
-  CUTLASS_HOST_DEVICE
-  QuantBMetaMmaTensorOpTileIterator &operator--() {
     // This is for operand B, so advance on the K dimension
     lane_position_ += make_Coord(MetaTile::TileShapeB::kRow, 0);
     return *this;
@@ -756,14 +748,6 @@ public:
   /// Advances the pointer
   CUTLASS_HOST_DEVICE
   QuantBMetaMmaTensorOpTileIterator &operator++() {
-    // This is for operand B, so advance on the K dimension
-    lane_position_ += make_Coord(MetaTile::TileShapeB::kRow, 0);
-    return *this;
-  }
-
-  /// Advances the pointer
-  CUTLASS_HOST_DEVICE
-  QuantBMetaMmaTensorOpTileIterator &operator--() {
     // This is for operand B, so advance on the K dimension
     lane_position_ += make_Coord(MetaTile::TileShapeB::kRow, 0);
     return *this;
