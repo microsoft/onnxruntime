@@ -26,13 +26,18 @@ namespace rocm {
 
 using onnxruntime::rocm::CKDataTypeAdaptor;
 
-using Swish = ck::tensor_operation::element_wise::Swish;
+// The SiLU function is a special case of Swish function,
+// The Swish function is parametrized by b, which is set to 1.0 for SiLU. They are defined as:
+// SiLU(x) = x * sigmoid(x)
+// Swish(x) = x * sigmoid(bx)
+// The default value of b is 1.0 in ck::tensor_operation::element_wise::Swish function. We treat them as the same function here.
+using Silu = ck::tensor_operation::element_wise::Swish;
 using Pass = ck::tensor_operation::element_wise::PassThrough;
 
 constexpr int Rank = 5;
 constexpr int NumReduceDim = 3;
 
-template <typename T, typename AccT, bool WithSwish>
+template <typename T, typename AccT, bool WithSilu>
 auto GetCKGroupNormNHWCTypeStringAndOps() {
   using XDataType = typename CKDataTypeAdaptor<T>::type;
   using YDataType = typename CKDataTypeAdaptor<T>::type;
@@ -40,26 +45,30 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
   using GammaDataType = float;
   using BetaDataType = float;
 
-  using Activation = std::conditional_t<WithSwish, Swish, Pass>;
+  using Activation = std::conditional_t<WithSilu, Silu, Pass>;
 
-  std::vector<std::pair<std::string, onnxruntime::rocm::tunable::Op<GroupNormNHWCParams<T>>>> ret;
+  std::vector<std::pair<std::string, onnxruntime::rocm::tunable::Op<GroupNormNHWCTunableParams<T>>>> ret;
   for (auto&& impl : internal::GetDeviceGroupNormInstances<XDataType, GammaDataType, BetaDataType, YDataType,
                                                            SaveMeanInvStdDataType, Activation, Rank, NumReduceDim>()) {
-    std::string swish_suffix = WithSwish ? "_Swish" : "_Pass";
-    auto type_string = onnxruntime::MakeString(impl->GetTypeString()) + swish_suffix;
+    std::string silu_suffix = WithSilu ? "_Silu" : "_Pass";
+    auto type_string = onnxruntime::MakeString(impl->GetTypeString()) + silu_suffix;
     auto invoker = impl->MakeInvokerPointer();
 
-    auto ck_group_norm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GroupNormNHWCParams<T>* params) -> Status {
-      if constexpr (WithSwish) {
+    auto ck_group_norm_op = [impl = std::move(impl), invoker = std::move(invoker)](
+                                const GroupNormNHWCTunableParams<T>* params) -> Status {
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((params->skip != nullptr || params->bias != nullptr),
+                                                "Input skip or bias is not supported by composable kernel.");
+      if constexpr (WithSilu) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            !params->withSwish, "Swish version only support groupnorm with swish");
+            !params->use_silu, "Silu version only support groupnorm with silu");
       } else {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->withSwish, "Pass version only support groupnorm without swish");
+            params->use_silu, "Pass version only support groupnorm without silu");
       }
-      std::vector<ck::index_t> in_lengths{params->n, params->h, params->w, params->groups, params->cPerGroup};
-      std::vector<ck::index_t> in_out_strides{params->h * params->w * params->c, params->w * params->c, params->c, params->cPerGroup, 1};
-      std::vector<ck::index_t> gamma_beta_strides{0, 0, 0, params->cPerGroup, 1};
+      std::vector<ck::index_t> in_lengths{params->n, params->h, params->w, params->groups, params->channels_per_group};
+      std::vector<ck::index_t> in_out_strides{params->h * params->w * params->c, params->w * params->c,
+                                              params->c, params->channels_per_group, 1};
+      std::vector<ck::index_t> gamma_beta_strides{0, 0, 0, params->channels_per_group, 1};
       std::vector<ck::index_t> reduce_dims{1, 2, 4};
 
       auto activation = Activation{};

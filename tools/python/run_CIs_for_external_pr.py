@@ -93,6 +93,8 @@ def main():
         # checks
         "onnxruntime-python-checks-ci-pipeline",
         "onnxruntime-binary-size-checks-ci-pipeline",
+        # big models
+        "Big Models",
         # not currently required, but running ensures we're hitting all mobile platforms
         "Android CI Pipeline",
         "iOS CI Pipeline",
