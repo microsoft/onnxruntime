@@ -56,12 +56,13 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
+    NodeArg* node_output = node.MutableOutputDefs()[0];
     const Node& next_node = *(node.OutputNodesBegin());
 
-    NodeArg* node_output = node.MutableOutputDefs()[0];
     auto data_type = node_output->TypeAsProto()->tensor_type().elem_type();
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      // MLFloat16 specializations are implemented for *only* Rely and LeakyRelu in
+      // FusedGemm<MLFloat16> is registered in fused_gemm.cc, but underlying
+      // MLFloat16 specializations are implemented for *only* Relu and LeakyRelu in
       // fp16_activations.h, and they depend on MLAS_F16VEC_INTRINSICS_SUPPORTED.
       // In this case we can reliably turn on fp16 FusedGemm.
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -74,7 +75,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
     }
     else if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      // No other ElementWiseRangedTransform<T>::Create methods are defined!
+      // FusedGemm<T> only registers float and MLFLoat16 kernels in fused_gemm.cc.
       continue;
     }
 
