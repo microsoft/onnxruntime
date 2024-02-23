@@ -42,6 +42,9 @@ class ORTGenerator:
 
     def append_static_inputs(self, batch_size):
         # Only use this function with GQA and with use_cuda_graph=True
+        if batch_size in self.static_inputs_map:
+            return
+
         cpu_device = torch.device("cpu")
         cuda_device = torch.device("cuda", self.device_id)
 
@@ -211,6 +214,8 @@ class ORTGenerator:
     def generate_impl(self, encodings_dict, max_length, cuda_graph_annotation):
         inputs, outputs = self.get_initial_inputs_and_outputs(encodings_dict)
 
+        print(inputs["input_ids"])
+
         all_token_ids = inputs["input_ids"].clone()
         batch_size, sequence_length = all_token_ids.shape
 
@@ -325,34 +330,49 @@ class ORTGenerator:
         encodings_dict["input_ids"] = torch.randint(0, 50264, (batch_size, sequence_length), dtype=torch.int32).tolist()
         encodings_dict["attention_mask"] = torch.ones((batch_size, sequence_length), dtype=torch.int32).tolist()
 
-        # bugbug: ensure full run
         return self.generate_impl(encodings_dict, max_length, cuda_graph_annotation)
 
 
 def run_phi2(
-    onnx_model_path, use_buffer_share, device_id, packed_kv=False, use_fp16=True, use_step=False, use_cuda_graph=False
+    onnx_model_path,
+    use_buffer_share,
+    device_id,
+    packed_kv=False,
+    use_fp16=True,
+    use_step=False,
+    use_cuda_graph=False,
+    run_benchmark=False,
 ):
+    generator = ORTGenerator(onnx_model_path)
+    generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv, use_step, use_cuda_graph)
+
+    def simple_run(prompt):
+        example_batch_size = len(prompt)
+        if use_cuda_graph:
+            generator.append_static_inputs(batch_size=example_batch_size)
+        texts = generator.generate(prompt, max_length=100, cuda_graph_annotation=example_batch_size)
+
+        for i in range(len(texts)):
+            print("Prompt: ", prompt[i])
+            print("Texts: ", texts[i])
+
     prompt = [
         '''```python
     def print_prime(n):
     """
     Print all primes between 1 and n
-    """'''
+    """''', "Give an example of using ONNX Runtime to run a model.",
     ]
 
-    generator = ORTGenerator(onnx_model_path)
-    generator.create_session(device_id, use_fp16, use_buffer_share, packed_kv, use_step, use_cuda_graph)
-    example_batch_size = 1
-    generator.append_static_inputs(batch_size=example_batch_size)
-    texts = generator.generate(prompt, max_length=210, cuda_graph_annotation=example_batch_size)
+    simple_run([prompt[0]])
+    # bugbug: batch 2 has different result
+    simple_run(prompt)
+    simple_run([prompt[1]])
 
-    for i in range(len(texts)):
-        print("Prompt: ", prompt[i])
-        print("Texts: ", texts[i])
-
-    generator.append_static_inputs(batch_size=8)
-    for batch_size in [1, 8]:
-        for sequence_length in [128]:
-            prompt_shape = (batch_size, sequence_length)
-            token_num = 32
-            texts = generator.generate_benchmark(prompt_shape, token_num, cuda_graph_annotation=batch_size)
+    if run_benchmark:
+        token_num = 256
+        for batch_size in [1, 2, 4, 8, 16]:
+            generator.append_static_inputs(batch_size)
+            for sequence_length in [16, 64, 256, 1024]:
+                prompt_shape = (batch_size, sequence_length)
+                texts = generator.generate_benchmark(prompt_shape, token_num, cuda_graph_annotation=batch_size)

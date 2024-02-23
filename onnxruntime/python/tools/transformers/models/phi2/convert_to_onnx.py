@@ -328,6 +328,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--run_benchmark",
+        required=False,
+        action="store_true",
+        help="Run ORT benchmark",
+    )
+
+    parser.add_argument(
         "--skip_export",
         required=False,
         action="store_true",
@@ -523,6 +530,7 @@ def main():
                 device_id=args.device_id,
                 use_step=True,
                 use_cuda_graph=args.use_cuda_graph,
+                run_benchmark=args.run_benchmark,
             )
         if args.int4_gpu_sm8x:
             logging.info("Running int4_gpu_sm8x example...")
@@ -532,6 +540,7 @@ def main():
                 device_id=args.device_id,
                 use_step=True,
                 use_cuda_graph=args.use_cuda_graph,
+                run_benchmark=args.run_benchmark,
             )
         if args.fp32_gpu:
             logging.info("Running fp32_gpu example...")
@@ -541,6 +550,7 @@ def main():
                 device_id=args.device_id,
                 packed_kv=True,
                 use_fp16=False,
+                run_benchmark=args.run_benchmark,
             )
         if args.fp16_gpu:
             logging.info("Running fp16_gpu example...")
@@ -549,6 +559,7 @@ def main():
                 use_buffer_share=False,
                 device_id=args.device_id,
                 packed_kv=True,
+                run_benchmark=args.run_benchmark,
             )
         if args.int4_gpu:
             logging.info("Running int4_gpu example...")
@@ -557,6 +568,7 @@ def main():
                 use_buffer_share=False,
                 device_id=args.device_id,
                 packed_kv=True,
+                run_benchmark=args.run_benchmark,
             )
         if args.fp32_cpu or args.int4_cpu or args.fp16_vllm or args.int4_vllm:
             raise NotImplementedError("CPU/vllm inference example is not implemented yet.")
