@@ -258,6 +258,7 @@ def profile_group_norm_func(
         )
 
 
+@ke.dispatchable
 def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, silu=True, has_skip=True):
     with ke.benchmark():
         for func in dtype_to_funcs(dtype):
