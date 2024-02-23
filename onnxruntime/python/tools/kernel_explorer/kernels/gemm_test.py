@@ -11,7 +11,6 @@ import kernel_explorer as ke
 import numpy as np
 import pytest
 from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, matmul, transab_to_suffix
-from ml_dtypes import float8_e4m3fn
 
 
 @ke.dispatchable
