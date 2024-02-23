@@ -840,15 +840,9 @@ if (winml_is_inbox)
     # Attempt to copy linker flags 
     get_target_property(link_flags ${target} LINK_FLAGS)
     
-    # Always at least set link flags for XFGCheck    
-    # "/DEBUGTYPE:CV,FIXUP" is needed for layermap analysis tools, which in turn
-    # requires non-incremental linking. This is required for OS system components.
-    if (link_flags MATCHES ".*NOTFOUND")
-      set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "/DEBUGTYPE:CV,FIXUP /INCREMENTAL:NO")
-    else()
-      set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags} /DEBUGTYPE:CV,FIXUP /INCREMENTAL:NO")
+    if (NOT link_flags MATCHES ".*NOTFOUND")
+      set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags}")
     endif()
-
   endfunction()
 
   if (WAI_ARCH STREQUAL x64 OR WAI_ARCH STREQUAL arm64)
