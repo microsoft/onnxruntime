@@ -38,8 +38,9 @@ class TestQuantIssues(unittest.TestCase):
         onnx_path = os.path.join(folder, "qdq_minimal_model.onnx")
         assert os.path.exists(onnx_path), "unable to find {onnx_path!r}"
 
-        import onnxruntime.quantization as oq
         import numpy as np
+
+        import onnxruntime.quantization as oq
 
         class Mock:
             def __init__(self):
