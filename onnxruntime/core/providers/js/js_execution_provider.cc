@@ -756,7 +756,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer
 JsExecutionProvider::~JsExecutionProvider() {
 }
 
-Status JsExecutionProvider::OnRunStart() {
+Status JsExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
     LOGS(*GetLogger(), INFO) << "Capturing the webgpu graph for this model";
     EM_ASM({ Module.jsepCaptureBegin(); });
@@ -764,7 +764,7 @@ Status JsExecutionProvider::OnRunStart() {
   return Status::OK();
 }
 
-Status JsExecutionProvider::OnRunEnd(bool sync_stream) {
+Status JsExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
   if (IsGraphCaptureEnabled() && !IsGraphCaptured()) {
     if (IsGraphCaptureAllowed()) {
       EM_ASM({ Module.jsepCaptureEnd(); });
