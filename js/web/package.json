@@ -63,8 +63,7 @@
     "minimatch": "^7.4.2",
     "minimist": "^1.2.8",
     "numpy-parser": "^1.2.3",
-    "strip-json-comments": "^5.0.0",
-    "@petamoriken/float16": "^3.8.4"
+    "strip-json-comments": "^5.0.0"
   },
   "main": "dist/ort-web.node.js",
   "exports": {
