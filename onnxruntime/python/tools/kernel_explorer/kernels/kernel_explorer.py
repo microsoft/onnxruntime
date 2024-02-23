@@ -184,6 +184,18 @@ def report(status):
     _reporter.receive(status)
 
 
+def set_ort_severity(v):
+    v = int(v)
+    onnxruntime_pybind11_state.set_default_logger_severity(v)
+    return v
+
+
+def set_ort_verbosity(v):
+    v = int(v)
+    onnxruntime_pybind11_state.set_default_logger_verbosity(v)
+    return v
+
+
 def register_common_arguments(parser: ArgumentParser):
     class SortAction(Action):
         def __init__(self, option_strings, dest, default=False, help=None):
@@ -192,16 +204,6 @@ def register_common_arguments(parser: ArgumentParser):
         def __call__(self, parser, namespace, values, option_string=None):
             setattr(namespace, self.dest, True)
             _ke_context.sort = True
-
-    def set_ort_severity(v):
-        v = int(v)
-        onnxruntime_pybind11_state.set_default_logger_severity(v)
-        return v
-
-    def set_ort_verbosity(v):
-        v = int(v)
-        onnxruntime_pybind11_state.set_default_logger_verbosity(v)
-        return v
 
     def set_dispatch(name):
         if name in _ke_context.dispatchable:
@@ -226,13 +228,6 @@ def register_common_arguments(parser: ArgumentParser):
     def set_pattern(pattern):
         pattern = str(pattern)
         _ke_context.pattern = pattern
-
-    # class SaveTuningResultsAction(Action):
-    #     def __init__(self, option_strings, dest, default=False, help=None):
-    #         super().__init__(option_strings=option_strings, dest=dest, nargs=0, default=default, help=help)
-
-    #     def __call__(self, parser, namespace, values, option_string=None):
-    #         setattr(namespace, self.dest, True)
 
     def set_save_tuning_results(path):
         _ke_context.save_tuning_results = path
