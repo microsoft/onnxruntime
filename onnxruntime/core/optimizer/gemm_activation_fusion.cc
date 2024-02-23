@@ -73,8 +73,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       if (!is_fp16_activation_supported) {
         continue;
       }
-    }
-    else if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    } else if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       // FusedGemm<T> only registers float and MLFLoat16 kernels in fused_gemm.cc.
       continue;
     }
