@@ -69,7 +69,7 @@
 			</div>
 		</div>
 		<div class="hidden lg:block col-span-2 mx-auto min-w-[675px] min-h-[400px]">
-			<div class="tabs">
+			<div class="tabs tabs-bordered">
 				<p
 					on:mouseenter={handleClick}
 					class="tab tab-lg {activeTab === 'Python' ? 'tab-active' : ''}"
