@@ -717,7 +717,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
   return Status::OK();
 }
 
-#define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT)                                                                                                     \
+#define CASE_GET_INPUT_TENSOR(DATA_TYPE, SrcT)                                                                                                     \
   case DATA_TYPE: {                                                                                                                                \
     auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                                                    \
     if (input_tensor_ptr == nullptr) {                                                                                                             \
@@ -729,7 +729,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     break;                                                                                                                                         \
   }
 
-#define CASE_INPUT_TENSOR_CAST_GET(DATA_TYPE, SrcT, DstT)                                                                                          \
+#define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                          \
   case DATA_TYPE: {                                                                                                                                \
     auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                                                    \
     /* Return the number of elements specified by the tensor shape (all dimensions multiplied by each other). */                                   \
@@ -752,7 +752,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
   break;                                                                                                                                           \
   }
 
-#define CASE_OUTPUT_TENSOR_GET(DATA_TYPE, SrcT)                                                                                                    \
+#define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                                                                                    \
   case DATA_TYPE: {                                                                                                                                \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                                                           \
     if (output_tensor_ptr == nullptr) {                                                                                                            \
@@ -764,7 +764,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     break;                                                                                                                                         \
   }
 
-#define CASE_OUTPUT_TENSOR_CAST_GET(DATA_TYPE, SrcT, DstT)                                                                                         \
+#define CASE_GET_CAST_OUTPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                         \
   case DATA_TYPE: {                                                                                                                                \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                                                           \
     /* Return the number of elements specified by the tensor shape (all dimensions multiplied by each other). */                                   \
@@ -788,7 +788,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     break;                                                                                                                                         \
   }
 
-#define CASE_TENSOR_COPY(DATA_TYPE, DstT)                                                                                                          \
+#define CASE_COPY_TENSOR(DATA_TYPE, DstT)                                                                                                          \
   case DATA_TYPE: {                                                                                                                                \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<DstT>();                                                                           \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                            \
@@ -797,7 +797,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     break;                                                                                                                                         \
   }
 
-#define CASE_TENSOR_CAST(DATA_TYPE, SrcT, DstT)                                                                                                   \
+#define CASE_CAST_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                                   \
   case DATA_TYPE: {                                                                                                                               \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<DstT>();                                                                          \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                           \
@@ -862,16 +862,16 @@ Status BindContextInput(Ort::KernelContext& ctx,
     //       In the case of empty tensor, no need to do the cuda cast for int64 and double data type.
     void* data = nullptr;
     switch (tensor_type) {
-      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
-      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
-      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
-      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
-      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
-      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       // Cast int64 input to int32 input because TensorRT doesn't fully support int64
-      CASE_INPUT_TENSOR_CAST_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t, int32_t)
+      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t, int32_t)
       // Cast double input to float because TensorRT doesn't fully support double
-      CASE_INPUT_TENSOR_CAST_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
+      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "TensorRT EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
@@ -948,16 +948,16 @@ Status BindContextOutput(Ort::KernelContext& ctx,
     output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
     auto& output_tensor = output_tensors[i];
     switch (output_type) {
-      CASE_OUTPUT_TENSOR_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
-      CASE_OUTPUT_TENSOR_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
-      CASE_OUTPUT_TENSOR_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
-      CASE_OUTPUT_TENSOR_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
-      CASE_OUTPUT_TENSOR_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
-      CASE_OUTPUT_TENSOR_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       // Allocate int32 CUDA memory for int64 output type because TensorRT doesn't fully support int64
-      CASE_OUTPUT_TENSOR_CAST_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t, int32_t)
+      CASE_GET_CAST_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t, int32_t)
       // Allocate float CUDA memory for double output type because TensorRT doesn't fully support double
-      CASE_OUTPUT_TENSOR_CAST_GET(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
+      CASE_GET_CAST_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -1013,16 +1013,16 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
    *    and within the same stream, operations are guaranteed to be executed in order.
    */
   switch (output_type) {                                           
-    CASE_TENSOR_COPY(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float) 
-    CASE_TENSOR_COPY(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
-    CASE_TENSOR_COPY(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
-    CASE_TENSOR_COPY(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
-    CASE_TENSOR_COPY(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
-    CASE_TENSOR_COPY(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float) 
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
     // The allocation buffer holds the int32 output data since TRT doesn't support int64 but int32. So, we need to cast the data (int32 -> int64) for ORT kernel output.
-    CASE_TENSOR_CAST(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int32_t, int64_t)
+    CASE_CAST_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int32_t, int64_t)
     // The allocation buffer holds the float output data since TRT doesn't support double but float. So, we need to cast the data (float -> double) for ORT kernel output.
-    CASE_TENSOR_CAST(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, float, double)
+    CASE_CAST_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, float, double)
     default: {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
