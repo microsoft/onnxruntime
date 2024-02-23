@@ -3557,6 +3557,46 @@ Having this op allows runtime to do operator re-ordering to reduce compute FLOPs
 
 #endif
 
+ONNX_CONTRIB_OPERATOR_SCHEMA(ScatterNDOfShape)
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .SetDoc("ScatterND taking a shape as input")
+    .Attr(
+        "reduction",
+        "Type of reduction to apply: none (default), add, mul, max, min. "
+        "'add':  reduction using the addition operation. Ony add is supported.",
+        AttributeProto::STRING,
+        std::string("add"))
+    .Input(0, "shape", "Shape of a null tensor of size p", "tensor(int64)", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+    .Input(
+        1,
+        "indices",
+        "Tensor of rank q >= 1.",
+        "tensor(int64)",
+        OpSchema::Single,
+        true,
+        1,
+        OpSchema::NonDifferentiable)
+    .Input(
+        2,
+        "updates",
+        "Tensor of rank q + r - indices_shape[-1] - 1.",
+        "T",
+        OpSchema::Single,
+        true,
+        1,
+        OpSchema::Differentiable)
+    .Output(0, "output", "Tensor of rank r >= 1.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+    .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Constrain input and output types to any tensor type.")
+    .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+      propagateElemTypeFromInputToOutput(ctx, 2, 0);
+      bool found = false;
+      TensorShapeProto output_shape = getShapeInput(ctx, 0, found);
+      if (found) {
+        *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = output_shape;
+      }
+    });
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
