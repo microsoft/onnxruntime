@@ -573,7 +573,9 @@ export async function sessionRun(options: {
       // replace the CPU tensors in feeds into GPU tensors
       for (const name in feeds) {
         if (Object.hasOwnProperty.call(feeds, name)) {
-          feeds[name] = createGpuTensorForInput(feeds[name]);
+          if (feeds[name].size > 0) {
+            feeds[name] = createGpuTensorForInput(feeds[name]);
+          }
         }
       }
     }
@@ -582,7 +584,11 @@ export async function sessionRun(options: {
       for (const name in options.outputsMetaInfo) {
         if (Object.hasOwnProperty.call(options.outputsMetaInfo, name)) {
           const {type, dims} = options.outputsMetaInfo[name];
-          fetches[name] = createGpuTensorForOutput(type, dims);
+          if (dims.some(d => d === 0)) {
+            fetches[name] = new ort.Tensor(type, [], dims);
+          } else {
+            fetches[name] = createGpuTensorForOutput(type, dims);
+          }
         }
       }
     }
