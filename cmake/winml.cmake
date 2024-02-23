@@ -827,7 +827,6 @@ if (winml_is_inbox)
     get_target_property(compile_options ${target} COMPILE_OPTIONS)
     get_target_property(include_directories ${target} INCLUDE_DIRECTORIES)
     get_target_property(link_libraries ${target} LINK_LIBRARIES)
-    get_target_property(link_flags ${target} LINK_FLAGS)
     get_target_property(link_options ${target} LINK_OPTIONS)
 
     add_library(${new_target} SHARED ${sources})
@@ -836,8 +835,20 @@ if (winml_is_inbox)
     target_compile_options(${new_target} PRIVATE ${compile_options})
     target_include_directories(${new_target} PRIVATE ${include_directories})
     target_link_libraries(${new_target} PRIVATE ${link_libraries})
-    set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags}")
     target_link_options(${new_target} PRIVATE ${link_options})
+
+    # Attempt to copy linker flags 
+    get_target_property(link_flags ${target} LINK_FLAGS)
+    
+    # Always at least set link flags for XFGCheck    
+    # "/DEBUGTYPE:CV,FIXUP" is needed for layermap analysis tools, which in turn
+    # requires non-incremental linking. This is required for OS system components.
+    if (link_flags MATCHES ".*NOTFOUND")
+      set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "/DEBUGTYPE:CV,FIXUP /INCREMENTAL:NO")
+    else()
+      set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags} /DEBUGTYPE:CV,FIXUP /INCREMENTAL:NO")
+    endif()
+
   endfunction()
 
   if (WAI_ARCH STREQUAL x64 OR WAI_ARCH STREQUAL arm64)
