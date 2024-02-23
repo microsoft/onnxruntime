@@ -60,28 +60,22 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     NodeArg* node_output = node.MutableOutputDefs()[0];
     auto data_type = node_output->TypeAsProto()->tensor_type().elem_type();
-    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      // While, there are already fp16 kernels for Relu and LeakyRelu that could be fused with the fp16 Gemm,
-      // Gemm relies on ElementWiseRangedTransform<T> to define activation functions.
-      // ElementWiseRangedTransform<T> is an abstract templated structure, and so itself has no dependencies.
-      // However, it's static Create method will create concrete implementations, ie: Relu<T>, Softplus<T>, etc...
-      // Concrete templated activations exist for any type parameter (in activations.cc) so long as the
-      // ElementWiseRangedTransform<T>::Create has a type specialization for T (currently only float is defined).
-      // However, the parameterized implementation for MLFloat16 does not work since ElementWiseRangedTransform<T>
-      // will call into EigenVectorArrayMap<T> which does not have specializations for MLFloat16.
-      // That being said, some float16 specializations are implemented for *only* Rely and LeakyRelu in
-      // fp16_activations.h, that depend on MLAS_F16VEC_INTRINSICS_SUPPORTED. In this case we can reliably turn on
-      // fp16 FusedGemm.
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      // MLFloat16 specializations are implemented for *only* Rely and LeakyRelu in
+      // fp16_activations.h, and they depend on MLAS_F16VEC_INTRINSICS_SUPPORTED.
+      // In this case we can reliably turn on fp16 FusedGemm.
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-      const bool is_fp16_activation_supported =
-        next_node->OpType() == "Relu" ||
-        next_node->OpType() == "LeakyRelu";
+      const bool is_fp16_activation_supported = next_node->OpType() == "Relu" || next_node->OpType() == "LeakyRelu";
 #else
       const bool is_fp16_activation_supported = false;
 #endif
       if (!is_fp16_activation_supported) {
         continue;
       }
+    }
+    else if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      // No other ElementWiseRangedTransform<T>::Create methods are defined!
+      continue;
     }
 
     if (!IsFusableActivation(next_node) || next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {

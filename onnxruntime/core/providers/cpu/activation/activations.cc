@@ -81,6 +81,10 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
     return Status::OK();                         \
   }
 
+  // ElementWiseRangedTransform<T>::Create instantiates concrete implementations, ie: Relu<T>, Softplus<T>, etc...
+  // Concrete classes exist for any type parameter but MLFloat16 does not work because
+  // ElementWiseRangedTransform<T> calls EigenVectorArrayMap<T> which does not have
+  // specializations for MLFloat16.
   if constexpr (std::is_same<T, MLFloat16>::value) {
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     CREATE_ELE_KERNEL(Relu);
