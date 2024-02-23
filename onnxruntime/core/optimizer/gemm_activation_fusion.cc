@@ -86,7 +86,6 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-
     Node& gemm_node = node;
     Node& act_node = *graph.GetNode(next_node.Index());  // get mutable reference
 
