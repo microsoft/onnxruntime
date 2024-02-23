@@ -268,8 +268,9 @@ __global__ void _ResizeBilinearCoordinateMapping(
                                                              static_cast<float>(output_height),
                                                              static_cast<float>(input_height),
                                                              roi_height_start, roi_height_end);
-    dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_y < 0 ||
-                                                                    input_y > static_cast<float>(input_height - 1)));
+    dims_mapping[id].extrapolate_ = static_cast<int>((extrapolation_enabled &&
+                                                      (input_y < 0 ||
+                                                       input_y > static_cast<float>(input_height - 1))));
     input_y = max(0.0f, min(input_y, static_cast<float>(input_height - 1)));
     int y_int = static_cast<int>(input_y);
     dims_mapping[id].origin_ = y_int;
@@ -280,8 +281,9 @@ __global__ void _ResizeBilinearCoordinateMapping(
                                                             scale_width, static_cast<float>(output_width),
                                                             static_cast<float>(input_width), roi_width_start,
                                                             roi_width_end);
-    dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_x < 0 ||
-                                                                    input_x > static_cast<float>(input_width - 1)));
+    dims_mapping[id].extrapolate_ = static_cast<int>((extrapolation_enabled &&
+                                                      (input_x < 0 ||
+                                                       input_x > static_cast<float>(input_width - 1))));
     input_x = max(0.0f, min(input_x, static_cast<float>(input_width - 1)));
     int x_int = static_cast<int>(input_x);
     dims_mapping[id].origin_ = x_int;
@@ -350,8 +352,9 @@ __global__ void _ResizeTrilinearCoordinateMapping(
                                                             static_cast<float>(output_depth),
                                                             static_cast<float>(input_depth),
                                                             roi_depth_start, roi_depth_end);
-    dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_z < 0 ||
-                                                                    input_z > static_cast<float>(input_depth - 1)));
+    dims_mapping[id].extrapolate_ = static_cast<int>((extrapolation_enabled &&
+                                                      (input_z < 0 ||
+                                                       input_z > static_cast<float>(input_depth - 1))));
     input_z = max(0.0f, min(input_z, static_cast<float>(input_depth - 1)));
     int z_int = static_cast<int>(input_z);
     dims_mapping[id].origin_ = z_int;
@@ -363,8 +366,9 @@ __global__ void _ResizeTrilinearCoordinateMapping(
                                                              static_cast<float>(input_height),
                                                              roi_height_start, roi_height_end);
 
-    dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_y < 0 ||
-                                                                    input_y > static_cast<float>(input_height - 1)));
+    dims_mapping[id].extrapolate_ = static_cast<int>((extrapolation_enabled &&
+                                                      (input_y < 0 ||
+                                                       input_y > static_cast<float>(input_height - 1))));
     input_y = max(0.0f, min(input_y, static_cast<float>(input_height - 1)));
     int y_int = static_cast<int>(input_y);
     dims_mapping[id].origin_ = y_int;

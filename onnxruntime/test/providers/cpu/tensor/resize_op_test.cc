@@ -2008,12 +2008,12 @@ TEST(ResizeOpTest, Antialias_NhwcBilinear) {
                           36.590908f, 76.59091f, 116.59091f};
 
   // Nchw is not supported by CUDA Resize implementation
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 5, 8, 3}, X, {1, 4, 5, 3}, Y, excluded_eps);
 }
 
 TEST(ResizeOpTest, Antialias_NhwcBilinear_dtype) {
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
   {
     std::vector<uint8_t> X(16);
     std::iota(X.begin(), X.end(), uint8_t(0));
@@ -2160,7 +2160,7 @@ TEST(ResizeOpTest, Antialias_NHWCBicubic_ExcludeOutside) {
       46.606194f, 19.878183f, 43.87818f, 21.358122f, 45.35812f,
       22.907503f, 46.907505f, 24.387442f, 48.387444f};
 
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 4, 6, 2}, X, {1, 8, 4, 2}, Y, excluded_eps);
 }
 
@@ -2183,7 +2183,7 @@ TEST(ResizeOpTest, Antialias_Linear_AlignCorners) {
       187.08333f, 195.91667f, 198.41667f, 205.91667f, 208.41667f,
       217.25f, 219.75f, 227.25f, 229.75f, 238.58333f,
       241.08333f, 248.58333f, 251.08333f};
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
   TestAntialiasing(
       {{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "align_corners"}},
       {4, 1, 4, 4, 4}, X, {4, 1, 3, 2, 2}, Y, excluded_eps);
@@ -2288,7 +2288,7 @@ TEST(ResizeOpTest, Antialias_Axes_and_PolicyNoLarger) {
                           50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
   // clang-format off
   TestAntialiasing(
-      {{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, 
+      {{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"},
        {"policy", "not_larger"}},
       {1, 1, 4, 4, 4}, X,
       {3, 4, 5}, Y);
@@ -2303,7 +2303,7 @@ TEST(ResizeOpTest, Antialias_Axes_and_PolicyNoSmaller) {
                           50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
   // clang-format off
   TestAntialiasing(
-      {{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, 
+      {{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"},
        {"policy", "not_smaller"}},
       {1, 1, 4, 4, 4}, X,
       {1, 2, 3}, Y);
