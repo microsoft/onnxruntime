@@ -632,8 +632,8 @@ export async function runModelTestSet(
   try {
     const feeds: Record<string, ort.Tensor> = {};
     const outputsMetaInfo: Record<string, ort.Tensor> = {};
-    testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
-    testCase.outputs!.forEach((tensor, i) => outputsMetaInfo[context.session.outputNames[i]] = tensor);
+    testCase.inputs!.forEach((tensor) => feeds[tensor.name] = tensor);
+    testCase.outputs!.forEach((tensor) => outputsMetaInfo[tensor.name] = tensor);
     const [start, end, outputs] =
         await sessionRun({session: context.session, feeds, outputsMetaInfo, ioBinding: context.ioBinding});
     if (context.perfData.count === 0) {
