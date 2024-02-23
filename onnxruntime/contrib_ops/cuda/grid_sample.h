@@ -12,7 +12,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
+template <typename T, bool IsNHWC>
 class GridSample final : public CudaKernel {
  public:
   explicit GridSample(const OpKernelInfo& info);

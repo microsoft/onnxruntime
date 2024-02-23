@@ -16,7 +16,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                                       .MayInplace(0, 0),
-                                  ScatterND);
+                                  ScatterNDDisjointAndNoReduction);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                   kOnnxDomain,
@@ -25,7 +25,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                                       .MayInplace(0, 0),
-                                  ScatterND);
+                                  ScatterNDWithAtomicReduction);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                   kOnnxDomain,
@@ -34,7 +34,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                                       .MayInplace(0, 0),
-                                  ScatterND);
+                                  ScatterNDWithAtomicReduction);
 
 ONNX_OPERATOR_KERNEL_EX(ScatterND,
                         kOnnxDomain,
@@ -43,9 +43,65 @@ ONNX_OPERATOR_KERNEL_EX(ScatterND,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                             .MayInplace(0, 0),
-                        ScatterND);
+                        ScatterNDWithAtomicReduction);
 
-Status ScatterND::ComputeInternal(OpKernelContext* context) const {
+Status ScatterNDDisjointAndNoReduction::ComputeInternal(OpKernelContext* context) const {
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto* indices_tensor = context->Input<Tensor>(1);
+  const auto* updates_tensor = context->Input<Tensor>(2);
+
+  const auto& input_shape = input_tensor->Shape();
+  const auto& indices_shape = indices_tensor->Shape();
+  const auto& updates_shape = updates_tensor->Shape();
+
+  // Validate input shapes
+  ORT_RETURN_IF_ERROR(onnxruntime::ScatterND::ValidateShapes(input_shape, indices_shape, updates_shape));
+
+  auto* output_tensor = context->Output(0, input_shape);
+
+  const void* input_data = input_tensor->DataRaw();
+  void* output_data = output_tensor->MutableDataRaw();
+
+  if (input_data != output_data) {
+    // TODO: Run benchmarks to determine if a dedicated kernel doing data copy will be faster than invoking cudaMemcpy ?
+    CUDA_RETURN_IF_ERROR(
+        cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
+  }
+
+  // Bail out early
+  if (indices_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  auto last_index_dimension = indices_shape[indices_shape.NumDimensions() - 1];
+  size_t element_size = input_tensor->DataType()->Size();
+
+  // We need element counts for each dimension and the input dim value for each dimension
+  // for the range [0, last_index_dimension).
+  // To avoid multiple GPU data transfers, we combine this into one array and send it through
+  TensorPitches input_strides(input_shape);
+  std::vector<int64_t> element_counts_and_input_dims(last_index_dimension * 2, 0LL);
+  for (int64_t i = 0; i < last_index_dimension; ++i) {
+    element_counts_and_input_dims[i] = input_strides[i];
+    element_counts_and_input_dims[i + last_index_dimension] = input_shape[i];
+  }
+  CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this, element_counts_and_input_dims);
+  ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(context->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(ScatterNDImpl(
+      Stream(context),
+      output_data,
+      element_size,
+      indices_shape.Size() / static_cast<size_t>(last_index_dimension),
+      indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
+      last_index_dimension,
+      element_counts_and_input_dims_gpu.GpuPtr(),
+      updates_tensor->DataRaw(),
+      input_shape.SizeFromDimension(last_index_dimension)));
+
+  return Status::OK();
+}
+
+Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
   const auto* indices_tensor = context->Input<Tensor>(1);
   const auto* updates_tensor = context->Input<Tensor>(2);
@@ -91,19 +147,22 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
     case Reduction::None: {
       size_t element_size = input_tensor->DataType()->Size();
       ORT_RETURN_IF_ERROR(ScatterNDImpl(
-          Stream(context),
-          output_data,
-          element_size,
-          indices_shape.Size() / static_cast<size_t>(last_index_dimension),
-          indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
-          last_index_dimension,
-          element_counts_and_input_dims_gpu.GpuPtr(),
-          updates_tensor->DataRaw(),
-          input_shape.SizeFromDimension(last_index_dimension)));
+        Stream(context),
+        output_data,
+        element_size,
+        indices_shape.Size() / static_cast<size_t>(last_index_dimension),
+        indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
+        last_index_dimension,
+        element_counts_and_input_dims_gpu.GpuPtr(),
+        updates_tensor->DataRaw(),
+        input_shape.SizeFromDimension(last_index_dimension)));
     } break;
-    case Reduction::Add: {
+    case Reduction::Add:
+    case Reduction::Min:
+    case Reduction::Max:
+    case Reduction::Mul: {
       auto element_type = input_tensor->DataType()->AsPrimitiveDataType()->GetDataType();
-      ORT_RETURN_IF_ERROR(ScatterNDImplAdd(
+      ORT_RETURN_IF_ERROR(ScatterNDImplReduction(
           Stream(context),
           output_data,
           element_type,
@@ -112,15 +171,16 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
           last_index_dimension,
           element_counts_and_input_dims_gpu.GpuPtr(),
           updates_tensor->DataRaw(),
-          input_shape.SizeFromDimension(last_index_dimension)));
+          input_shape.SizeFromDimension(last_index_dimension),
+          static_cast<int>(reduction_)));
     } break;
     default:
       ORT_THROW("ScatterND not supported for other reduction than Add, None.");
       break;
-  }
+    }
 
-  return Status::OK();
-}
+    return Status::OK();
+  }
 
 }  // namespace cuda
 }  // namespace onnxruntime

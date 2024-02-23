@@ -1,3 +1,4 @@
+import onnxruntime
 import itertools
 import json
 import os
@@ -9,6 +10,7 @@ import numpy as np
 import onnx.helper as oh
 from onnx import TensorProto, load
 from onnx.numpy_helper import from_array
+from onnx.reference import ReferenceEvaluator
 
 import onnxruntime
 
@@ -244,6 +246,54 @@ class TestScatterPerProvider(unittest.TestCase):
                     reduction,
                     expected[dtype, reduction],
                 )
+
+    def _scatternd_standalone_cuda(self, reduction, line):
+        model = oh.make_model(
+            oh.make_graph(
+                [
+                    oh.make_node(
+                        "ScatterND",
+                        inputs=["data", "indices", "updates"],
+                        outputs=["y"],
+                        reduction=reduction,
+                    )
+                ],
+                "nd",
+                [
+                    oh.make_tensor_value_info("data", TensorProto.FLOAT, [None, None, None]),
+                    oh.make_tensor_value_info("indices", TensorProto.INT64, [None, None]),
+                    oh.make_tensor_value_info("updates", TensorProto.FLOAT, [None, None, None]),
+                ],
+                [oh.make_tensor_value_info("y", TensorProto.FLOAT, [None, None, None])],
+            ),
+            opset_imports=[oh.make_opsetid("", 18)],
+            ir_version=9,
+        )
+
+        data = np.zeros((2, 2, 3), dtype=np.float32)
+        indices = np.array([[line], [1-line], [line]], dtype=np.int64)
+        updates = (2 ** np.arange(18).astype(np.float32).reshape((3, 2, 3))).astype(np.float32)
+
+        feeds = dict(data=data, indices=indices, updates=updates)
+        ref = ReferenceEvaluator(model)
+        expected = ref.run(None, feeds)[0]
+
+        providers = (
+            [
+                ["CUDAExecutionProvider"],
+                ["CPUExecutionProvider"],
+            ]
+            if has_cuda()
+            else [["CPUExecutionProvider"]]
+        )
+        for provider in providers:
+            sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=provider)
+            got = sess.run(None, feeds)[0]
+            self.assertEqual(expected.tolist(), got.tolist())
+
+    def test_scatternd_standalone_cuda(self):
+        self._scatternd_standalone_cuda("add", 0)
+        self._scatternd_standalone_cuda("add", 1)
 
 
 if __name__ == "__main__":
