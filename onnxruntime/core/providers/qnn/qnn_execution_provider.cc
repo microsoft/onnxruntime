@@ -670,7 +670,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
                                                      context_cache_path,
                                                      qnn_backend_manager_.get(),
-                                                     qnn_models));
+                                                     qnn_models,
+                                                     logger));
 
     for (auto fused_node_and_graph : fused_nodes_and_graphs) {
       const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
