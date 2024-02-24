@@ -60,7 +60,6 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto data_type = node_output->TypeAsProto()->tensor_type().elem_type();
     if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       // FusedGemm is only registered for float data type in fused_gemm.cc!
-
       continue;
     }
 
