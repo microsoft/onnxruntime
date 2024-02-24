@@ -332,9 +332,10 @@ class ORTGenerator:
                 f"Batch size: {batch_size}, Sequence length: {sequence_length}, Token num: {max_length - sequence_length}"
             )
             print(f"Prompt letency: {1000 * latency[0]}ms, Token latency: {1000 * np.mean(latency[1:])}ms")
-        else:
-            texts = self.tokenizer.batch_decode(all_token_ids, skip_special_tokens=True)
-            return texts
+            return
+
+        texts = self.tokenizer.batch_decode(all_token_ids, skip_special_tokens=True)
+        return texts
 
     def generate(self, prompt, max_length, cuda_graph_annotation):
         encodings_dict = self.tokenizer.batch_encode_plus(prompt, padding=True)

@@ -444,7 +444,7 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunO
 }
 
 bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
-  return info_.enable_cuda_graph == 1;
+  return info_.enable_cuda_graph;
 }
 
 void CUDAExecutionProvider::SetGraphAnnotation(GraphAnnotation_t cuda_graph_annotation_id) {

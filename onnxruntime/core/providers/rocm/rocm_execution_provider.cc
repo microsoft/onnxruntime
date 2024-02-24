@@ -199,7 +199,8 @@ bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptured() const {
 
 Status ROCMExecutionProvider::PerThreadContext::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
-  return hip_graph_.Replay();
+  GraphAnnotationOptional_t hip_graph_annotation_id{nullptr};
+  return hip_graph_.Replay(hip_graph_annotation_id);
 }
 
 void ROCMExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {

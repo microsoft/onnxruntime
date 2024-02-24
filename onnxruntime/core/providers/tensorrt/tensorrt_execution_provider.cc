@@ -1788,9 +1788,10 @@ bool TensorrtExecutionProvider::IsGraphCaptured() const {
 Status TensorrtExecutionProvider::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
   // Please note that CUDAGraph::Replay() is not thread safe.
-  // ORT TRT calls ReplayGraph() in compute_func() where synchromization is enforced due to lock_guard(),
+  // ORT TRT calls ReplayGraph() in compute_func() where synchronization is enforced due to lock_guard(),
   // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
-  return cuda_graph_.Replay();
+  GraphAnnotationOptional_t cuda_graph_annotation_id{nullptr};
+  return cuda_graph_.Replay(cuda_graph_annotation_id);
 }
 
 void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {

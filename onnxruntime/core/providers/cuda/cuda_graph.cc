@@ -105,7 +105,6 @@ bool CUDAGraph::IsAdditionalGraphCaptured(GraphAnnotation_t cuda_graph_annotatio
 
 bool CUDAGraph::IsGraphCaptureAllowedOnRun() const {
   if (!cuda_graph_annotation_id_.has_value()) {
-    // std::cout << "IsGraphCaptureAllowedOnRun()::cuda_graph_annotation_id is empty" << std::endl;
     return true;
   }
   return *cuda_graph_annotation_id_ != kDefaultSkipGraphCapture;
