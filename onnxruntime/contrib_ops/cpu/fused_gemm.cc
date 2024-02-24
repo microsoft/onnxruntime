@@ -31,16 +31,5 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FusedGemm<float>);
 
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-    FusedGemm,
-    1,
-    MLFloat16,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-    FusedGemm<MLFloat16>);
-
-#endif
-
 }  // namespace contrib
 }  // namespace onnxruntime

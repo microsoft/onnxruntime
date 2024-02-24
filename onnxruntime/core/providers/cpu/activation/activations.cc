@@ -81,30 +81,20 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
     return Status::OK();                         \
   }
 
-  // ElementWiseRangedTransform<T>::Create instantiates concrete implementations, ie: Relu<T>, Softplus<T>, etc...
-  // Concrete classes exist for any type parameter but MLFloat16 does not work because
-  // ElementWiseRangedTransform<T> calls EigenVectorArrayMap<T> which does not have
-  // specializations for MLFloat16.
-  if constexpr (std::is_same<T, MLFloat16>::value) {
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-    CREATE_ELE_KERNEL(Relu);
-    CREATE_ELE_KERNEL(LeakyRelu);
-#endif
-  } else {
-    CREATE_ELE_KERNEL(Celu);
-    CREATE_ELE_KERNEL(Elu);
-    CREATE_ELE_KERNEL(HardSigmoid);
-    CREATE_ELE_KERNEL(LeakyRelu);
-    CREATE_ELE_KERNEL(Softplus);
-    CREATE_ELE_KERNEL(Relu);
-    CREATE_ELE_KERNEL(Sigmoid);
-    CREATE_ELE_KERNEL(Softsign);
-    CREATE_ELE_KERNEL(Tanh);
-    CREATE_ELE_KERNEL(ThresholdedRelu);
-    CREATE_ELE_KERNEL(Selu);
+  CREATE_ELE_KERNEL(Celu);
+  CREATE_ELE_KERNEL(Elu);
+  CREATE_ELE_KERNEL(HardSigmoid);
+  CREATE_ELE_KERNEL(LeakyRelu);
+  CREATE_ELE_KERNEL(Softplus);
+  CREATE_ELE_KERNEL(Relu);
+  CREATE_ELE_KERNEL(Sigmoid);
+  CREATE_ELE_KERNEL(Softsign);
+  CREATE_ELE_KERNEL(Tanh);
+  CREATE_ELE_KERNEL(ThresholdedRelu);
+  CREATE_ELE_KERNEL(Selu);
 #ifndef DISABLE_CONTRIB_OPS
-    CREATE_ELE_KERNEL(ParametricSoftplus);
-    CREATE_ELE_KERNEL(ScaledTanh);
+  CREATE_ELE_KERNEL(ParametricSoftplus);
+  CREATE_ELE_KERNEL(ScaledTanh);
 #endif
   }
 
@@ -115,9 +105,6 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
 
 template Status ElementWiseRangedTransform<float>::Create(const std::string& type, const NodeAttributes& attributes,
                                                           std::unique_ptr<ElementWiseRangedTransform<float>>& out);
-
-template Status ElementWiseRangedTransform<MLFloat16>::Create(const std::string& type, const NodeAttributes& attributes,
-                                                              std::unique_ptr<ElementWiseRangedTransform<MLFloat16>>& out);
 }  // namespace functors
 
 namespace functors {
