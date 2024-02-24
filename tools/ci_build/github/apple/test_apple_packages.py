@@ -134,25 +134,36 @@ def _test_apple_packages(args):
             # Add a couple of retries in the optimistic hope this error is transient.
             #   ios_package_testUITests-Runner Failed to initialize for UI testing:
             #   Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 "Timed out while loading Accessibility."
-            subprocess.run(
-                [
-                    "xcrun",
-                    "xcodebuild",
-                    "test",
-                    "-workspace",
-                    "./apple_package_test.xcworkspace",
-                    "-scheme",
-                    "ios_package_test",
-                    "-destination",
-                    f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
-                    "-retry-tests-on-failure",
-                    "-test-iterations",
-                    "3",
-                ],
-                shell=False,
-                check=True,
-                cwd=target_proj_path,
-            )
+            retries = 3
+            while retries > 0:
+                completed_process = subprocess.run(
+                    [
+                        "xcrun",
+                        "xcodebuild",
+                        "test",
+                        "-workspace",
+                        "./apple_package_test.xcworkspace",
+                        "-scheme",
+                        "ios_package_test",
+                        "-destination",
+                        f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
+                    ],
+                    shell=False,
+                    check=False,
+                    text=True,
+                    cwd=target_proj_path,
+                )
+
+                if completed_process.returncode != 0:
+                    # check both to figure out which one we really need to check
+                    in_stdout = "Timed out while loading Accessibility" in completed_process.stdout
+                    in_stderr = "Timed out while loading Accessibility" in completed_process.stderr
+                    print(f"Found timeout message = stdout={in_stdout} stderr={in_stderr}")
+                    if in_stderr or in_stdout:
+                        retries -= 1
+                        continue
+
+                break
 
             if PackageVariant[args.variant] != PackageVariant.Mobile and not args.skip_macos_test:
                 subprocess.run(
