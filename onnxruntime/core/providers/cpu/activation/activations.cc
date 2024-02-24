@@ -96,7 +96,6 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
   CREATE_ELE_KERNEL(ParametricSoftplus);
   CREATE_ELE_KERNEL(ScaledTanh);
 #endif
-  }
 
 #undef CREATE_ELE_KERNEL
 
