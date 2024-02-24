@@ -112,7 +112,9 @@ class FusionGelu(Fusion):
             return False
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = onnx.helper.make_node("Gelu", inputs=[subgraph_input], outputs=[subgraph_output])
+        fused_node = onnx.helper.make_node(
+            "Gelu", name=self.create_unique_node_name(), inputs=[subgraph_input], outputs=[subgraph_output]
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         return True
@@ -188,7 +190,9 @@ class FusionGelu(Fusion):
             return False
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = onnx.helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[mul.output[0]])
+        fused_node = onnx.helper.make_node(
+            "Gelu", name=self.create_unique_node_name(), inputs=[root_node.output[0]], outputs=[mul.output[0]]
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         return True
@@ -263,7 +267,9 @@ class FusionGelu(Fusion):
             return False
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = onnx.helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[last_mul.output[0]])
+        fused_node = onnx.helper.make_node(
+            "Gelu", name=self.create_unique_node_name(), inputs=[root_node.output[0]], outputs=[last_mul.output[0]]
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         return True
