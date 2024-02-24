@@ -16,10 +16,20 @@ void CUDAGraph::SetStream(cudaStream_t stream) {
   stream_ = stream;
 }
 
+void CUDAGraph::SetGraphAnnotation(GraphAnnotationOptional_t cuda_graph_annotation_id) {
+  cuda_graph_annotation_id_ = cuda_graph_annotation_id;
+}
+
 void CUDAGraph::CaptureBegin() {
-  ORT_ENFORCE(!has_graph_exec_,
-              "This cuda graph has already captured a graph. "
-              "Create a new instance to capture a new graph.");
+  if (!cuda_graph_annotation_id_.has_value()) {
+    ORT_ENFORCE(!has_graph_exec_,
+                "This cuda graph has already captured a graph. "
+                "Create a new instance to capture a new graph.");
+  } else {
+    if (!IsGraphCaptureAllowedOnRun()) {
+      return;
+    }
+  }
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
   // For now cuda graph can only work with a single thread. In the future, we
@@ -30,6 +40,29 @@ void CUDAGraph::CaptureBegin() {
 }
 
 void CUDAGraph::CaptureEnd() {
+  if (!IsGraphCaptureAllowedOnRun()) {
+    return;
+  }
+
+  if (cuda_graph_annotation_id_.has_value()) {
+    CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &additional_graph_));
+    if (additional_graph_ == NULL) {
+      ORT_THROW("CUDAGraph::CaptureEnd: additional_graph_ is NULL");
+    }
+
+    cudaGraphExec_t graph_exec = NULL;
+
+    has_additional_graph_ = true;
+    CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec, additional_graph_, NULL, NULL, 0));
+    CUDA_CALL_THROW(cudaGraphDestroy(additional_graph_));
+    has_additional_graph_ = false;
+
+    GraphAnnotation_t cuda_graph_id = cuda_graph_annotation_id_.value();
+    graph_exec_map_.emplace(cuda_graph_id, graph_exec);
+
+    return;
+  }
+
   CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph_));
   if (graph_ == NULL) {
     ORT_THROW("CUDAGraph::CaptureEnd: graph_ is NULL");
@@ -42,13 +75,40 @@ void CUDAGraph::CaptureEnd() {
   has_graph_ = false;
 }
 
-Status CUDAGraph::Replay() {
+Status CUDAGraph::Replay(GraphAnnotationOptional_t cuda_graph_annotation_id) {
+  if (!IsGraphCaptureAllowedOnRun()) {
+    return Status::OK();
+  }
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
-  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_;
-  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, stream_));
+  if (cuda_graph_annotation_id_.has_value()) {
+    LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id " << *cuda_graph_annotation_id;
+    auto it = graph_exec_map_.find(*cuda_graph_annotation_id);
+    if (it == graph_exec_map_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME,
+                             FAIL,
+                             "CUDAGraph::Replay: graph_exec_map_ does not contain the cuda_graph_annotation_id");
+    }
+    CUDA_RETURN_IF_ERROR(cudaGraphLaunch(it->second, stream_));
+  } else {
+    LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_;
+    CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, stream_));
+  }
+
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   return Status::OK();
+}
+
+bool CUDAGraph::IsAdditionalGraphCaptured(GraphAnnotation_t cuda_graph_annotation_id) const {
+  return graph_exec_map_.find(cuda_graph_annotation_id) != graph_exec_map_.end();
+}
+
+bool CUDAGraph::IsGraphCaptureAllowedOnRun() const {
+  if (!cuda_graph_annotation_id_.has_value()) {
+    // std::cout << "IsGraphCaptureAllowedOnRun()::cuda_graph_annotation_id is empty" << std::endl;
+    return true;
+  }
+  return *cuda_graph_annotation_id_ != kDefaultSkipGraphCapture;
 }
 
 void CUDAGraph::Reset() {
@@ -62,8 +122,22 @@ void CUDAGraph::Reset() {
   }
 }
 
+void CUDAGraph::ResetAdditional() {
+  if (has_additional_graph_) {
+    CUDA_CALL_THROW(cudaGraphDestroy(additional_graph_));
+    has_additional_graph_ = false;
+  }
+  if (!graph_exec_map_.empty()) {
+    for (auto& it : graph_exec_map_) {
+      CUDA_CALL_THROW(cudaGraphExecDestroy(it.second));
+    }
+    graph_exec_map_.clear();
+  }
+}
+
 CUDAGraph::~CUDAGraph() {
   Reset();
+  ResetAdditional();
 }
 
 }  // namespace onnxruntime

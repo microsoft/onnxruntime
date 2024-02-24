@@ -94,6 +94,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured() const override;
   Status ReplayGraph() override;
+  void SetGraphAnnotation(GraphAnnotation_t graph_annotation_id) override;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
@@ -177,6 +178,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
     }
 
     bool IsGraphCaptureAllowed() const;
+    bool IsGraphCaptureSkippedOnRun() const;
+    void SetCudaGraphAnnotationId(GraphAnnotationOptional_t cuda_graph_annotation_id);
     void CaptureBegin();
     void CaptureEnd();
     bool IsGraphCaptured() const;
@@ -202,6 +205,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     CUDAGraph cuda_graph_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
+    GraphAnnotationOptional_t cuda_graph_annotation_id_;
 
     // There is chance that the second regular run allocates GPU memory for causes like:
     // (1) memory pattern is enabled. (2) arena allocation for stream.

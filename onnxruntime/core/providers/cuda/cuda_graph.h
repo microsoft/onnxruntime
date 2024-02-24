@@ -4,12 +4,16 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_pch.h"
 
 namespace onnxruntime {
 
-using CaptureId_t = unsigned long long;
+using GraphAnnotation_t = int;
+using GraphAnnotationOptional_t = optional<GraphAnnotation_t>;
+
+constexpr GraphAnnotation_t kDefaultSkipGraphCapture = -1;
 
 struct CUDAGraph {
   CUDAGraph(){};
@@ -17,10 +21,17 @@ struct CUDAGraph {
   ~CUDAGraph();
 
   void SetStream(cudaStream_t stream);
+  void SetGraphAnnotation(GraphAnnotationOptional_t cuda_graph_annotation_id);
+
   void CaptureBegin();
   void CaptureEnd();
-  Status Replay();
+  Status Replay(GraphAnnotationOptional_t cuda_graph_annotation_id);
+
   void Reset();
+  void ResetAdditional();
+
+  bool IsAdditionalGraphCaptured(GraphAnnotation_t cuda_graph_annotation_id) const;
+  bool IsGraphCaptureAllowedOnRun() const;
 
  private:
   cudaGraph_t graph_ = NULL;
@@ -28,6 +39,11 @@ struct CUDAGraph {
 
   bool has_graph_ = false;
   bool has_graph_exec_ = false;
+
+  cudaGraph_t additional_graph_ = NULL;
+  std::unordered_map<GraphAnnotation_t, cudaGraphExec_t> graph_exec_map_;
+  GraphAnnotationOptional_t cuda_graph_annotation_id_;
+  bool has_additional_graph_ = false;
 
   cudaStream_t stream_ = nullptr;  // Does not own the stream
 };

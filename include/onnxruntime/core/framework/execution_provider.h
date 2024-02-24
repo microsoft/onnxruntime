@@ -183,6 +183,12 @@ class IExecutionProvider {
   virtual common::Status Sync() const { return Status::OK(); }
 
   /**
+     Set graph annotation for saving/retriving executable graphs (e.g., cuda graph).
+     Currently only CUDA execution provider supports it.
+  */
+  virtual void SetGraphAnnotation(int) {}
+
+  /**
      Called when InferenceSession::Run started
      NOTE that due to async execution in provider, the actual work of previous
      Run may not be finished on device This function should be regarded as the

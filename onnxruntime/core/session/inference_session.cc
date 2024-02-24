@@ -2385,6 +2385,16 @@ Status InferenceSession::Run(const RunOptions& run_options,
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
+  if (cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled()) {
+    // Cuda graph annotation is only considered when enable_cuda_graph is set to true in session options
+    const std::string& graph_annotation_str =
+        run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "");
+    // If graph annotation is not provided, fall back to the one cuda graph per session behavior
+    if (!graph_annotation_str.empty()) {
+      cached_execution_provider_for_graph_replay_.SetGraphAnnotation(std::stoi(graph_annotation_str));
+    }
+  }
+
   // Check if this Run() is simply going to be a CUDA Graph replay.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "
@@ -2552,6 +2562,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // N is defined in min_num_runs_before_hip_graph_capture_ for ROCM EP,
   // and the value could be different for other EP.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
+      !cached_execution_provider_for_graph_replay_.IsGraphCaptureSkippedOnRun() &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
