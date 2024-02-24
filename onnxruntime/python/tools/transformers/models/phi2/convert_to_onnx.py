@@ -108,8 +108,6 @@ class ConvertPhi2ToONNX:
         onnx.shape_inference.infer_shapes_path(onnx_path)
 
     def optimize_phi2_onnx(self, onnx_path: str, onnx_path_opt: str):
-        onnx_path_opt = onnx_path_opt
-
         from fusion_options import FusionOptions
         from optimizer import optimize_model
 
@@ -172,10 +170,10 @@ class ConvertPhi2ToONNX:
             quant.model.save_model_to_file(onnx_path_opt, use_external_data_format=True)
 
     # This function currently only works for phi2 model
-    def convert_to_use_cuda_graph(self, in_onnx_path: str = None, out_onnx_path: str = None):
+    def convert_to_use_cuda_graph(self, in_onnx_path: str, out_onnx_path: str):
         onnx_model = OnnxModel(onnx.load(in_onnx_path, load_external_data=True))
 
-        from onnx import helper, TensorProto
+        from onnx import TensorProto, helper
 
         graph = onnx_model.graph()
         new_inputs = []
