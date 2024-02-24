@@ -84,8 +84,9 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
         elif "CUDAExecutionProvider" in onnxrt.get_available_providers():
             providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
             self.run_model_with_cuda_graph(providers)
+            self.run_model_with_cuda_graph(providers, use_graph_annotation=True)
 
-    def run_model_with_cuda_graph(self, providers):
+    def run_model_with_cuda_graph(self, providers, use_graph_annotation=False):
         INPUT_SIZE = 1280  # noqa: N806
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]] * INPUT_SIZE, dtype=np.float32)
         y = np.array([[0.0], [0.0], [0.0]] * INPUT_SIZE, dtype=np.float32)
@@ -100,13 +101,17 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
         io_binding.bind_ortvalue_input("X", x_ortvalue)
         io_binding.bind_ortvalue_output("Y", y_ortvalue)
 
+        ro = onnxrt.RunOptions()
+        if use_graph_annotation:
+            ro.add_run_config_entry("ep.cuda.cuda_graph_annotation", "1")
+
         # One regular run for the necessary memory allocation and cuda graph capturing
-        session.run_with_iobinding(io_binding)
+        session.run_with_iobinding(io_binding, ro)
         expected_y = np.array([[5.0], [11.0], [17.0]] * INPUT_SIZE, dtype=np.float32)
         np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
         # After capturing, CUDA graph replay happens from this Run onwards
-        session.run_with_iobinding(io_binding)
+        session.run_with_iobinding(io_binding, ro)
         np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
         # Update input and then replay CUDA graph
@@ -116,7 +121,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
                 dtype=np.float32,
             )
         )
-        session.run_with_iobinding(io_binding)
+        session.run_with_iobinding(io_binding, ro)
         np.testing.assert_allclose(
             np.array([[50.0], [110.0], [170.0]] * INPUT_SIZE, dtype=np.float32),
             y_ortvalue.numpy(),

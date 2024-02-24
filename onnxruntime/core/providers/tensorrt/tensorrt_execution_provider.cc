@@ -1790,7 +1790,7 @@ Status TensorrtExecutionProvider::ReplayGraph() {
   // Please note that CUDAGraph::Replay() is not thread safe.
   // ORT TRT calls ReplayGraph() in compute_func() where synchronization is enforced due to lock_guard(),
   // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
-  GraphAnnotationOptional_t cuda_graph_annotation_id{nullptr};
+  GraphAnnotationOptional_t cuda_graph_annotation_id;
   return cuda_graph_.Replay(cuda_graph_annotation_id);
 }
 
