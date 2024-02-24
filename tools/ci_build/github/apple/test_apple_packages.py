@@ -149,12 +149,14 @@ def _test_apple_packages(args):
                         f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
                     ],
                     shell=False,
+                    capture_output=True,
                     check=False,
                     text=True,
                     cwd=target_proj_path,
                 )
 
                 if completed_process.returncode != 0:
+                    print(f"Running tests failed. Return code was {completed_process.returncode}")
                     # check both to figure out which one we really need to check
                     in_stdout = "Timed out while loading Accessibility" in completed_process.stdout
                     in_stderr = "Timed out while loading Accessibility" in completed_process.stderr
