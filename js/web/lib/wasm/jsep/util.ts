@@ -56,7 +56,16 @@ export class BroadcastUtil {
       if (aLen !== bLen && aLen > 1 && bLen > 1) {
         return undefined;
       }
-      cdims[crank - i] = Math.max(aLen, bLen);
+      const max = Math.max(aLen, bLen);
+      if (aLen && bLen) {
+        cdims[crank - i] = Math.max(aLen, bLen);
+      } else {
+        // when either aLen or bLen is 0, the other should be either 0 or 1, otherwise it is not broadcastable.
+        if (max > 1) {
+          return undefined;
+        }
+        cdims[crank - i] = 0;
+      }
     }
 
     return cdims;

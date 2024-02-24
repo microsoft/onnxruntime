@@ -157,6 +157,28 @@
             "type": "float32"
           }
         ]
+      },
+      {
+        "name": "T[2,0] T[2,1]",
+        "inputs": [
+          {
+            "data": [],
+            "dims": [2, 0],
+            "type": "float32"
+          },
+          {
+            "data": [1, 2],
+            "dims": [2, 1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [],
+            "dims": [2, 0],
+            "type": "float32"
+          }
+        ]
       }
     ]
   }
