@@ -183,7 +183,8 @@ class IExecutionProvider {
   virtual common::Status Sync() const { return Status::OK(); }
 
   /**
-     TODO
+     Set graph annotation for saving/retriving executable graphs (e.g., cuda graph).
+     Currently only CUDA execution provider supports it.
   */
   virtual void SetGraphAnnotation(int) {}
 
