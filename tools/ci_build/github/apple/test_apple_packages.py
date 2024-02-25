@@ -155,6 +155,10 @@ def _test_apple_packages(args):
                     cwd=target_proj_path,
                 )
 
+                # print so it's in CI output
+                print(completed_process.stdout)
+                print(completed_process.stderr)
+
                 if completed_process.returncode != 0:
                     print(f"Running tests failed. Return code was {completed_process.returncode}")
                     # check both to figure out which one we really need to check
