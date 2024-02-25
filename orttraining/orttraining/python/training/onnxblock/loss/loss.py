@@ -33,7 +33,7 @@ class MSELoss(blocks.Block):
         self._sub = blocks.Sub()
         self._square = blocks.Pow(2.0)
 
-    def build(self, loss_input_name: str, target_name: str = "target"):
+    def build(self, loss_input_name: str, target_name: str = "target", *args):
         """Adds an MSELoss subgraph on top of the base_model.
 
         Args:
@@ -72,7 +72,7 @@ class CrossEntropyLoss(blocks.Block):
         self._reduction = reduction
         self._ignore_index = ignore_index
 
-    def build(self, scores_input_name: str, labels_name: str = "labels"):
+    def build(self, scores_input_name: str, labels_name: str = "labels", *args):
         """Adds a CrossEntropyLoss subgraph on top of an onnx model.
 
         Args:
@@ -149,7 +149,7 @@ class BCEWithLogitsLoss(blocks.Block):
         self._mul = blocks.Mul()
         self._neg = blocks.Neg()
 
-    def build(self, loss_input_name: str, target_name: str = "target"):
+    def build(self, loss_input_name: str, target_name: str = "target", *args):
         """Adds a BCEWithLogitsLoss subgraph on top of an onnx model.
 
         Creates a block that measures the binary cross entropy with logits between
@@ -229,7 +229,7 @@ class L1Loss(blocks.Block):
         self._abs = blocks.Abs()
         self._sub = blocks.Sub()
 
-    def build(self, loss_input_name: str, target_name: Optional[str] = "target"):
+    def build(self, loss_input_name: str, target_name: Optional[str] = "target", *args):
         """Adds an L1 loss subgraph on top of the base_model.
 
         Args:
