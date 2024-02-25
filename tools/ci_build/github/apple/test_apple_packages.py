@@ -131,7 +131,7 @@ def _test_apple_packages(args):
             simulator_device_info = json.loads(simulator_device_info)
 
             # Xcode UI tests seem to be flaky: https://github.com/orgs/community/discussions/68807
-            # Add a couple of retries in the optimistic hope this error is transient.
+            # Add a couple of retries if we get this error:
             #   ios_package_testUITests-Runner Failed to initialize for UI testing:
             #   Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 "Timed out while loading Accessibility."
             retries = 3
@@ -157,15 +157,14 @@ def _test_apple_packages(args):
 
                 # print so it's in CI output
                 print(completed_process.stdout)
-                print(completed_process.stderr)
 
                 if completed_process.returncode != 0:
-                    print(f"Running tests failed. Return code was {completed_process.returncode}")
-                    # check both to figure out which one we really need to check
-                    in_stdout = "Timed out while loading Accessibility" in completed_process.stdout
-                    in_stderr = "Timed out while loading Accessibility" in completed_process.stderr
-                    print(f"Found timeout message = stdout={in_stdout} stderr={in_stderr}")
-                    if in_stderr or in_stdout:
+                    print(f"Running ios_package_test failed. Return code was {completed_process.returncode}")
+                    print("xcrun xcodebuild test stderr:")
+                    print(completed_process.stderr)
+                    print("---")
+
+                    if "Timed out while loading Accessibility" in completed_process.stderr:
                         retries -= 1
                         continue
 
