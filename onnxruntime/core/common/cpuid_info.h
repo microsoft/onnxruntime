@@ -127,15 +127,15 @@ class CPUIDInfo {
   bool has_arm_neon_i8mm_{false};
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
+  bool pytorch_cpuinfo_init_{false};
 
 #ifdef CPUIDINFO_ARCH_X86
 
   void X86Init();
+#endif
 
-#elif defined(CPUIDINFO_ARCH_ARM)
 #ifdef __linux__
 
-  bool pytorch_cpuinfo_init_{false};
   void ArmLinuxInit();
 
 #elif defined(_WIN32)
@@ -143,7 +143,6 @@ class CPUIDInfo {
   void ArmWindowsInit();
 
 #endif /* (arm or arm64) and windows */
-#endif
 };
 
 }  // namespace onnxruntime
