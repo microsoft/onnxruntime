@@ -392,7 +392,6 @@ class GraphTransitionManager:
             # defined as a specialized logic which is the counter-part of `parse_inputs_for_onnx_export`, which handles
             # args and kwargs separately.
             for name, data_accessor in cur_model_info_for_export.onnx_graph_input_data_accessor.items():
-                print("find data accessor for name: ", name)
                 d = data_accessor(copied_args, copied_kwargs)
                 if name in cur_model_info_for_export.onnx_graph_input_const_as_tensor:
                     flatten_inputs.append(
@@ -401,13 +400,10 @@ class GraphTransitionManager:
                             cur_model_info_for_export.onnx_graph_input_const_as_tensor[name],
                         )
                     )
-                    print("pass 1")
                 else:
                     if isinstance(d, torch.Tensor):
                         flatten_inputs.append(d)
-                        print("pass 2")
-                    else:
-                        print("pass 3")
+
                     # Ignore all other non-tensor inputs.
 
             self._flatten_module._device = self._device
@@ -415,7 +411,7 @@ class GraphTransitionManager:
             self._flatten_module._kwargs_schema = cur_model_info_for_export.onnx_graph_input_kwarg_schema
             self._flatten_module._num_positionals = cur_model_info_for_export.num_positional_args
 
-            self._logger.warning(f"do_export started, model info for export: {cur_model_info_for_export}")
+            self._logger.info(f"do_export started, model info for export: {cur_model_info_for_export}")
 
             (
                 exported_model,
