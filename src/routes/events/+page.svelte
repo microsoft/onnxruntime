@@ -15,7 +15,7 @@
 			linkarr: [
 				{ name: 'Event Page', link: 'https://developer.microsoft.com/en-us/reactor/events/21648/' },
 				{
-					name: 'Recording Playlist',
+					name: 'Event Videos',
 					link: 'https://www.youtube.com/playlist?list=PLqPV7GJuaUV8qw9Zj5zXvzUZdSxx_sn7U'
 				}
 			],

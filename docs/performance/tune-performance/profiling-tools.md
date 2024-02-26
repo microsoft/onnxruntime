@@ -58,7 +58,7 @@ As covered in [logging](logging_tracing.md) ONNX supports dynamic enablement of 
 
 - Provider Name: Microsoft.ML.ONNXRuntime  
 - Provider GUID: 3a26b1ff-7484-7484-7484-15261f42614d  
-- Keywords: Profiling = 0x100  per [logging.h](https://github.com/ivberg/onnxruntime/blob/user/ivberg/ETWRundown/include/onnxruntime/core/common/logging/logging.h#L81)  
+- Keywords: Profiling = 0x100  per [logging.h](https://github.com/ivberg/onnxruntime/blob/9cb97ee507b9b45d4a896f663590083e7e7568ac/include/onnxruntime/core/common/logging/logging.h#L81)  
 - Level: 
   - 5 (VERBOSE) = profiling_level=basic (good details without perf loss)
   - greater than 5 = profiling_level=detailed (individual ops are logged with inference perf hit)  

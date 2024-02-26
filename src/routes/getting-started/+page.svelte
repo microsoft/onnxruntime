@@ -36,7 +36,7 @@
 			<a href="https://github.com/microsoft/onnxruntime/issues" class="text-blue-500">issues</a> you encounter. You can also contribute to the project by reporting bugs, suggesting features,
 			or submitting pull requests.
 			<div class="py-4">
-				<a href="https://github.com/microsoft/onnxruntime" class="btn btn-primary mr-4"
+				<a href="https://github.com/microsoft/onnxruntime" class="btn btn-primary rounded-sm mr-4"
 					>ONNX Runtime GitHub →</a
 				>
 			</div>
@@ -53,7 +53,7 @@
 				Learn more about ONNX Runtime with tutorials from our documentation.
 			</h1>
 
-			<a href="./docs/tutorials/" rel="external" class="btn btn-primary mr-4"
+			<a href="./docs/tutorials/" rel="external" class="btn btn-primary rounded-sm mr-4"
 				>ONNX Runtime Tutorials →</a
 			>
 		</div>

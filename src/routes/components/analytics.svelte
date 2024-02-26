@@ -1,19 +1,48 @@
+<script>
+	import '@beyonk/gdpr-cookie-consent-banner/banner.css'; // optional, you can also define your own styles
+	import GdprBanner from '@beyonk/gdpr-cookie-consent-banner';
+	let choices = {
+		marketing: false,
+		tracking: false,
+		analytics: {
+			label: 'Analytics',
+			description: 'We use analytics cookies to track visits, helping create a better experience for you!',
+			value: true
+		}, 
+		necessary: {
+			label: 'Necessary',
+			description: 'Used for cookie control.',
+			value: true
+		}
+	}
+	function initAnalytics() {
+		// Google Analytics
+		gtag('consent', 'update', {
+			ad_storage: 'granted',
+			analytics_storage: 'granted'
+		});
+		// Adobe Analytics
+	}
+</script>
+
+<GdprBanner heading="Your Cookie Settings" cookieName="analytics" description="Your cookies are your choice! At ONNX Runtime, we use analytics cookies solely to track visits, helping create a better experience for you!" on:analytics={initAnalytics} showEditIcon={false} choices={choices}/>
+
 <svelte:head>
+	<!-- Google Analytics -->
 	<script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script>
 	<script>
 		window.dataLayer = window.dataLayer || [];
 		function gtag() {
 			dataLayer.push(arguments);
 		}
+		gtag('consent', 'default', {
+			ad_storage: 'denied',
+			analytics_storage: 'denied'
+		});
 		gtag('js', new Date());
 		gtag('config', 'UA-156955408-1');
 	</script>
-	<script
-		type="text/javascript"
-		src="https://js.monitor.azure.com/scripts/c/ms.analytics-web-3.min.js"
-	>
-	</script>
-
+	<!-- Adobe Analytics -->
 	<script type="text/javascript">
 		const analytics = new oneDS.ApplicationInsights();
 		var config = {
@@ -44,4 +73,12 @@
 		//Initialize SDK
 		analytics.initialize(config, []);
 	</script>
+	<!-- MS Analytics -->
+	<script
+		type="text/javascript"
+		src="https://js.monitor.azure.com/scripts/c/ms.analytics-web-3.min.js"
+	>
+	</script>
+
+	
 </svelte:head>

@@ -30,7 +30,7 @@
 			<br />
 			<a
 				href="https://cloudblogs.microsoft.com/opensource/2023/10/04/accelerating-over-130000-hugging-face-models-with-onnx-runtime/"
-				class="btn btn-primary mr-0 mb-4 md:mr-4">Recent blog with Hugging Face →</a
+				class="btn btn-primary rounded-sm mr-0 mb-4 md:mr-4">Recent blog with Hugging Face →</a
 			>
 		</div>
 		<div class="m-auto">
@@ -47,10 +47,10 @@
 				Hugging Face provides many options for exporting models to ONNX, including an ONNX Export
 				Space for PyTorch models from the Hugging Face Model Hub.
 			</p>
-			<a href="https://huggingface.co/spaces/onnx/export" class="btn btn-primary"
+			<a href="https://huggingface.co/spaces/onnx/export" class="btn btn-primary rounded-sm"
 				>Export PyTorch models to ONNX →</a
 			>
-			<a href="https://huggingface.co/docs/transformers/serialization" class="btn btn-primary"
+			<a href="https://huggingface.co/docs/transformers/serialization" class="btn btn-primary rounded-sm"
 				>Other ONNX export options →</a
 			>
 		</div>

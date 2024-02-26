@@ -30,7 +30,7 @@
 		{/each}
 	</div>
     {#if title == true}
-	<a href="https://www.youtube.com/@ONNXRuntime" class="btn btn-primary mr-4">
+	<a href="https://www.youtube.com/@ONNXRuntime" class="btn rounded-sm btn-primary mr-4">
 		ONNX Runtime YouTube channel →
 	</a>
     {/if}

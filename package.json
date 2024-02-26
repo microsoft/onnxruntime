@@ -14,6 +14,7 @@
 		"postbuild": "npx svelte-sitemap --domain https://onnxruntime.ai"
 	},
 	"devDependencies": {
+		"@beyonk/gdpr-cookie-consent-banner": "^12.1.0",
 		"@sveltejs/adapter-auto": "^2.0.0",
 		"@sveltejs/adapter-static": "^2.0.2",
 		"@sveltejs/kit": "^1.20.4",
@@ -23,12 +24,13 @@
 		"@typescript-eslint/eslint-plugin": "^5.45.0",
 		"@typescript-eslint/parser": "^5.45.0",
 		"autoprefixer": "^10.4.14",
-		"daisyui": "^3.6.3",
+		"daisyui": "^4.7.2",
 		"eslint": "^8.28.0",
 		"eslint-config-prettier": "^8.5.0",
 		"eslint-plugin-svelte": "^2.30.0",
 		"gh-pages": "^5.0.0",
 		"jquery": "^3.7.1",
+		"mdsvex": "^0.11.0",
 		"postcss": "^8.4.26",
 		"prettier": "^2.8.0",
 		"prettier-plugin-svelte": "^2.10.1",

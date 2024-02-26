@@ -13,7 +13,7 @@
 		ONNX Runtime powers AI in Microsoft products including Windows, Office, Azure Cognitive Services, and Bing,
 		as well as in thousands of other projects across the world. ONNX Runtime is cross-platform, supporting cloud, edge, web, and mobile experiences. 
 	</p>
-	 <a href="./inference" class="btn btn-primary">Learn more about ONNX Runtime Inferencing →</a>
+	 <a href="./inference" class="btn btn-primary rounded-sm">Learn more about ONNX Runtime Inferencing →</a>
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 md:mx-10">
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid xl:grid-cols-4 place-items-center">
@@ -49,7 +49,7 @@
 	<p class="text-xl pb-4">
 		ONNX Runtime reduces costs for large model training and enables on-device training.
 	</p>
-	<a href="./training" class="btn btn-primary">Learn more about ONNX Runtime Training →</a>
+	<a href="./training" class="btn btn-primary rounded-sm">Learn more about ONNX Runtime Training →</a>
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 md:mx-10">
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid xl:grid-cols-4 place-items-center">
