@@ -68,7 +68,7 @@ This will dynamically trace with high-performance the previously mentioned LOGS(
 
 Provider Name: ONNXRuntimeTraceLoggingProvider  
 Provider GUID: 929DD115-1ECB-4CB5-B060-EBD4983C421D  
-Keyword: Logs (0x2) keyword per [logging.h](https://github.com/ivberg/onnxruntime/blob/user/ivberg/ETWRundown/include/onnxruntime/core/common/logging/logging.h#L83)  
+Keyword: Logs (0x2) keyword per [logging.h](https://github.com/ivberg/onnxruntime/blob/9cb97ee507b9b45d4a896f663590083e7e7568ac/include/onnxruntime/core/common/logging/logging.h#L83)  
 Level: 1 (CRITICAL ) through 5 (VERBOSE) per [TraceLoggingLevel](https://learn.microsoft.com/en-us/windows/win32/api/traceloggingprovider/nf-traceloggingprovider-tracelogginglevel#remarks)  
 
 ### Microsoft.ML.ONNXRuntime
@@ -77,7 +77,7 @@ The [Microsoft.ML.ONNXRuntime](https://github.com/microsoft/onnxruntime/blob/mai
 
 Provider Name: Microsoft.ML.ONNXRuntime  
 Provider GUID: 3a26b1ff-7484-7484-7484-15261f42614d  
-Keywords: Multiple per [logging.h](https://github.com/ivberg/onnxruntime/blob/user/ivberg/ETWRundown/include/onnxruntime/core/common/logging/logging.h#L81)  
+Keywords: Multiple per [logging.h](https://github.com/ivberg/onnxruntime/blob/9cb97ee507b9b45d4a896f663590083e7e7568ac/include/onnxruntime/core/common/logging/logging.h#L81)  
 Level: 1 (CRITICAL ) through 5 (VERBOSE) per [TraceLoggingLevel](https://learn.microsoft.com/en-us/windows/win32/api/traceloggingprovider/nf-traceloggingprovider-tracelogginglevel#remarks)  
 Note: This provider supports ETW [CaptureState](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/capturestateonsave) (Rundown) for logging state for example when a trace is saved
 
