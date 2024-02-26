@@ -43,6 +43,18 @@ parameters:
   type: object
   default: []
 
+- name: epList
+  displayName: EPs to run model tests
+  type: object
+  default:
+    - ORT-CPUFp32
+    - ORT-CUDAFp32
+    - ORT-CUDAFp16
+    - ORT-TRTFp32
+    - ORT-TRTFp16
+    - TRTFp32
+    - TRTFp16
+
 jobs:
 - job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
   workspace:
