@@ -46,14 +46,6 @@
 	 /**
 	 * @type {any}
 	 */
-	 let imgSrc;
-
-  async function loadImage() {
-    const { default: img } = await import(`./${image}.png`);
-    imgSrc = img;
-  }
-
-  loadImage();
 
 </script>
 
@@ -63,16 +55,16 @@
 	<meta name="keywords" content={keywords} />
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="date" content={date} />
-	<meta name="image" content={imgSrc ? imgSrc : image} />
 	<meta name="og:title" content={title} />
 	<meta name="og:description" content={description} />
 	<meta name="og:type" content="article" />
 	<meta name="og:url" content={url} />
-	<meta name="og:image" content={imgSrc ? imgSrc : image}  />
 	<meta name="twitter:title" content={title} />
 	<meta name="twitter:description" content={description} />
-	<meta name="twitter:card" content={imgSrc ? imgSrc : image}  />
-	<meta name="twitter:image" content={imgSrc ? imgSrc : image}  />
+	<!-- <meta name="image" content={image} />
+	<meta name="og:image" content={image}  />
+	<meta name="twitter:card" content={image}  />
+	<meta name="twitter:image" content={image}  /> -->
 
 	<meta name="robots" content={robots} />
 </svelte:head>

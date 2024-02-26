@@ -21,7 +21,7 @@ authorsLink:
     'https://www.linkedin.com/in/ashwini-khade-0266541a/',
     'http://linkedin.com/in/ye-wang-0ab35812a'
   ]
-image: 'accelerating-phi-2/SDXL'
+image: 'accelerating-phi-2/Phi2_Int4_TokenGenerationTP.png'
 url: 'https://onnxruntime.ai/blogs/accelerating-phi-2'
 ---
 
