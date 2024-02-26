@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 //
-// This module define MatMulFp32Q4 operator, it is basically
+// This module define MatMulNBits operator, it is basically
 // matmul float32 with right hand side being a 2-D matrix
 // pre-packed and block-compacted into int4
 //

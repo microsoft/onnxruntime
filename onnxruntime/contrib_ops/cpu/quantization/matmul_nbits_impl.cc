@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "contrib_ops/cpu/quantization/matmul_nbits_impl.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -54,7 +55,7 @@ void Dequantize4BitsKernelReOrder(
 
     if constexpr (std::is_same_v<T, MLFloat16>) {
       T zp_adjust = -scale * MLFloat16(zp_f);
-      output_i[i] = float((quant_value >> (4 * i)) & 0xF) * scale + zp_adjust;
+      output_i[i] = static_cast<float>((quant_value >> (4 * i)) & 0xF) * scale + zp_adjust;
     } else {
       T zp_adjust = -scale * zp_f;
       output_i[i] = T((quant_value >> (4 * i)) & 0xF) * scale + zp_adjust;
@@ -86,7 +87,7 @@ void DequantizeBlockwise(
         for (int j = 0; j < 256; j++) {
           Dequantize4BitsKernelReOrder(output, quant_data, scales_data, zero_points,
                                        reorder_idx, block_size, groups_per_threadblock,
-                                       total_groups, N, K, block_id, j);
+                                       total_groups, N, K, static_cast<int>(block_id), j);
         }
       });
 }

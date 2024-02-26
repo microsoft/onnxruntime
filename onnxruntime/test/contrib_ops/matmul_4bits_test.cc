@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <gsl/narrow>
 #ifndef ORT_MINIMAL_BUILD
+#include <gsl/narrow>
 
 #include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
@@ -68,6 +68,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
 
 void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
              bool has_zeropoint, bool use_float16, bool has_g_idx = false, bool zp_is_4bit = true, float fp16_abs_error = 0.02f) {
+  std::cerr << M << " " << N << " " << K << " " << block_size << " " << has_zeropoint << " " << use_float16 << " " << has_g_idx << " " << zp_is_4bit << " " << std::endl;
   zp_is_4bit = zp_is_4bit | has_g_idx;
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));
@@ -115,6 +116,8 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
   test.AddAttribute<int64_t>("block_size", block_size);
   test.AddAttribute<int64_t>("bits", QBits);
   test.AddAttribute<int64_t>("accuracy_level", accuracy_level);
+  auto ceildiv = [](int64_t a, int64_t b) { return (a + b - 1) / b; };
+
   if (use_float16) {
     test.AddInput<MLFloat16>("A", {M, K}, ToFloat16(input0_vals), false);
     test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
@@ -141,11 +144,12 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
       test.AddInput<uint8_t>("", {0}, {});
     }
     if (has_g_idx) {
-      std::vector<int32_t> g_idx(K);
-      for (int64_t i = 0; i < K; i++) {
+      int K_pad = gsl::narrow<int32_t>(ceildiv(K, block_size) * block_size);
+      std::vector<int32_t> g_idx(K_pad);
+      for (int64_t i = 0; i < K_pad; i++) {
         g_idx[i] = gsl::narrow<int32_t>(i / block_size);
       }
-      test.AddInput<int32_t>("g_idx", {static_cast<int64_t>(K)}, g_idx, true);
+      test.AddInput<int32_t>("g_idx", {static_cast<int64_t>(K_pad)}, g_idx, true);
     }
 
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
@@ -180,11 +184,12 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
       test.AddInput<uint8_t>("", {0}, {});
     }
     if (has_g_idx) {
-      std::vector<int32_t> g_idx(K);
-      for (int64_t i = 0; i < K; i++) {
+      int K_pad = gsl::narrow<int32_t>(ceildiv(K, block_size) * block_size);
+      std::vector<int32_t> g_idx(K_pad);
+      for (int64_t i = 0; i < K_pad; i++) {
         g_idx[i] = gsl::narrow<int32_t>(i / block_size);
       }
-      test.AddInput<int32_t>("g_idx", {static_cast<int64_t>(K)}, g_idx, true);
+      test.AddInput<int32_t>("g_idx", {static_cast<int64_t>(K_pad)}, g_idx, true);
     }
     test.AddOutput<float>("Y", {M, N}, expected_vals);
     if (accuracy_level == 4) {

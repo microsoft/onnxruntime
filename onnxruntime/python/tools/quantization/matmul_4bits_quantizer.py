@@ -15,7 +15,6 @@ import os
 import numpy as np
 import numpy.typing as npt
 import onnx
-import torch
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from packaging import version
 
@@ -155,14 +154,16 @@ class HQQWeightOnlyQuantizer:
     # Proximal solver || weight - dequantize(quantize(weight))||_p^p
     @staticmethod
     def optimize_weights(
-        tensor: torch.Tensor,
-        scale: torch.Tensor,
-        zero: torch.Tensor,
+        tensor,
+        scale,
+        zero,
         min_max: list[int],
         axis: int = 0,
         opt_params: dict = None,  # noqa: RUF013
         verbose=False,
     ):
+        import torch
+
         opt_params = {"lp_norm": 0.7, "beta": 1e1, "kappa": 1.01, "iters": 20} if opt_params is None else opt_params
         lp_norm, beta, kappa, iters = (
             opt_params["lp_norm"],
@@ -214,7 +215,7 @@ class HQQWeightOnlyQuantizer:
             ori_int_tensor = ori_int_tensor.T
             pack_tensor = pack_tensor.T
         if bits in [2, 4, 8]:
-            compress_ratio = pack_tensor.dtype.itemsize * 8 // bits
+            compress_ratio = pack_tensor.element_size() * 8 // bits
             for j in range(0, compress_ratio):
                 pack_tensor[0:] |= ori_int_tensor[j::compress_ratio] << (bits * (j))
         else:
@@ -224,6 +225,8 @@ class HQQWeightOnlyQuantizer:
     def quantize_internal(
         self, tensor, bits=4, channel_wise=True, group_size=64, optimize=True, round_zero=True, axis=1
     ):
+        import torch
+
         weight = tensor.float()
         ori_shape = weight.shape
 
@@ -288,6 +291,7 @@ class HQQWeightOnlyQuantizer:
         """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
         if node.op_type != "MatMul":
             return node  # only care about MatMul for now
+        import torch
 
         logger.info(f"start to quantize {node.name} ...")
         inputB = node.input[1]  # noqa: N806
@@ -458,6 +462,8 @@ class MatMul4BitsQuantizer:
     def __init__(
         self,
         model: ModelProto | str,
+        block_size: int = 128,
+        is_symmetric: bool = False,
         accuracy_level: int | None = None,
         nodes_to_exclude=None,
         algo_config: WeightOnlyQuantConfig = None,
@@ -466,11 +472,15 @@ class MatMul4BitsQuantizer:
             nodes_to_exclude = []
         self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
         self.model_path = model if isinstance(model, str) else None
+        self.block_size = block_size
+        self.is_symmetric = is_symmetric
         self.accuracy_level = accuracy_level
         self.nodes_to_exclude = set(nodes_to_exclude)
         self.node_quantizer = None
         if algo_config is None:
-            algo_config = DefaultWeightOnlyQuantConfig(block_size=32, is_symmetric=False, accuracy_level=accuracy_level)
+            algo_config = DefaultWeightOnlyQuantConfig(
+                block_size=block_size, is_symmetric=is_symmetric, accuracy_level=accuracy_level
+            )
         self.algo_config = algo_config
         if algo_config.algorithm == "HQQ":
             self.node_quantizer = HQQWeightOnlyQuantizer(self.algo_config)
@@ -527,8 +537,8 @@ class MatMul4BitsQuantizer:
         q4_node_config = {}
         template_config_q4 = {
             "bits": 4,
-            "group_size": self.algo_config.block_size,
-            "scheme": "sym" if self.algo_config.is_symmetric else "asym",
+            "group_size": self.block_size,
+            "scheme": "sym" if self.is_symmetric else "asym",
         }
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:

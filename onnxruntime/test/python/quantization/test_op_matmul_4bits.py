@@ -173,7 +173,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
             algo_config = matmul_4bits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
-        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, algo_config=algo_config)
+        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 

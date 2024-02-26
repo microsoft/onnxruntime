@@ -2,13 +2,15 @@
 // Licensed under the MIT License.
 
 //
-// This module define MatMulFp32Q4 operator, it is basically
-// matmul float32 with right hand side being a 2-D matrix
+// This module define MatMulNBits operator, it is basically
+// matmul float with right hand side being a 2-D matrix
 // pre-packed and block-compacted into int4
 //
 
-#include "matmul_nbits.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits.h"
+
 #include <cstdint>
+
 #include "core/common/status.h"
 #include "core/framework/float16.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -62,80 +64,86 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                           SafeInt<int>(GetDeviceProp().sharedMemPerBlock),
                           static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
 
-  if (!is_4bit_done) {
-    int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
-    IAllocatorUniquePtr<T> b_data_ptr = GetScratchBuffer<T>(N_ * K_padded, ctx->GetComputeStream());
-    auto* b_data = b_data_ptr.get();
-    if (column_wise_quant_blk_) {
-      // column-wise block
-      if ((zero_points && zero_points->IsDataType<T>())) {
-        ORT_RETURN_IF_ERROR(Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const CudaT*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
-      } else {
-        ORT_RETURN_IF_ERROR(Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const uint8_t*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
-      }
-    } else {
-      // row-wise block
-      K_padded = K_;
+  if (is_4bit_done) {
+    return Status::OK();
+  }
 
-      ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
+  int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
+  IAllocatorUniquePtr<T> b_data_ptr = GetScratchBuffer<T>(N_ * K_padded, ctx->GetComputeStream());
+  auto* b_data = b_data_ptr.get();
+  if (column_wise_quant_blk_) {
+    if (reorder_idx) {
+      ORT_ENFORCE(K_padded == reorder_idx->Shape()[0], "K_padded != g_idx->Shape()[0]");
+    }
+    // column-wise block
+    if ((zero_points && zero_points->IsDataType<T>())) {
+      ORT_RETURN_IF_ERROR(Dequantize4Bits(
+          reinterpret_cast<CudaT*>(b_data),
+          blob_data,
+          reinterpret_cast<const CudaT*>(scales_data),
+          (const CudaT*)zero_points_data,
+          reorder_idx_data,
+          SafeInt<int>(K_padded),
+          SafeInt<int>(N_),
+          SafeInt<int>(block_size_),
+          static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+    } else {
+      ORT_RETURN_IF_ERROR(Dequantize4Bits(
           reinterpret_cast<CudaT*>(b_data),
           blob_data,
           reinterpret_cast<const CudaT*>(scales_data),
           (const uint8_t*)zero_points_data,
-          SafeInt<int>(block_size_),
-          column_wise_quant_blk_,
-          SafeInt<int>(K_),
+          reorder_idx_data,
+          SafeInt<int>(K_padded),
           SafeInt<int>(N_),
+          SafeInt<int>(block_size_),
           static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
     }
+  } else {
+    // row-wise block
+    K_padded = K_;
+
+    ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
+        reinterpret_cast<CudaT*>(b_data),
+        blob_data,
+        reinterpret_cast<const CudaT*>(scales_data),
+        (const uint8_t*)zero_points_data,
+        SafeInt<int>(block_size_),
+        column_wise_quant_blk_,
+        SafeInt<int>(K_),
+        SafeInt<int>(N_),
+        static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+  }
 #if 0
-  cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
-  T* b_data_cpu = new T[K_ * N_];
-  cudaMemcpy(b_data_cpu, b_data, K_ * N_ * sizeof(T), cudaMemcpyDeviceToHost);
-  delete[] b_data_cpu;
+cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
+T* b_data_cpu = new T[K_ * N_];
+cudaMemcpy(b_data_cpu, b_data, K_ * N_ * sizeof(T), cudaMemcpyDeviceToHost);
+delete[] b_data_cpu;
 #endif
 
-    const CudaT alpha = ToCudaType<T>::FromFloat(1.f);
-    const CudaT zero = ToCudaType<T>::FromFloat(0.f);
+  const CudaT alpha = ToCudaType<T>::FromFloat(1.f);
+  const CudaT zero = ToCudaType<T>::FromFloat(0.f);
 
-    if (helper.OutputOffsets().size() == 1) {
-      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          GetCublasHandle(ctx),
-          CUBLAS_OP_T,
-          CUBLAS_OP_N,
-          SafeInt<int>(helper.N()),
-          SafeInt<int>(helper.M()),
-          SafeInt<int>(helper.K()),
-          &alpha,
-          reinterpret_cast<const CudaT*>(b_data),
-          SafeInt<int>(K_padded),
-          reinterpret_cast<const CudaT*>(a_data),
-          helper.Lda(transa),
-          &zero,
-          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-          helper.Ldc(),
-          GetDeviceProp(),
-          UseTF32()));
-    }
+  if (helper.OutputOffsets().size() == 1) {
+    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+        GetCublasHandle(ctx),
+        CUBLAS_OP_T,
+        CUBLAS_OP_N,
+        SafeInt<int>(helper.N()),
+        SafeInt<int>(helper.M()),
+        SafeInt<int>(helper.K()),
+        &alpha,
+        reinterpret_cast<const CudaT*>(b_data),
+        SafeInt<int>(K_padded),
+        reinterpret_cast<const CudaT*>(a_data),
+        helper.Lda(transa),
+        &zero,
+        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+        helper.Ldc(),
+        GetDeviceProp(),
+        UseTF32()));
   }
+
 
   return Status::OK();
 }
@@ -159,7 +167,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int32_t>()}),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
     MatMulNBits<MLFloat16>);
 
 }  // namespace cuda

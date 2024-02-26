@@ -72,9 +72,9 @@ __global__ void Dequantize4BitsKernelReOrder(
   if (group_id >= total_groups) {
     return;
   }
-  //T __shared__ zero_points_after_reorder[];//K
-  //T __shared__ scales_after_reorder[];     // K
-  //const int num_r_per_thread = k / 256;
+  // T __shared__ zero_points_after_reorder[];//K
+  // T __shared__ scales_after_reorder[];     // K
+  // const int num_r_per_thread = k / 256;
 
   const int zero_point_shape_x = (groups_per_K + 1) / 2;
   const int scales_shape_x = groups_per_K;
@@ -102,7 +102,7 @@ __global__ void Dequantize4BitsKernelReOrder(
   }
 }
 
-template <class T, typename ZeroT=uint8_t>
+template <class T, typename ZeroT = uint8_t>
 __global__ void Dequantize4BitsKernel(
     T* output,
     const uint8_t* quant_data,
@@ -116,15 +116,15 @@ __global__ void Dequantize4BitsKernel(
   if (block_id >= total_groups) {
     return;
   }
-  const int zero_point_shape_x = (groups_per_K + 1) / 2;
-  const int scales_shape_x = groups_per_K;
-  int n_idx = block_id / scales_shape_x;
-  int kb_idx = block_id % scales_shape_x;
   int element_offset = block_id * block_size + ((threadIdx.x * 8) & (block_size - 1));
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
   T scale = *(scale_data + block_id);
   T zero_point_value;
-  if constexpr(std::is_same_v<ZeroT, uint8_t>) {
+  if constexpr (std::is_same_v<ZeroT, uint8_t>) {
+    const int scales_shape_x = groups_per_K;
+    const int zero_point_shape_x = (groups_per_K + 1) / 2;
+    int kb_idx = block_id % scales_shape_x;
+    int n_idx = block_id / scales_shape_x;
     uint8_t zp = 8;
     if (zero_points) {
       zp = zero_points[n_idx * zero_point_shape_x + kb_idx / 2];
@@ -168,7 +168,7 @@ Status Dequantize4Bits(
         groups_per_threadblock,
         total_groups);
   } else {
-    //static_assert(std::is_same_v<ZeroT, uint8_t>, "ZeroT must be uint8_t");
+    // static_assert(std::is_same_v<ZeroT, uint8_t>, "ZeroT must be uint8_t");
     Dequantize4BitsKernelReOrder<<<groups_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         output,
         quant_data,

@@ -12,7 +12,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
-#include "matmul_nbits_impl.h"
+#include "contrib_ops/cpu/quantization/matmul_nbits_impl.h"
 
 #ifdef ORT_NEURAL_SPEED
 #include "contrib_ops/cpu/quantization/neural_speed_gemm.h"
@@ -288,8 +288,10 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  const bool has_single_b_matrix = (reorder_idx_data == nullptr) &&
-                                   (!zero_points || !zero_points->IsDataType<float>()) && std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(), [](size_t offset) { return offset == 0; });
+  const bool has_single_b_matrix =
+      (reorder_idx_data == nullptr) &&
+      (!zero_points || !zero_points->IsDataType<float>()) &&
+      std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(), [](size_t offset) { return offset == 0; });
 
   if (has_single_b_matrix) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
@@ -409,7 +411,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<float>()})
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulNBits);
 
 }  // namespace contrib
