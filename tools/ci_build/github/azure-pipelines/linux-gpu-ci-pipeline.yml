@@ -241,7 +241,7 @@ stages:
         script: |
           set -e -x
           mkdir -p $HOME/.onnx
-          docker run --gpus all --rm \
+          docker run --gpus all --shm-size=1g --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 --rm \
             --volume  $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory)/Release:/build/Release \
             --volume /data/models:/build/models:ro \
