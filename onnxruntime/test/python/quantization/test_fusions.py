@@ -145,8 +145,7 @@ class TestFusions(unittest.TestCase):
 
     def test_fuse_erf_to_gelu_1(self):
         model = self.build_erf_sequence_1_model()
-        fusion_gelu = FusionGelu(model)
-        modified = fusion_gelu.apply()
+        modified = FusionGelu(model).apply()
 
         self.assertTrue(modified)
         self.assertEqual(len(model.model.graph.node), 1)
@@ -157,8 +156,7 @@ class TestFusions(unittest.TestCase):
 
     def test_fuse_erf_to_gelu_2(self):
         model = self.build_erf_sequence_2_model()
-        fusion_gelu = FusionGelu(model)
-        modified = fusion_gelu.apply()
+        modified = FusionGelu(model).apply()
 
         self.assertTrue(modified)
         self.assertEqual(len(model.model.graph.node), 1)
@@ -169,8 +167,7 @@ class TestFusions(unittest.TestCase):
 
     def test_fuse_erf_to_gelu_3(self):
         model = self.build_erf_sequence_3_model()
-        fusion_gelu = FusionGelu(model)
-        modified = fusion_gelu.apply()
+        modified = FusionGelu(model).apply()
 
         self.assertTrue(modified)
         self.assertEqual(len(model.model.graph.node), 1)
@@ -181,8 +178,7 @@ class TestFusions(unittest.TestCase):
 
     def test_fuse_erf_to_gelu_4(self):
         model = self.build_erf_sequence_4_model()
-        fusion_gelu = FusionGelu(model)
-        modified = fusion_gelu.apply()
+        modified = FusionGelu(model).apply()
 
         self.assertTrue(modified)
         self.assertEqual(len(model.model.graph.node), 1)
