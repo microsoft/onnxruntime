@@ -19,6 +19,9 @@ from onnxruntime.quantization.onnx_model import ONNXModel
 
 class TestFusions(unittest.TestCase):
     def check_fused_model_correctness(self, orig_model, fused_model, inputs, rtol=1e-7, atol=0):
+        """
+        Checks that the output of the fused model matches the output of the original model.
+        """
         orig_session = onnxruntime.InferenceSession(orig_model.SerializeToString(), providers=["CPUExecutionProvider"])
         orig_results = orig_session.run(None, inputs)
 
