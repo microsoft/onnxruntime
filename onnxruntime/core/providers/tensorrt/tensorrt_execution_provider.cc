@@ -720,11 +720,11 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 #define CASE_GET_INPUT_TENSOR(DATA_TYPE, SrcT)                                                                                                     \
   case DATA_TYPE: {                                                                                                                                \
     auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                                                    \
-    if (input_tensor_ptr == nullptr) {                                                                                                             \
+    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                                             \
+      data = const_cast<SrcT*>(input_tensor_ptr);                                                                                                  \
+    } else {                                                                                                                                       \
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(SrcT)));                                             \
       data = scratch_buffers.back().get();                                                                                                         \
-    } else {                                                                                                                                       \
-      data = const_cast<SrcT*>(input_tensor_ptr);                                                                                                  \
     }                                                                                                                                              \
     break;                                                                                                                                         \
   }
@@ -732,15 +732,6 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 #define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                          \
   case DATA_TYPE: {                                                                                                                                \
     auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                                                    \
-    /* Return the number of elements specified by the tensor shape (all dimensions multiplied by each other). */                                   \
-    /* For 0 dimensions, 1 is returned. If any dimension is less than 0, the result is always -1.             */                                   \
-    /*                                                                                                        */                                   \
-    /* Examples:<br>                                                                                          */                                   \
-    /* [] = 1<br>                                                                                             */                                   \
-    /* [1,3,4] = 12<br>                                                                                       */                                   \
-    /* [2,0,4] = 0<br>                                                                                        */                                   \
-    /* [-1,3,4] = -1<br>                                                                                      */                                   \
-    auto elem_cnt = input_tensor.GetTensorTypeAndShapeInfo().GetElementCount();                                                                    \
     if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                             \
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT)));                                  \
       data = scratch_buffers.back().get();                                                                                                         \
@@ -755,11 +746,11 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 #define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                                                                                    \
   case DATA_TYPE: {                                                                                                                                \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                                                           \
-    if (output_tensor_ptr == nullptr) {                                                                                                            \
+    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                            \
+      buffers[output_name] = output_tensor_ptr;                                                                                                    \
+    } else {                                                                                                                                       \
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(SrcT)));                                             \
       buffers[output_name] = scratch_buffers.back().get();                                                                                         \
-    } else {                                                                                                                                       \
-      buffers[output_name] = output_tensor_ptr;                                                                                                    \
     }                                                                                                                                              \
     break;                                                                                                                                         \
   }
@@ -767,15 +758,6 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 #define CASE_GET_CAST_OUTPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                         \
   case DATA_TYPE: {                                                                                                                                \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                                                           \
-    /* Return the number of elements specified by the tensor shape (all dimensions multiplied by each other). */                                   \
-    /* For 0 dimensions, 1 is returned. If any dimension is less than 0, the result is always -1.             */                                   \
-    /*                                                                                                        */                                   \
-    /* Examples:<br>                                                                                          */                                   \
-    /* [] = 1<br>                                                                                             */                                   \
-    /* [1,3,4] = 12<br>                                                                                       */                                   \
-    /* [2,0,4] = 0<br>                                                                                        */                                   \
-    /* [-1,3,4] = -1<br>                                                                                      */                                   \
-    auto elem_cnt = output_tensor.GetTensorTypeAndShapeInfo().GetElementCount();                                                                   \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                            \
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT)));                                  \
       buffers[output_name] = scratch_buffers.back().get();                                                                                         \
@@ -826,6 +808,17 @@ Status BindContextInput(Ort::KernelContext& ctx,
   auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
   const auto tensor_shapes = tensor_info.GetShape();
   const auto tensor_type = tensor_info.GetElementType();
+  /*
+   * Return the number of elements specified by the tensor shape (all dimensions multiplied by each other).
+   * For 0 dimensions, 1 is returned. If any dimension is less than 0, the result is always -1.
+   *
+   * Examples:<br>
+   * [] = 1<br>
+   * [1,3,4] = 12<br>
+   * [2,0,4] = 0<br>
+   * [-1,3,4] = -1<br>
+   */
+  const auto elem_cnt = tensor_info.GetElementCount();
 
   if (trt_engine->isShapeInferenceIO(input_name)) {
     // Get the shape value of "shape tensor"
@@ -857,9 +850,9 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
     // Bind "execution tensor" input buffer
     //
-    // Note: TRT requires a non-null ptr even for empty tensor (i.e. any of the dimension is 0 and element count is 0),
-    //       therefore TRT EP always allocates a dummy size of the data type for empty tensor.
-    //       In the case of empty tensor, no need to do the cuda cast for int64 and double data type.
+    // Note: TRT requires a non-null pointer even for empty tensor (i.e. any of the dimension is 0 and element count is 0).
+    //       Therefore, in the case of empty tensor, TRT EP always allocates a dummy size of the data type and also no need
+    //       to do the cuda cast for int64 and double data type.
     void* data = nullptr;
     switch (tensor_type) {
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
@@ -868,9 +861,9 @@ Status BindContextInput(Ort::KernelContext& ctx,
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
-      // Cast int64 input to int32 input because TensorRT doesn't fully support int64
+      // Cast int64 input to int32 input because TensorRT doesn't support int64
       CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t, int32_t)
-      // Cast double input to float because TensorRT doesn't fully support double
+      // Cast double input to float because TensorRT doesn't support double
       CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -947,6 +940,8 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   } else {
     output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
     auto& output_tensor = output_tensors[i];
+    const auto elem_cnt = output_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
+
     switch (output_type) {
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
@@ -954,9 +949,9 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
-      // Allocate int32 CUDA memory for int64 output type because TensorRT doesn't fully support int64
+      // Allocate int32 CUDA memory for int64 output type because TensorRT doesn't support int64
       CASE_GET_CAST_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t, int32_t)
-      // Allocate float CUDA memory for double output type because TensorRT doesn't fully support double
+      // Allocate float CUDA memory for double output type because TensorRT doesn't support double
       CASE_GET_CAST_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -1019,9 +1014,9 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
-    // The allocation buffer holds the int32 output data since TRT doesn't support int64 but int32. So, we need to cast the data (int32 -> int64) for ORT kernel output.
+    // The allocation buffer holds the int32 output data since TRT doesn't support int64. So, we need to cast the data (int32 -> int64) for ORT kernel output.
     CASE_CAST_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int32_t, int64_t)
-    // The allocation buffer holds the float output data since TRT doesn't support double but float. So, we need to cast the data (float -> double) for ORT kernel output.
+    // The allocation buffer holds the float output data since TRT doesn't support double. So, we need to cast the data (float -> double) for ORT kernel output.
     CASE_CAST_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, float, double)
     default: {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
