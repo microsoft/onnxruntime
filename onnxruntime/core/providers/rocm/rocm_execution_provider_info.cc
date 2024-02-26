@@ -40,6 +40,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   void* alloc = nullptr;
   void* free = nullptr;
   void* empty_cache = nullptr;
+  void* user_compute_stream = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -54,9 +55,9 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                     ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
                 return Status::OK();
               })
-          .AddAssignmentToReference(cuda::provider_option_names::kHasUserComputeStream, info.has_user_compute_stream)
+          .AddAssignmentToReference(rocm::provider_option_names::kHasUserComputeStream, info.has_user_compute_stream)
           .AddValueParser(
-              cuda::provider_option_names::kUserComputeStream,
+              rocm::provider_option_names::kUserComputeStream,
               [&user_compute_stream](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
