@@ -5,23 +5,24 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import math
 import unittest
 
-import math
 import numpy as np
 import onnx
 
-from onnxruntime.quantization.onnx_model import ONNXModel
 from onnxruntime.quantization.fusions import FusionGelu
+from onnxruntime.quantization.onnx_model import ONNXModel
+
 
 class TestFusions(unittest.TestCase):
     def build_erf_sequence_1_model(self):
         """
-                       +-------Mul(0.5)---------------------+
-                       |                                    |
-                       |                                    v
-                    [root] --> Div -----> Erf  --> Add --> Mul -->
-                              (B=1.4142...)       (1)
+           +-------Mul(0.5)---------------------+
+           |                                    |
+           |                                    v
+        [root] --> Div -----> Erf  --> Add --> Mul -->
+                  (B=1.4142...)       (1)
 
         """
         shape = (1, 2, 3)
@@ -49,11 +50,11 @@ class TestFusions(unittest.TestCase):
 
     def build_erf_sequence_2_model(self):
         """
-                       +------------------------------------+
-                       |                                    |
-                       |                                    v
-                    [root] --> Div -----> Erf  --> Add --> Mul -->Mul -->
-                              (B=1.4142...)       (1)            (0.5)
+           +------------------------------------+
+           |                                    |
+           |                                    v
+        [root] --> Div -----> Erf  --> Add --> Mul -->Mul -->
+                  (B=1.4142...)       (1)            (0.5)
 
         """
         shape = (1, 2, 3)
@@ -81,11 +82,11 @@ class TestFusions(unittest.TestCase):
 
     def build_erf_sequence_3_model(self):
         """
-                   +------------------------------------------+
-                   |                                          |
-                   |                                          v
-                [root] --> Div -----> Erf  --> Add --> Mul -->Mul
-                          (B=1.4142...)       (A=1)   (A=0.5)
+           +------------------------------------------+
+           |                                          |
+           |                                          v
+        [root] --> Div -----> Erf  --> Add --> Mul -->Mul
+                  (B=1.4142...)       (A=1)   (A=0.5)
 
         """
         shape = (1, 2, 3)
@@ -113,11 +114,11 @@ class TestFusions(unittest.TestCase):
 
     def build_erf_sequence_4_model(self):
         """
-                   +----------------------------------------------+
-                   |                                              |
-                   |                                              v
-                [root] --> Mul -----> Erf    -->   Add --> Mul -->Mul
-                           (A=0.7071067690849304)  (B=1)  (B=0.5)
+           +----------------------------------------------+
+           |                                              |
+           |                                              v
+        [root] --> Mul -----> Erf    -->   Add --> Mul -->Mul
+                   (A=0.7071067690849304)  (B=1)  (B=0.5)
 
         """
         shape = (1, 2, 3)
@@ -186,6 +187,7 @@ class TestFusions(unittest.TestCase):
         gelu_node = model.model.graph.node[0]
         self.assertEqual(gelu_node.op_type, "Gelu")
         self.assertTrue(gelu_node.name)
+
 
 if __name__ == "__main__":
     unittest.main()
