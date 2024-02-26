@@ -18,6 +18,7 @@
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 
 #ifdef _WIN32
@@ -542,6 +543,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
               "Select from 'true' or 'false' \n");
         }
+      } else if (key == "enable_graph_serialization") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          session_options.AddConfigEntry(kOrtSessionOptionsConfigEnableGraphSerialization, value.data());
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'enable_graph_serialization'. "
+              "Select from 'true' or 'false' \n");
+        }
       }
     }
     session_options.AppendExecutionProvider("DML", dml_options);
@@ -634,22 +644,41 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.DisableMemPattern();
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
 
+  // Set any extra session configuration entries provided by the user via command-line arguments.
+  //
+  // Some session config entries can also be set via dedicated command-line options.
+  // If the user uses multiple command-line options to set the same session config entry,
+  // we'll print a warning. Note that the dedicated command-line options will take precedence.
+  const auto& user_session_configs = performance_test_config.run_config.session_config_entries;
+  for (auto& it : user_session_configs) {
+    session_options.AddConfigEntry(it.first.c_str(), it.second.c_str());
+  }
+
+  auto warn_dup_config_entry = [&user_session_configs](const char* key) -> void {
+    if (user_session_configs.find(key) != user_session_configs.end()) {
+      fprintf(stderr, "[WARNING]: Trying to set session config entry '%s' via multiple command-line options\n", key);
+    }
+  };
+
   if (performance_test_config.run_config.intra_op_num_threads > 0) {
     fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
     session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
   }
 
   if (!performance_test_config.run_config.intra_op_thread_affinities.empty()) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpThreadAffinities);
     fprintf(stdout, "Setting intra op thread affinity as %s\n", performance_test_config.run_config.intra_op_thread_affinities.c_str());
     session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, performance_test_config.run_config.intra_op_thread_affinities.c_str());
   }
 
   if (performance_test_config.run_config.disable_spinning) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigAllowIntraOpSpinning);
     fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
   }
 
   if (performance_test_config.run_config.disable_spinning_between_run) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigForceSpinningStop);
     fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1");
   }
@@ -661,12 +690,16 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
-  if (!performance_test_config.run_config.profile_file.empty())
+  if (!performance_test_config.run_config.profile_file.empty()) {
     session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
-  if (!performance_test_config.run_config.optimized_model_path.empty())
+  }
+  if (!performance_test_config.run_config.optimized_model_path.empty()) {
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
-  if (performance_test_config.run_config.set_denormal_as_zero)
+  }
+  if (performance_test_config.run_config.set_denormal_as_zero) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigSetDenormalAsZero);
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  }
   if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
     for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
       if (g_ort->AddFreeDimensionOverrideByName(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {

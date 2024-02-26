@@ -22,22 +22,15 @@ namespace Dml
 
     namespace GraphDescBuilder
     {
+        constexpr uint32_t minNodeCountToReuseCommandList = 5;
+        constexpr uint32_t c_maxConstNodeDataSize = 8;
+
         // Gets a unique name for the node which survives recreation and graph manipulations between the point
         // that graph partitioning occurs and kernel creation happens
         const std::string& GetUniqueNodeName(const onnxruntime::Node& node);
 
-        struct NodeInfo
+        struct GraphDesc : DmlSerializedGraphDesc
         {
-            std::variant<Microsoft::WRL::ComPtr<IDMLOperator>, std::vector<uint8_t>> nodeDef;
-            std::string name;
-        };
-
-        struct GraphDesc
-        {
-            std::vector<NodeInfo> nodes;
-            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
-            std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
-            std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
             bool reuseCommandList;
             Windows::AI::MachineLearning::Adapter::EdgeShapes outputShapes;
         };
@@ -47,11 +40,13 @@ namespace Dml
             const size_t isConstGpuGraphInputCount,
             const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
-            IDMLDevice* device,
             const ExecutionProviderImpl* executionHandle,
             const onnxruntime::Path& modelPath,
             gsl::span<const onnxruntime::Node* const> subgraphNodes,
             gsl::span<const onnxruntime::NodeArg* const> subgraphInputs,
-            gsl::span<const onnxruntime::NodeArg* const> subgraphOutputs);
+            gsl::span<const onnxruntime::NodeArg* const> subgraphOutputs,
+            /*out*/ std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToSubgraphInputIndex,
+            /*out*/ std::unordered_map<std::string_view, uint32_t>& serializedGraphLargeConstantNameToSubgraphInputIndex,
+            /*out*/ std::vector<std::unique_ptr<std::byte[]>>& smallConstantData);
     }
 }

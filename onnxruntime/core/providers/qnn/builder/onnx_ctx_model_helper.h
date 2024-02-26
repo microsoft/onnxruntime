@@ -28,59 +28,45 @@ static const std::string EP_SDK_VER = "ep_sdk_version";
 static const std::string PARTITION_NAME = "partition_name";
 static const std::string SOURCE = "source";
 
-Status IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                              bool& is_qnn_ctx_model);
+bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer);
 
-bool IsQnnCtxModel(const onnxruntime::GraphViewer& graph_viewer);
+bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs);
+
+Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                          QnnBackendManager* qnn_backend_manager,
+                          const logging::Logger& logger,
+                          int& main_context_pos,
+                          std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
 Status CreateNodeArgs(const std::vector<std::string>& names,
                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
                       std::vector<NodeArg*>& node_args,
                       onnxruntime::Graph& graph);
 
-bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                              const onnxruntime::PathString& model_pathstring,
-                              onnxruntime::PathString& context_cache_path);
+bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
+                                  const std::string& customer_context_cache_path,
+                                  const onnxruntime::PathString& model_pathstring,
+                                  onnxruntime::PathString& context_cache_path);
 
-Status GetEpContextFromModel(const onnxruntime::PathString& ctx_onnx_model_path,
-                             QnnBackendManager* qnn_backend_manager,
-                             QnnModel& qnn_model,
-                             const logging::Logger& logger);
+Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
+                                const onnxruntime::PathString& ctx_onnx_model_path,
+                                QnnBackendManager* qnn_backend_manager,
+                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
-Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
-                             const onnxruntime::PathString& ctx_onnx_model_path,
-                             QnnBackendManager* qnn_backend_manager,
-                             QnnModel& qnn_model);
-
-Status LoadQnnCtxFromOnnxModel(const onnxruntime::GraphViewer& graph_viewer,
+Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
-                               bool is_qnn_ctx_model,
-                               bool is_ctx_cache_file_exist,
                                QnnBackendManager* qnn_backend_manager,
-                               QnnModel& qnn_model,
+                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
                                const logging::Logger& logger);
 
-Status ValidateWithContextFile(const onnxruntime::PathString& context_cache_path,
-                               const std::string& model_name,
-                               const std::string& model_description,
-                               const std::string& graph_partition_name,
-                               const logging::Logger& logger);
-
-Status GetMetadataFromEpContextModel(const onnxruntime::PathString& ctx_onnx_model_path,
-                                     std::string& model_name,
-                                     std::string& model_description,
-                                     std::string& graph_partition_name,
-                                     std::string& cache_source,
-                                     const logging::Logger& logger);
-
-Status GenerateCtxCacheOnnxModel(Model* model,
-                                 unsigned char* buffer,
-                                 uint64_t buffer_size,
-                                 const std::string& sdk_build_version,
-                                 const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                 const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
-                                 const onnxruntime::PathString& context_cache_path,
-                                 bool qnn_context_embed_mode,
-                                 const logging::Logger& logger);
+Status CreateEPContextNodes(Model* model,
+                            unsigned char* buffer,
+                            uint64_t buffer_size,
+                            const std::string& sdk_build_version,
+                            const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                            const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
+                            const onnxruntime::PathString& context_cache_path,
+                            bool qnn_context_embed_mode,
+                            const logging::Logger& logger);
 }  // namespace qnn
 }  // namespace onnxruntime

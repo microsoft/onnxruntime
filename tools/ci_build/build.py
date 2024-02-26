@@ -442,8 +442,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer. Windows/Linux/MacOS only."
     )
-    # The following feature requires installing some special Visual Studio components that do not get installed by default. Therefore the options is default OFF.
-    parser.add_argument("--enable_qspectre", action="store_true", help="Enable Qspectre. Windows only.")
+    # The following flag is mostly designed to be used in ONNX Runtime's Azure DevOps/Github build pipelines. Its main purpose is to make the built binaries pass BinSkim scan.
+    parser.add_argument("--use_binskim_compliant_compile_flags", action="store_true", help="Use preset compile flags.")
     parser.add_argument(
         "--disable_memleak_checker",
         action="store_true",
@@ -1236,9 +1236,15 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # TensorRT and OpenVINO providers currently only support
-    # full_protobuf option.
-    if args.use_full_protobuf or args.use_tensorrt or args.use_openvino or args.use_vitisai or args.gen_doc:
+    # VitisAI and OpenVINO providers currently only support
+    # full_protobuf option. TensorRT provider only requires it if built with oss_parser
+    if (
+        args.use_full_protobuf
+        or (args.use_tensorrt and args.use_tensorrt_oss_parser)
+        or args.use_openvino
+        or args.use_vitisai
+        or args.gen_doc
+    ):
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:
@@ -1484,27 +1490,29 @@ def generate_build_tree(
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
                     f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
                 ]
-    cflags = None
-    cxxflags = None
-    ldflags = None
-    cudaflags = []
+
     for config in configs:
+        cflags = []
+        cxxflags = None
+        ldflags = None
+        cudaflags = []
+        if is_windows() and not args.ios and not args.android and not args.build_wasm:
+            njobs = number_of_parallel_jobs(args)
+            if njobs > 1:
+                if args.parallel == 0:
+                    cflags += ["/MP"]
+                else:
+                    cflags += ["/MP%d" % njobs]
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
-            "CFLAGS" not in os.environ
-            and "CXXFLAGS" not in os.environ
-            and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
+            (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
             and not args.ios
             and not args.android
             and not args.build_wasm
-            and not args.use_rocm
-            and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
-                cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
-                if args.parallel:
-                    cflags += ["/MP"]
+                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
@@ -1516,21 +1524,21 @@ def generate_build_tree(
                 # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
-                if args.enable_qspectre:
-                    cflags += ["/Qspectre"]
+                # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
+                if not args.enable_address_sanitizer:
+                    # Also enable a special perf patch that was made for Intel Meteor Lake mobile CPUs
+                    cflags += ["/Qspectre", "/DONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
                     cflags += ["/O2", "/Ob1", "/DNDEBUG"]
                 elif config == "Debug":
                     cflags += ["/Ob0", "/Od", "/RTC1"]
-                    if args.enable_address_sanitizer:
-                        cflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
                     cflags += ["/O1", "/Ob1", "/DNDEBUG"]
+                if args.enable_address_sanitizer:
+                    cflags += ["/fsanitize=address"]
                 cxxflags = cflags.copy()
-                if not args.disable_exceptions:
-                    cxxflags += ["/EHsc"]
                 if args.use_cuda:
                     # On Windows, nvcc passes /EHsc to the host compiler by default.
                     cuda_compile_flags_str = ""
@@ -1590,6 +1598,8 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 if args.use_cuda:
                     cudaflags = cflags.copy()
+        if cxxflags is None and cflags is not None and len(cflags) != 0:
+            cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1604,7 +1614,7 @@ def generate_build_tree(
             )
         preinstalled_dir = Path(build_dir) / config
         temp_cmake_args = cmake_args.copy()
-        if cflags is not None and cxxflags is not None:
+        if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
@@ -1621,9 +1631,11 @@ def generate_build_tree(
             [
                 *temp_cmake_args,
                 f"-DCMAKE_BUILD_TYPE={config}",
-                f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
-                else "",
+                (
+                    f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
+                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                    else ""
+                ),
             ],
             cwd=config_build_dir,
             cuda_home=cuda_home,
@@ -1657,8 +1669,11 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
                     f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
             elif args.cmake_generator == "Xcode":
-                # CMake will generate correct build tool args for Xcode
-                cmd_args += ["--parallel", str(num_parallel_jobs)]
+                build_tool_args += [
+                    "-parallelizeTargets",
+                    "-jobs",
+                    str(num_parallel_jobs),
+                ]
             else:
                 build_tool_args += [f"-j{num_parallel_jobs}"]
 
@@ -2533,11 +2548,15 @@ def main():
     if args.build_nuget and cross_compiling:
         raise BuildError("Currently nuget package creation is not supported while cross-compiling")
 
-    if args.enable_pybind and args.disable_rtti:
-        raise BuildError("Python bindings use typeid so you can't disable RTTI")
+    if args.enable_pybind:
+        if args.disable_rtti:
+            raise BuildError("Python bindings use typeid so you can't disable RTTI")
 
-    if args.enable_pybind and args.disable_exceptions:
-        raise BuildError("Python bindings require exceptions to be enabled.")
+        if args.disable_exceptions:
+            raise BuildError("Python bindings require exceptions to be enabled.")
+
+        if args.minimal_build is not None:
+            raise BuildError("Python bindings are not supported in a minimal build.")
 
     if args.nnapi_min_api:
         if not args.use_nnapi:

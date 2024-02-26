@@ -115,8 +115,7 @@ def create_test_dir(
     model_outputs = model.graph.output
 
     def save_data(prefix, name_data_map, model_info):
-        idx = 0
-        for name, data in name_data_map.items():
+        for idx, (name, data) in enumerate(name_data_map.items()):
             if isinstance(data, dict):
                 # ignore. map<T1, T2> from traditional ML ops
                 pass
@@ -129,8 +128,6 @@ def create_test_dir(
                 filename = os.path.join(test_data_dir, f"{prefix}_{idx}.pb")
                 with open(filename, "wb") as f:
                     f.write(tensor.SerializeToString())
-
-            idx += 1
 
     if not name_input_map:
         name_input_map = {}

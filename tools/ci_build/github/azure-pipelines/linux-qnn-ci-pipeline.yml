@@ -32,7 +32,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.18.0.240101
+  default: qnn-v2.19.2.240210
 
 jobs:
   - job: Build_QNN_EP
@@ -63,7 +63,7 @@ jobs:
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
-            --parallel \
+            --parallel --use_binskim_compliant_compile_flags \
             --use_qnn \
             --qnn_home $(QNN_SDK_ROOT) \
             --cmake_generator=Ninja \
@@ -73,7 +73,7 @@ jobs:
       - script: |
           python3 tools/ci_build/build.py \
             --build_dir build \
-            --config Release \
+            --config Release --use_binskim_compliant_compile_flags \
             --test \
             --qnn_home $(QNN_SDK_ROOT) \
             --cmake_generator=Ninja \

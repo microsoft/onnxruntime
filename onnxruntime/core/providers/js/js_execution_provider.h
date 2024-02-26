@@ -5,6 +5,7 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/session_options.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 
@@ -38,7 +39,7 @@ struct JsExecutionProviderInfo {
 
 class JsExecutionProvider : public IExecutionProvider {
  public:
-  JsExecutionProvider(const JsExecutionProviderInfo& info);
+  JsExecutionProvider(const JsExecutionProviderInfo& info, const SessionOptions* session_options);
   ~JsExecutionProvider() override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
@@ -57,7 +58,22 @@ class JsExecutionProvider : public IExecutionProvider {
   bool ConcurrentRunSupported() const override { return false; }
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
+
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured() const override;
+  Status ReplayGraph() override;
+
+ private:
+  bool IsGraphCaptureAllowed() const;
+  void IncrementRegularRunCountBeforeGraphCapture();
   DataLayout preferred_data_layout_;
+  bool enable_graph_capture_ = false;
+  bool is_graph_captured_ = false;
+  int regular_run_count_before_graph_capture_ = 0;
+  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 };
 
 }  // namespace onnxruntime

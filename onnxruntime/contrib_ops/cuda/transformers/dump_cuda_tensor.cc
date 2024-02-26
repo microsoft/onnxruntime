@@ -203,23 +203,19 @@ void DumpGpuTensor(const char* name, const Tensor& tensor) {
   DumpGpuTensor(nullptr, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
 }
 
-void CudaTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1) const {
-  if (is_enabled_)
-    DumpGpuTensor<float>(name, tensor, dim0, dim1, true);
-}
-
-void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const {
-  if (is_enabled_)
-    DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1, true);
-}
-
 void CudaTensorConsoleDumper::Print(const char* name, const size_t* tensor, int dim0, int dim1) const {
   if (is_enabled_)
     DumpGpuTensor<size_t>(name, tensor, dim0, dim1, true);
 }
 
-void CudaTensorConsoleDumper::Print(const char* name, const half* tensor, int dim0, int dim1) const {
-  Print(name, reinterpret_cast<const MLFloat16*>(tensor), dim0, dim1);
+void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1) const {
+  if (is_enabled_)
+    DumpGpuTensor<int32_t>(name, tensor, dim0, dim1, true);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const {
+  if (is_enabled_)
+    DumpGpuTensor<int32_t>(name, tensor, dim0, dim1, dim2, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1) const {
@@ -227,9 +223,14 @@ void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int
     DumpGpuTensor<int64_t>(name, tensor, dim0, dim1, true);
 }
 
-void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1) const {
+void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const {
   if (is_enabled_)
-    DumpGpuTensor<int32_t>(name, tensor, dim0, dim1, true);
+    DumpGpuTensor<int64_t>(name, tensor, dim0, dim1, dim2, true);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1) const {
+  if (is_enabled_)
+    DumpGpuTensor<float>(name, tensor, dim0, dim1, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const {
@@ -242,6 +243,11 @@ void CudaTensorConsoleDumper::Print(const char* name, const float* tensor, int d
     DumpGpuTensor<float>(name, tensor, dim0, dim1, dim2, dim3, true);
 }
 
+void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const {
+  if (is_enabled_)
+    DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1, true);
+}
+
 void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const {
   if (is_enabled_)
     DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1, dim2, true);
@@ -252,22 +258,31 @@ void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, i
     DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1, dim2, dim3, true);
 }
 
+void CudaTensorConsoleDumper::Print(const char* name, const BFloat16* tensor, int dim0, int dim1) const {
+  if (is_enabled_)
+    DumpGpuTensor<BFloat16>(name, tensor, dim0, dim1, true);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const BFloat16* tensor, int dim0, int dim1, int dim2) const {
+  if (is_enabled_)
+    DumpGpuTensor<BFloat16>(name, tensor, dim0, dim1, dim2, true);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const BFloat16* tensor, int dim0, int dim1, int dim2, int dim3) const {
+  if (is_enabled_)
+    DumpGpuTensor<BFloat16>(name, tensor, dim0, dim1, dim2, dim3, true);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const half* tensor, int dim0, int dim1) const {
+  Print(name, reinterpret_cast<const MLFloat16*>(tensor), dim0, dim1);
+}
+
 void CudaTensorConsoleDumper::Print(const char* name, const half* tensor, int dim0, int dim1, int dim2) const {
   Print(name, reinterpret_cast<const MLFloat16*>(tensor), dim0, dim1, dim2);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const half* tensor, int dim0, int dim1, int dim2, int dim3) const {
   Print(name, reinterpret_cast<const MLFloat16*>(tensor), dim0, dim1, dim2, dim3);
-}
-
-void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const {
-  if (is_enabled_)
-    DumpGpuTensor<int64_t>(name, tensor, dim0, dim1, dim2, true);
-}
-
-void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const {
-  if (is_enabled_)
-    DumpGpuTensor<int32_t>(name, tensor, dim0, dim1, dim2, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const Tensor& tensor) const {
@@ -301,43 +316,52 @@ void CudaTensorConsoleDumper::Print(const char* name, const std::string& value, 
 }
 
 #else
-void CudaTensorConsoleDumper::Print(const char*, const float*, int, int) const {
-}
-
-void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int) const {
-}
-
 void CudaTensorConsoleDumper::Print(const char*, const size_t*, int, int) const {
-}
-
-void CudaTensorConsoleDumper::Print(const char*, const half*, int, int) const {
-}
-
-void CudaTensorConsoleDumper::Print(const char*, const int64_t*, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const int32_t*, int, int) const {
 }
 
-void CudaTensorConsoleDumper::Print(const char*, const float*, int, int, int) const {
+void CudaTensorConsoleDumper::Print(const char*, const int32_t*, int, int, int) const {
 }
 
-void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int) const {
-}
-
-void CudaTensorConsoleDumper::Print(const char*, const half*, int, int, int) const {
+void CudaTensorConsoleDumper::Print(const char*, const int64_t*, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const int64_t*, int, int, int) const {
 }
 
-void CudaTensorConsoleDumper::Print(const char*, const int32_t*, int, int, int) const {
+void CudaTensorConsoleDumper::Print(const char*, const float*, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const float*, int, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const float*, int, int, int, int) const {
 }
 
+void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int) const {
+}
+
 void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const BFloat16*, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const BFloat16*, int, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const BFloat16*, int, int, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const half*, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const half*, int, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const half*, int, int, int, int) const {

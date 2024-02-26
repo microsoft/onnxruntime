@@ -7,6 +7,7 @@
 #include "core/session/inference_session.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/providers/provider_test_utils.h"
@@ -73,6 +74,28 @@ TEST(LayerNormTest, LayerNorm) {
   test.AddInput<float>("gamma", {3}, {1.0f, 1.0f, 1.0f});
   test.AddOutput<float>("output", dims, {-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f});
   test.Run();
+}
+
+TEST(LayerNormTest, LayerNorm_BFloat16Input) {
+// prevents test from running on non-BF16-supporting hardware
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 2, 3};
+  test.AddInput<BFloat16>("x", dims, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
+  test.AddInput<BFloat16>("gamma", {3}, MakeBFloat16({1.0f, 1.0f, 1.0f}));
+  test.AddOutput<BFloat16>("output", dims, MakeBFloat16({-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f}));
+  // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale) {

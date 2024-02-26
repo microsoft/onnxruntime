@@ -149,7 +149,6 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
-  bool sync_stream_after_enqueue = false;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
@@ -193,7 +192,6 @@ struct TensorrtShortFuncState {
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
-  bool sync_stream_after_enqueue = false;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
   OrtMutex* tensorrt_mu_ptr = nullptr;
@@ -235,8 +233,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  Status OnRunStart() override;
-  Status OnRunEnd(bool sync_stream) override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   ProviderOptions GetProviderOptions() const override {
     return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
@@ -335,8 +333,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   cudnnHandle_t external_cudnn_handle_ = nullptr;
   cublasHandle_t external_cublas_handle_ = nullptr;
 
-  // Call cudaStreamSynchronize() after TRT enqueueV2()/enqueueV3()
-  mutable bool sync_stream_after_enqueue_ = false;
+  // Call cudaStreamSynchronize() after TRT enqueueV3()
+  mutable bool sync_stream_after_enqueue_ = true;
 
   CUDAGraph cuda_graph_;
   bool is_graph_captured_ = false;

@@ -90,6 +90,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
+  for (const auto& config_pair : provider_options) {
+    ORT_THROW_IF_ERROR(options->value.config_options.AddConfigEntry((std::string(provider_name) + ":" + config_pair.first).c_str(), config_pair.second.c_str()));
+  }
+
   if (strcmp(provider_name, "DML") == 0) {
 #if defined(USE_DML)
     options->provider_factories.push_back(DMLProviderFactoryCreator::CreateFromProviderOptions(provider_options));
@@ -145,13 +149,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     if (options->value.config_options.TryGetConfigEntry("preferredLayout", preferred_layout)) {
       provider_options["preferred_layout"] = preferred_layout;
     }
-    options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options));
-#else
-    status = create_not_supported_status();
-#endif
-  } else if (strcmp(provider_name, "VitisAI") == 0) {
-#if defined(USE_VITISAI)
-    options->provider_factories.push_back(VitisAIProviderFactoryCreator::Create(provider_options));
+    options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
 #endif
@@ -498,5 +496,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
+                    _In_ OrtSessionOptions* options, _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("VitisAI");
 }
 #endif

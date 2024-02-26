@@ -11,12 +11,12 @@ namespace rocm {
 namespace internal {
 
 template <>
-std::vector<std::unique_ptr<DeviceNormalizationFwd<F16, F32, F32, F16, F32, Swish, 5, 3>>>
-GetDeviceGroupNormInstances<F16, F32, F32, F16, F32, Swish, 5, 3>() {
-  std::vector<std::unique_ptr<DeviceNormalizationFwd<F16, F32, F32, F16, F32, Swish, 5, 3>>> instances;
+std::vector<std::unique_ptr<DeviceNormalizationFwd<F16, F32, F32, F16, F32, Silu, 5, 3>>>
+GetDeviceGroupNormInstances<F16, F32, F32, F16, F32, Silu, 5, 3>() {
+  std::vector<std::unique_ptr<DeviceNormalizationFwd<F16, F32, F32, F16, F32, Silu, 5, 3>>> instances;
   ck::tensor_operation::device::instance::add_device_operation_instances(
       instances,
-      device_normalization_f16_instances<Swish, 5, 3>{});
+      device_normalization_f16_instances<Silu, 5, 3>{});
 
   return instances;
 }

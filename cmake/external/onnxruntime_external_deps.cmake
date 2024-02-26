@@ -226,8 +226,6 @@ FetchContent_Declare(
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_Install OFF CACHE INTERNAL "")
 
 FetchContent_Declare(
     nlohmann_json
@@ -261,9 +259,6 @@ if (onnxruntime_ENABLE_CPUINFO)
       # Exclude Windows ARM build and Windows Store
       if (${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
         message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
-        set(CPUINFO_SUPPORTED FALSE)
-      elseif (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-        message(WARNING "Cpuinfo not included non-Desktop builds")
         set(CPUINFO_SUPPORTED FALSE)
       endif()
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
@@ -539,6 +534,17 @@ if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxrunt
   set(CXXOPTS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
   set(CXXOPTS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_makeavailable(cxxopts)
+endif()
+
+if (onnxruntime_USE_COREML)
+  FetchContent_Declare(
+    coremltools
+    URL ${DEP_URL_coremltools}
+    URL_HASH SHA1=${DEP_SHA1_coremltools}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/coremltools/crossplatformbuild.patch
+  )
+  # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
+  FetchContent_Populate(coremltools)
 endif()
 
 message("Finished fetching external dependencies")

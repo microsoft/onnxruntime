@@ -92,7 +92,7 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
-# enable stream for all the non-minimal build
+# Enable stream for all the non-minimal build
 if (NOT onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_ENABLE_STREAM)
 endif()

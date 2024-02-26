@@ -205,18 +205,23 @@ try:
                 rocm_dependencies = [
                     "libamd_comgr.so.2",
                     "libamdhip64.so.5",
+                    "libamdhip64.so.6",
                     "libdrm.so.2",
                     "libdrm_amdgpu.so.1",
                     "libelf.so.1",
                     "libhipfft.so.0",
                     "libhiprtc.so.5",
+                    "libhiprtc.so.6",
                     "libhsa-runtime64.so.1",
                     "libMIOpen.so.1",
                     "libnuma.so.1",
                     "librccl.so.1",
                     "librocblas.so.3",
+                    "librocblas.so.4",
                     "librocfft.so.0",
+                    "libroctx64.so.4",
                     "librocm_smi64.so.5",
+                    "librocm_smi64.so.6",
                     "libroctracer64.so.4",
                     "libtinfo.so.6",
                     "libmigraphx_c.so.3",
@@ -298,6 +303,7 @@ if platform.system() == "Linux":
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
+    libs.extend(["libonnxruntime_providers_vitisai.so"])
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
@@ -310,6 +316,7 @@ elif platform.system() == "Darwin":
     libs.extend(["libonnxruntime_providers_dnnl.dylib"])
     libs.extend(["libonnxruntime_providers_tensorrt.dylib"])
     libs.extend(["libonnxruntime_providers_cuda.dylib"])
+    libs.extend(["libonnxruntime_providers_vitisai.dylib"])
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
 else:
@@ -320,6 +327,7 @@ else:
     libs.extend(["onnxruntime_providers_tensorrt.dll"])
     libs.extend(["onnxruntime_providers_openvino.dll"])
     libs.extend(["onnxruntime_providers_cuda.dll"])
+    libs.extend(["onnxruntime_providers_vitisai.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
     if nightly_build:
@@ -416,6 +424,7 @@ packages = [
     "onnxruntime.transformers.models.gpt2",
     "onnxruntime.transformers.models.llama",
     "onnxruntime.transformers.models.longformer",
+    "onnxruntime.transformers.models.phi2",
     "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.stable_diffusion",
     "onnxruntime.transformers.models.whisper",

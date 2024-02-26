@@ -7,30 +7,20 @@
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
-
-#ifdef __APPLE__
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
 
 namespace onnxruntime {
 namespace coreml {
 
 class PadOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
- private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
@@ -64,9 +54,6 @@ static InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& ini
   return axes_tensor_data;
 }
 
-// Add operator related
-
-#ifdef __APPLE__
 void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  //  pads
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  //  constant_value
@@ -78,7 +65,7 @@ void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node
 Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                            const Node& node,
                                            const logging::Logger& logger) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
   auto* coreml_pad = layer->mutable_padding();
   auto* constant_padding_type = coreml_pad->mutable_constant();  // CoreML::Specification::PaddingLayerParams_PaddingConstant
@@ -122,9 +109,6 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   return Status::OK();
 }
-#endif
-
-// Operator support related
 
 bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                      const logging::Logger& logger) const {

@@ -808,3 +808,40 @@ def upsample_nearest2d(g, input, output_size, scale_factors):
 @register_symbolic("upsample_nearest3d")
 def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
+
+
+@register_symbolic("upsample_bicubic2d")
+def upsample_bicubic2d(g, input, output_size, align_corners, scale_factors):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        align_corners,
+        scale_factors,
+        operator_s="upsample_bicubic2d",
+        overload_name_s="vec",
+    )
+
+
+@register_symbolic("layer_norm")
+@parse_args("v", "is", "v", "v", "f", "none")
+def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
+    # normalized_shape: input shape from an expected input of size
+    # axis: The first normalization dimension.
+    # layer_norm normalizes on the last D dimensions,
+    # where D is the size of normalized_shape
+    axis = -len(normalized_shape)
+
+    res, new_running_mean, new_running_var = g.op(
+        "LayerNormalization",
+        input,
+        weight,
+        bias,
+        epsilon_f=eps,
+        axis_i=axis,
+        outputs=3,  # force all 3 outputs to be exported in training mode
+        operator_s="layer_norm",
+        overload_name_s="vec",
+    )
+
+    return res

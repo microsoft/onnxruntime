@@ -27,7 +27,7 @@ const createWhereOpProgramShader =
           const expressionA = `a_data[index_a${x}][component_a${x}]`;
           const expressionB = `b_data[index_b${x}][component_b${x}]`;
           // eslint-disable-next-line no-bitwise
-          const expressionC = `bool(c_data[index_c${x}] & ${0xff000000 >>> ((3 - x) * 8)}u)`;
+          const expressionC = `bool(c_data[index_c${x}] & (0xffu << (component_c${x} * 8)))`;
           return `
             let output_indices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
             let offset_a${x} = ${a.broadcastedIndicesToOffset(`output_indices${x}`, output)};
@@ -38,6 +38,7 @@ const createWhereOpProgramShader =
             let index_c${x} = offset_c${x} / 4u;
             let component_a${x} = offset_a${x} % 4u;
             let component_b${x} = offset_b${x} % 4u;
+            let component_c${x} = offset_c${x} % 4u;
             ${resStr}[${x}] = ${typeCast}(${expression(expressionA, expressionB, expressionC)});
           `;
         };
@@ -97,10 +98,8 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: outputDataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)},
-      programUniforms: [
-        {type: 'uint32', data: vecSize}, ...createTensorShapeVariables(dimsC), ...createTensorShapeVariables(dimsA),
-        ...createTensorShapeVariables(dimsB), ...createTensorShapeVariables(outputShape)
-      ],
+      programUniforms:
+          [{type: DataType.uint32, data: vecSize}, ...createTensorShapeVariables(dimsC, dimsA, dimsB, outputShape)],
     }),
   };
 };
