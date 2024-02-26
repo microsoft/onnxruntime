@@ -47,6 +47,7 @@
 	"type": "module",
 	"dependencies": {
 		"animejs": "^3.2.1",
+		"mdsvex-relative-images": "^1.0.3",
 		"saos": "^1.3.1",
 		"svelte-icons": "^2.1.0",
 		"sveltejs-adapter-ipfs": "^0.4.12",

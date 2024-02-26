@@ -1,3 +1,6 @@
+ul {
+  list-style: circle !important;
+}
 /*light*/
 
 .markdown-body {
@@ -972,7 +975,6 @@
   width: 1em;
   height: 1em;
 }
-
 .markdown-body .task-list-item {
   list-style-type: none;
 }
@@ -1080,3 +1082,4 @@
 .markdown-body .markdown-alert.markdown-alert-caution .markdown-alert-title {
   color: #d1242f;
 }
+
