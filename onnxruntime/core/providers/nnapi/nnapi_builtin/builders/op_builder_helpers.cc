@@ -989,7 +989,7 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
 // between NNAPI CPU impl and Hardware Accelerator impl and will speed up the execution
 // If we are going to skip the reshape, we will still add correct shape and operand type for the output in
 // onnxruntime::nnapi::Model.
-bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
+static bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                     size_t input_rank, size_t output_rank) {
   // Since we know this is a Reshape NodeUnit, so we can safely assume there is only 1 output
   // and the node_unit has only one output node.
