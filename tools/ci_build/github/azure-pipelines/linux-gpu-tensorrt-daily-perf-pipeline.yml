@@ -43,18 +43,6 @@ parameters:
   type: object
   default: []
 
-- name: EP
-  displayName: EP to run model tests
-  type: object
-  default:
-    - ORT-CPUFp32
-    - ORT-CUDAFp32
-    - ORT-CUDAFp16
-    - ORT-TRTFp32
-    - ORT-TRTFp16
-    - TRTFp32
-    - TRTFp16
-
 jobs:
 - job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
   workspace:
@@ -88,10 +76,6 @@ jobs:
 
     - name: image
       value: ort-image-$(Build.BuildId)
-
-    - name: epList
-      ${{ if not(eq(length(parameters.EP), 0)) }}:
-        value: ${{ join(',',parameters.EP) }}
     
     - name: parser
       ${{ if eq(parameters.UseTensorrtOssParser, true) }}:
@@ -127,7 +111,7 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b true -o ${{option}} -m $(${{option}}) -e $(epList) $(optional_arguments)'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b true -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
