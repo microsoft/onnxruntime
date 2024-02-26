@@ -1,6 +1,6 @@
 ---
 title: Accelerating Phi-2, CodeLlama, Gemma and other Gen AI models with ONNX Runtime
-date: '02-26-2024'
+date: '26th February, 2024'
 description: 'Improvements with ONNX Runtime for inferencing popular Gen AI models'
 keywords: 'GenAI , LLM, SLM, ONNXRuntime, ORT, Phi, Mistral, Mixtral, LLama, Gemma, Stable Diffusion, Orca'
 authors:
