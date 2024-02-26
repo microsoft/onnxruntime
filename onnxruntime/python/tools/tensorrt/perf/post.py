@@ -56,7 +56,7 @@ def parse_arguments():
     parser.add_argument("-b", "--branch", help="Branch", required=True)
     parser.add_argument("--kusto_conn", help="Kusto connection URL", required=True)
     parser.add_argument("--database", help="Database name", required=True)
-    parser.add_argument("--use_tensorrt_oss_parser", help="Use TensorRT OSS parser", required=True)
+    parser.add_argument("--use_tensorrt_oss_parser", help="Use TensorRT OSS parser", required=False)
     parser.add_argument(
         "-d",
         "--commit_datetime",
