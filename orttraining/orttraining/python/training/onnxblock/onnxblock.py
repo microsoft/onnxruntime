@@ -192,7 +192,7 @@ class TrainingBlock(blocks.Block):
         size_check = False
         # Check If the protobuf is larger than 2GB
         try:
-            protobuf_string = model.SerializeToString()
+            model.SerializeToString()
         except ValueError as e:  # Catching ValueError exceptions
             # Now, e is an instance of ValueError, and you can check its message
             if "exceeds maximum protobuf size of 2GB" in str(e):
