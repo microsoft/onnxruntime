@@ -126,6 +126,7 @@ class PostExportProcessedModelInfo:
         module_forward_output_schema: ORTModelInputOutputSchemaType,
         post_export_processed_model: onnx.ModelProto,
         onnx_graph_input_data_accessor: dict[str, callable],
+        onnx_graph_input_const_as_tensor: dict[str, torch.device],
         enable_mem_efficient_grad_management: bool,
     ):
         self._flattened_module = flatten_module
@@ -169,6 +170,8 @@ class PostExportProcessedModelInfo:
         # If it is not None, the length is same as onnx_graph_input_names_user_defined.
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
         self.onnx_graph_input_data_accessor: dict[str, callable] | None = onnx_graph_input_data_accessor
+
+        self.onnx_graph_input_const_as_tensor: dict[str, torch.device] | None = onnx_graph_input_const_as_tensor
 
         self._enable_mem_efficient_grad_management = enable_mem_efficient_grad_management
 
@@ -244,7 +247,7 @@ class PostExportProcessedModelInfo:
             if name in self.onnx_graph_input_data_accessor:
                 assert name in self._buffer_for_ort_runs, f"{name} is not in buffer_for_ort_runs"
                 data = self.onnx_graph_input_data_accessor[name](args, kwargs)
-                if PrimitiveType.is_primitive_type(data) and constant_as_tensor:
+                if name in self.onnx_graph_input_const_as_tensor:
                     data = PrimitiveType.get_tensor(data, device)
                 self._buffer_for_ort_runs[name] = data
             else:
@@ -383,17 +386,36 @@ class GraphTransitionManager:
 
             copied_args = copy.copy(args)
             copied_kwargs = copy.copy(kwargs)
-            flatten_inputs = [
-                data_accessor(copied_args, copied_kwargs)
-                for _, data_accessor in cur_model_info_for_export.onnx_graph_input_data_accessor.items()
-            ]
+            flatten_inputs = []
+
+            # This looks a bit duplicated with `extract_data_and_schema` function, but this might be better to
+            # defined as a specialized logic which is the counter-part of `parse_inputs_for_onnx_export`, which handles
+            # args and kwargs separately.
+            for name, data_accessor in cur_model_info_for_export.onnx_graph_input_data_accessor.items():
+                print("find data accessor for name: ", name)
+                d = data_accessor(copied_args, copied_kwargs)
+                if name in cur_model_info_for_export.onnx_graph_input_const_as_tensor:
+                    flatten_inputs.append(
+                        PrimitiveType.get_tensor(
+                            d,
+                            cur_model_info_for_export.onnx_graph_input_const_as_tensor[name],
+                        )
+                    )
+                    print("pass 1")
+                else:
+                    if isinstance(d, torch.Tensor):
+                        flatten_inputs.append(d)
+                        print("pass 2")
+                    else:
+                        print("pass 3")
+                    # Ignore all other non-tensor inputs.
 
             self._flatten_module._device = self._device
             self._flatten_module._args_schema = cur_model_info_for_export.onnx_graph_input_arg_schema
             self._flatten_module._kwargs_schema = cur_model_info_for_export.onnx_graph_input_kwarg_schema
             self._flatten_module._num_positionals = cur_model_info_for_export.num_positional_args
 
-            self._logger.info(f"do_export started, model info for export: {cur_model_info_for_export}")
+            self._logger.warning(f"do_export started, model info for export: {cur_model_info_for_export}")
 
             (
                 exported_model,
@@ -534,7 +556,14 @@ class GraphTransitionManager:
             or cur_kwargs_schema != prev_exported_model_info.module_forward_kwargs_schema
         )
 
-        logger.info(f"_export_check completed - need_export_model: {need_export_model}")
+        print(
+            f"cur_args_schema: {cur_args_schema}, prev_exported_model_info.module_forward_args_schema: {prev_exported_model_info.module_forward_args_schema if prev_exported_model_info else None}"
+        )
+        print(
+            f"cur_kwargs_schema: {cur_kwargs_schema}, prev_exported_model_info.module_forward_kwargs_schema: {prev_exported_model_info.module_forward_kwargs_schema if prev_exported_model_info else None}"
+        )
+
+        logger.warning(f"_export_check completed - need_export_model: {need_export_model}")
 
         return need_export_model
 
@@ -646,6 +675,7 @@ class GraphTransitionManager:
             exported_model_info.module_forward_output_schema,
             post_processed_model,
             model_info_for_export.onnx_graph_input_data_accessor,
+            model_info_for_export.onnx_graph_input_const_as_tensor,
             enable_mem_efficient_grad_management,
         )
 

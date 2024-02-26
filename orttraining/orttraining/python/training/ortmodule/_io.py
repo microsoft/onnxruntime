@@ -132,6 +132,7 @@ class _FlattenedModule(torch.nn.Module):
 
     def forward(self, *args):
         new_args = unflatten_data_using_schema(args[: self._num_positionals], self._args_schema)
+
         new_kwargs = unflatten_data_using_schema(args[self._num_positionals :], self._kwargs_schema)
 
         original_outputs = self._original_module(*new_args, **new_kwargs)
@@ -155,6 +156,7 @@ class ModelInfoForExport:
         onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]],
         onnx_graph_input_shapes: List[List[int]],
         onnx_graph_input_data_accessor: Optional[Dict[str, callable]] = None,
+        onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = None,
         onnx_graph_input_arg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
         onnx_graph_input_kwarg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
         num_positional_args: int = 0,
@@ -203,6 +205,8 @@ class ModelInfoForExport:
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
         self.onnx_graph_input_data_accessor: Optional[Dict[str, callable]] = onnx_graph_input_data_accessor
 
+        self.onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = onnx_graph_input_const_as_tensor
+
     def __str__(self) -> str:
         return f"""ModelInfoForExport class:
             \tExport mode:                      {self.export_mode}
@@ -210,7 +214,10 @@ class ModelInfoForExport:
             \tInput names:                      {self.onnx_graph_input_names}
             \tInput names require grad:         {self.onnx_graph_input_names_require_grad}
             \tInput dynamic axes:               {self.onnx_graph_input_dynamic_axes_map}
-            \tInput shapes:                     {self.onnx_graph_input_shapes}"""
+            \tInput shapes:                     {self.onnx_graph_input_shapes}
+            \tInput args schema:                {self.onnx_graph_input_arg_schema}
+            \tInput kwargs schema:              {self.onnx_graph_input_kwarg_schema}
+            \tNum input args:              {self.num_positional_args}"""
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -289,16 +296,24 @@ def parse_inputs_for_onnx_export(
         visited_input_names.append(name)
 
         value = input_value
+        primitive_dtype = None
         if value is None:
             _warn_of_constant_inputs(value)
+            data_accessors[name] = cur_func
             return value
         elif isinstance(value, str):
             _warn_of_constant_inputs(value)
+            data_accessors[name] = cur_func
             return value
         elif PrimitiveType.is_primitive_type(value):
             if constant_as_tensor:
+                # This has special handling for bool type to string conversion.
+                primitive_dtype = PrimitiveType.get_primitive_dtype(value)
                 value = PrimitiveType.get_tensor(value, device)
+                const_to_tensor_inputs[name] = device
+
             else:
+                data_accessors[name] = cur_func
                 _warn_of_constant_inputs(value)
                 return value
         elif isinstance(value, abc.Sequence):
@@ -374,7 +389,7 @@ def parse_inputs_for_onnx_export(
             tensor_idx[0] += 1
             return _TensorStub(
                 tensor_idx[0],
-                dtype=str(value.dtype),
+                dtype=primitive_dtype if primitive_dtype else str(value.dtype),  # special handle for bool primitive
                 shape_dims=len(value.size()),
                 name=name,
             )
@@ -390,6 +405,7 @@ def parse_inputs_for_onnx_export(
     input_arg_schema: ORTModelInputOutputSchemaType = []
     input_kwarg_schema: ORTModelInputOutputSchemaType = OrderedDict()
     data_accessors: Dict[str, Callable] = OrderedDict()
+    const_to_tensor_inputs: Dict[str, torch.device] = OrderedDict()
     num_positional_args: int = 0
 
     var_positional_idx = 0
@@ -420,8 +436,8 @@ def parse_inputs_for_onnx_export(
             for args_i in range(input_idx, len(args)):
                 name = f"{input_parameter.name}_{var_positional_idx}"
                 var_positional_idx += 1
-                num_positional_args += 1
                 inp = args[args_i]
+                pre_tensor_idx = arg_tensor_idx[0]
                 schema = _add_input(
                     name,
                     inp,
@@ -429,6 +445,7 @@ def parse_inputs_for_onnx_export(
                     partial(_arg_access_with_index_func, args_i),
                     arg_tensor_idx,
                 )
+                num_positional_args += arg_tensor_idx[0] - pre_tensor_idx
                 if not isinstance(schema, SkipRetValue):
                     input_arg_schema.append(schema)
         elif (
@@ -441,14 +458,15 @@ def parse_inputs_for_onnx_export(
             inp = None
             input_idx += var_positional_idx  # noqa: PLW2901
             access_func = None
-            if input_idx < len(args) and args[input_idx] is not None:
+            if input_idx < len(args):
                 inp = args[input_idx]
-                num_positional_args += 1
                 access_func = partial(_arg_access_with_index_func, input_idx)
+                pre_tensor_idx = arg_tensor_idx[0]
                 schema = _add_input(name, inp, onnx_graph_input_names, access_func, arg_tensor_idx)
+                num_positional_args += arg_tensor_idx[0] - pre_tensor_idx
                 if not isinstance(schema, SkipRetValue):
                     input_arg_schema.append(schema)
-            elif name in kwargs and kwargs[name] is not None:
+            elif name in kwargs:
                 inp = kwargs[name]
                 access_func = partial(_kwarg_access_with_name_func, name)
                 schema = _add_input(name, inp, onnx_graph_input_names, access_func, kwarg_tensor_idx)
@@ -474,6 +492,7 @@ def parse_inputs_for_onnx_export(
         onnx_graph_input_dynamic_axes_map=dynamic_axes,
         onnx_graph_input_shapes=input_shape,
         onnx_graph_input_data_accessor=data_accessors,
+        onnx_graph_input_const_as_tensor=const_to_tensor_inputs,
         onnx_graph_input_arg_schema=input_arg_schema,
         onnx_graph_input_kwarg_schema=input_kwarg_schema,
         num_positional_args=num_positional_args,
