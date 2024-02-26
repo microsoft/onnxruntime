@@ -39,6 +39,8 @@ In this blog we will cover significant optimization speed up for both training a
 - [Gemma](#gemma)
 - [Conclusion](#conclusion)
 
+<div id="phi-2"/>
+
 # Phi-2
 
 [Phi-2](https://huggingface.co/microsoft/phi-2) is a 2.7 billion parameter transformer model developed by Microsoft. It is an SLM that exhibits excellent reasoning and language comprehension skills. With its small size, Phi-2 is a great platform for researchers, who can explore various aspects such as mechanistic interpretability, safety improvements, and fine-tuning experiments on different tasks.
@@ -103,6 +105,8 @@ The training benchmarks below were run on 2 A100 and measured throughput in iter
 
 <i>Note: PyTorch Stable 2.2.0 and ONNXRuntime Training: Stable 1.17.0 versions were used.</i>
 
+<div id="mistral"/>
+
 # Mistral
 
 ## Inferencing
@@ -126,6 +130,8 @@ You can now access the optimized Mistral model on Huggingface [here.](https://hu
 Similar to Phi-2, Mistral also benefits from training acceleration using ORT. We trained Mistral 7b using the following configuration to see gains with ORT, including when composed with LoRA and QLoRA. The model was trained using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
 <img class="m-auto" src="./Mistral_Training.png" alt="Mistral training benchmarks">
 
+<div id="codellama"/>
+
 # CodeLlama
 
 [Codellama-70B](https://huggingface.co/codellama/CodeLlama-70b-hf) is a programming-focused model developed on the Llama-2 platform. This model can produce code and generate discussions around code in natural language. Since CodeLlama-70B is a finetuned Llama model, existing optimizations can be applied directly. We compared a 4bit quantized ONNX model with PyTorch Eager and Llama.cpp. For prompt throughput, ONNX Runtime is **at least 1.4x faster** than PyTorch Eager for all batch sizes. ONNX Runtime produces tokens at an average speed that is **3.4x** higher than PyTorch Eager for any batch size and **1.5x** higher than Llama.cpp for batch size 1.
@@ -136,6 +142,8 @@ Similar to Phi-2, Mistral also benefits from training acceleration using ORT. We
 </div>
 
 
+<div id="sd-turbo-and-sdxl-turbo"/>
+
 # SD-Turbo and SDXL-Turbo
 
 ONNX Runtime provides inference performance benefits when used with [SD Turbo](https://huggingface.co/stabilityai/sd-turbo) and [SDXL Turbo,](https://huggingface.co/stabilityai/sdxl-turbo) and it also makes the models accessible in languages other than Python, like C# and Java. ONNX Runtime achieved a higher throughput than PyTorch for all (batch size, number of steps combinations evaluated, with throughput improvements **up to 229%** for the SDXL Turbo model and **120%** for the SD Turbo model. ONNX Runtime CUDA is especially good at handling dynamic shape, but it also shows a significant advantage over PyTorch for static shape.
@@ -144,11 +152,15 @@ ONNX Runtime provides inference performance benefits when used with [SD Turbo](h
 
 To read more about accelerating SD-Turbo and SDXL-Turbo inference with ONNX Runtime, check out our recent [blog](https://huggingface.co/blog/sdxl_ort_inference) with Hugging Face.
 
+<div id="llama-2"/>
+
 # Llama-2
 
 We published a separate blog for Llama-2 improvements with ORT for Inference [here](https://onnxruntime.ai/blogs/accelerating-llama-2). Additionally, Llama-2 7b and 13b show good gains with ORT for training, especially when combined with LoRA and QLoRA. [These](https://github.com/huggingface/optimum/blob/main/examples/onnxruntime/training/text-classification/README.md#onnx-runtime-training) scripts can be used as an example to finetune Llama-2 with ORT using Optimum. The numbers below are for Llama-2 models training with ORT using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
 
 <img class="m-auto" src="./Llama2_Training.png" alt="Llama2 training benchmarks">
+
+<div id="orca-2"/>
 
 # Orca-2
 
@@ -190,6 +202,8 @@ Orca-2 7b also benefits from training acceleration using ORT. We trained the Orc
 <img class="m-auto" src="./Orca2_Training.png" alt="Orca2 training benchmarks">
 <i>Uses ACPT image: nightly-ubuntu2004-cu118-py38-torch230dev:20240131</i>
 
+<div id="gemma"/>
+
 # Gemma
 
 [Gemma](https://ai.google.dev/gemma/docs) is a family of lightweight, open models built from the research and technology that Google used to create Gemini models. It is available in two sizes 2B and 7B. Each size is released with pre-trained and instruction-tuned variants. ONNX Runtime can be used to optimize and efficiently run any open-source model. We benchmarked against the [Gemma-2b](https://huggingface.co/google/gemma-2b) model, ONNX Runtime with float16 is **up to 7.47x** faster than PyTorch Compile, and **up to 3.47x** faster than Llama.cpp. ORT with int4 quantization **is up to 19.81x** faster than PyTorch Eager and **2.62x** faster than Llama.cpp.
@@ -198,6 +212,8 @@ Orca-2 7b also benefits from training acceleration using ORT. We trained the Orc
 
 <img class="m-auto" src="./Gemma2b_TokenGenTP.png" alt="Gemma2b token generation throughput comparison">
 </div>
+
+<div id="conclusion"/>
 
 # Conclusion
 
