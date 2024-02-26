@@ -134,20 +134,23 @@ def _test_apple_packages(args):
             # Add a couple of retries if we get this error:
             #   ios_package_testUITests-Runner Failed to initialize for UI testing:
             #   Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 "Timed out while loading Accessibility."
-            retries = 3
-            while retries > 0:
+            attempts = 0
+            cmd = [
+                "xcrun",
+                "xcodebuild",
+                "test",
+                "-workspace",
+                "./apple_package_test.xcworkspace",
+                "-scheme",
+                "ios_package_test",
+                "-destination",
+                f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
+            ]
+
+            while True:
+                attempts += 1
                 completed_process = subprocess.run(
-                    [
-                        "xcrun",
-                        "xcodebuild",
-                        "test",
-                        "-workspace",
-                        "./apple_package_test.xcworkspace",
-                        "-scheme",
-                        "ios_package_test",
-                        "-destination",
-                        f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
-                    ],
+                    cmd,
                     shell=False,
                     capture_output=True,
                     check=False,
@@ -164,9 +167,12 @@ def _test_apple_packages(args):
                     print(completed_process.stderr)
                     print("---")
 
-                    if "Timed out while loading Accessibility" in completed_process.stderr:
-                        retries -= 1
+                    if "Timed out while loading Accessibility" in completed_process.stderr and attempts < 3:
                         continue
+
+                    raise subprocess.CalledProcessError(
+                        completed_process.returncode, " ".join(cmd), completed_process.stdout, completed_process.stderr
+                    )
 
                 break
 
