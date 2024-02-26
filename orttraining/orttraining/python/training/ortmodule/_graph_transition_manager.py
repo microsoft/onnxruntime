@@ -552,14 +552,7 @@ class GraphTransitionManager:
             or cur_kwargs_schema != prev_exported_model_info.module_forward_kwargs_schema
         )
 
-        print(
-            f"cur_args_schema: {cur_args_schema}, prev_exported_model_info.module_forward_args_schema: {prev_exported_model_info.module_forward_args_schema if prev_exported_model_info else None}"
-        )
-        print(
-            f"cur_kwargs_schema: {cur_kwargs_schema}, prev_exported_model_info.module_forward_kwargs_schema: {prev_exported_model_info.module_forward_kwargs_schema if prev_exported_model_info else None}"
-        )
-
-        logger.warning(f"_export_check completed - need_export_model: {need_export_model}")
+        logger.info(f"_export_check completed - need_export_model: {need_export_model}")
 
         return need_export_model
 
