@@ -118,7 +118,7 @@ class SimpleTrainingBlockWithL1Loss(onnxblock.TrainingBlock):
 # Test utility methods
 
 
-def _get_onnx_model(torch_model, model_inputs):
+def _get_onnx_model(torch_model, model_inputs, file_path=""):
     model_outputs = torch_model(*model_inputs)
     if isinstance(model_outputs, torch.Tensor):
         model_outputs = [model_outputs]
@@ -138,6 +138,23 @@ def _get_onnx_model(torch_model, model_inputs):
         dynamic_axes[output_name] = {}
         for dim_idx in range(len(model_output.shape)):
             dynamic_axes[output_name].update({dim_idx: f"{output_name}_dim{dim_idx}"})
+
+    # For huge models testing
+    if file_path != "":
+        torch.onnx.export(
+            torch_model,
+            model_inputs,
+            file_path,
+            input_names=input_names,
+            output_names=output_names,
+            opset_version=14,
+            do_constant_folding=False,
+            training=torch.onnx.TrainingMode.TRAINING,
+            dynamic_axes=dynamic_axes,
+            export_params=True,
+            keep_initializers_as_inputs=False,
+        )
+        return onnx.load(file_path)
 
     f = io.BytesIO()
     torch.onnx.export(
@@ -160,7 +177,7 @@ def _to_numpy(tensor):
     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
-def _get_models(device, batch_size, input_size, hidden_size, output_size, zero_flag=False):
+def _get_models(device, batch_size, input_size, hidden_size, output_size, zero_flag=False, file_path=""):
     """Returns the pt and onnx models for SimpleNet"""
     pt_model = SimpleNet(input_size, hidden_size, output_size).to(device)
 
@@ -171,7 +188,7 @@ def _get_models(device, batch_size, input_size, hidden_size, output_size, zero_f
                 param.zero_()
 
     x = torch.randn(batch_size, input_size, device=device)
-    onnx_model = _get_onnx_model(pt_model, (x,))
+    onnx_model = _get_onnx_model(pt_model, (x,), file_path)
 
     return pt_model, onnx_model
 
@@ -190,9 +207,11 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
 
     ort_inputs = {
         onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target))
-        if target_type is None
-        else _to_numpy(copy.deepcopy(target).type(target_type)),
+        onnx_model.graph.input[1].name: (
+            _to_numpy(copy.deepcopy(target))
+            if target_type is None
+            else _to_numpy(copy.deepcopy(target).type(target_type))
+        ),
     }
     if target_type is not None:
         ort_inputs[onnx_model.graph.input[1].name]
@@ -1070,3 +1089,47 @@ def test_save_nominal_checkpoint():
             os.stat(os.path.join(temp_dir, "checkpoint")).st_size
             > os.stat(os.path.join(temp_dir, "nominal_checkpoint")).st_size
         )
+
+
+def test_large_model_training_graph_execution():
+    # Given
+    device = "cuda"
+
+    # Creating a large model surpassing 2GB to verify the capability of onnxblock to handle such models.
+    batch_size, input_size, hidden_size, output_size = 64, 10000, 100000, 10
+    with tempfile.TemporaryDirectory() as temp_dir:
+        pt_model, base_model = _get_models(
+            device, batch_size, input_size, hidden_size, output_size, file_path=temp_dir + "/mse_model.onnx"
+        )
+
+        x = torch.randn(batch_size, input_size, device=device)
+        target = torch.randn(batch_size, output_size, device=device)
+
+        # Build the onnx trainingmodel with loss
+        simple_block = SimpleTrainingBlockWithMSELoss()
+        for name, _ in pt_model.named_parameters():
+            simple_block.requires_grad(name)
+
+        with onnxblock.base(base_model):
+            _ = simple_block(base_model.graph.output[0].name)
+
+        onnx_model, _ = simple_block.to_model_proto()
+        ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
+        ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model)
+
+        def mse_loss(prediction, target):
+            loss = torch.nn.MSELoss()
+            return loss(prediction, target)
+
+    # When
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(onnx_model, onnx_fo.name)
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
+
+        ort_outs = ort_session.run(ort_output_names, ort_inputs)
+        torch_outs = mse_loss(pt_model(x), target)
+        torch_outs.backward()
+
+        # Then
+        # assert loss is close
+        assert np.allclose(ort_outs[0], _to_numpy(torch_outs))

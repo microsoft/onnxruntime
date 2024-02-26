@@ -188,7 +188,7 @@ class TrainingBlock(blocks.Block):
         output = self.build(*args, **kwargs)
 
         model = accessor._GLOBAL_ACCESSOR.model
-        
+
         size_check = False
         # Check If the protobuf is larger than 2GB
         try:
@@ -202,14 +202,14 @@ class TrainingBlock(blocks.Block):
             initializers_backup = model.graph.initializer[:]
 
             # Remove initializers from the model
-            model.graph.ClearField('initializer')
+            model.graph.ClearField("initializer")
 
             # Perform shape inference on the model without initializers
             model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 
             # Restore initializers to the model
             model.graph.initializer.extend(initializers_backup)
-        else:  
+        else:
             model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 
         _graph_utils.register_graph_outputs(model, output)
