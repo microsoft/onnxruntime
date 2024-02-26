@@ -42,7 +42,7 @@ For build instructions, please see the [BUILD page](../build/eps.md#amd-rocm).
 
 ## Configuration Options
 
-The CUDA Execution Provider supports the following configuration options.
+The ROCm Execution Provider supports the following configuration options.
 
 ### device_id
 
@@ -65,8 +65,7 @@ Default value: false
 ### user_compute_stream
 
 Defines the compute stream for the inference to run on.
-It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateCUDAProviderOptions`, but
-rather `UpdateCUDAProviderOptionsWithValue`.
+It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateROCMProviderOptions`.
 This cannot be used in combination with an external allocator.
 
 Example python usage:
