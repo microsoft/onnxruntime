@@ -141,11 +141,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
   info.external_allocator_info = alloc_info;
 
   info.user_compute_stream = user_compute_stream;
-  if (info.has_user_compute_stream && user_compute_stream == nullptr) {
-    // this happends when user set user_compute_stream = 0, so need to notify user that the setting is not valid
-    LOGS_DEFAULT(WARNING) << "User set use a null stream to use, disable user compute stream.";
-    info.has_user_compute_stream = false;
-  }
+  info.has_user_compute_stream = (user_compute_stream != nullptr);
 
   return info;
 }
