@@ -58,6 +58,8 @@ KE_REGISTER(m) {
     return ret;
   });
 
+  // clang-format ill-format the following code below version 18
+  // clang-format off
   m.def("is_composable_kernel_available", []() {
 #ifdef USE_COMPOSABLE_KERNEL
     return true;
@@ -81,6 +83,7 @@ KE_REGISTER(m) {
     return false;
 #endif
   });
+  // clang-format on
 }
 
 }  // namespace onnxruntime
