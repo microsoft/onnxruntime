@@ -43,12 +43,16 @@ class TestFusions(unittest.TestCase):
 
     def build_erf_sequence_1_model(self, shape):
         """
+        Erf sequence that fuses into Gelu:
            +-------Mul(0.5)---------------------+
            |                                    |
            |                                    v
         [root] --> Div -----> Erf  --> Add --> Mul -->
                   (B=1.4142...)       (1)
 
+        This method builds 2 of these Erf sequences:
+
+        [root] -> ERF_SEQUENCE1 -> ERF_SEQUENCE2 -> output
         """
         root_inp = onnx.helper.make_tensor_value_info("root", onnx.TensorProto.FLOAT, shape)
         output = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, shape)
@@ -56,15 +60,34 @@ class TestFusions(unittest.TestCase):
         half_const = onnx.numpy_helper.from_array(np.array(0.5, dtype=np.float32), "half_const")
         root2_const = onnx.numpy_helper.from_array(np.array(math.sqrt(2.0), dtype=np.float32), "root2_const")
 
+        # First Erf sequence
         mul0_node = onnx.helper.make_node("Mul", ["root", "half_const"], ["mul0_out"])
         div_node = onnx.helper.make_node("Div", ["root", "root2_const"], ["div_out"])
         erf_node = onnx.helper.make_node("Erf", ["div_out"], ["erf_out"])
         add_node = onnx.helper.make_node("Add", ["erf_out", "one_const"], ["add_out"])
-        mul1_node = onnx.helper.make_node("Mul", ["add_out", "mul0_out"], ["output"])
+        mul1_node = onnx.helper.make_node("Mul", ["add_out", "mul0_out"], ["seq1_output"])
+
+        # Second Erf sequence
+        mul0_node_dup = onnx.helper.make_node("Mul", ["seq1_output", "half_const"], ["mul0_out_dup"])
+        div_node_dup = onnx.helper.make_node("Div", ["seq1_output", "root2_const"], ["div_out_dup"])
+        erf_node_dup = onnx.helper.make_node("Erf", ["div_out_dup"], ["erf_out_dup"])
+        add_node_dup = onnx.helper.make_node("Add", ["erf_out_dup", "one_const"], ["add_out_dup"])
+        mul1_node_dup = onnx.helper.make_node("Mul", ["add_out_dup", "mul0_out_dup"], ["output"])
 
         graph = onnx.helper.make_graph(
-            [mul0_node, div_node, erf_node, add_node, mul1_node],
-            "elf_sequence_1",
+            [
+                mul0_node,
+                div_node,
+                erf_node,
+                add_node,
+                mul1_node,
+                mul0_node_dup,
+                div_node_dup,
+                erf_node_dup,
+                add_node_dup,
+                mul1_node_dup,
+            ],
+            "two_erf_sequences",
             [root_inp],
             [output],
             initializer=[one_const, half_const, root2_const],
@@ -99,7 +122,7 @@ class TestFusions(unittest.TestCase):
 
         graph = onnx.helper.make_graph(
             [div_node, erf_node, add_node, mul0_node, mul1_node],
-            "elf_sequence_2",
+            "erf_sequence_2",
             [root_inp],
             [output],
             initializer=[one_const, half_const, root2_const],
@@ -134,7 +157,7 @@ class TestFusions(unittest.TestCase):
 
         graph = onnx.helper.make_graph(
             [div_node, erf_node, add_node, mul0_node, mul1_node],
-            "elf_sequence_3",
+            "erf_sequence_3",
             [root_inp],
             [output],
             initializer=[one_const, half_const, root2_const],
@@ -169,7 +192,7 @@ class TestFusions(unittest.TestCase):
 
         graph = onnx.helper.make_graph(
             [mul0_node, erf_node, add_node, mul1_node, mul2_node],
-            "elf_sequence_4",
+            "erf_sequence_4",
             [root_inp],
             [output],
             initializer=[one_const, half_const, frac_const],
@@ -260,14 +283,19 @@ class TestFusions(unittest.TestCase):
         orig_model = onnx.ModelProto()
         orig_model.CopyFrom(model.model)
 
-        # Check that fusion simplified model to 1 Gelu node.
+        # Check that fusion simplified model to 2 Gelu nodes.
         modified = FusionGelu(model).apply()
         self.assertTrue(modified)
-        self.assertEqual(len(model.model.graph.node), 1)
+        self.assertEqual(len(model.model.graph.node), 2)
 
-        gelu_node = model.model.graph.node[0]
-        self.assertEqual(gelu_node.op_type, "Gelu")
-        self.assertTrue(gelu_node.name)
+        gelu_node_0 = model.model.graph.node[0]
+        gelu_node_1 = model.model.graph.node[1]
+        self.assertEqual(gelu_node_0.op_type, "Gelu")
+        self.assertEqual(gelu_node_1.op_type, "Gelu")
+
+        self.assertTrue(gelu_node_0.name)
+        self.assertTrue(gelu_node_1.name)
+        self.assertNotEqual(gelu_node_0.name, gelu_node_1.name)  # Generated names should not be equal
 
         # Check that fusion is equivalent to original Erf model.
         inputs = {"root": np.ones(shape, dtype=np.float32)}
