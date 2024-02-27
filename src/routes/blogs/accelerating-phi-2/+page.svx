@@ -110,7 +110,7 @@ The training benchmarks below were run on 2 A100 and measured throughput in iter
 
 ## Inferencing
 
-[Mistral7B](https://huggingface.co/mistralai/Mistral-7B-v0.1) is a pretrained generative text LLM with 7 billion parameters. ONNX Runtime improves inference performance significantly for Mistral with both float16 and int4 models. With float16, ONNX Runtime is as high **9.46x** compared to Llama.cpp. Token generation throughput significantly improves with int4 quantization for batch size 1 and is **up to 18.25x** faster than PyTorch Eager.
+[Mistral7B](https://huggingface.co/mistralai/Mistral-7B-v0.1) is a pretrained generative text LLM with 7 billion parameters. ONNX Runtime improves inference performance significantly for Mistral with both float16 and int4 models. With float16, ONNX Runtime is **as high as 9.46x** compared to Llama.cpp. Token generation throughput significantly improves with int4 quantization for batch size 1 and is **up to 18.25x** faster than PyTorch Eager.
 <div class="grid grid-cols-1 lg:grid-cols-2">
 <img class="m-auto" src="./Mistral_float16_PromptTP.png" alt="Mistral float16 prompt throughput comparison">
 
