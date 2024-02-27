@@ -277,10 +277,12 @@ CPUIDInfo::CPUIDInfo() {
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();
 #elif defined(CPUIDINFO_ARCH_ARM)
+#if CPUINFO_SUPPORTED
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
   if (!pytorch_cpuinfo_init_) {
     LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
   }
+#endif
 #ifdef __linux__
   ArmLinuxInit();
 #elif defined(_WIN32)
