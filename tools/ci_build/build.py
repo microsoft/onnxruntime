@@ -1451,6 +1451,13 @@ def generate_build_tree(
             # tools need to use the symbols.
             add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
 
+        if number_of_parallel_jobs(args) > 0:
+            # https://devblogs.microsoft.com/cppblog/improved-parallelism-in-msbuild/
+            # NOTE: this disables /MP if set (according to comments on blog post).
+            # By default, MultiProcMaxCount and CL_MPCount value are equal to the number of CPU logical processors.
+            # See logic around setting CL_MPCount below 
+            cmake_args += ["-DCMAKE_VS_GLOBALS=UseMultiToolTask=true;EnforceProcessCountAcrossBuilds=true"]
+
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
@@ -1662,11 +1669,17 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         build_tool_args = []
         if num_parallel_jobs != 1:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
+                # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
+                # not maxing out CL_MPCount
+                # Start by having one less than num_parallel_jobs (default is num logical cores),
+                # limited to a range of 1..3 
+                # that gives maxcpucount projects building using up to 3 cl.exe instances each
                 build_tool_args += [
                     f"/maxcpucount:{num_parallel_jobs}",
+                    # one less than num_parallel_jobs, at least 1, up to 3
+                    f"/p:CL_MPCount={min(max(num_parallel_jobs - 1, 1), 3)}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
-                    f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
             elif args.cmake_generator == "Xcode":
                 build_tool_args += [
