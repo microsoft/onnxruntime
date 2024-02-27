@@ -44,7 +44,7 @@ In this blog, we will cover significant optimization speed up for both training 
 
 [Phi-2](https://huggingface.co/microsoft/phi-2) is a 2.7 billion parameter transformer model developed by Microsoft. It is an SLM that exhibits excellent reasoning and language comprehension skills. With its small size, Phi-2 is a great platform for researchers, who can explore various aspects such as mechanistic interpretability, safety improvements, and fine-tuning experiments on different tasks.
 
-ONNX Runtime 1.17 introduces kernels changes that support the Phi-2 model, including optimizations for Attention, Multi-Head Attention, Grouped-Query Attention, and RotaryEmbeddingPhi-2. Specifically, support has been added for the following:
+ONNX Runtime 1.17 introduces kernels changes that support the Phi-2 model, including optimizations for Attention, Multi-Head Attention, Grouped-Query Attention, and RotaryEmbedding for Phi-2. Specifically, support has been added for the following:
 
 - causal mask in the Multi-Head Attention CPU kernel
 - rotary_embedding_dim in the Attention and Rotary Embedding kernels
