@@ -28,13 +28,15 @@ Pre-built binaries of ONNX Runtime with ROCm EP are published for most language 
 ## Requirements
 
 
-|ONNX Runtime|ROCm|
-|---|---|
-|main|5.4|
-|1.13|5.4|
-|1.13|5.3.2|
-|1.12|5.2.3|
-|1.12|5.2|
+|ONNX Runtime|ROCm                     |
+|------------|-------------------------|
+|  main      | 6.0                     |
+|  1.17      | 6.0<br/>5.7             |
+|  1.16      | 5.6<br/>5.5<br/>5.4.2   |
+|  1.15      | 5.4.2<br/>5.4<br/>5.3.2 |
+|  1.14      | 5.4<br/>5.3.2           |
+|  1.13      | 5.4<br/>5.3.2           |
+|  1.12      | 5.2.3<br/>5.2           |
 
 
 ## Build
