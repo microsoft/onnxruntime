@@ -58,7 +58,7 @@ For Phi-2 inference, ORT with float16 and int4 quantization performs better than
 
 ### ORT gains with float16
 
-Optimized CUDA performance for prompt throughput (i.e., the rate at which the model processes and generates responses based on input prompts) is **up to 7.39x** faster than PyTorch Compile. We also observe ONNX Runtime is significantly faster for larger batch size and prompt lengths compared to llama.cpp, for e.g., it is **up to 13.08x faster** for batch size =16, prompt length =2048.
+Optimized CUDA performance for prompt throughput (i.e., the rate at which the model processes and generates responses based on input prompts) is **up to 7.39x** faster than PyTorch Compile. We also observe ONNX Runtime is significantly faster for larger batch size and prompt lengths compared to Llama.cpp. For example, it is **up to 13.08x faster** for batch size =16, prompt length =2048.
 
 <img class="m-auto w50" src="./Phi2_Float16_PromptThroughput.png" alt="Phi2 float16 prompt throughput comparison">
 
