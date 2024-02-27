@@ -126,7 +126,7 @@ You can now access the optimized Mistral model on Huggingface [here.](https://hu
 
 ## Training
 
-Similar to Phi-2, Mistral also benefits from training acceleration using ORT. We trained Mistral 7b using the following configuration to see gains with ORT, including when composed with LoRA and QLoRA. The model was trained using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
+Similar to Phi-2, Mistral also benefits from training acceleration using ORT. We trained Mistral-7B using the following configuration to see gains with ORT, including when composed with LoRA and QLoRA. The model was trained using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
 <img class="m-auto w50" src="./Mistral_Training.png" alt="Mistral training benchmarks">
 
 <div class="anchor" id="codellama"/>
