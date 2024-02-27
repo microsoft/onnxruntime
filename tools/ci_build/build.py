@@ -405,7 +405,7 @@ def parse_arguments():
     parser.add_argument(
         "--macos",
         choices=["MacOSX", "Catalyst"],
-        help="Specify the target platform for macOS build. Default is MacOSX. Only specify when --build_apple_framework is present.",
+        help="Specify the target platform for macOS build. Only specify this argument when --build_apple_framework is present.",
     )
 
     parser.add_argument(
