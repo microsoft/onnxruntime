@@ -1455,7 +1455,7 @@ def generate_build_tree(
             # https://devblogs.microsoft.com/cppblog/improved-parallelism-in-msbuild/
             # NOTE: this disables /MP if set (according to comments on blog post).
             # By default, MultiProcMaxCount and CL_MPCount value are equal to the number of CPU logical processors.
-            # See logic around setting CL_MPCount below 
+            # See logic around setting CL_MPCount below
             cmake_args += ["-DCMAKE_VS_GLOBALS=UseMultiToolTask=true;EnforceProcessCountAcrossBuilds=true"]
 
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
@@ -1672,7 +1672,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
                 # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
                 # not maxing out CL_MPCount
                 # Start by having one less than num_parallel_jobs (default is num logical cores),
-                # limited to a range of 1..3 
+                # limited to a range of 1..3
                 # that gives maxcpucount projects building using up to 3 cl.exe instances each
                 build_tool_args += [
                     f"/maxcpucount:{num_parallel_jobs}",
