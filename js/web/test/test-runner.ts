@@ -575,7 +575,9 @@ export async function sessionRun(options: {
       // replace the CPU tensors in feeds into GPU tensors
       for (const name in feeds) {
         if (Object.hasOwnProperty.call(feeds, name)) {
-          feeds[name] = createGpuTensorForInput(feeds[name]);
+          if (feeds[name].size > 0) {
+            feeds[name] = createGpuTensorForInput(feeds[name]);
+          }
         }
       }
     }
@@ -584,7 +586,11 @@ export async function sessionRun(options: {
       for (const name in options.outputsMetaInfo) {
         if (Object.hasOwnProperty.call(options.outputsMetaInfo, name)) {
           const {type, dims} = options.outputsMetaInfo[name];
-          fetches[name] = createGpuTensorForOutput(type, dims);
+          if (dims.some(d => d === 0)) {
+            fetches[name] = new ort.Tensor(type, [], dims);
+          } else {
+            fetches[name] = createGpuTensorForOutput(type, dims);
+          }
         }
       }
     }
@@ -629,8 +635,8 @@ export async function runModelTestSet(
   try {
     const feeds: Record<string, ort.Tensor> = {};
     const outputsMetaInfo: Record<string, ort.Tensor> = {};
-    testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
-    testCase.outputs!.forEach((tensor, i) => outputsMetaInfo[context.session.outputNames[i]] = tensor);
+    testCase.inputs!.forEach((tensor) => feeds[tensor.name] = tensor);
+    testCase.outputs!.forEach((tensor) => outputsMetaInfo[tensor.name] = tensor);
     const [start, end, outputs] =
         await sessionRun({session: context.session, feeds, outputsMetaInfo, ioBinding: context.ioBinding});
     if (context.perfData.count === 0) {

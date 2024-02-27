@@ -2592,7 +2592,7 @@ def main():
         raise BuildError("Using --get-api-doc requires a single build config")
 
     # Disabling unit tests for GPU on nuget creation
-    if args.use_openvino != "CPU_FP32" and args.build_nuget:
+    if args.use_openvino and args.use_openvino != "CPU_FP32" and args.build_nuget:
         args.test = False
 
     # GDK builds don't support testing
