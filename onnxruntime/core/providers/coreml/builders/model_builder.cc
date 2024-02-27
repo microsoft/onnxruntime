@@ -622,43 +622,43 @@ const std::string& ModelBuilder::AddTensorValueAsConstantOperation(std::string_v
 }
 
 template <typename T>
-const std::string& ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
-                                                 std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const T> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   // add specialization below
   static_assert(false_for_T<T>, "Missing specialization for value type");
 
-  static const std::string error_message = "ModelBuilder::AddConstant error";
-  return error_message;  // unreachable
+  return "ModelBuilder::AddConstant error";  // unreachable
 }
 
 template <>
-const std::string& ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
-                                                 gsl::span<const float> value,
-                                                 std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const float> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<float>(value, shape);
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
 template <>
-const std::string& ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
-                                                 gsl::span<const int64_t> value,
-                                                 std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const int64_t> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<int64_t, int32_t>(value, shape);  // CoreML uses int32
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
 template <>
-const std::string& ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
-                                                 gsl::span<const bool> value,
-                                                 std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const bool> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<bool>(value, shape);
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
 template <>
-const std::string& ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
-                                                 gsl::span<const std::string> value,
-                                                 std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const std::string> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<std::string>(value, shape);
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }

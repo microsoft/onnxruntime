@@ -184,14 +184,16 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
 
     bool using_scales = input_defs.size() >= 3 && input_defs[2]->Exists();
     // scales
-    if (using_scales && !Contains(initializers, input_defs[2]->Name())) {
+    if (using_scales && !input_params.graph_viewer.GetConstantInitializer(input_defs[2]->Name())) {
       LOGS(logger, VERBOSE) << "scales input of Resize must be a constant initializer";
       return false;
     }
 
     // sizes
     if (!using_scales &&
-        (input_defs.size() < 4 || !input_defs[3]->Exists() || !Contains(initializers, input_defs[3]->Name()))) {
+        (input_defs.size() < 4 ||
+         !input_defs[3]->Exists() ||
+         !input_params.graph_viewer.GetConstantInitializer(input_defs[3]->Name()))) {
       LOGS(logger, VERBOSE) << "sizes input of Resize must be a constant initializer";
       return false;
     }

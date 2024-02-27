@@ -145,12 +145,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         AddOperationInput(*gemm_op, "weight", b.Name());
       } else {
         // transpose from {K, N} to {N, K}
-        std::vector<float> weight_t;
-        std::vector<int64_t> weight_t_shape = {N, K};
-        ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(*b_initializer, weight_t));
+        std::vector<float> weight_nk;
+        std::vector<int64_t> weight_nk_shape = {N, K};
+        ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(*b_initializer, weight_nk));
 
         AddOperationInput(*gemm_op, "weight",
-                          model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_t, weight_t_shape));
+                          model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
       }
 
       if (input_defs.size() == 3) {

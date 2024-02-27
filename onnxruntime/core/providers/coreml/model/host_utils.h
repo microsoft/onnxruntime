@@ -48,6 +48,11 @@
 #define HAS_COREML6_OR_LATER @available(macOS 13, iOS 16, *)
 #define HAS_COREML7_OR_LATER @available(macOS 14, iOS 17, *)
 
+#if !defined(NDEBUG)
+// Override location the model is written to so that a) it's easily found and b) it is not automatically deleted
+// when the EP exits.
+constexpr const char* DEBUG_MODEL_DIRECTORY = "ORT_COREML_EP_MODEL_DIR";
+#endif
 #endif
 
 #define MINIMUM_COREML_VERSION 3            // first version we support

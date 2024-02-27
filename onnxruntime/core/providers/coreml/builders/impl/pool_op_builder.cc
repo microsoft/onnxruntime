@@ -66,9 +66,9 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", true));
     } else {
       NodeAttrHelper helper(node);
-      const int num_spatial_dims = 2;  // we only support 4D. -2 for N and C dims.
+      constexpr int num_spatial_dims = 2;  // we only support 4D. -2 for N and C dims.
 
-      AddPadTypeAndPads(*op, model_builder, op->type(), helper, 2);
+      AddPadTypeAndPads(*op, model_builder, op->type(), helper, num_spatial_dims);
 
       const auto kernel_shape = helper.GetInt64s("kernel_shape");  // required
       AddOperationInput(*op, "kernel_sizes", model_builder.AddConstant(op->type(), "kernel_sizes", *kernel_shape));
@@ -82,7 +82,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       AddOperationInput(*op, "ceil_mode", model_builder.AddScalarConstant(op->type(), "ceil_mode", ceil_mode));
 
       if (is_avg_pool) {
-        const bool count_exclude_pad = bool(helper.Get("count_include_pad", int64_t(0))) == false;
+        const bool count_exclude_pad = helper.Get("count_include_pad", int64_t(0)) == 0;
         AddOperationInput(*op, "exclude_padding_from_average",
                           model_builder.AddScalarConstant(op->type(), "count_exclude_pad", count_exclude_pad));
       }

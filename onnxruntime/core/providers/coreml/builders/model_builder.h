@@ -104,8 +104,8 @@ class ModelBuilder {
   /// </param>
   /// <returns>Unique name generated for value.</returns>
   template <typename T>
-  const std::string& AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
-                                 std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+  std::string_view AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
+                               std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
     static_assert(std::is_same_v<T, float> ||
                       std::is_same_v<T, int64_t> ||
                       std::is_same_v<T, std::string> ||
@@ -116,8 +116,8 @@ class ModelBuilder {
   }
 
   template <typename T>
-  const std::string& AddConstant(std::string_view op_type, std::string_view value_type, const std::vector<T>& value,
-                                 std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+  std::string_view AddConstant(std::string_view op_type, std::string_view value_type, const std::vector<T>& value,
+                               std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
     return AddConstant(op_type, value_type, AsSpan(value), shape);
   }
 
@@ -125,16 +125,9 @@ class ModelBuilder {
   /// Add a scalar value as a 'const' operation. See AddConstant for details.
   /// </summary>
   template <typename T>
-  const std::string& AddScalarConstant(std::string_view op_type, std::string_view value_type, const T& value) {
+  std::string_view AddScalarConstant(std::string_view op_type, std::string_view value_type, const T& value) {
     return AddConstant(op_type, value_type, AsSpan({value}), AsSpan<const int64_t>({}));
   }
-
-  /// <summary>
-  /// Add an existing a constant ONNX initializer to the ML Program as a 'const' operation
-  /// </summary>
-  /// <param name="name">Initializer name</param>
-  /// <param name="initializer">Initializer data</param>
-  void AddConstant(std::string_view name, const ONNX_NAMESPACE::TensorProto& initializer);
 
   // add the operation to the main function
   void AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation> operation);
@@ -160,8 +153,8 @@ class ModelBuilder {
  private:
 #if defined(COREML_ENABLE_MLPROGRAM)
   template <typename T>
-  const std::string& AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
-                                     std::optional<gsl::span<const int64_t>> shape = std::nullopt);
+  std::string_view AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
+                                   std::optional<gsl::span<const int64_t>> shape = std::nullopt);
 
   // apply the CoreML naming rules and fix any invalid names.
   const std::string& GetSafeName(const std::string& name);
