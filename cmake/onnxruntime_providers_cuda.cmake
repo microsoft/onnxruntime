@@ -199,10 +199,7 @@
       target_link_libraries(${target} PRIVATE cuda)
     endif()
 
-    set_msvc_c_cpp_compiler_warning_level(3)
     include(cutlass)
-    set_msvc_c_cpp_compiler_warning_level(4)
-
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
 
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
