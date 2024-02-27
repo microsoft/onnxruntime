@@ -1378,12 +1378,12 @@ def generate_build_tree(
                 "-DCMAKE_CXX_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_C_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_CC_COMPILER_TARGET=" + macabi_target,
-                "-DCMAKE_CXX_FLAGS=" + f"--target={macabi_target}",
-                "-DCMAKE_CXX_FLAGS_RELEASE=" + f"-O3 -DNDEBUG --target={macabi_target}",
-                "-DCMAKE_C_FLAGS=" + f"--target={macabi_target}",
-                "-DCMAKE_C_FLAGS_RELEASE=" + f"-O3 -DNDEBUG --target={macabi_target}",
-                "-DCMAKE_CC_FLAGS=" + f"--target={macabi_target}",
-                "-DCMAKE_CC_FLAGS_RELEASE=" + f"-O3 -DNDEBUG --target={macabi_target}",
+                f"-DCMAKE_CXX_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+                f"-DCMAKE_C_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+                f"-DCMAKE_CC_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_CC_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
             ]
 
     if args.build_wasm:
