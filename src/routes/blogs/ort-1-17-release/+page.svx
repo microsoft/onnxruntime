@@ -1,0 +1,72 @@
+---
+title: Unlock new functionality with ONNX Runtime 1.17
+date: '2024-02-26'
+description: 'From Phi-2 model optimizations to CUDA 12 support, read this post to learn more about some of the exciting new functionality introduced in the ONNX Runtime 1.17 release.'
+keywords: 'ORT, ONNX Runtime, ONNX, machine learning, deep learning, model optimization, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8'
+authors:
+  [
+    'Sophie Schoenmeyer',
+    'Parinita Rahi',
+    'Kshama Pawar',
+    'Emma Ning',
+    'Natalie Kershaw',
+    'Jian Chen'
+  ]
+authorsLink:
+  [
+    'https://www.linkedin.com/in/sophieschoenmeyer/',
+    https://www.linkedin.com/in/parinitaparinita/,
+    'https://www.linkedin.com/in/kshama-pawar',
+    '',
+    'https://www.linkedin.com/in/natkershaw/',
+    ''
+  ]
+image: ''
+url: 'https://onnxruntime.ai/blogs/ort-1_17-release-blog'
+---
+
+# ONNX Runtime 1.17 Release Blog
+
+Recently, we released ONNX Runtime 1.17, which includes a host of new features to further streamline the process of inferencing and training machine learning models across various platforms faster than ever. The release includes improvements to some of our existing features, along with exciting new features like Phi-2 optimizations, training a model in-browser with on-device training, ONNX Runtime Web with WebGPU, and more.
+
+For a complete list of new features, along with various assets, check out the release on GitHub: [ONNX Runtime v1.17.0](https://github.com/microsoft/onnxruntime/releases/tag/v1.17.0).
+
+## Models Optimization
+
+The ONNX Runtime (ORT) 1.17 release provides improved inference performance for several models, such as [Phi-2](https://huggingface.co/microsoft/phi-2), [Mistral](https://huggingface.co/mistralai/Mistral-7B-v0.1), [CodeLlama](https://huggingface.co/codellama), and [SDXL-Turbo](https://huggingface.co/stabilityai/sdxl-turbo), by using state-of-the-art fusion and kernel optimizations and including support for Float16 and Int4 quantization. The specific ORT optimizations added in this release are Attention, Multi-Head Attention, Grouped-Query Attention, and Rotary Embedding ORT kernel changes. ORT outperforms other frameworks like PyTorch, DeepSpeed, and Llama.cpp in terms of prompt and token generation throughput, with speedups as high as **18.55x** for **Phi-2** with Float16, **20.48x** for Phi-2 with Int4, and **4.1x** for Mistral with Float16 (see linked blogs below for additional details).
+
+ONNX Runtime also shows significant benefits for training LLMs, and these gains typically increase with batch size. For example, ORT is 1.2x faster than PyTorch Eager mode and 1.5x faster than torch.compile for Phi-2 with LoRA on 2 A100 GPUs. ORT also shows benefits for other LLMs, like Llama, Mistral, and Orca-2, with combinations of LoRA or QLoRA.
+
+To read more about accelerating Phi-2, Mistral, CodeLlama, SDXL-Turbo, and more with ONNX Runtime 1.17, check out this recent post on the ONNX Runtime blog: **_Phi-2 newsletter link_**.
+
+## On-Device Training
+
+On-device training allows you to improve the user experience for developer applications using device data. It supports scenarios like federated learning, which trains a global model using data on the device. With the 1.17 release, ORT will now enable training machine learning models in the browser using on-device training.
+
+To learn more about training a model in browser with on-device training, check out this recent post on the Microsoft Open Source Blog: [On-Device Training: Training a model in browser](https://cloudblogs.microsoft.com/opensource/2024/02/06/on-device-training-training-a-model-in-browser/).
+
+## DirectML NPU Support
+
+With the release of [DirectML 1.13.1](https://github.com/microsoft/DirectML/blob/master/Releases.md) and ONNX Runtime 1.17, developer preview support for neural processing unit (NPU) acceleration is now available in DirectML, the machine learning platform API for Windows. This developer preview enables support for a subset of models on new Windows 11 devices with Intel® Core™ Ultra processors with Intel® AI boost.
+
+To learn more about NPU support in DirectML, check out this recent post on the Windows Developer Blog: [Introducing Neural Processor Unit (NPU) support in DirectML (developer preview)](https://blogs.windows.com/windowsdeveloper/2024/02/01/introducing-neural-processor-unit-npu-support-in-directml-developer-preview/).
+
+## ONNX Runtime Web with WebGPU
+
+WebGPU enables web developers to harness GPU hardware for high-performance computations. The ONNX Runtime 1.17 release introduces the official launch of the WebGPU execution provider in ONNX Runtime Web, allowing sophisticated models to run entirely and efficiently within the browser (see the [list of WebGPU browser compatibility](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status)). This advancement, demonstrated by the effective execution of models such as SD-Turbo, unlocks new possibilities in scenarios where CPU-based in-browser machine learning faces challenges in meeting performance standards.
+
+To learn more about how ONNX Runtime Web further accelerates in-browser machine learning with WebGPU, stay tuned for our upcoming blog post.
+
+## Yolov8 Pose Detection Scenario
+
+This release adds support for running the Yolov8 model for pose detection. Pose detection involves processing the objects detected in an image and identifying the position and orientation of people in the image. The core Yolov8 model returns a set of key points, representing specific parts of the detected person's body, such as joints and other distinctive features. Including the pre- and post-processing in the ONNX model allows developers to supply an input image directly, either in common image formats or raw RGB values, and output the image with bounding boxes and key points.
+
+**_TODO: Add output image_**
+
+**_TODO: Add link_**
+
+## CUDA 12 packages - Jian
+
+As part of the 1.17 release, ONNX Runtime now ensures compatibility across multiple versions of Nvidia's CUDA execution provider by introducing CUDA 12 packages for Python and NuGet. With this more flexible methodology, users will now have access to both CUDA 11 and CUDA 12, allowing for more seamless integration of cutting-edge hardware acceleration technologies.
+
+To install CUDA 12 for ONNX Runtime GPU, refer to the instructions in the ONNX Runtime docs: [Install ONNX Runtime GPU (CUDA 12.X)](https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-12x).

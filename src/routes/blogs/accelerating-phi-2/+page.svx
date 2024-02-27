@@ -60,16 +60,21 @@ For Phi-2 inference, ORT with float16 and int4 quantization performs better than
 
 Optimized CUDA performance for prompt throughput (i.e., the rate at which the model processes and generates responses based on input prompts) is **up to 7.39x** faster than PyTorch Compile. We also observe ONNX Runtime is significantly faster for larger batch size and prompt lengths compared to Llama.cpp. For example, it is **up to 13.08x faster** for batch size =16, prompt length =2048.
 
-<img class="m-auto w50" src="./Phi2_Float16_PromptThroughput.png" alt="Phi2 float16 prompt throughput comparison">
+
 
 Token generation throughput is the average throughput of the first 256 tokens generated. ONNX Runtime with float16 is **on average 6.6x faster** than torch.compile and **as high as 18.55x** faster. It also performs **up to 1.64x** faster than Llama.cpp.
+<div class="grid grid-cols-1 lg:grid-cols-2">
+<img class="m-auto w50" src="./Phi2_Float16_PromptThroughput.png" alt="Phi2 float16 prompt throughput comparison">
+
 <img class="m-auto w50" src="./Phi2_Float16_TokenGenerationThroughput.png" alt="Phi2 float16 token generation throughput comparison">
+</div>
 
 ### ORT gains with int4
 
 ORT provides support for int4 quantization. ORT with int4 quantization can provide **up to 20.48x** improved performance compared to PyTorch. It is 3.9x better than Llama.cpp on average and **up to 13.42x** faster for large sequence lengths. ONNX Runtime with int4 quantization typically performs best with batch size 1 due to a special kernel for GemV.
 
-<div class="grid grid-cols-1 lg:grid-cols-2"><img class="m-auto" src="./Phi2_Int4_PromptTP.png" alt="Phi2 int4 prompt throughput comparison">
+<div class="grid grid-cols-1 lg:grid-cols-2">
+<img class="m-auto" src="./Phi2_Int4_PromptTP.png" alt="Phi2 int4 prompt throughput comparison">
 
 <img class="m-auto" src="./Phi2_Int4_TokenGenerationTP.png" alt="Phi2 int4 token generation throughput comparison">
 </div>
