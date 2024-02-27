@@ -1,6 +1,10 @@
 ul {
   list-style: circle !important;
 }
+
+.w50{
+  width: 50em;
+}
 /*light*/
 
 .markdown-body {

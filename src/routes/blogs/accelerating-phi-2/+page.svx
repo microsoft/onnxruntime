@@ -37,9 +37,8 @@ In this blog we will cover significant optimization speed up for both training a
 - [Llama-2](#llama-2)
 - [Orca-2](#orca-2)
 - [Gemma](#gemma)
-- [Conclusion](#conclusion)
 
-<div id="phi-2"/>
+<div class="anchor" id="phi-2"/>
 
 # Phi-2
 
@@ -61,10 +60,10 @@ For Phi-2 inference, ORT with float16 and int4 quantization performs better than
 
 Optimized CUDA performance for prompt throughput (i.e., the rate at which the model processes and generates responses based on input prompts) is **up to 7.39x** faster than PyTorch Compile. We also observe ONNX Runtime is significantly faster for larger batch size and prompt lengths compared to llama.cpp, for e.g., it is **up to 13.08x faster** for batch size =16, prompt length =2048.
 
-<img class="m-auto" src="./Phi2_Float16_PromptThroughput.png" alt="Phi2 float16 prompt throughput comparison">
+<img class="m-auto w50" src="./Phi2_Float16_PromptThroughput.png" alt="Phi2 float16 prompt throughput comparison">
 
 Token generation throughput is the average throughput of the first 256 tokens generated. ONNX Runtime with float16 is **on average 6.6x faster** than torch.compile and as high as **18.55x** faster. It also performs **up to 1.64x** faster than Llama.cpp.
-<img class="m-auto" src="./Phi2_Float16_TokenGenerationThroughput.png" alt="Phi2 float16 token generation throughput comparison">
+<img class="m-auto w50" src="./Phi2_Float16_TokenGenerationThroughput.png" alt="Phi2 float16 token generation throughput comparison">
 
 ### ORT gains with int4
 
@@ -88,24 +87,24 @@ Here is an example of [Phi-2 optimizations with Olive](https://github.com/micros
 
 In addition to inference, ONNX Runtime also provides training speedup for Phi-2 and other LLMs. ORT Training is part of the PyTorch Ecosystem and is available via the torch-ort python package, as part of the Azure Container for PyTorch (ACPT). It provides flexible and extensible hardware support, where the same model and APIs works with both NVIDIA and AMD GPUs. ORT accelerates training through optimized kernels and memory optimizations which show significant gains in reducing end-to-end training time for large model training. This involves changing a few lines of code in the model to wrap it with the ORTModule API. It is also composable with popular acceleration libraries like DeepSpeed and Megatron for faster and more efficient training.
 
-Open AI’s Triton is a domain specific language and compiler to write highly efficient custom deep learning primitives. ORT supports Open AI Triton integration (ORT+Triton), where all element wise operators are converted to Triton ops and ORT creates custom fused kernels in Triton.
+Open AI's Triton is a domain specific language and compiler to write highly efficient custom deep learning primitives. ORT supports Open AI Triton integration (ORT+Triton), where all element wise operators are converted to Triton ops and ORT creates custom fused kernels in Triton.
 
 ORT also performs sparsity optimization to assess input data sparsity and perform graph optimizations leveraging this sparsity. This reduces the compute FLOP requirements and increases performance.
 
-Low-Rank Adapters (LoRA) based fine-tuning makes training more efficient by training only a small number of additional parameters (the adapters) while freezing the original model’s weights. These adapters adapt the model to specific tasks. Quantization and LoRA (QLoRA) combines quantization with LoRA where the weights are represented using fewer bits, while preserving the performance and quality of the model. ONNX Runtime training composes with both LoRA and QLoRA to provide gains in memory efficiency and training time acceleration for LLMs. LoRA and QLoRA techniques enable very large models like LLMs to fit in the GPU memory to efficiently complete training.
+Low-Rank Adapters (LoRA) based fine-tuning makes training more efficient by training only a small number of additional parameters (the adapters) while freezing the original model's weights. These adapters adapt the model to specific tasks. Quantization and LoRA (QLoRA) combines quantization with LoRA where the weights are represented using fewer bits, while preserving the performance and quality of the model. ONNX Runtime training composes with both LoRA and QLoRA to provide gains in memory efficiency and training time acceleration for LLMs. LoRA and QLoRA techniques enable very large models like LLMs to fit in the GPU memory to efficiently complete training.
 
 The Phi-2 model trained using ORT shows performance gains against PyTorch Eager mode and torch.compile. Phi-2 was trained using a mixture of synthetic and web datasets. We measured gains against ORT and the ORT+Triton mode, and gains increased with larger batch sizes. The model was trained using DeepSpeed Stage-2 for 5 epochs, with increasing batch sizes on the wikitext dataset. The gains are summarized in the charts below for V100 and A100.
 
 The training benchmarks were run on 8 V100 and measured throughput in iterations/second (higher is better):
 
-<img class="m-auto" src="./Phi2_trainingTP.png" alt="Phi2 training throughput comparison">
+<img class="m-auto w50" src="./Phi2_trainingTP.png" alt="Phi2 training throughput comparison">
 
 The training benchmarks below were run on 2 A100 and measured throughput in iterations/second (higher is better):
-<img class="m-auto" src="./Phi2_training_2a100.png" alt="Phi2 training benchmarks on 2 A100">
+<img class="m-auto w50" src="./Phi2_training_2a100.png" alt="Phi2 training benchmarks on 2 A100">
 
 <i>Note: PyTorch Stable 2.2.0 and ONNXRuntime Training: Stable 1.17.0 versions were used.</i>
 
-<div id="mistral"/>
+<div class="anchor" id="mistral"/>
 
 # Mistral
 
@@ -128,9 +127,9 @@ You can now access the optimized Mistral model on Huggingface [here.](https://hu
 ## Training
 
 Similar to Phi-2, Mistral also benefits from training acceleration using ORT. We trained Mistral 7b using the following configuration to see gains with ORT, including when composed with LoRA and QLoRA. The model was trained using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
-<img class="m-auto" src="./Mistral_Training.png" alt="Mistral training benchmarks">
+<img class="m-auto w50" src="./Mistral_Training.png" alt="Mistral training benchmarks">
 
-<div id="codellama"/>
+<div class="anchor" id="codellama"/>
 
 # CodeLlama
 
@@ -142,7 +141,7 @@ Similar to Phi-2, Mistral also benefits from training acceleration using ORT. We
 </div>
 
 
-<div id="sd-turbo-and-sdxl-turbo"/>
+<div class="anchor" id="sd-turbo-and-sdxl-turbo"/>
 
 # SD-Turbo and SDXL-Turbo
 
@@ -152,15 +151,15 @@ ONNX Runtime provides inference performance benefits when used with [SD Turbo](h
 
 To read more about accelerating SD-Turbo and SDXL-Turbo inference with ONNX Runtime, check out our recent [blog](https://huggingface.co/blog/sdxl_ort_inference) with Hugging Face.
 
-<div id="llama-2"/>
+<div class="anchor" id="llama-2"/>
 
 # Llama-2
 
 We published a separate blog for Llama-2 improvements with ORT for Inference [here](https://onnxruntime.ai/blogs/accelerating-llama-2). Additionally, Llama-2 7b and 13b show good gains with ORT for training, especially when combined with LoRA and QLoRA. [These](https://github.com/huggingface/optimum/blob/main/examples/onnxruntime/training/text-classification/README.md#onnx-runtime-training) scripts can be used as an example to finetune Llama-2 with ORT using Optimum. The numbers below are for Llama-2 models training with ORT using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
 
-<img class="m-auto" src="./Llama2_Training.png" alt="Llama2 training benchmarks">
+<img class="m-auto w50" src="./Llama2_Training.png" alt="Llama2 training benchmarks">
 
-<div id="orca-2"/>
+<div class="anchor" id="orca-2"/>
 
 # Orca-2
 
@@ -199,22 +198,27 @@ _Orca-2 benchmarking done on1 A100 GPU, SKU: Standard_ND96amsr_A100_v4 , Package
 
 Orca-2 7b also benefits from training acceleration using ORT. We trained the Orca-2 7b model for a sequence length of 512 with LoRA and with the sparsity optimization enabled, to see good gains in performance. The numbers below are for Orca-2 7b models training with ORT using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
 
-<img class="m-auto" src="./Orca2_Training.png" alt="Orca2 training benchmarks">
+<img class="m-auto w50" src="./Orca2_Training.png" alt="Orca2 training benchmarks">
 <i>Uses ACPT image: nightly-ubuntu2004-cu118-py38-torch230dev:20240131</i>
 
-<div id="gemma"/>
+<div class="anchor" id="gemma"/>
 
 # Gemma
 
 [Gemma](https://ai.google.dev/gemma/docs) is a family of lightweight, open models built from the research and technology that Google used to create Gemini models. It is available in two sizes 2B and 7B. Each size is released with pre-trained and instruction-tuned variants. ONNX Runtime can be used to optimize and efficiently run any open-source model. We benchmarked against the [Gemma-2b](https://huggingface.co/google/gemma-2b) model, ONNX Runtime with float16 is **up to 7.47x** faster than PyTorch Compile, and **up to 3.47x** faster than Llama.cpp. ORT with int4 quantization **is up to 19.81x** faster than PyTorch Eager and **2.62x** faster than Llama.cpp.
 <div class="grid grid-cols-1 lg:grid-cols-2">
-<img class="m-auto" src="./Gemma2b_PromptTP.png" alt="Gemma2b prompt throughput comparison">
+<img class="m-auto" src="./Gemma2_int4_tokengenTP.png" alt="Gemma2b int4 token generation throughput comparison">
 
 <img class="m-auto" src="./Gemma2b_TokenGenTP.png" alt="Gemma2b token generation throughput comparison">
 </div>
 
-<div id="conclusion"/>
+<div class="anchor" id="conclusion"/>
 
 # Conclusion
 
 In conclusion, ONNX Runtime (ORT) provides significant performance improvements for several models, including Phi-2, Mistral, CodeLlama, SDXL-Turbo, Llama-2, Orca-2, and Gemma. ORT offers state-of-the-art fusion and kernel optimizations, including support for float16 and int4 quantization, resulting in faster inferencing speeds and lower costs. ORT outperforms other frameworks like PyTorch and Llama.cpp in terms of prompt and token generation throughput. ORT also shows significant benefits for training LLMs, with increasing gains for larger batch sizes and composes well with state-of-the-art techniques to enable efficient large model training.
+<style>
+	.anchor {
+		scroll-margin-top: 40px;
+	}
+</style>
