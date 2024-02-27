@@ -4,6 +4,7 @@
 import logging
 from abc import abstractmethod
 from typing import List, Tuple
+import tempfile
 
 import onnx
 
@@ -187,28 +188,34 @@ class TrainingBlock(blocks.Block):
 
         output = self.build(*args, **kwargs)
 
-        model = accessor._GLOBAL_ACCESSOR.model
+        model_exceeds_max_permissible_size = False
 
-        size_check = False
-        # Check If the protobuf is larger than 2GB
         try:
-            model.SerializeToString()
-        except ValueError as e:  # Catching ValueError exceptions
-            # Now, e is an instance of ValueError, and you can check its message
+            # Attempt to serialize the model to string. This operation can fail if the model size
+            # exceeds the protobuf maximum limit of 2GB.
+            accessor._GLOBAL_ACCESSOR.model.SerializeToString()
+
+        except ValueError as e:
             if "exceeds maximum protobuf size of 2GB" in str(e):
-                size_check = True
+                model_exceeds_max_permissible_size = True
 
-        if size_check:
-            initializers_backup = model.graph.initializer[:]
+        if model_exceeds_max_permissible_size:
+            # Use a temporary directory to save the large model and perform shape inference.
+            # This is necessary as models exceeding 2GB cannot be directly processed in-memory
+            # due to protobuf limitations.
+            with tempfile.TemporaryDirectory() as temp_dir:
+                input_model_path = temp_dir + "/model.onnx"
+                inferred_model_path = temp_dir + "/inferred_model.onnx"
 
-            # Remove initializers from the model
-            model.graph.ClearField("initializer")
+                # Save the large model to disk, enabling external data storage to handle the size.
+                onnx.save(accessor._GLOBAL_ACCESSOR.model, input_model_path, save_as_external_data=True)
 
-            # Perform shape inference on the model without initializers
-            model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+                # Perform shape inference on the model using infer_shape_path
+                onnx.shape_inference.infer_shapes_path(input_model_path, inferred_model_path)
 
-            # Restore initializers to the model
-            model.graph.initializer.extend(initializers_backup)
+                # Load the model with inferred shapes back into memory for further use.
+                model = onnx.load(inferred_model_path)
+
         else:
             model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 
