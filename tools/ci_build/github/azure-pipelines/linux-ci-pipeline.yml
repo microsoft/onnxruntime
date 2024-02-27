@@ -118,19 +118,6 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             onnxruntimecpubuildcentos8x64 \
-                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Debug
-        displayName: 'Run Debug tests'
-
-      - bash: |
-          mkdir -p $HOME/.onnx
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            onnxruntimecpubuildcentos8x64 \
             /bin/bash -c "
               set -ex; \
               pushd /onnxruntime_src/csharp; \

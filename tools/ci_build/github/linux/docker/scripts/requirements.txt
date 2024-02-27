@@ -12,3 +12,4 @@ sympy==1.12
 flatbuffers
 protobuf==4.21.12
 packaging
+triton
