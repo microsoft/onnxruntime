@@ -9,6 +9,7 @@
 	import HFImage from '../../images/blogs/hugging-face-blog-img.png';
 	import LlamaImage from '../../images/blogs/accelerating-llama-2/Figure1-LLaMA-2-7B-E2E-Throughput.png';
 	import SDXLTurboImage from '../../images/blogs/sdxl_blog_thumbnail.png';
+	import Phi2Image from '../../routes/blogs/accelerating-phi-2/Phi2_Int4_TokenGenerationTP.png';
 	import { createEventDispatcher } from 'svelte';
 	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
 	onMount(() => {
@@ -39,6 +40,15 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Accelerating Phi-2, CodeLlama, Gemma and other Gen AI models with ONNX Runtime',
+			date: 'February 26th, 2024',
+			blurb:
+				'Improvements with ONNX Runtime for inferencing popular Gen AI models.',
+			link: 'blogs/accelerating-phi-2',
+			image: Phi2Image,
+			imgalt: 'Phi2 float16 token generation throughput comparison'
+		},
+		{
 			title: 'On-Device Training: Training a model in browser',
 			date: 'February 6th, 2024',
 			blurb:
@@ -56,6 +66,8 @@
 			image: SDXLTurboImage,
 			imgalt: 'SD Turbo and SDXL Turbo models with ONNX Runtime and Olive'
 		},
+	];
+	let blogs = [
 		{
 			title: 'Accelerating LLaMA-2 Inference with ONNX Runtime',
 			date: 'November 14th, 2023',
@@ -63,9 +75,7 @@
 			link: 'blogs/accelerating-llama-2',
 			image: LlamaImage,
 			imgalt: 'LLaMA-2 e2e throughput'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title: 'Run PyTorch models on the edge',
 			date: 'October 12th, 2023',

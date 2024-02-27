@@ -1,6 +1,8 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/kit/vite';
 import { mdsvex } from 'mdsvex';
+import relativeImages from "mdsvex-relative-images";
+
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -13,7 +15,8 @@ const config = {
 			extensions: ['.md', '.svx'],
 			layout: {
 				blogs: 'src/routes/blogs/post.svelte'
-			}
+			},
+			remarkPlugins: [relativeImages],
 		})
 	],
 
