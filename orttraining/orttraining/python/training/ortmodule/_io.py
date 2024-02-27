@@ -6,7 +6,6 @@
 import copy
 import gc
 import inspect
-import warnings
 from collections import OrderedDict, abc
 from functools import partial
 from logging import Logger
@@ -244,6 +243,7 @@ def parse_inputs_for_onnx_export(
     constant_as_tensor: bool,
     device: torch.device,
     export_mode: int,
+    logger: Logger,
     export_extra_kwargs: Optional[Dict[str, any]] = None,
 ) -> ModelInfoForExport:
     """Parses through the model inputs and returns _InputInfo.
@@ -282,7 +282,7 @@ def parse_inputs_for_onnx_export(
         return dynamic_axes
 
     def _warn_of_constant_inputs(data):
-        warnings.warn(f"Received input of type {type(data)} is treated as a constant by ORT by default.")
+        logger.info(f"Received input of type {type(data)} is treated as a constant by ORT by default.")
 
     def _add_input(
         name: str, input_value, onnx_graph_input_names: List[str], cur_func: Callable, tensor_idx: List[int]

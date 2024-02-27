@@ -4239,14 +4239,23 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 
-def test_ortmodule_string_inputs_are_ignored():
+def test_ortmodule_string_inputs_are_ignored(caplog):
     pt_model = MyStrNet()
-    target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
-    with pytest.warns(UserWarning, match=target_str):
-        ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
-        x = torch.randn(1, 2)
-        out = ort_model(x, "hello")
-        _test_helpers.assert_values_are_close(out, x + 1)
+    target_str = "Received input of type <class 'str'> is treated as a constant by ORT by default."
+
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
+    x = torch.randn(1, 2)
+    out = ort_model(x, "hello")
+    _test_helpers.assert_values_are_close(out, x + 1)
+
+    found_log = False
+    for record in caplog.records:
+        msg = record.getMessage()
+        if target_str in msg:
+            found_log = True
+            break
+
+    assert found_log, f"Expected to find log message '{target_str}' in the logs, but didn't find it."
 
 
 def test_ortmodule_list_input():

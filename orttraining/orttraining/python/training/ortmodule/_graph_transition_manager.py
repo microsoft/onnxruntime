@@ -346,6 +346,7 @@ class GraphTransitionManager:
             True,
             self._device,
             self._export_mode,
+            self._logger,
             self._export_extra_kwargs,
         )
 
@@ -389,7 +390,7 @@ class GraphTransitionManager:
             flatten_inputs = []
 
             # This looks a bit duplicated with `extract_data_and_schema` function, but this might be better to
-            # defined as a specialized logic which is the counter-part of `parse_inputs_for_onnx_export`, which handles
+            # defined as a specialized logic that is the counter-part of `parse_inputs_for_onnx_export`, which handles
             # args and kwargs separately.
             for name, data_accessor in cur_model_info_for_export.onnx_graph_input_data_accessor.items():
                 d = data_accessor(copied_args, copied_kwargs)
