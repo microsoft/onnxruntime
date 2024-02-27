@@ -83,6 +83,17 @@ def qnn_preprocess_model(
             if fusion_layernorm.apply():
                 modified = True
 
+    # Make sure all nodes have a name.
+    unnamed_node_prefix = "qnn_preproc_node_"
+    available_suffix = onnx_model.get_largest_node_name_suffix(unnamed_node_prefix) + 1
+    for node in onnx_model.model.graph.node:
+        if node.op_type != "Constant" and not node.name:
+            new_node_name = f"{unnamed_node_prefix}{available_suffix!s}"
+            available_suffix += 1
+            node.name = new_node_name
+            modified = True
+            logging.warning(f"Node of type {node.op_type} does not have a name. Renamed to {new_node_name}.")
+
     if modified:
         onnx_model.topological_sort()
         onnx.save_model(
