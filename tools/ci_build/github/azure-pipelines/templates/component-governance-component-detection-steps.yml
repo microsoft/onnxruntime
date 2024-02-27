@@ -7,7 +7,9 @@ parameters:
 steps:
 - ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
   - powershell: |
-      Remove-Item '$(Build.BinariesDirectory)' -Force -Recurse
+      if (Test-Path $(Build.BinariesDirectory)) {
+        Remove-Item '$(Build.BinariesDirectory)' -Force -Recurse
+      }
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Clean up build directory'
 
