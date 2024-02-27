@@ -8,7 +8,7 @@ steps:
 - ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
   - powershell: |
       Remove-Item '$(Build.BinariesDirectory)' -Force -Recurse
-    workingDirectory: '$(Build.SourcesDirectory)
+    workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Clean up build directory'
 
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
