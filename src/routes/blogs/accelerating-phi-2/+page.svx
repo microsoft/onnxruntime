@@ -165,7 +165,7 @@ We published a separate blog for Llama-2 improvements with ORT for Inference [he
 
 ## Inference
 
-[Orca 2](https://www.microsoft.com/en-us/research/blog/orca-2-teaching-small-language-models-how-to-reason/) is a research-only system that gives a one-time answer in tasks such as reasoning with user provided data, understanding texts, solving math problems, and summarizing texts. Orca 2 has two versions (7 billion and 13 billion parameters; they are both made by fine-tuning the respective LLAMA 2 base models on customized, high-quality artificial data. ONNX runtime helps optimize Orca-2 inferencing for using graph fusions and kernel optimizations like those for Llama-2.
+[Orca-2](https://www.microsoft.com/en-us/research/blog/orca-2-teaching-small-language-models-how-to-reason/) is a research-only system that gives a one-time answer in tasks such as reasoning with user-provided data, understanding texts, solving math problems, and summarizing texts. Orca-2 has two versions (7 billion and 13 billion parameters); they are both made by fine-tuning the respective Llama-2 base models on customized, high-quality artificial data. ONNX Runtime helps optimize Orca-2 inferencing for using graph fusions and kernel optimizations like those for Llama-2.
 
 Int4 performance: Orca-2 7b int4 quantization performance comparison indicated **up to 26X** increase in performance in prompt throughput, and up to 16.5X improvement in Token generation throughput over PyTorch. It also shows over **4.75X** improvement in prompt throughput, and 3.64X improvement in token generation throughput compared to Llama.cpp.
 
