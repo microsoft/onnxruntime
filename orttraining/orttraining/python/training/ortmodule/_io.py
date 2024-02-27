@@ -394,7 +394,7 @@ def parse_inputs_for_onnx_export(
                 name=name,
             )
 
-        raise TypeError(f"ORTModule does not support input type {type(value)} for input {name}")
+        raise ORTModuleIOError(f"ORTModule does not support input type {type(value)} for input {name}")
 
     visited_input_names: List[str] = []
 
