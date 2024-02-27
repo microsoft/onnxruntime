@@ -3350,7 +3350,7 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
     - for 2,4,8 bits, 4x2bit,2x4bit,1x8bit are stored in one uint8_t.
         4bit example:
         |.|.|.|.| .|.|.|.| =uint8_t (2x4bit)
-    - for 3,5,6,7 bits, 32x3bit,32x5bit,16x6bit,32x7bit are stored in 12xuint8_t,20xuint8_t,12xuint8_t,28xuint8_t seperately. no bits are wasted.
+    - for 3,5,6,7 bits, 32x3bit,32x5bit,16x6bit,32x7bit are stored in 12xuint8_t,20xuint8_t,12xuint8_t,28xuint8_t separately. no bits are wasted.
         3bit example:
         |.|.|. |.|.|. |.|.|. = 9bit, which across 2 uint8_t, the highest bit for the second uint8_t is used.
   The last uint_8 may have some bits unused.

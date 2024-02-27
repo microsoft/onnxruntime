@@ -3,7 +3,7 @@
 
 //
 // This module define MatMulNBits operator, it is basically
-// matmul float32 with right hand side being a 2-D matrix
+// matmul float with right hand side being a 2-D matrix
 // pre-packed and block-compacted into int4
 //
 #pragma once

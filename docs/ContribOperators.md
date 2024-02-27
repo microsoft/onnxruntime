@@ -2810,12 +2810,21 @@ This version of the operator has been available since version 1 of the 'com.micr
   
     Input is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
     - n_blocks_per_col = (K + block_size - 1) / block_size
-    - blob_size = block_size / 8 * bits
+    - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
+    For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
+      - for 2,4,8 bits, 4x2bit,2x4bit,1x8bit are stored in one uint8_t.
+          4bit example:
+          |.|.|.|.| .|.|.|.| =uint8_t (2x4bit)
+      - for 3,5,6,7 bits, 32x3bit,32x5bit,16x6bit,32x7bit are stored in 12xuint8_t,20xuint8_t,12xuint8_t,28xuint8_t separately. no bits are wasted.
+          3bit example:
+          |.|.|. |.|.|. |.|.|. = 9bit, which across 2 uint8_t, the highest bit for the second uint8_t is used.
+    The last uint_8 may have some bits unused.
+  
   
   Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
-  Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored as one unit8_t. If bits > 4, one zero point is stored with one unit8_t. Thus, its shape is:
-    - [(N * n_blocks_per_col + 1) / 2] if bits <=4
-    - [N * n_blocks_per_col] if bits > 4
+  Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
+    - [CeilDiv((N * n_blocks_per_col + 1) *bits, 8)]
+    If zero_points has same type as A, it's not packed and has the same shape as Scales.
 
 #### Version
 

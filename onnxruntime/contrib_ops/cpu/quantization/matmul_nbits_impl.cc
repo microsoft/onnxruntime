@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "contrib_ops/cpu/quantization/matmul_nbits_impl.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <type_traits>
+
 #include "core/common/common.h"
 #include "core/framework/float16.h"
 #include "core/providers/common.h"
@@ -69,7 +71,7 @@ void DequantizeBlockwise(
     const uint8_t* quant_data,   // quantized input
     const inputT* scales_data,   // quantization scales
     const zeroT* zero_points,    // quantization zero points
-    const int32_t* reorder_idx,  // quantization zero points
+    const int32_t* reorder_idx,  // reorder_idx for groupwise quantization
     int32_t block_size,          // quantization block size
     bool,                        // columnwise quantization or row-wise
     int32_t K,                   // number of rows in quantized input

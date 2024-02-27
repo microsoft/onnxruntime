@@ -67,8 +67,8 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
 }
 
 void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
-             bool has_zeropoint, bool use_float16, bool has_g_idx = false, bool zp_is_4bit = true, float fp16_abs_error = 0.02f) {
-  std::cerr << M << " " << N << " " << K << " " << block_size << " " << has_zeropoint << " " << use_float16 << " " << has_g_idx << " " << zp_is_4bit << " " << std::endl;
+             bool has_zeropoint, bool use_float16, bool has_g_idx = false,
+             bool zp_is_4bit = true, float fp16_abs_error = 0.02f) {
   zp_is_4bit = zp_is_4bit | has_g_idx;
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));

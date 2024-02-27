@@ -1,11 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//
-// This module define MatMulNBits operator, it is basically
-// matmul float with right hand side being a 2-D matrix
-// pre-packed and block-compacted into int4
-//
 
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
@@ -143,7 +138,6 @@ delete[] b_data_cpu;
         GetDeviceProp(),
         UseTF32()));
   }
-
 
   return Status::OK();
 }
