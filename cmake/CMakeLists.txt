@@ -1259,11 +1259,12 @@ endif()
 #Dependencies end. In the next we'll enable "treat warning as error"
 
 #Adjust warning flags
-if (onnxruntime_USE_CUDA)
-  set_msvc_c_cpp_compiler_warning_level(3)
-else()
-  set_msvc_c_cpp_compiler_warning_level(4)
-endif()
+# if (onnxruntime_USE_CUDA)
+#   set_msvc_c_cpp_compiler_warning_level(3)
+# else()
+#  set_msvc_c_cpp_compiler_warning_level(4)
+#endif()
+set_msvc_c_cpp_compiler_warning_level(4)
 
 set(onnxruntime_DELAYLOAD_FLAGS "")
 

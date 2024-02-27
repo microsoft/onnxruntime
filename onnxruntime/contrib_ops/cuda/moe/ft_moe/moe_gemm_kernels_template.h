@@ -149,10 +149,10 @@ void generic_moe_gemm_kernelLauncher(const T* A, const WeightType* B, const T* w
 template <typename T, typename WeightType, typename arch, typename EpilogueTag, typename ThreadblockShape,
           typename WarpShape, int Stages, typename Enable = void>
 struct dispatch_stages {
-  static void dispatch(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
-                       int64_t* total_rows_before_expert, int64_t gemm_n, int64_t gemm_k, int num_experts,
-                       CutlassGemmConfig gemm_config, int multi_processor_count, cudaStream_t stream,
-                       int* occupancy = nullptr) {
+  static void dispatch(const T* /*A*/, const WeightType* /*B*/, const T* /*weight_scales*/, const T* /*biases*/,
+                       T* /*C*/, int64_t* /*total_rows_before_expert*/, int64_t /*gemm_n*/, int64_t /*gemm_k*/,
+                       int /*num_experts*/, CutlassGemmConfig /*gemm_config*/, int /*multi_processor_count*/,
+                       cudaStream_t /*stream*/, [[maybe_unused]] int* occupancy = nullptr) {
     std::string err_msg = "Cutlass fpA_intB gemm. Not instantiates for arch " +
                           std::to_string(arch::kMinComputeCapability) + " with stages set to " + std::to_string(Stages);
     ORT_THROW("[FT Error][dispatch_stages::dispatch] " + err_msg);
@@ -221,9 +221,10 @@ template <
     typename T, typename WeightType, typename arch, typename EpilogueTag,
     typename std::enable_if<!std::is_same<T, float>::value && std::is_same<T, WeightType>::value>::type* = nullptr>
 void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
-                                  int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                                  int num_experts, CutlassGemmConfig gemm_config, int sm_version,
-                                  int multi_processor_count, cudaStream_t stream, int* occupancy = nullptr) {
+                                  int64_t* total_rows_before_expert, int64_t /*total_rows*/,
+                                  int64_t gemm_n, int64_t gemm_k, int num_experts, CutlassGemmConfig gemm_config,
+                                  int /*sm_version*/, int multi_processor_count, cudaStream_t stream,
+                                  int* occupancy = nullptr) {
   switch (gemm_config.tile_config) {
     case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<32, 128, 64>,
@@ -300,8 +301,8 @@ void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weig
 template <typename T, typename WeightType, typename arch, typename EpilogueTag,
           typename std::enable_if<std::is_same<T, float>::value>::type* = nullptr>
 void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
-                                  int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                                  int num_experts, CutlassGemmConfig gemm_config, int sm_version,
+                                  int64_t* total_rows_before_expert, int64_t /*total_rows*/, int64_t gemm_n, int64_t gemm_k,
+                                  int num_experts, CutlassGemmConfig gemm_config, int /*sm_version*/,
                                   int multi_processor_count, cudaStream_t stream, int* occupancy = nullptr) {
   switch (gemm_config.tile_config) {
     case CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8:

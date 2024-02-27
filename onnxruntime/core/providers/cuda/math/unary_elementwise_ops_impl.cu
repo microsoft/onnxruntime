@@ -127,7 +127,8 @@ struct OP_Cast {
   }
 
 #define IMPL_CAST_IMPL_THROW(InT, OutT)                                                                  \
-  void Explicit_Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) { \
+  void Explicit_Impl_Cast(cudaStream_t /*stream*/, const InT* /*input_data*/, OutT* /*output_data*/,     \
+                          size_t /*count*/) {                                                            \
     ORT_THROW("Cast from " #InT " to " #OutT " must define saturate.");                                  \
   }
 

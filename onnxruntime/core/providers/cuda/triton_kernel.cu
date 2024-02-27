@@ -130,8 +130,9 @@ void LoadOrtTritonKernel() {
   std::call_once(load_ort_triton_kernel_flag, TryToLoadKernel);
 }
 
-Status LaunchTritonKernel(cudaStream_t stream, std::string fname,
-                          int grid0, int grid1, int grid2, void* args, size_t args_size) {
+Status LaunchTritonKernel([[maybe_unused]] cudaStream_t stream, [[maybe_unused]] std::string fname,
+                          [[maybe_unused]] int grid0, [[maybe_unused]] int grid1, [[maybe_unused]] int grid2, 
+                          [[maybe_unused]] void* args, [[maybe_unused]] size_t args_size) {
 #ifdef USE_TRITON_KERNEL
   if (ort_triton_kernel_map.count(fname) == 0) {
     // Return unsupported status if function name not found in registry.
@@ -148,8 +149,9 @@ Status LaunchTritonKernel(cudaStream_t stream, std::string fname,
 #endif
 }
 
-Status LaunchTritonKernel(cudaStream_t stream, size_t idx,
-                          int grid0, int grid1, int grid2, void* args, size_t args_size) {
+Status LaunchTritonKernel([[maybe_unused]] cudaStream_t stream, [[maybe_unused]] size_t idx,
+                          [[maybe_unused]] int grid0, [[maybe_unused]] int grid1, [[maybe_unused]] int grid2,     
+                          [[maybe_unused]] void* args, [[maybe_unused]] size_t args_size) {
 #ifdef USE_TRITON_KERNEL
   if (idx >= ort_triton_kernel_metadata.size()) {
     // Return unsupported status when idx exceeds the size of ort_triton_kernel_metadata.

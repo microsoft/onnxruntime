@@ -17,7 +17,7 @@ Status DecoderQkvToContext(
     const cudaDeviceProp& device_prop,
     Stream* ort_stream,
     cublasHandle_t& cublas,
-    const size_t element_size,
+    const size_t /*element_size*/,
     const int batch_size,
     const int sequence_length,
     const int kv_sequence_length,

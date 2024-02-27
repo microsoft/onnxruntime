@@ -603,7 +603,7 @@ void ResizeNearestImpl(
     const size_t N,
     bool extrapolation_enabled,
     const T extrapolation_value,
-    float cubic_coeff_a,
+    float /*cubic_coeff_a*/,
     ResizeCoordinateTransformationMode transform_coordinate,
     ResizeNearestMode calc_nearest_pixel,
     int64_t* /* prefix_dim_sum */,

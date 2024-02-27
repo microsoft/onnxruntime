@@ -551,7 +551,7 @@ void LaunchTranspose(
 
 template <typename T>
 Status FusedAttentionTrt(
-    const cudaDeviceProp& device_prop,
+    const cudaDeviceProp& /*device_prop*/,
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
     PackedMultiHeadAttentionData<T>& data) {
