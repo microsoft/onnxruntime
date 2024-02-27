@@ -117,12 +117,14 @@ class CPUIDInfo {
   bool has_arm_neon_i8mm_{false};
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
-  // Now the following var is only used in ARM build, but later one we may expand the usage.
-  [[maybe_unused]] bool pytorch_cpuinfo_init_{false};
+
 
 #ifdef CPUIDINFO_ARCH_X86
 
   void X86Init();
+#elif defined(CPUIDINFO_ARCH_ARM)
+  // Now the following var is only used in ARM build, but later one we may expand the usage.
+  bool pytorch_cpuinfo_init_{false};
 #endif
 
 #ifdef __linux__
