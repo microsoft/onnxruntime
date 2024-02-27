@@ -305,6 +305,7 @@ def get_optimum_ort_pipeline(
     model_name: str,
     directory: str,
     provider="CUDAExecutionProvider",
+    provider_options=None,
     disable_safety_checker: bool = True,
 ):
     from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
@@ -314,6 +315,7 @@ def get_optimum_ort_pipeline(
             pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
                 directory,
                 provider=provider,
+                provider_options=provider_options,
                 session_options=None,
                 use_io_binding=False,
             )
@@ -321,6 +323,7 @@ def get_optimum_ort_pipeline(
             pipeline = ORTStableDiffusionPipeline.from_pretrained(
                 directory,
                 provider=provider,
+                provider_options=provider_options,
                 use_io_binding=False,
             )
     elif "xl" in model_name:
@@ -429,9 +432,14 @@ def run_optimum_ort(
     batch_count: int,
     start_memory,
     memory_monitor_type,
+    tuning: bool,
 ):
+    provider_options = None
+    if tuning and provider in ["ROCMExecutionProvider"]:
+        provider_options = {"tunable_op_enable": 1, "tunable_op_tuning_enable": 1}
+
     load_start = time.time()
-    pipe = get_optimum_ort_pipeline(model_name, directory, provider, disable_safety_checker)
+    pipe = get_optimum_ort_pipeline(model_name, directory, provider, provider_options, disable_safety_checker)
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 
@@ -1295,7 +1303,7 @@ def main():
                 nvtx_profile=False,
                 use_cuda_graph=args.enable_cuda_graph,
             )
-    elif args.engine == "optimum" and provider == "CUDAExecutionProvider":
+    elif args.engine == "optimum" and provider in ["CUDAExecutionProvider", "ROCMExecutionProvider"]:
         if "xl" in args.version:
             os.environ["ORT_ENABLE_FUSED_CAUSAL_ATTENTION"] = "1"
 
@@ -1312,6 +1320,7 @@ def main():
             batch_count=args.batch_count,
             start_memory=start_memory,
             memory_monitor_type=memory_monitor_type,
+            tuning=args.tuning,
         )
     elif args.engine == "onnxruntime":
         assert args.pipeline and os.path.isdir(
