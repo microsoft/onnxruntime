@@ -34,7 +34,7 @@ std::string GetTemporaryFilePath() {
   NSURL* temporary_directory_url = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
 
 #if !defined(NDEBUG)
-  std::string path_override = Env::Default().GetEnvironmentVar(DEBUG_MODEL_DIRECTORY);
+  std::string path_override = Env::Default().GetEnvironmentVar(kOverrideModelOutputDirectoryEnvVar);
   if (!path_override.empty()) {
     NSString* ns_path_override = [NSString stringWithUTF8String:path_override.c_str()];
     temporary_directory_url = [NSURL fileURLWithPath:ns_path_override isDirectory:YES];

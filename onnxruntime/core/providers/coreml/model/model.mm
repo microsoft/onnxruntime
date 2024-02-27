@@ -289,7 +289,7 @@ NS_ASSUME_NONNULL_BEGIN
   }
 
 #if !defined(NDEBUG)
-  std::string path_override = Env::Default().GetEnvironmentVar(DEBUG_MODEL_DIRECTORY);
+  std::string path_override = Env::Default().GetEnvironmentVar(util::kOverrideModelOutputDirectoryEnvVar);
   if (!path_override.empty()) {
     // don't cleanup
     coreml_model_path_ = nil;

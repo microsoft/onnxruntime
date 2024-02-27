@@ -164,7 +164,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         } else {
           Initializer unpacked_tensor(bias);
           auto bias_data = unpacked_tensor.DataAsSpan<float>();
-          std::string bias_data_name;
+          std::string_view bias_data_name;
           if (bias_data.size() == 1) {
             // expand scalar to N
             std::vector<float> expanded_bias_data(N, bias_data[0]);

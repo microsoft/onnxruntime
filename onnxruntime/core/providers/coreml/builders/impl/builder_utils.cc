@@ -327,7 +327,7 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
   switch (auto_pad_type) {
     case AutoPadType::NOTSET: {
       // use `pads` attribute.
-      auto onnx_pads = helper.GetInt64s("pads");  // 'pads' must be provided if auto_pad is NOTSET
+      auto onnx_pads = helper.GetInt64s("pads");  // 'pads' are used if auto_pad is NOTSET
       if (onnx_pads) {
         AddOperationInput(op, "pad_type",
                           model_builder.AddScalarConstant(op_type, "pad_type", std::string("custom")));
@@ -351,8 +351,8 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
         break;
       }
 
-      // in theory the pads may not be provided and in that case the default is no padding.
-      // as that is the same as 'valid', fall through
+      // fall through if explicit pads were not provided as the default value for `pads` is all zeros,
+      // which is the same as 'valid' padding.
       [[fallthrough]];
     }
     case AutoPadType::VALID:
