@@ -3,6 +3,8 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 
@@ -13,7 +15,44 @@ from ...onnx_model import ONNXModel
 from .fusion_lpnorm import FusionLpNormalization
 
 
-def qnn_preprocess_model(model_input: Path, model_output: Path, fuse_layernorm: bool = False) -> bool:
+def qnn_preprocess_model(
+    model_input: Path,
+    model_output: Path,
+    fuse_layernorm: bool = False,
+    save_as_external_data: bool = False,
+    all_tensors_to_one_file: bool = False,
+    external_data_location: str | None = None,
+    external_data_size_threshold: int = 1024,
+    external_data_convert_attribute: bool = False,
+) -> bool:
+    """
+    If necessary, this method creates a new "pre-processed" model in preparation for
+    quantization of a model to be used in QNN EP. Returns true if a new model was created.
+
+    This method perfoms the following operations:
+    - Fuse Erf sequence into a single Gelu node.
+    - Fuse ReduceL2 sequence into a single LpNormalization node (p == 2).
+    - (Optional) Fuse ReduceMean sequence into a single LayerNormalization node.
+
+    Args:
+        model_input: Path to the input model file.
+        model_output: Path the output model file, which is only created if this method returns True.
+        fuse_layernorm: True if ReduceMean sequences should be fused into LayerNormalization nodes.
+            Defaults to False.
+        save_as_external_data: True if output model should be saved with external data. Defaults to false.
+        all_tensors_to_one_file: Effective only if save_as_external_data is true. Defaults to false.
+            If true, save all tensors to one external file specified by external_data_location.
+            If false, save each tensor to a file named with the tensor name.
+        external_data_location: Effective only if save_as_external_data is true. Defaults to None.
+            Specify the external file to which all tensors are saved. Path is relative
+            to the model path. If not specified, the model's name is used.
+        external_data_size_threshold: Effective only if save_as_external_data is true. Defaults to 1024.
+            Tensors with a data size >= external_data_size_threshold are converted to external data.
+            To convert every tensor with raw data to external data, set to 0.
+        external_data_convert_attribute: Effective only if save_as_external_data is true. Defaults to false.
+            If true, convert all tensors to external data.
+            If false, convert only non-attribute tensors to external data.
+    """
     modified = False
     model = onnx.load_model(model_input)
     onnx_model = ONNXModel(model)
@@ -46,6 +85,14 @@ def qnn_preprocess_model(model_input: Path, model_output: Path, fuse_layernorm: 
 
     if modified:
         onnx_model.topological_sort()
-        onnx.save_model(model, model_output)
+        onnx.save_model(
+            model,
+            model_output,
+            save_as_external_data=save_as_external_data,
+            all_tensors_to_one_file=all_tensors_to_one_file,
+            location=external_data_location,
+            size_threshold=external_data_size_threshold,
+            convert_attribute=external_data_convert_attribute,
+        )
 
     return modified
