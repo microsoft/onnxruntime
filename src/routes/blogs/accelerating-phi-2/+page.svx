@@ -205,7 +205,7 @@ Orca-2 7b also benefits from training acceleration using ORT. We trained the Orc
 
 # Gemma
 
-[Gemma](https://ai.google.dev/gemma/docs) is a family of lightweight, open models built from the research and technology that Google used to create Gemini models. It is available in two sizes 2B and 7B. Each size is released with pre-trained and instruction-tuned variants. ONNX Runtime can be used to optimize and efficiently run any open-source model. We benchmarked against the [Gemma-2b](https://huggingface.co/google/gemma-2b) model, ONNX Runtime with float16 is **up to 7.47x** faster than PyTorch Compile, and **up to 3.47x** faster than Llama.cpp. ORT with int4 quantization **is up to 19.81x** faster than PyTorch Eager and **2.62x** faster than Llama.cpp.
+[Gemma](https://ai.google.dev/gemma/docs) is a family of lightweight, open models built from the research and technology that Google used to create Gemini models. It is available in two sizes: 2B and 7B. Each size is released with pre-trained and instruction-tuned variants. ONNX Runtime can be used to optimize and efficiently run any open-source model. We benchmarked against the [Gemma-2B](https://huggingface.co/google/gemma-2b) model, and ONNX Runtime with float16 is **up to 7.47x** faster than PyTorch Compile and **up to 3.47x** faster than Llama.cpp. ORT with int4 quantization is **up to 19.81x** faster than PyTorch Eager and **2.62x** faster than Llama.cpp.
 <div class="grid grid-cols-1 lg:grid-cols-2">
 <img class="m-auto" src="./Gemma2_int4_tokengenTP.png" alt="Gemma2b int4 token generation throughput comparison">
 
