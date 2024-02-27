@@ -20,6 +20,12 @@
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
 
+// Ignore CUTLASS warning C4100: unreferenced formal parameter
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
+
 #include "cutlass/array.h"
 #include "cutlass/numeric_conversion.h"
 #include "cutlass/layout/matrix.h"
@@ -35,6 +41,10 @@
 #include "epilogue_helpers.h"
 #include "layout_traits_helper.h"
 #include "moe_cutlass_kernel.h"
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
