@@ -77,7 +77,7 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
 
   std::vector<WType> tmp_B_data;
   tmp_B_data = random.Uniform<WType>(B_dims,
-                                     (constexpr(std::is_same_v<WType, int8_t>)) ? std::numeric_limits<int8_t>::lowest() / 2 : std::numeric_limits<uint8_t>::lowest(),
+                                     std::is_signed<WType>::value ? std::numeric_limits<int8_t>::lowest() / 2 : std::numeric_limits<uint8_t>::lowest(),
                                      std::numeric_limits<WType>::max() / 2);
   std::transform(tmp_B_data.begin(), tmp_B_data.end(), std::back_inserter(B_data), [](int32_t v) -> WType {
     return static_cast<WType>(v);
@@ -133,10 +133,10 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
   }
 
   // Only DML EP supports these data type combinations for now
-  if ((constexpr(std::is_same_v<OType, MLFloat16>)) ||
-      (constexpr(std::is_same_v<OType, float>) &&
-       constexpr(std::is_same_v<IType, int8_t>) &&
-       constexpr(std::is_same_v<WType, uint8_t>))) {
+  if (std::is_same_v<OType, MLFloat16> ||
+      (std::is_same_v<OType, float> &&
+       std::is_same_v<IType, int8_t> &&
+       std::is_same_v<WType, uint8_t>)) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultDmlExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
