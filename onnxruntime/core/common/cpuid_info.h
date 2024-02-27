@@ -118,7 +118,6 @@ class CPUIDInfo {
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
 
-
 #ifdef CPUIDINFO_ARCH_X86
 
   void X86Init();
