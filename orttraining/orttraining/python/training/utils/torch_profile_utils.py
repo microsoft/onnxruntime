@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import subprocess as sp
-
 import torch
 
 
@@ -62,19 +60,8 @@ def log_memory_usage(cur_phase: str, rank_0_only=True, step_info="", logger=None
     cur_mem_inactive = _normalize(torch_mem_stat.get("inactive_split_bytes.all.current", 0))
     max_mem_inactive = _normalize(torch_mem_stat.get("inactive_split_bytes.all.peak", 0))
 
-    def output_to_list(x):
-        return x.decode("ascii").split("\n")[:-1]
-
-    nvm_cmd = "nvidia-smi --query-gpu=memory.used --format=csv"
-    try:
-        memory_use_info = output_to_list(sp.check_output(nvm_cmd.split(), stderr=sp.STDOUT))[1:]
-    except sp.CalledProcessError as e:
-        raise RuntimeError(f"command '{e.cmd}' return with error (code {e.returncode}): {e.output}") from None
-    memory_use_value = [int(x.split()[0]) for i, x in enumerate(memory_use_info)][rank]
-
     mem_stats = [
         ["phase", cur_phase],
-        ["nvm smi", memory_use_value],
         ["allocated", cur_mem_allocated],  # current memory allocated for tensors
         ["max allocated", max_mem_allocated],  # peak memory allocated for tensors
         ["cached", cur_mem_cached],  # current memory cached for the caching allocator
