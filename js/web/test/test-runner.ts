@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array} from '@petamoriken/float16';
 import {expect} from 'chai';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
@@ -885,8 +886,11 @@ async function runProtoOpTestcase(
   const fetches: Record<string, Pick<ort.Tensor, 'dims'|'type'>> = {};
   testCase.inputs.forEach((input, i) => {
     if (input.data) {
-      let data: number[]|BigUint64Array|BigInt64Array = input.data;
-      if (input.type === 'uint64') {
+      let data: number[]|BigUint64Array|BigInt64Array|Uint16Array = input.data;
+      if (input.type === 'float16') {
+        const floata16Array = Float16Array.from(input.data);
+        data = new Uint16Array(floata16Array.buffer, 0, floata16Array.length);
+      } else if (input.type === 'uint64') {
         data = BigUint64Array.from(input.data.map(BigInt));
       } else if (input.type === 'int64') {
         data = BigInt64Array.from(input.data.map(BigInt));
@@ -899,8 +903,11 @@ async function runProtoOpTestcase(
   const expectedOutputNames: string[] = [];
   testCase.outputs.forEach((output, i) => {
     if (output.data) {
-      let data: number[]|BigUint64Array|BigInt64Array = output.data;
-      if (output.type === 'uint64') {
+      let data: number[]|BigUint64Array|BigInt64Array|Uint16Array = output.data;
+      if (output.type === 'float16') {
+        const floata16Array = Float16Array.from(output.data);
+        data = new Uint16Array(floata16Array.buffer, 0, floata16Array.length);
+      } else if (output.type === 'uint64') {
         data = BigUint64Array.from(output.data.map(BigInt));
       } else if (output.type === 'int64') {
         data = BigInt64Array.from(output.data.map(BigInt));

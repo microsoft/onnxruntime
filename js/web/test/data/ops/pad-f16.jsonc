@@ -5,7 +5,7 @@
     "opset": { "domain": "", "version": 10 },
     "attributes": [
       { "name": "mode", "data": "constant", "type": "string" },
-      { "name": "value", "data": 1.2, "type": "float" },
+      { "name": "value", "data": 15565, "type": "float" },
       { "name": "pads", "data": [3, 2, 2, 3], "type": "ints" }
     ],
     "cases": [
