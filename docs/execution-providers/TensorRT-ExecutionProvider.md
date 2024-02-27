@@ -270,7 +270,7 @@ cudaStreamCreate(&cuda_stream);
 // this implicitly sets "has_user_compute_stream"
 Ort::ThrowOnError(api.UpdateTensorRTProviderOptionsWithValue(cuda_options, "user_compute_stream", cuda_stream))
 
-session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
+session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
 /// below code can be used to print all options
 OrtAllocator* allocator;
 char* options;
