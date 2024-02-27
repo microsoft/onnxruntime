@@ -53,7 +53,6 @@ class Block(ABC):
             # Check if the error is specifically due to exceeding the maximum protobuf size.
             if "exceeds maximum protobuf size of 2GB" in str(e):
                 logging.info("Handling large model that exceeds the maximum protobuf size of 2GB.")
-                pass
             else:
                 # If the error is for any other reason, re-raise it to not silently ignore important issues.
                 raise
