@@ -62,7 +62,7 @@ Optimized CUDA performance for prompt throughput (i.e., the rate at which the mo
 
 <img class="m-auto w50" src="./Phi2_Float16_PromptThroughput.png" alt="Phi2 float16 prompt throughput comparison">
 
-Token generation throughput is the average throughput of the first 256 tokens generated. ONNX Runtime with float16 is **on average 6.6x faster** than torch.compile and as high as **18.55x** faster. It also performs **up to 1.64x** faster than Llama.cpp.
+Token generation throughput is the average throughput of the first 256 tokens generated. ONNX Runtime with float16 is **on average 6.6x faster** than torch.compile and **as high as 18.55x** faster. It also performs **up to 1.64x** faster than Llama.cpp.
 <img class="m-auto w50" src="./Phi2_Float16_TokenGenerationThroughput.png" alt="Phi2 float16 token generation throughput comparison">
 
 ### ORT gains with int4
