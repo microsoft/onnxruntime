@@ -13,7 +13,7 @@ import numpy as np
 import onnx
 
 from onnxruntime.quantization.execution_providers.qnn import qnn_preprocess_model
-from onnxruntime.quantization.quant_utils import model_has_external_data
+from onnxruntime.quantization.quant_utils import model_has_external_data, ms_domain
 
 
 class TestQnnPreprocessModel(unittest.TestCase):
@@ -122,6 +122,11 @@ class TestQnnPreprocessModel(unittest.TestCase):
         expected_op_types = {"Gelu", "LpNormalization", "LayerNormalization"}
         for node in fused_model.graph.node:
             self.assertIn(node.op_type, expected_op_types)
+
+        # Should have added "com.microsoft" opset import because we added a Gelu.
+        ms_domain_opset = next((opset for opset in fused_model.opset_import if opset.domain == ms_domain), None)
+        self.assertIsNotNone(ms_domain_opset)
+        self.assertEqual(ms_domain_opset.version, 1)
 
     def test_external_data(self):
         """
