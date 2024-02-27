@@ -6,13 +6,6 @@ parameters:
 
 steps:
 - ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
-  {% comment %} - task: DeleteFiles@1
-    inputs:
-      SourceFolder: '$(Build.BinariesDirectory)'
-      contents: |
-        **/*
-    displayName: 'Clean up build directory' {% endcomment %}
-
   - powershell: |
       Remove-Item '$(Build.BinariesDirectory)' -Force -Recurse
     workingDirectory: '$(Build.SourcesDirectory)
