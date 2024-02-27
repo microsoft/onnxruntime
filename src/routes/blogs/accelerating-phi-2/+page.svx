@@ -155,7 +155,7 @@ To read more about accelerating SD-Turbo and SDXL-Turbo inference with ONNX Runt
 
 # Llama-2
 
-We published a separate blog for Llama-2 improvements with ORT for Inference [here](https://onnxruntime.ai/blogs/accelerating-llama-2). Additionally, Llama-2 7b and 13b show good gains with ORT for training, especially when combined with LoRA and QLoRA. [These](https://github.com/huggingface/optimum/blob/main/examples/onnxruntime/training/text-classification/README.md#onnx-runtime-training) scripts can be used as an example to finetune Llama-2 with ORT using Optimum. The numbers below are for Llama-2 models training with ORT using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
+We published a separate blog for Llama-2 improvements with ORT for Inference [here](https://onnxruntime.ai/blogs/accelerating-llama-2). Additionally, Llama-2-7B and Llama-2-13B show good gains with ORT for training, especially when combined with LoRA and QLoRA. [These](https://github.com/huggingface/optimum/blob/main/examples/onnxruntime/training/text-classification/README.md#onnx-runtime-training) scripts can be used as an example to finetune Llama-2 with ORT using Optimum. The numbers below are for Llama-2 models training with ORT using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
 
 <img class="m-auto w50" src="./Llama2_Training.png" alt="Llama2 training benchmarks">
 
