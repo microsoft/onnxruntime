@@ -200,11 +200,11 @@ def _get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
 
     device = None
     if args:
-        if args[0] and hasattr(args[0], "device"):
+        if args[0] is not None and hasattr(args[0], "device"):
             device = torch.device(args[0].device)
     elif kwargs:
         v = next(iter(kwargs.values()))
-        if v and hasattr(v, "device"):
+        if v is not None and hasattr(v, "device"):
             device = torch.device(v.device)
     return device
 
