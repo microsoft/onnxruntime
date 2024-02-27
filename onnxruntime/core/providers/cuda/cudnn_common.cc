@@ -221,7 +221,7 @@ const Float8E5M2 Consts<Float8E5M2>::One = Float8E5M2(1.0f, true);
 #endif
 
 #if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
-static std::vector<int64_t> generateStrides(const std::vector<int64_t> &shape, bool channels_last) {
+static std::vector<int64_t> generateStrides(const std::vector<int64_t>& shape, bool channels_last) {
   // For INT8x4 and INT8x32 we still compute standard strides here to input
   // into the cuDNN functions. We will manually scale by resizeFactor in the cpu ref.
   std::vector<int64_t> strides(shape.size());
@@ -261,10 +261,7 @@ CudnnFeTensor<NHWC>::CudnnFeTensor(const onnxruntime::TensorShapeVector& shape, 
   }
   auto strides = generateStrides(shape_vec, NHWC);
   if (dtype.has_value()) {
-    tensor_ = cudnn_frontend::graph::Tensor_attributes().set_name(name)
-                  .set_dim(shape_vec)
-                  .set_stride(strides)
-                  .set_data_type(dtype.value());
+    tensor_ = cudnn_frontend::graph::Tensor_attributes().set_name(name).set_dim(shape_vec).set_stride(strides).set_data_type(dtype.value());
   } else {
     tensor_ = cudnn_frontend::graph::Tensor_attributes().set_name(name).set_dim(shape_vec).set_stride(strides);
   }

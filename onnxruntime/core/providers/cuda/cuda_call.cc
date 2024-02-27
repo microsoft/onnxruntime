@@ -79,8 +79,8 @@ const char* CudaErrString<cufftResult>(cufftResult e) {
 #endif
 
 #if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
-#define CASE_ENUM_TO_STR_CUDNN_FE(x) \
-  case cudnn_frontend::error_code_t::x:                   \
+#define CASE_ENUM_TO_STR_CUDNN_FE(x)    \
+  case cudnn_frontend::error_code_t::x: \
     return #x
 template <>
 const char* CudaErrString<cudnn_frontend::error_t>(cudnn_frontend::error_t x) {
@@ -117,13 +117,13 @@ const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
 
 template <typename ERRTYPE>
 int GetErrorCode(ERRTYPE err) {
-  return (int) err;
+  return (int)err;
 }
 
 #if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
 template <>
 int GetErrorCode(cudnn_frontend::error_t err) {
-  return (int) err.get_code();
+  return (int)err.get_code();
 }
 #endif
 

@@ -182,7 +182,7 @@
     FetchContent_Declare(
         cudnn_frontend
         GIT_REPOSITORY https://github.com/NVIDIA/cudnn-frontend
-        GIT_TAG v1.0.3
+        GIT_TAG v1.1.0
 #        GIT_REPOSITORY https://github.com/gedoensmax/cudnn-frontend
 #        GIT_TAG 1.0/release
         )
