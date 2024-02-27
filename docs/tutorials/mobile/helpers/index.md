@@ -3,7 +3,7 @@ title: ORT Mobile Model Export Helpers
 descriptions: Helpers to assist with export and usage of models with ORT Mobile
 parent: Deploy on mobile
 grand_parent: Tutorials
-nav_order: 4
+nav_order: 5
 ---
 
 # ORT Mobile Model Export Helpers
