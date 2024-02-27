@@ -559,6 +559,16 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("enable_hip_graph", ["1", "0"])
 
+                # test for user_compute_stream
+                option = options["ROCMExecutionProvider"]
+                option["user_compute_stream"] = "1"
+                sess.set_providers(["ROCMExecutionProvider"], [option])
+                new_options = sess.get_provider_options()
+                new_option = new_options["ROCMExecutionProvider"]
+                self.assertEqual(new_option["user_compute_stream"], "1")
+                # set user_compute_stream will set has_user_compute_stream to 1 too
+                self.assertEqual(new_option["has_user_compute_stream"], "1")
+
             run_rocm_options_test()
 
     def test_invalid_set_providers(self):
