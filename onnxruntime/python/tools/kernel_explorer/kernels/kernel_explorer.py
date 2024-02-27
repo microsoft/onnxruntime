@@ -85,7 +85,7 @@ class _KeContext:
 
     # mapping the module to dispatch to
     dispatchable: dict | None = None
-    instance_dispatchable: dict | None = None  # can be filter with pattern
+    instance_dispatchable: dict | None = None  # can be filtered with pattern
 
     dispatch_depth = 0
 
@@ -257,7 +257,7 @@ def register_common_arguments(parser: ArgumentParser):
     group.add_argument(
         "--pattern",
         default="*",
-        help="filter the register instanced dispatchables, only matched pattern will be ran.",
+        help="filter the register instanced dispatchables, only matched pattern will be run.",
         type=set_pattern,
     )
     group.add_argument(
