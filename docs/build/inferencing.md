@@ -144,7 +144,7 @@ Note: unit tests will be skipped due to the incompatible CPU instruction set whe
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
-|Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
+|Windows 10   | YES          | YES         | VS2019 through the latest VS2022 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 20.x/22.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 |CentOS 7/8/9  | YES          | YES         | Also supported on ARM32v7 (experimental) |

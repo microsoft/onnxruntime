@@ -46,32 +46,39 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn) according to the [version compatibility matrix](../execution-providers/CUDA-ExecutionProvider.md#requirements).
-  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter.
-  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
+  * The path to the CUDA installation must be provided via the CUDA_HOME environment variable, or the `--cuda_home` parameter.
+  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the CUDNN_HOME environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_8.dll is found.
 
 
 ### Build Instructions
 {: .no_toc }
 
-With an additional CMake argument the CUDA EP can be compiled with additional NHWC ops. 
-This option is not enabled by default due to the small amount of supported NHWC operators. 
-Over time more operators will be added but for now append `--cmake_extra_defines onnxruntime_USE_CUDA_NHWC_OPS=ON` to below build scripts to compile with NHWC operators.
-Another very helpful CMake build option is to build with NVTX support (`onnxruntime_ENABLE_NVTX_PROFILE=ON`) that will enable much easier profiling using [Nsight Systems](https://developer.nvidia.com/nsight-systems) and correlates CUDA kernels with their actual ONNX operator. 
-
 #### Windows
-
 ```
 .\build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
 #### Linux
-
 ```
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
 A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#cuda).
+
+### Build Options
+
+To specify GPU architectures (see [Compute Capability](https://developer.nvidia.com/cuda-gpus)), you can append parameters like `--cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80;86;89`.
+
+With `--cmake_extra_defines onnxruntime_USE_CUDA_NHWC_OPS=ON`, the CUDA EP can be compiled with additional NHWC ops. This option is not enabled by default due to the small amount of supported NHWC operators. 
+
+Another very helpful CMake build option is to build with NVTX support (`--cmake_extra_defines onnxruntime_ENABLE_NVTX_PROFILE=ON`) that will enable much easier profiling using [Nsight Systems](https://developer.nvidia.com/nsight-systems) and correlates CUDA kernels with their actual ONNX operator.
+
+`--enable_cuda_line_info` or `--cmake_extra_defines onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=ON` will enable [NVCC generation of line-number information for device code](https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#generate-line-info-lineinfo). It might be helpful when you run [Compute Sanitizer](https://docs.nvidia.com/compute-sanitizer/ComputeSanitizer/index.html) tools on CUDA kernels.
+
+If your Windows machine has multiple versions of CUDA installed and you want to use an older version of CUDA, you need append parameters like `--cuda_version <cuda version>`.
+
+When your build machine has many CPU cores and less than 64 GB memory, there is chance of out of memory error like `nvcc error : 'cicc' died due to signal 9`. The solution is to limit number of parallel NVCC threads with parameters like `--parallel 4 --nvcc_threads 1`.
 
 ### Notes on older versions of ONNX Runtime, CUDA and Visual Studio
 {: .no_toc }
