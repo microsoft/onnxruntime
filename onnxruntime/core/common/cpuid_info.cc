@@ -142,11 +142,6 @@ void CPUIDInfo::ArmLinuxInit() {
   // Pytorch CPUINFO only works on ARM linux or android
   // Assuming no hyper-threading, no NUMA groups
 #ifdef CPUINFO_SUPPORTED
-  pytorch_cpuinfo_init_ = cpuinfo_initialize();
-  if (!pytorch_cpuinfo_init_) {
-    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
-    return;
-  }
   is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
   has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
   has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
@@ -189,11 +184,6 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)
 
 void CPUIDInfo::ArmWindowsInit() {
-  pytorch_cpuinfo_init_ = cpuinfo_initialize();
-  if (!pytorch_cpuinfo_init_) {
-    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
-    return;
-  }
 
 // ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
 #ifndef _M_ARM
@@ -283,5 +273,19 @@ uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
   return 0xFFFFFFFF;  // don't know how to get core index
 #endif
 }
-
+CPUIDInfo::CPUIDInfo() {
+#ifdef CPUIDINFO_ARCH_X86
+  X86Init();
+#elif defined(CPUIDINFO_ARCH_ARM)
+  pytorch_cpuinfo_init_ = cpuinfo_initialize();
+  if (!pytorch_cpuinfo_init_) {
+    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
+  }
+#ifdef __linux__
+  ArmLinuxInit();
+#elif defined(_WIN32)
+  ArmWindowsInit();
+#endif /* (arm or arm64) and windows */
+#endif
+}
 }  // namespace onnxruntime

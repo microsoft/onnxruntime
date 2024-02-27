@@ -93,17 +93,7 @@ class CPUIDInfo {
   }
 
  private:
-  CPUIDInfo() {
-#ifdef CPUIDINFO_ARCH_X86
-    X86Init();
-#elif defined(CPUIDINFO_ARCH_ARM)
-#ifdef __linux__
-    ArmLinuxInit();
-#elif defined(_WIN32)
-    ArmWindowsInit();
-#endif /* (arm or arm64) and windows */
-#endif
-  }
+  CPUIDInfo();
   bool has_amx_bf16_{false};
   bool has_avx_{false};
   bool has_avx2_{false};
