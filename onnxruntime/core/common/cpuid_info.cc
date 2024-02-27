@@ -52,8 +52,14 @@
 
 #if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
-#endif  // CPUINFO_SUPPORTED
+#if defined(CPUIDINFO_ARCH_ARM)
+//The following function is declared in "core/common/cpuid_uarch.h" but we cannot include the whole header file because
+// some of its symbols are conflict with <cpuinfo.h>
+void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
+#endif
+#else
 #include "core/common/cpuid_uarch.h"
+#endif  // CPUINFO_SUPPORTED
 
 namespace onnxruntime {
 
