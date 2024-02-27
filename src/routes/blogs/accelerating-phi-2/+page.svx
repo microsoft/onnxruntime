@@ -145,7 +145,7 @@ Similar to Phi-2, Mistral also benefits from training acceleration using ORT. We
 
 # SD-Turbo and SDXL-Turbo
 
-ONNX Runtime provides inference performance benefits when used with [SD Turbo](https://huggingface.co/stabilityai/sd-turbo) and [SDXL Turbo,](https://huggingface.co/stabilityai/sdxl-turbo) and it also makes the models accessible in languages other than Python, like C# and Java. ONNX Runtime achieved a higher throughput than PyTorch for all (batch size, number of steps combinations evaluated, with throughput improvements **up to 229%** for the SDXL Turbo model and **120%** for the SD Turbo model. ONNX Runtime CUDA is especially good at handling dynamic shape, but it also shows a significant advantage over PyTorch for static shape.
+ONNX Runtime provides inference performance benefits when used with [SD Turbo](https://huggingface.co/stabilityai/sd-turbo) and [SDXL Turbo](https://huggingface.co/stabilityai/sdxl-turbo), and it also makes the models accessible in languages other than Python, like C# and Java. ONNX Runtime achieved a higher throughput than PyTorch for all (batch size, number of steps) combinations evaluated, with throughput improvements **up to 229%** for the SDXL Turbo model and **120%** for the SD Turbo model. ONNX Runtime CUDA is especially good at handling dynamic shape, but it also shows a significant advantage over PyTorch for static shape.
 
 <img class="m-auto" src="./SDXL.jpg" alt="Stable Diffusion XL Turbo Speedup">
 
