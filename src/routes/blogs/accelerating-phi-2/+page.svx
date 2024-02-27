@@ -196,7 +196,7 @@ _Orca-2 benchmarking done on1 A100 GPU, SKU: Standard_ND96amsr_A100_v4 , Package
 
 ## Training
 
-Orca-2 7b also benefits from training acceleration using ORT. We trained the Orca-2 7b model for a sequence length of 512 with LoRA and with the sparsity optimization enabled, to see good gains in performance. The numbers below are for Orca-2 7b models training with ORT using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
+Orca-2-7B also benefits from training acceleration using ORT. We trained the Orca-2-7B model for a sequence length of 512 with LoRA and with the sparsity optimization enabled and saw good gains in performance. The numbers below are for Orca-2-7B models trained with ORT using DeepSpeed Stage-2 for 5 epochs, with batch size 1 on the wikitext dataset.
 
 <img class="m-auto w50" src="./Orca2_Training.png" alt="Orca2 training benchmarks">
 <i>Uses ACPT image: nightly-ubuntu2004-cu118-py38-torch230dev:20240131</i>
