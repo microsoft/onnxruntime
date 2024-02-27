@@ -125,7 +125,7 @@ class PostExportProcessedModelInfo:
         onnx_graph_input_dynamic_axes_map: dict[str, dict[int, str]],
         module_forward_output_schema: ORTModelInputOutputSchemaType,
         post_export_processed_model: onnx.ModelProto,
-        onnx_graph_input_data_accessor: dict[str, callable],
+        onnx_graph_input_data_accessor_user_defined: dict[str, callable],
         onnx_graph_input_const_as_tensor: dict[str, torch.device],
         enable_mem_efficient_grad_management: bool,
     ):
@@ -150,15 +150,6 @@ class PostExportProcessedModelInfo:
         # Input names that require gradients for the pre-gradient-build graph.
         self.onnx_graph_input_names_require_grad: list[str] = copy.deepcopy(onnx_graph_input_names_require_grad)
 
-        if enable_mem_efficient_grad_management:
-            from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
-
-            # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
-            self.onnx_graph_input_names_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
-            self.onnx_graph_input_names_require_grad_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
-            self.onnx_graph_input_names.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
-            self.onnx_graph_input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
-
         # Create symbolic names for each dimension of the graph input (e.g. onnx_graph_input_names).
         # The key is the input name, the value is a dict of {dim_index: symbolic_dim_name}
         # e.g. {"input1": {0: "input1_dim0", 1: "input1_dim1"}, "input2": {0: "input2_dim0"}}
@@ -169,7 +160,9 @@ class PostExportProcessedModelInfo:
         # A function to access the input data from the args and kwargs.
         # If it is not None, the length is same as onnx_graph_input_names_user_defined.
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
-        self.onnx_graph_input_data_accessor: dict[str, callable] | None = onnx_graph_input_data_accessor
+        self.onnx_graph_input_data_accessor_user_defined: dict[
+            str, callable
+        ] | None = onnx_graph_input_data_accessor_user_defined
 
         self.onnx_graph_input_const_as_tensor: dict[str, torch.device] | None = onnx_graph_input_const_as_tensor
 
@@ -218,22 +211,18 @@ class PostExportProcessedModelInfo:
             # Create the buffers for the inputs that are either parameters or buffers in the original module.
             # For user inputs, fill with None for now, and will be filled dynamically during the forward run.
 
-            if self._enable_mem_efficient_grad_management:
-                from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
-
-                parameter_names = get_params_not_connected_to_pull_param_trigger(
-                    self._flattened_module.named_parameters(), self._post_export_processed_model
-                )
-            else:
-                parameter_names = {k: v for k, v in self._flattened_module.named_parameters()}
+            parameter_names = {k: v for k, v in self._flattened_module.named_parameters()}
             buffer_names = {k: v for k, v in self._flattened_module.named_buffers()}
+
             for input_name in self.onnx_graph_input_names:
                 if input_name in parameter_names:
                     self._buffer_for_ort_runs[input_name] = parameter_names[input_name]
                 elif input_name in buffer_names:
                     self._buffer_for_ort_runs[input_name] = buffer_names[input_name]
                 else:
-                    self._buffer_for_ort_runs[input_name] = None
+                    self._buffer_for_ort_runs[
+                        input_name
+                    ] = None  # Fill None for user input first, will be overridden later.
 
         for name in self.onnx_graph_input_names_user_defined:
             if self._enable_mem_efficient_grad_management and name == MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME:
@@ -244,9 +233,9 @@ class PostExportProcessedModelInfo:
                 ).requires_grad_()
                 continue
 
-            if name in self.onnx_graph_input_data_accessor:
+            if name in self.onnx_graph_input_data_accessor_user_defined:
                 assert name in self._buffer_for_ort_runs, f"{name} is not in buffer_for_ort_runs"
-                data = self.onnx_graph_input_data_accessor[name](args, kwargs)
+                data = self.onnx_graph_input_data_accessor_user_defined[name](args, kwargs)
                 if name in self.onnx_graph_input_const_as_tensor:
                     data = PrimitiveType.get_tensor(data, device)
                 self._buffer_for_ort_runs[name] = data
@@ -391,7 +380,7 @@ class GraphTransitionManager:
             # This looks a bit duplicated with `extract_data_and_schema` function, but this might be better to
             # defined as a specialized logic that is the counter-part of `parse_inputs_for_onnx_export`, which handles
             # args and kwargs separately.
-            for name, data_accessor in cur_model_info_for_export.onnx_graph_input_data_accessor.items():
+            for name, data_accessor in cur_model_info_for_export.onnx_graph_input_data_accessor_user_defined.items():
                 d = data_accessor(copied_args, copied_kwargs)
                 if name in cur_model_info_for_export.onnx_graph_input_const_as_tensor:
                     flatten_inputs.append(
@@ -585,11 +574,13 @@ class GraphTransitionManager:
             for input_name in exported_model_info.onnx_graph_input_names:
                 if input_name in exported_model_info.onnx_graph_input_names_user_defined:
                     assert (
-                        input_name in model_info_for_export.onnx_graph_input_data_accessor
-                    ), f"{input_name} model_info_for_export.onnx_graph_input_data_accessor"
+                        input_name in model_info_for_export.onnx_graph_input_data_accessor_user_defined
+                    ), f"{input_name} model_info_for_export.onnx_graph_input_data_accessor_user_defined"
                     # We assume the data accessor should be the same as the one used for the previous export, because
                     # there is args and kwargs schema check during export check phase.
-                    if model_info_for_export.onnx_graph_input_data_accessor[input_name](args, kwargs).requires_grad:
+                    if model_info_for_export.onnx_graph_input_data_accessor_user_defined[input_name](
+                        args, kwargs
+                    ).requires_grad:
                         onnx_graph_input_requires_grads.append(input_name)
                 else:
                     assert input_name in parameter_names, f"{input_name} not exist parameter_names"
@@ -640,30 +631,62 @@ class GraphTransitionManager:
                     [name for name, _ in flatten_module.named_parameters()],
                 )
 
+        onnx_graph_input_names_user_defined = copy.deepcopy(exported_model_info.onnx_graph_input_names_user_defined)
+        onnx_graph_input_names_require_grad_user_defined = copy.deepcopy(
+            exported_model_info.onnx_graph_input_names_require_grad_user_defined
+        )
+        onnx_graph_input_names = copy.deepcopy(exported_model_info.onnx_graph_input_names)
+        onnx_graph_input_names_require_grad = copy.deepcopy(exported_model_info.onnx_graph_input_names_require_grad)
+
         if enable_mem_efficient_grad_management:
-            from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
+            # Remove those trainable parameters from graph input, as they will be retrieved from weight pull node.
+            from ._mem_efficient_grad_mgmt import get_params_connected_to_pull_param_trigger
 
-            # Override the options if model is not modified.
-            (
-                enable_mem_efficient_grad_management,
-                post_processed_model,
-            ) = post_processing_enable_mem_efficient_training(post_processed_model, flatten_module.named_parameters())
+            # MUST call this before post_processing_enable_mem_efficient_training, otherwise, the onnx graph input
+            # will be modified.
+            parameter_not_as_graph_input_names = get_params_connected_to_pull_param_trigger(
+                flatten_module.named_parameters(), post_processed_model
+            )
 
-            if run_symbolic_shape_infer:
-                post_processed_model = SymbolicShapeInference.infer_shapes(
-                    post_processed_model, auto_merge=True, guess_output_rank=True
+            if len(parameter_not_as_graph_input_names) > 0:
+                for k in parameter_not_as_graph_input_names:
+                    if k in onnx_graph_input_names:
+                        onnx_graph_input_names.remove(k)
+
+                    if k in onnx_graph_input_names_require_grad:
+                        onnx_graph_input_names_require_grad.remove(k)
+
+                from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+
+                # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
+                onnx_graph_input_names_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+                onnx_graph_input_names_require_grad_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+                onnx_graph_input_names.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+                onnx_graph_input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+
+                from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
+
+                # Override the options if model is not modified.
+
+                post_processed_model = post_processing_enable_mem_efficient_training(
+                    post_processed_model, flatten_module.named_parameters(), parameter_not_as_graph_input_names
                 )
+
+                if run_symbolic_shape_infer:
+                    post_processed_model = SymbolicShapeInference.infer_shapes(
+                        post_processed_model, auto_merge=True, guess_output_rank=True
+                    )
 
         post_export_processed_model_info = PostExportProcessedModelInfo(
             flatten_module,
-            exported_model_info.onnx_graph_input_names_user_defined,
-            exported_model_info.onnx_graph_input_names_require_grad_user_defined,
-            exported_model_info.onnx_graph_input_names,
-            exported_model_info.onnx_graph_input_names_require_grad,
+            onnx_graph_input_names_user_defined,
+            onnx_graph_input_names_require_grad_user_defined,
+            onnx_graph_input_names,
+            onnx_graph_input_names_require_grad,
             model_info_for_export.onnx_graph_input_dynamic_axes_map,
             exported_model_info.module_forward_output_schema,
             post_processed_model,
-            model_info_for_export.onnx_graph_input_data_accessor,
+            model_info_for_export.onnx_graph_input_data_accessor_user_defined,
             model_info_for_export.onnx_graph_input_const_as_tensor,
             enable_mem_efficient_grad_management,
         )

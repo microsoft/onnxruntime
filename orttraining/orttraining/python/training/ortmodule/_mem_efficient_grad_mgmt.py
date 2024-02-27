@@ -38,20 +38,13 @@ def get_params_not_connected_to_pull_param_trigger(
 def post_processing_enable_mem_efficient_training(
     exported_model: ModelProto,
     named_params: dict[str, torch.nn.parameter.Parameter],
-) -> tuple[bool, ModelProto]:
-    """This function is used to enable zero stage3 compatibility.
-
-    Args:
-        exported_model (ModelProto): The exported model.
-        named_params (Optional[Dict[str, torch.nn.parameter.Parameter]]): The full parameter map.
-
-    Returns:
-        tuple[bool, ModelProto]: A tuple of bool and ModelProto. The bool indicates whether the model is modified.
-
-    """
-    trainable_named_params = get_params_connected_to_pull_param_trigger(named_params, exported_model)
+    trainable_named_params: dict[str, torch.nn.parameter.Parameter],
+) -> ModelProto:
+    """This function is used to enable memory efficient gradient management."""
+    # trainable_named_params = get_params_connected_to_pull_param_trigger(named_params, exported_model)
     if len(trainable_named_params) == 0:
-        return False, exported_model
+        return exported_model
+    #     return False, exported_model
 
     # Create weight retrieving function using trainable_named_params.
     param_pull_trigger_func_class = _create_param_trigger_function(trainable_named_params)
@@ -144,7 +137,7 @@ def post_processing_enable_mem_efficient_training(
     exported_model.graph.input.insert(offset, inputs[0])
     exported_model.graph.node.insert(0, weight_pull_node)
 
-    return True, exported_model
+    return exported_model
 
 
 _PARAM_FUNCTION_INDEX = [0]

@@ -154,7 +154,7 @@ class ModelInfoForExport:
         onnx_graph_input_names_require_grad: List[str],
         onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]],
         onnx_graph_input_shapes: List[List[int]],
-        onnx_graph_input_data_accessor: Optional[Dict[str, callable]] = None,
+        onnx_graph_input_data_accessor_user_defined: Optional[Dict[str, callable]] = None,
         onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = None,
         onnx_graph_input_arg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
         onnx_graph_input_kwarg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
@@ -202,7 +202,9 @@ class ModelInfoForExport:
         # A function to access the input data from the args and kwargs.
         # If it is not None, the length is same as onnx_graph_input_names.
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
-        self.onnx_graph_input_data_accessor: Optional[Dict[str, callable]] = onnx_graph_input_data_accessor
+        self.onnx_graph_input_data_accessor_user_defined: Optional[Dict[str, callable]] = (
+            onnx_graph_input_data_accessor_user_defined
+        )
 
         self.onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = onnx_graph_input_const_as_tensor
 
@@ -491,7 +493,7 @@ def parse_inputs_for_onnx_export(
         onnx_graph_input_names_require_grad=input_names_require_grad,
         onnx_graph_input_dynamic_axes_map=dynamic_axes,
         onnx_graph_input_shapes=input_shape,
-        onnx_graph_input_data_accessor=data_accessors,
+        onnx_graph_input_data_accessor_user_defined=data_accessors,
         onnx_graph_input_const_as_tensor=const_to_tensor_inputs,
         onnx_graph_input_arg_schema=input_arg_schema,
         onnx_graph_input_kwarg_schema=input_kwarg_schema,
