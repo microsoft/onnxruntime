@@ -18,6 +18,7 @@
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 
 #ifdef _WIN32
@@ -564,6 +565,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ORT_THROW(
               "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else if (key == "enable_graph_serialization") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          session_options.AddConfigEntry(kOrtSessionOptionsConfigEnableGraphSerialization, value.data());
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'enable_graph_serialization'. "
               "Select from 'true' or 'false' \n");
         }
       }

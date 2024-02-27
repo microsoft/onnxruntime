@@ -1729,14 +1729,12 @@ if(onnxruntime_BUILD_KERNEL_EXPLORER)
 endif()
 
 # When GDK_PLATFORM is set then WINAPI_FAMILY is defined in gdk_toolchain.cmake (along with other relevant flags/definitions).
-if (WIN32 AND NOT GDK_PLATFORM)
+if (WIN32 AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
   if (NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
     # On onecore, link to the onecore build of the MSVC runtime
     get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
     link_directories(BEFORE "${msvc_path}/lib/onecore/${onnxruntime_target_platform}")
-    # The .lib files in the MSVC runtime have a DEFAULITLIB entry for onecore.lib, which in turn links to reverse forwarders.
-    # We ignore that entry and use onecore_apiset.lib instead, since system components must not rely on reverse forwarders.
-    add_link_options("/NODEFAULTLIB:onecore.lib")
+    # The .lib files in the MSVC runtime have a DEFAULITLIB entry for onecore.lib, but it shold not cause any conflict with onecoreuap.lib
   endif()
 endif()
 

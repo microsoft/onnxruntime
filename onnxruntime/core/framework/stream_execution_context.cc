@@ -181,11 +181,13 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   }
 
 #ifdef USE_CANN
+  // Leave it to CANN EP to fill the gap if they want to use run_options
+  static onnxruntime::RunOptions run_options;
   // For CANN EP, it is necessary to explicitly create a corresponding Context for each thread in the thread pool,
   // which is different from CUDA Runtime API, but similar to CUDA Driver API.
   auto& execution_providers = ctx.GetSessionState().GetExecutionProviders();
   for (auto& xp : execution_providers) {
-    auto status = xp->OnRunStart();
+    auto status = xp->OnRunStart(run_options);
     if (!status.IsOK()) {
       ctx.SetStatus(status);
       return;

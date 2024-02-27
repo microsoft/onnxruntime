@@ -84,6 +84,7 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
   auto cores = GetNumberOPhysicalAndEngineeringCores();
 
+#if !defined(_M_ARM64EC) && !defined(_M_ARM64) && !defined(__aarch64__)
   const int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
   int regs_leaf0[4];
   int regs_leaf7[4];
@@ -100,6 +101,7 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
     // On Intel Hybrid processors, numSocCores == cores.Num2CacheCores
     return cores.PhysicalCores - cores.Num2CacheCores;
   }
+#endif
 
   return cores.PhysicalCores;
 }
