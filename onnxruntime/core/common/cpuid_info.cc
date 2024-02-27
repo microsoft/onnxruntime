@@ -55,7 +55,6 @@
 #endif  // CPUINFO_SUPPORTED
 #include "core/common/cpuid_uarch.h"
 
-
 namespace onnxruntime {
 
 #ifdef CPUIDINFO_ARCH_X86
@@ -184,7 +183,6 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)
 
 void CPUIDInfo::ArmWindowsInit() {
-
 // ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
 #ifndef _M_ARM
 #pragma region Application Family or OneCore Family
@@ -241,7 +239,7 @@ void CPUIDInfo::ArmWindowsInit() {
 #else
   has_arm_neon_dot_ = false;
 #endif
-  
+
   if (pytorch_cpuinfo_init_) {
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith() || has_arm_neon_dot_;
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
@@ -254,7 +252,6 @@ void CPUIDInfo::ArmWindowsInit() {
     has_arm_neon_bf16_ = false;
   }
 }
-  
 
 #endif /* (arm or arm64) and windows */
 #endif /* arm or arm64*/
