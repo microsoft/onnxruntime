@@ -7,6 +7,7 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
@@ -137,10 +138,10 @@ std::vector<std::string> SplitToStringVec(std::string const& s, char separator) 
   return splitted;
 }
 
-nvinfer1::TacticSources GetTacticSourceFromString(std::string& tactic_sting) {
+nvinfer1::TacticSources GetTacticSourceFromString(std::string& tactic_string) {
   nvinfer1::TacticSources disabledTactics = 0;
   nvinfer1::TacticSources enabledTactics = 0;
-  std::vector<std::string> tacticList = SplitToStringVec(tactic_sting, ',');
+  std::vector<std::string> tacticList = SplitToStringVec(tactic_string, ',');
   for (auto& t : tacticList) {
     bool enable{false};
     if (t.front() == '+') {
@@ -151,8 +152,8 @@ nvinfer1::TacticSources GetTacticSourceFromString(std::string& tactic_sting) {
     t.erase(0, 1);
 
     const auto toUpper = [](std::string& sourceName) {
-      std::transform(
-          sourceName.begin(), sourceName.end(), sourceName.begin(), [](char c) { return std::toupper(c); });
+      std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
+                     [](char c) { return onnxruntime::narrow<char>(std::toupper(c)); });
       return sourceName;
     };
 
@@ -288,7 +289,8 @@ void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
-void* OutputAllocator::reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept {
+void* OutputAllocator::reallocateOutput(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
+                                        uint64_t /*alignment*/) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
   // even for empty tensors, so allocate a dummy byte.
   size = std::max(size, static_cast<uint64_t>(1));
@@ -304,7 +306,7 @@ void* OutputAllocator::reallocateOutput(char const* tensorName, void* currentMem
   return outputPtr;
 }
 
-void OutputAllocator::notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept {
+void OutputAllocator::notifyShape(char const* /*tensorName*/, nvinfer1::Dims const& dims) noexcept {
   output_shapes.clear();
   output_shapes.reserve(dims.nbDims);
   for (int i = 0; i < dims.nbDims; i++) {
@@ -613,20 +615,22 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       tensor_shape_values[input_name].resize(shape_size);
       switch (tensor_type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-          auto input = std::make_unique<int32_t[]>(shape_size);
-          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int32_t>(), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+          auto input_shape = std::make_unique<int32_t[]>(shape_size);
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_shape.get(), input_tensor.GetTensorData<int32_t>(),
+                                               shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
           CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
           for (int j = 0; j < shape_size; ++j) {
-            tensor_shape_values[input_name][j] = input[j];
+            tensor_shape_values[input_name][j] = input_shape[j];
           }
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-          auto input = std::make_unique<int64_t[]>(shape_size);
-          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int64_t>(), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
+          auto input_shape = std::make_unique<int64_t[]>(shape_size);
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_shape.get(), input_tensor.GetTensorData<int64_t>(),
+                                               shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
           CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
           for (int j = 0; j < shape_size; ++j) {
-            tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
+            tensor_shape_values[input_name][j] = static_cast<int32_t>(input_shape[j]);
           }
           break;
         }
@@ -1074,7 +1078,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
  * Once the output has been put in the allocation buffer, ORT calls this function to bind the allocation to ORT kernel context output.
  */
 Status BindKernelOutput(Ort::KernelContext& ctx,
-                        OrtMemoryInfo* mem_info,
+                        OrtMemoryInfo* /*mem_info*/,
                         DDSOutputAllocatorMap& allocator_map,
                         char const* output_name,
                         size_t output_index,
@@ -1310,7 +1314,11 @@ TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerTh
 }
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)}, info_(info), device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                                   narrow<OrtDevice::DeviceId>(info.device_id))},
+      info_(info),
+      device_id_(info.device_id) {
   InitProviderOrtApi();
 
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
@@ -3751,7 +3759,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     // int num_inputs = static_cast<int>(input_indexes.size());
     int num_outputs = static_cast<int>(output_indexes.size());
 
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id_), device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }

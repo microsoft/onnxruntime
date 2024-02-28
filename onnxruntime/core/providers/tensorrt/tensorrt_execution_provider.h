@@ -5,8 +5,17 @@
 #include <ctime>
 #include <cudnn.h>
 #include <cublas_v2.h>
-#include "NvInfer.h"
-#include "NvOnnxParser.h"
+// Ignore warning C4100: unreferenced formal parameter
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
+#include <NvInfer.h>
+#include <NvOnnxParser.h>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"

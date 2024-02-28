@@ -100,8 +100,8 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
                               bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
-  if (NHWC && is_nhwc_domain_) {  // InputTensors::IN_W
-    if (input_idx == 1) {
+  if constexpr (NHWC) {                       // split `if` to make VC happy
+    if (is_nhwc_domain_ && input_idx == 1) {  // InputTensors::IN_W
       // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
       auto orig_shape = tensor.Shape();
 
@@ -149,8 +149,11 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
   // Make sure input and weight are 4D for NHWC since we set 4D descriptor for NHWC.
   constexpr bool channels_last = NHWC;
-  if (channels_last && (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+  if constexpr (channels_last) {  // split `if` to make VC happy
+    if (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+    }
   }
 
   // set B
@@ -403,7 +406,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
         default:
           perf.algo = kDefaultConvAlgo;
           CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(GetCudnnHandle(context), s_, perf.algo, &perf.memory));
-          if (std::is_same<T, MLFloat16>::value) {
+          if constexpr (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
           } else if (std::is_same<T, float>::value && !UseTF32()) {
             perf.mathType = CUDNN_FMA_MATH;

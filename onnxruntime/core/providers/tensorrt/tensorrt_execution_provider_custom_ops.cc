@@ -4,7 +4,17 @@
 #include "core/framework/provider_options.h"
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "tensorrt_execution_provider.h"
+
+// Ignore warning C4100: unreferenced formal parameter
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
 #include <NvInferRuntime.h>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
 #include <NvInferPlugin.h>
 #include <unordered_set>
 
