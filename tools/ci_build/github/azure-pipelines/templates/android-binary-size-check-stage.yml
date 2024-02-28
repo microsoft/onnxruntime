@@ -49,6 +49,7 @@ stages:
     - task: PythonScript@0
       displayName: 'Set variables from config file "${{ parameters.BuildConfigFile }}"'
       inputs:
+        pythonInterpreter: /usr/bin/python3
         scriptSource: inline
         script: |
           import json
