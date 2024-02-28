@@ -1785,13 +1785,12 @@ bool TensorrtExecutionProvider::IsGraphCaptured() const {
   return is_graph_captured_;
 }
 
-Status TensorrtExecutionProvider::ReplayGraph() {
+Status TensorrtExecutionProvider::ReplayGraph(const onnxruntime::RunOptions&) {
   ORT_ENFORCE(IsGraphCaptured());
   // Please note that CUDAGraph::Replay() is not thread safe.
   // ORT TRT calls ReplayGraph() in compute_func() where synchronization is enforced due to lock_guard(),
   // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
-  GraphAnnotationOptional_t cuda_graph_annotation_id;
-  return cuda_graph_.Replay(cuda_graph_annotation_id);
+  return cuda_graph_.Replay();
 }
 
 void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
@@ -3626,7 +3625,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         CaptureEnd();
         // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
         // so run the captured graph here to actually execute the work.
-        ORT_RETURN_IF_ERROR(ReplayGraph());
+        onnxruntime::RunOptions run_options;
+        ORT_RETURN_IF_ERROR(ReplayGraph(run_options));
       } else {
         IncrementRegularRunCountBeforeGraphCapture();
       }
@@ -3919,7 +3919,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
         CaptureEnd();
         // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
         // so run the captured graph here to actually execute the work.
-        ORT_RETURN_IF_ERROR(ReplayGraph());
+        onnxruntime::RunOptions run_options;
+        ORT_RETURN_IF_ERROR(ReplayGraph(run_options));
       } else {
         IncrementRegularRunCountBeforeGraphCapture();
       }

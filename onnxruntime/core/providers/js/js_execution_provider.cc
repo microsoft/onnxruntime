@@ -785,7 +785,7 @@ bool JsExecutionProvider::IsGraphCaptured() const {
   return is_graph_captured_;
 }
 
-Status JsExecutionProvider::ReplayGraph() {
+Status JsExecutionProvider::ReplayGraph(const onnxruntime::RunOptions&) {
   ORT_ENFORCE(IsGraphCaptured());
   EM_ASM({ Module.jsepReplay(); });
   return Status::OK();

@@ -183,12 +183,6 @@ class IExecutionProvider {
   virtual common::Status Sync() const { return Status::OK(); }
 
   /**
-     Set graph annotation for saving/retriving executable graphs (e.g., cuda graph).
-     Currently only CUDA execution provider supports it.
-  */
-  virtual void SetGraphAnnotation(int) {}
-
-  /**
      Called when InferenceSession::Run started
      NOTE that due to async execution in provider, the actual work of previous
      Run may not be finished on device This function should be regarded as the
@@ -208,21 +202,23 @@ class IExecutionProvider {
 
   /**
      Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
-     the provider. Currently only CUDA execution provider supports it.
+     the provider. Currently only CUDA/TensorRT/Rocm execution providers support it.
    */
   virtual bool IsGraphCaptureEnabled() const { return false; }
 
   /**
      Indicate whether the graph has been captured and instantiated. Currently
-     only CUDA execution provider supports it.
+     only CUDA/TensorRT/Rocm execution providers support it.
    */
   virtual bool IsGraphCaptured() const { return false; }
 
   /**
-     Run the instantiated graph. Currently only CUDA execution provider supports
-     it.
+     Run the instantiated graph. Currently only CUDA/TensorRT/Rocm execution providers
+     support it.
    */
-  virtual common::Status ReplayGraph() { return Status::OK(); }
+  virtual common::Status ReplayGraph(const onnxruntime::RunOptions& /*run_options*/) {
+    return Status::OK();
+  }
 
   /**
      Called when session creation is complete

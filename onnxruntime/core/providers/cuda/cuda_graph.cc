@@ -16,7 +16,7 @@ void CUDAGraph::SetStream(cudaStream_t stream) {
   stream_ = stream;
 }
 
-void CUDAGraph::SetGraphAnnotation(GraphAnnotationOptional_t cuda_graph_annotation_id) {
+void CUDAGraph::SetGraphAnnotationId(CudaGraphAnnotationOptional_t cuda_graph_annotation_id) {
   cuda_graph_annotation_id_ = cuda_graph_annotation_id;
 }
 
@@ -27,6 +27,7 @@ void CUDAGraph::CaptureBegin() {
                 "Create a new instance to capture a new graph.");
   } else {
     if (!IsGraphCaptureAllowedOnRun()) {
+      LOGS_DEFAULT(INFO) << "Skipping graph capture for cuda_graph_annotation_id " << *cuda_graph_annotation_id_;
       return;
     }
   }
@@ -41,6 +42,7 @@ void CUDAGraph::CaptureBegin() {
 
 void CUDAGraph::CaptureEnd() {
   if (!IsGraphCaptureAllowedOnRun()) {
+    LOGS_DEFAULT(INFO) << "Skipping graph capture for cuda_graph_annotation_id " << *cuda_graph_annotation_id_;
     return;
   }
 
@@ -57,7 +59,7 @@ void CUDAGraph::CaptureEnd() {
     CUDA_CALL_THROW(cudaGraphDestroy(additional_graph_));
     has_additional_graph_ = false;
 
-    GraphAnnotation_t cuda_graph_id = cuda_graph_annotation_id_.value();
+    CudaGraphAnnotation_t cuda_graph_id = cuda_graph_annotation_id_.value();
     graph_exec_map_.emplace(cuda_graph_id, graph_exec);
 
     return;
@@ -75,15 +77,15 @@ void CUDAGraph::CaptureEnd() {
   has_graph_ = false;
 }
 
-Status CUDAGraph::Replay(GraphAnnotationOptional_t cuda_graph_annotation_id) {
+Status CUDAGraph::Replay() {
   if (!IsGraphCaptureAllowedOnRun()) {
     return Status::OK();
   }
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
   if (cuda_graph_annotation_id_.has_value()) {
-    LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id " << *cuda_graph_annotation_id;
-    auto it = graph_exec_map_.find(*cuda_graph_annotation_id);
+    LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id " << *cuda_graph_annotation_id_;
+    auto it = graph_exec_map_.find(*cuda_graph_annotation_id_);
     if (it == graph_exec_map_.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME,
                              FAIL,
@@ -99,7 +101,7 @@ Status CUDAGraph::Replay(GraphAnnotationOptional_t cuda_graph_annotation_id) {
   return Status::OK();
 }
 
-bool CUDAGraph::IsAdditionalGraphCaptured(GraphAnnotation_t cuda_graph_annotation_id) const {
+bool CUDAGraph::IsAdditionalGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
   return graph_exec_map_.find(cuda_graph_annotation_id) != graph_exec_map_.end();
 }
 
@@ -107,7 +109,7 @@ bool CUDAGraph::IsGraphCaptureAllowedOnRun() const {
   if (!cuda_graph_annotation_id_.has_value()) {
     return true;
   }
-  return *cuda_graph_annotation_id_ != kDefaultSkipGraphCapture;
+  return *cuda_graph_annotation_id_ != kCudaGraphAnnotationSkip;
 }
 
 void CUDAGraph::Reset() {
@@ -119,9 +121,6 @@ void CUDAGraph::Reset() {
     CUDA_CALL_THROW(cudaGraphExecDestroy(graph_exec_));
     has_graph_exec_ = false;
   }
-}
-
-void CUDAGraph::ResetAdditional() {
   if (has_additional_graph_) {
     CUDA_CALL_THROW(cudaGraphDestroy(additional_graph_));
     has_additional_graph_ = false;
@@ -136,7 +135,6 @@ void CUDAGraph::ResetAdditional() {
 
 CUDAGraph::~CUDAGraph() {
   Reset();
-  ResetAdditional();
 }
 
 }  // namespace onnxruntime

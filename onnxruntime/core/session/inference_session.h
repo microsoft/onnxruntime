@@ -863,14 +863,6 @@ class InferenceSession {
       cached_execution_provider_for_graph_replay_ = execution_provider;
     }
 
-    void SetGraphAnnotation(int graph_annotation_id) {
-      graph_annotation_id_ = graph_annotation_id;
-      if (!cached_execution_provider_for_graph_replay_) {
-        ORT_THROW("Cached EP instance for graph replay is not set yet before calling SetGraphAnnotation()");
-      }
-      cached_execution_provider_for_graph_replay_->SetGraphAnnotation(graph_annotation_id_);
-    }
-
     bool IsGraphCaptureEnabled() const {
       return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
     }
@@ -883,10 +875,10 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id_ == -1;
     }
 
-    Status ReplayGraph() {
+    Status ReplayGraph(const onnxruntime::RunOptions& run_options) {
       ORT_ENFORCE(IsGraphCaptured());
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph();
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(run_options);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }

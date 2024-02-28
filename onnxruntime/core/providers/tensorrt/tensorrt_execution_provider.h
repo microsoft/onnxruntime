@@ -250,7 +250,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured() const override;
-  Status ReplayGraph() override;
+  Status ReplayGraph(const onnxruntime::RunOptions& run_options) override;
 
  private:
   mutable TensorrtExecutionProviderInfo info_;

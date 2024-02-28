@@ -200,8 +200,7 @@ bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptured() const {
 Status ROCMExecutionProvider::PerThreadContext::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
 
-  GraphAnnotationOptional_t hip_graph_annotation_id;
-  return hip_graph_.Replay(hip_graph_annotation_id);
+  return hip_graph_.Replay();
 }
 
 void ROCMExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
@@ -406,7 +405,7 @@ bool ROCMExecutionProvider::IsGraphCaptured() const {
   return GetPerThreadContext().IsGraphCaptured();
 }
 
-Status ROCMExecutionProvider::ReplayGraph() {
+Status ROCMExecutionProvider::ReplayGraph(const onnxruntime::RunOptions&) {
   return GetPerThreadContext().ReplayGraph();
 }
 

@@ -64,7 +64,7 @@ class JsExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured() const override;
-  Status ReplayGraph() override;
+  Status ReplayGraph(const onnxruntime::RunOptions& run_options) override;
 
  private:
   bool IsGraphCaptureAllowed() const;

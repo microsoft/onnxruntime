@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/platform/ort_mutex.h"
@@ -10,10 +12,10 @@
 
 namespace onnxruntime {
 
-using GraphAnnotation_t = int;
-using GraphAnnotationOptional_t = optional<GraphAnnotation_t>;
+using CudaGraphAnnotation_t = int;
+using CudaGraphAnnotationOptional_t = optional<CudaGraphAnnotation_t>;
 
-constexpr GraphAnnotation_t kDefaultSkipGraphCapture = -1;
+constexpr CudaGraphAnnotation_t kCudaGraphAnnotationSkip = -1;
 
 struct CUDAGraph {
   CUDAGraph(){};
@@ -21,16 +23,15 @@ struct CUDAGraph {
   ~CUDAGraph();
 
   void SetStream(cudaStream_t stream);
-  void SetGraphAnnotation(GraphAnnotationOptional_t cuda_graph_annotation_id);
+  void SetGraphAnnotationId(CudaGraphAnnotationOptional_t cuda_graph_annotation_id);
 
   void CaptureBegin();
   void CaptureEnd();
-  Status Replay(GraphAnnotationOptional_t cuda_graph_annotation_id);
+  Status Replay();
 
   void Reset();
-  void ResetAdditional();
 
-  bool IsAdditionalGraphCaptured(GraphAnnotation_t cuda_graph_annotation_id) const;
+  bool IsAdditionalGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
   bool IsGraphCaptureAllowedOnRun() const;
 
  private:
@@ -41,8 +42,8 @@ struct CUDAGraph {
   bool has_graph_exec_ = false;
 
   cudaGraph_t additional_graph_ = NULL;
-  std::unordered_map<GraphAnnotation_t, cudaGraphExec_t> graph_exec_map_;
-  GraphAnnotationOptional_t cuda_graph_annotation_id_;
+  std::unordered_map<CudaGraphAnnotation_t, cudaGraphExec_t> graph_exec_map_;
+  CudaGraphAnnotationOptional_t cuda_graph_annotation_id_;
   bool has_additional_graph_ = false;
 
   cudaStream_t stream_ = nullptr;  // Does not own the stream
