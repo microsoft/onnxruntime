@@ -1,4 +1,3 @@
-import onnxruntime
 import itertools
 import json
 import os
@@ -271,7 +270,7 @@ class TestScatterPerProvider(unittest.TestCase):
         )
 
         data = np.zeros((2, 2, 3), dtype=np.float32)
-        indices = np.array([[line], [1-line], [line]], dtype=np.int64)
+        indices = np.array([[line], [1 - line], [line]], dtype=np.int64)
         updates = (2 ** np.arange(18).astype(np.float32).reshape((3, 2, 3))).astype(np.float32)
 
         feeds = dict(data=data, indices=indices, updates=updates)

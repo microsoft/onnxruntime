@@ -144,23 +144,23 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
   ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(context->GetComputeStream()));
 
   switch (reduction_) {
-    case Reduction::None: {
+    case ScatterNDReduction::None: {
       size_t element_size = input_tensor->DataType()->Size();
       ORT_RETURN_IF_ERROR(ScatterNDImpl(
-        Stream(context),
-        output_data,
-        element_size,
-        indices_shape.Size() / static_cast<size_t>(last_index_dimension),
-        indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
-        last_index_dimension,
-        element_counts_and_input_dims_gpu.GpuPtr(),
-        updates_tensor->DataRaw(),
-        input_shape.SizeFromDimension(last_index_dimension)));
+          Stream(context),
+          output_data,
+          element_size,
+          indices_shape.Size() / static_cast<size_t>(last_index_dimension),
+          indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
+          last_index_dimension,
+          element_counts_and_input_dims_gpu.GpuPtr(),
+          updates_tensor->DataRaw(),
+          input_shape.SizeFromDimension(last_index_dimension)));
     } break;
-    case Reduction::Add:
-    case Reduction::Min:
-    case Reduction::Max:
-    case Reduction::Mul: {
+    case ScatterNDReduction::Add:
+    case ScatterNDReduction::Min:
+    case ScatterNDReduction::Max:
+    case ScatterNDReduction::Mul: {
       auto element_type = input_tensor->DataType()->AsPrimitiveDataType()->GetDataType();
       ORT_RETURN_IF_ERROR(ScatterNDImplReduction(
           Stream(context),
@@ -172,15 +172,15 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
           element_counts_and_input_dims_gpu.GpuPtr(),
           updates_tensor->DataRaw(),
           input_shape.SizeFromDimension(last_index_dimension),
-          static_cast<int>(reduction_)));
+          reduction_));
     } break;
     default:
       ORT_THROW("ScatterND not supported for other reduction than Add, None.");
       break;
-    }
-
-    return Status::OK();
   }
+
+  return Status::OK();
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -6,6 +6,7 @@
 #include <string>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cuda/tensor/scatter_nd_kind.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
 
 namespace onnxruntime {
@@ -33,32 +34,29 @@ class ScatterNDDisjointAndNoReduction final : public CudaKernel {
  * TODO: change the implementation of avoid conflicts.
  */
 class ScatterNDWithAtomicReduction final : public CudaKernel {
-  enum class Reduction : int {
-    None = 0,
-    Add = 1,
-    Mul = 2,
-    Min = 3,
-    Max = 4,
-  };
-
  public:
   explicit ScatterNDWithAtomicReduction(const OpKernelInfo& info) : CudaKernel(info) {
     std::string reduction = info.GetAttrOrDefault<std::string>("reduction", "none");
 
     if (info.GetAttr<std::string>("reduction", &reduction).IsOK()) {
       if (reduction == "add")
-        reduction_ = Reduction::Add;
+        reduction_ = ScatterNDReduction::Add;
+      else if (reduction == "mul")
+        reduction_ = ScatterNDReduction::Mul;
+      else if (reduction == "min")
+        reduction_ = ScatterNDReduction::Min;
+      else if (reduction == "max")
+        reduction_ = ScatterNDReduction::Max;
       else if (reduction == "none") {
         LOGS_DEFAULT(WARNING) << "ScatterND with reduction=='none' only garuantees to be correct if indices are not duplicated.";
-      }
-      else
-      ORT_THROW("Reduction '", reduction, "' is not supported on CUDA and opset >= 13.");
+      } else
+        ORT_THROW("Reduction '", reduction, "' is not supported on CUDA and opset >= 13.");
     }
   }
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  Reduction reduction_{Reduction::None};
+  ScatterNDReduction reduction_{ScatterNDReduction::None};
 };
 
 }  // namespace cuda
