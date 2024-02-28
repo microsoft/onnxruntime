@@ -17,7 +17,7 @@ set ROOT=%~dp0..\
 :arg1
 if ["%~1"]==["d"] (
     set CONFIG=Debug
-    set CONFIG_EXTRA_FLAG=--enable_wasm_debug_info
+    set CONFIG_EXTRA_FLAG=--enable_wasm_debug_info --cmake_extra_defines onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL=1
     goto :arg2
 )
 if ["%~1"]==["r"] (
