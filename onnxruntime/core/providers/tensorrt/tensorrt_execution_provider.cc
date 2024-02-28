@@ -717,16 +717,16 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
   return Status::OK();
 }
 
-#define CASE_GET_INPUT_TENSOR(DATA_TYPE, SrcT)                                                         \
-  case DATA_TYPE: {                                                                                    \
-    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                        \
-    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                 \
-      data = const_cast<SrcT*>(input_tensor_ptr);                                                      \
-    } else {                                                                                           \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(SrcT))); \
-      data = scratch_buffers.back().get();                                                             \
-    }                                                                                                  \
-    break;                                                                                             \
+#define CASE_GET_INPUT_TENSOR(DATA_TYPE, SrcT)                                              \
+  case DATA_TYPE: {                                                                         \
+    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                             \
+    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                      \
+      data = const_cast<SrcT*>(input_tensor_ptr);                                           \
+    } else {                                                                                \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1)); \
+      data = scratch_buffers.back().get();                                                  \
+    }                                                                                       \
+    break;                                                                                  \
   }
 
 #define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                         \
@@ -737,22 +737,22 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       data = scratch_buffers.back().get();                                                                        \
       cuda::Impl_Cast<SrcT, DstT>(stream, input_tensor_ptr, reinterpret_cast<DstT*>(data), elem_cnt);             \
     } else {                                                                                                      \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(DstT)));            \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
       data = scratch_buffers.back().get();                                                                        \
     }                                                                                                             \
     break;                                                                                                        \
   }
 
-#define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                                        \
-  case DATA_TYPE: {                                                                                    \
-    auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                               \
-    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                \
-      buffers[output_name] = output_tensor_ptr;                                                        \
-    } else {                                                                                           \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(SrcT))); \
-      buffers[output_name] = scratch_buffers.back().get();                                             \
-    }                                                                                                  \
-    break;                                                                                             \
+#define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                             \
+  case DATA_TYPE: {                                                                         \
+    auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                    \
+    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                     \
+      buffers[output_name] = output_tensor_ptr;                                             \
+    } else {                                                                                \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1)); \
+      buffers[output_name] = scratch_buffers.back().get();                                  \
+    }                                                                                       \
+    break;                                                                                  \
   }
 
 #define CASE_GET_CAST_OUTPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                        \
@@ -763,7 +763,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       buffers[output_name] = scratch_buffers.back().get();                                                        \
       output_dim_sizes[i] = static_cast<int>(elem_cnt);                                                           \
     } else {                                                                                                      \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(DstT)));            \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
       buffers[output_name] = scratch_buffers.back().get();                                                        \
       output_dim_sizes[i] = 1;                                                                                    \
     }                                                                                                             \
@@ -850,9 +850,9 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
     // Bind "execution tensor" input buffer
     //
-    // Note: TRT requires a non-null pointer even for empty tensor (i.e. any of the dimension is 0 and element count is 0).
-    //       Therefore, in the case of empty tensor, TRT EP always allocates a dummy size of the data type and also no need
-    //       to do the cuda cast for int64 and double data type.
+    // Note: If an engine binding is an empty tensor, it still needs a non-null memory address, and different tensors should have different addresses.
+    //       Therefore, in the case of empty tensor, TRT EP always allocates a dummy byte.
+    //       https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#empty-tensors
     void* data = nullptr;
     switch (tensor_type) {
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
