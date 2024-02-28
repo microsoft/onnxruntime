@@ -162,10 +162,11 @@ stages:
           platform: ${{ parameters.msbuildPlatform }}
           configuration: RelWithDebInfo
           msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true
+          maximumCpuCount: true  # default is num logical cores worth of projects building concurrently
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           createLogFile: true
+          msbuildArgs: "/p:CL_MPCount=2"  # 2x cl.exe per project building.
 
       - task: PythonScript@0
         displayName: 'test'

@@ -20,115 +20,117 @@ namespace rocm {
 using onnxruntime::rocm::GPU_WARP_SIZE;
 
 template <typename T>
-void groupNormNHWCSum(const GroupNormNHWCParams<T>* params) {
-  // Make sure the values are as we expect.
-  ORT_ENFORCE(params->c % params->cPerBlock == 0 && params->hw % params->hwPerBlock == 0);
-  // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params->cPerBlock % params->cPerGroup == 0);
-
+void GroupNormNHWCSum(const GroupNormNHWCTunableParams<T>* params) {
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = params->c / params->cPerBlock;
+  grid.x = DivUp(params->c, params->channels_per_block);
   // The number of blocks to compute all the activations in a given instance.
-  grid.y = CeilDiv(params->hw, params->hwPerBlock);
+  grid.y = DivUp(params->hw, params->hw_per_block);
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                \
-  groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                 \
-      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(         \
-          params->src, params->redBuffer, params->cPerBlock,          \
-          params->hwPerBlock, params->hw, params->hwc, params->c,     \
-          params->cPerGroup, params->groups, params->groupsPerBlock); \
+#define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                                                   \
+  GroupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                                                    \
+      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(                                            \
+          params->skip_workspace, params->group_sum_buffer, params->src, params->skip, params->bias,     \
+          params->channels_per_block, params->hw_per_block, params->hw, params->hwc, params->c,          \
+          params->channels_per_group, params->groups, params->groups_per_block, params->broadcast_skip); \
   break;
 
-  switch (params->cPerBlock) {
-    case 320:
-      LAUNCH_GROUPNORM_SUM(256, 2)
-    case 480:
-      LAUNCH_GROUPNORM_SUM(256, 2)
+  // Threads_per_block is half of values in kSizes since CHANNELS_PER_THREAD = 2.
+  switch (params->threads_per_block) {
     case 256:
-      LAUNCH_GROUPNORM_SUM(128, 2)
+      LAUNCH_GROUPNORM_SUM(256, CHANNELS_PER_THREAD)
+    case 192:
+      LAUNCH_GROUPNORM_SUM(192, CHANNELS_PER_THREAD)
+    case 160:
+      LAUNCH_GROUPNORM_SUM(160, CHANNELS_PER_THREAD)
     case 128:
-      LAUNCH_GROUPNORM_SUM(64, 2)
+      LAUNCH_GROUPNORM_SUM(128, CHANNELS_PER_THREAD)
+    case 64:
+      LAUNCH_GROUPNORM_SUM(64, CHANNELS_PER_THREAD)
     default:
       ORT_NOT_IMPLEMENTED("Not implemented");
   }
 }
 
 template <typename T, int ThreadsPerBlock, int VecSize>
-Status GroupNormNHWCSumOp(const GroupNormNHWCParams<T>* params) {
+Status GroupNormNHWCSumOp(const GroupNormNHWCTunableParams<T>* params) {
   dim3 grid;
-  grid.x = params->c / params->cPerBlock;
-  grid.y = CeilDiv(params->hw, params->hwPerBlock);
+  grid.x = DivUp(params->c, params->channels_per_block);
+  grid.y = DivUp(params->hw, params->hw_per_block);
   grid.z = params->n;
 
-  groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>
+  GroupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>
       <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(
-          params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
-          params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
+          params->skip_workspace, params->group_sum_buffer, params->src, params->skip, params->bias,
+          params->channels_per_block, params->hw_per_block, params->hw, params->hwc, params->c,
+          params->channels_per_group, params->groups, params->groups_per_block, params->broadcast_skip);
   return HIP_CALL(hipGetLastError());
 }
 
 template <typename T>
-void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
-  // Make sure the dimensions are aligned with what we expect.
-  ORT_ENFORCE(params->c % params->cPerBlock == 0);
-  // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params->cPerBlock % params->cPerGroup == 0);
-
+void GroupNormNHWCScale(const GroupNormNHWCTunableParams<T>* params) {
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = params->c / params->cPerBlock;
+  grid.x = DivUp(params->c, params->channels_per_block);
   // The number of blocks to compute all the activations in a given instance.
-  grid.y = CeilDiv(params->hw, params->hwPerBlock);
+  grid.y = DivUp(params->hw, params->hw_per_block);
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                    \
-  groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>                     \
-      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(               \
-          params->dst, params->src, params->gamma, params->beta,            \
-          params->redBuffer, params->epsilon, params->c, params->cPerBlock, \
-          params->cPerGroup, params->groups, params->hwc, params->invHWC,   \
-          params->hw, params->hwPerBlock, params->withSwish);               \
+#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                                               \
+  GroupNormNHWCScaleKernel<T, VecSize>                                                                 \
+      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(                                          \
+          params->dst, params->src, params->skip, params->gamma, params->beta, params->skip_workspace, \
+          params->group_sum_buffer, params->epsilon, params->c, params->channels_per_block,            \
+          params->channels_per_group, params->groups, params->hwc, params->inv_hw_channels_per_group,  \
+          params->hw, params->hw_per_block, params->use_silu);                                         \
   break;
 
-  switch (params->cPerBlock) {
-    case 320:
-      LAUNCH_GROUPNORM_SCALE(256, 2)
-    case 480:
-      LAUNCH_GROUPNORM_SCALE(256, 2)
+  // Threads_per_block is half of values in kSizes since CHANNELS_PER_THREAD = 2.
+  switch (params->threads_per_block) {
     case 256:
-      LAUNCH_GROUPNORM_SCALE(128, 2)
+      LAUNCH_GROUPNORM_SCALE(256, CHANNELS_PER_THREAD)
+    case 192:
+      LAUNCH_GROUPNORM_SCALE(192, CHANNELS_PER_THREAD)
+    case 160:
+      LAUNCH_GROUPNORM_SCALE(160, CHANNELS_PER_THREAD)
     case 128:
-      LAUNCH_GROUPNORM_SCALE(64, 2)
+      LAUNCH_GROUPNORM_SCALE(128, CHANNELS_PER_THREAD)
+    case 64:
+      LAUNCH_GROUPNORM_SCALE(64, CHANNELS_PER_THREAD)
     default:
       ORT_NOT_IMPLEMENTED("Not implemented");
   }
 }
 
 template <typename T, int ThreadsPerBlock, int VecSize>
-Status GroupNormNHWCScaleOp(const GroupNormNHWCParams<T>* params) {
+Status GroupNormNHWCScaleOp(const GroupNormNHWCTunableParams<T>* params) {
   dim3 grid;
-  grid.x = params->c / params->cPerBlock;
-  grid.y = CeilDiv(params->hw, params->hwPerBlock);
+  grid.x = DivUp(params->c, params->channels_per_block);
+  grid.y = DivUp(params->hw, params->hw_per_block);
   grid.z = params->n;
 
-  groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>
+  GroupNormNHWCScaleKernel<T, VecSize>
       <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(
-          params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
-          params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
+          params->dst, params->src, params->skip, params->gamma, params->beta, params->skip_workspace,
+          params->group_sum_buffer, params->epsilon, params->c, params->channels_per_block, params->channels_per_group,
+          params->groups, params->hwc, params->inv_hw_channels_per_group, params->hw, params->hw_per_block,
+          params->use_silu);
   return HIP_CALL(hipGetLastError());
 }
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 class GroupNormNHWCOp {
  public:
-  Status operator()(const GroupNormNHWCParams<T>* params) {
-    HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->StreamHandle()));
+  Status operator()(const GroupNormNHWCTunableParams<T>* params) {
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(params->group_sum_buffer,
+                                       0,
+                                       GetGroupNormWorkspaceSizeInBytes(params->n, params->groups),
+                                       params->StreamHandle()));
     auto status = GroupNormNHWCSumOp<T, ThreadsPerBlock, VecSize>(params);
     ORT_RETURN_IF_ERROR(status);
     HIP_RETURN_IF_ERROR(hipGetLastError());
@@ -138,29 +140,30 @@ class GroupNormNHWCOp {
     return Status::OK();
   }
 
-  Status IsSupported(const GroupNormNHWCParams<T>* params) {
+  Status IsSupported(const GroupNormNHWCTunableParams<T>* params) {
     TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        !(params->c % VecSize == 0 && params->cPerGroup % VecSize == 0),
-        "The number of channels (", params->c, ") or the number of channels per group (", params->cPerGroup,
+        !(params->c % VecSize == 0 && params->channels_per_group % VecSize == 0),
+        "The number of channels (", params->c, ") or the number of channels per group (", params->channels_per_group,
         ") isn't divisible by the number of vector size: ", VecSize);
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock % params->cPerGroup == 0 &&
-                                                params->c % params->cPerBlock == 0 && params->hw % params->hwPerBlock == 0),
-                                              "The value of attributes don't meet the requirements.");
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->cPerBlock <= ThreadsPerBlock * VecSize &&
-                                                params->cPerBlock > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize),
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!(params->channels_per_block <= ThreadsPerBlock * VecSize &&
+                                                params->channels_per_block > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize),
                                               "Configuration: Threads (", ThreadsPerBlock, "), vector size (",
-                                              VecSize, ") is redundant for the number of channels per group: ", params->cPerBlock);
+                                              VecSize, ") is redundant for the number of channels per group: ",
+                                              params->channels_per_block);
 
     return Status::OK();
   }
 };
 
 template <typename T>
-Status GroupNormNHWCStaticSelection(const GroupNormNHWCParams<T>* params) {
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->StreamHandle()));
-  groupNormNHWCSum<T>(params);
+Status GroupNormNHWCStaticSelection(const GroupNormNHWCTunableParams<T>* params) {
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(params->group_sum_buffer,
+                                     0,
+                                     GetGroupNormWorkspaceSizeInBytes(params->n, params->groups),
+                                     params->StreamHandle()));
+  GroupNormNHWCSum<T>(params);
   HIP_RETURN_IF_ERROR(hipGetLastError());
-  groupNormNHWCScale<T>(params);
+  GroupNormNHWCScale<T>(params);
   HIP_RETURN_IF_ERROR(hipGetLastError());
   return Status::OK();
 }
@@ -178,30 +181,30 @@ Status GroupNormNHWCStaticSelection(const GroupNormNHWCParams<T>* params) {
   ADD_OP_FOR_ALL_VEC_SIZE(name, 320)
 
 template <typename T>
-class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
+class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCTunableParams<T>> {
  public:
   GroupNormNHWCTunableOp() {
     this->RegisterOp(GroupNormNHWCStaticSelection<T>);
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWCOp)
 
 #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSwish=*/false>()) {
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSilu=*/false>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 
-    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSwish=*/true>()) {
+    for (auto&& [_, op] : GetCKGroupNormNHWCTypeStringAndOps<T, /*AccT=*/float, /*WithSilu=*/true>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef USE_TRITON_KERNEL
-    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSwish=*/false>()) {
+    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSilu=*/false>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
-    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSwish=*/true>()) {
+    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSilu=*/true>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
