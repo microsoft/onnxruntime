@@ -116,7 +116,10 @@ class QDQQuantizer(ONNXQuantizer):
         # if the activation or weight types are 16-bit integers.
         # TODO: Remove this override (and use only the 'UseQDQContribOps' option) if/when ONNX adds 16-bit support.
         int16_types = (TensorProto.UINT16, TensorProto.INT16)
-        if not self.qdq_op_domain and (self.activation_qType in int16_types or self.weight_qType in int16_types):
+        overrides_have_int16 = any(t in int16_types for t in self.tensor_quant_override_types)
+        if not self.qdq_op_domain and (
+            self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
+        ):
             logging.warning(
                 "ONNX QuantizeLinear and DequantizeLinear operators do not support 16-bit integer quantization types. "
                 f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
