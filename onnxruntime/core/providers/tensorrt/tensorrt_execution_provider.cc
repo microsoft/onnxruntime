@@ -717,57 +717,57 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
   return Status::OK();
 }
 
-#define CASE_GET_INPUT_TENSOR(DATA_TYPE, SrcT)                                                                                                     \
-  case DATA_TYPE: {                                                                                                                                \
-    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                                                    \
-    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                                             \
-      data = const_cast<SrcT*>(input_tensor_ptr);                                                                                                  \
-    } else {                                                                                                                                       \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(SrcT)));                                             \
-      data = scratch_buffers.back().get();                                                                                                         \
-    }                                                                                                                                              \
-    break;                                                                                                                                         \
+#define CASE_GET_INPUT_TENSOR(DATA_TYPE, SrcT)                                                         \
+  case DATA_TYPE: {                                                                                    \
+    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                        \
+    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                 \
+      data = const_cast<SrcT*>(input_tensor_ptr);                                                      \
+    } else {                                                                                           \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(SrcT))); \
+      data = scratch_buffers.back().get();                                                             \
+    }                                                                                                  \
+    break;                                                                                             \
   }
 
-#define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                          \
-  case DATA_TYPE: {                                                                                                                                \
-    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                                                    \
-    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                             \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT)));                                  \
-      data = scratch_buffers.back().get();                                                                                                         \
-      cuda::Impl_Cast<SrcT, DstT>(stream, input_tensor_ptr, reinterpret_cast<DstT*>(data), elem_cnt);                                              \
-    } else {                                                                                                                                       \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(DstT)));                                             \
-      data = scratch_buffers.back().get();                                                                                                         \
-    }                                                                                                                                              \
-  break;                                                                                                                                           \
+#define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                         \
+  case DATA_TYPE: {                                                                                               \
+    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                   \
+    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                            \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
+      data = scratch_buffers.back().get();                                                                        \
+      cuda::Impl_Cast<SrcT, DstT>(stream, input_tensor_ptr, reinterpret_cast<DstT*>(data), elem_cnt);             \
+    } else {                                                                                                      \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(DstT)));            \
+      data = scratch_buffers.back().get();                                                                        \
+    }                                                                                                             \
+    break;                                                                                                        \
   }
 
-#define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                                                                                    \
-  case DATA_TYPE: {                                                                                                                                \
-    auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                                                           \
-    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                            \
-      buffers[output_name] = output_tensor_ptr;                                                                                                    \
-    } else {                                                                                                                                       \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(SrcT)));                                             \
-      buffers[output_name] = scratch_buffers.back().get();                                                                                         \
-    }                                                                                                                                              \
-    break;                                                                                                                                         \
+#define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                                        \
+  case DATA_TYPE: {                                                                                    \
+    auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                               \
+    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                \
+      buffers[output_name] = output_tensor_ptr;                                                        \
+    } else {                                                                                           \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(SrcT))); \
+      buffers[output_name] = scratch_buffers.back().get();                                             \
+    }                                                                                                  \
+    break;                                                                                             \
   }
 
-#define CASE_GET_CAST_OUTPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                         \
-  case DATA_TYPE: {                                                                                                                                \
-    auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                                                           \
-    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                            \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT)));                                  \
-      buffers[output_name] = scratch_buffers.back().get();                                                                                         \
-      output_dim_sizes[i] = static_cast<int>(elem_cnt);                                                                                            \
-    } else {                                                                                                                                       \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(DstT)));                                             \
-      buffers[output_name] = scratch_buffers.back().get();                                                                                         \
-      output_dim_sizes[i] = 1;                                                                                                                     \
-    }                                                                                                                                              \
-    break;                                                                                                                                         \
+#define CASE_GET_CAST_OUTPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                        \
+  case DATA_TYPE: {                                                                                               \
+    auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                          \
+    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                           \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
+      buffers[output_name] = scratch_buffers.back().get();                                                        \
+      output_dim_sizes[i] = static_cast<int>(elem_cnt);                                                           \
+    } else {                                                                                                      \
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(DstT)));            \
+      buffers[output_name] = scratch_buffers.back().get();                                                        \
+      output_dim_sizes[i] = 1;                                                                                    \
+    }                                                                                                             \
+    break;                                                                                                        \
   }
 
 #define CASE_COPY_TENSOR(DATA_TYPE, DstT)                                                                                                          \
@@ -969,7 +969,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
  *
  * In the case of DDS (data-dependent shape) output, TRT requires a provided allocator to allocate memory during runtime.
  * Once the output has been put in the allocation buffer, ORT calls this function to bind the allocation to ORT kernel context output.
- * 
+ *
  * Note: Current approach of setting the ORT kernel context output is copying the output data from allocation buffer to ORT context output address which is not optimal,
  * we are waiting for ORT core to support "assign" memory address to ORT context output. Some works need to be done in ORT memory planner to be aware of this memory support.
  */
@@ -984,7 +984,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
   auto& shape = allocator->getOutputShape();
   auto output_tensor = ctx.GetOutput(output_index, shape);
 
-  /* 
+  /*
    * Return the number of elements specified by the tensor shape (all dimensions multiplied by each other).
    * For 0 dimensions, 1 is returned. If any dimension is less than 0, the result is always -1.
    *
@@ -999,7 +999,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
   /*
    * Copy output data from allocation buffer to ORT kernel context output location or
    * cast (int32 or float) -> (int64 or double) to ORT kernel context output location.
-   * 
+   *
    * Note:
    * 1. If the output tensor is empty tensor (i.e. any of the dimension is 0) which means element count is 0,
    *    TRT EP does not perform cuda memory copy nor cuda cast to prevent overwriting other location that might belong to other tensors.
@@ -1007,8 +1007,8 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
    *    don't need to explicitly call cudaStreamSynchronize() after those APIs due to CUDA EP and TRT EP uses same stream,
    *    and within the same stream, operations are guaranteed to be executed in order.
    */
-  switch (output_type) {                                           
-    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float) 
+  switch (output_type) {
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
