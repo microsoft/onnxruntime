@@ -279,7 +279,7 @@ stages:
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml \
-        detox test --record-logs all --configuration android.emu.release
+        detox test --record-logs all --configuration android.emu.release --loglevel trace
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox Android e2e Tests
 
@@ -329,7 +329,7 @@ stages:
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
-        detox test --record-logs all --configuration ios.sim.release
+        detox test --record-logs all --configuration ios.sim.release --loglevel trace
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
 

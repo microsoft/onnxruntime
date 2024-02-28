@@ -710,7 +710,8 @@ export class WebGpuBackend {
   }
   setQueryType(): void {
     this.queryType = 'none';
-    if (this.env.webgpu.profiling?.mode === 'default' || this.env.wasm.trace) {
+    if (this.env.webgpu.profiling?.mode === 'default' ||
+        (typeof this.env.trace === 'undefined' ? this.env.wasm.trace : this.env.trace)) {
       if (this.device.features.has('chromium-experimental-timestamp-query-inside-passes')) {
         this.queryType = 'inside-passes';
       } else if (this.device.features.has('timestamp-query')) {

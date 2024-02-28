@@ -410,7 +410,8 @@ def run_ort_inference(args, inputs, model):
         actual_output = handle_output(ort_outputs[0][0])
         logger.info(f"Generated token length: {len(actual_output)} tokens")
         transcription = args.processor.batch_decode(ort_outputs[0], skip_special_tokens=True)[0]
-        logger.info(f"Transcription: {transcription}")
+        # print to stdout as the output for comparison
+        print(f"{transcription}")
 
     measure_fn(args, generate_fn, ort_inputs)
 
