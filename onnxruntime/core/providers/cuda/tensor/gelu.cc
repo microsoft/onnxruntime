@@ -44,6 +44,13 @@ Status Gelu<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   if (approximation_algorithm_ == "tanh") {
+#ifdef USE_ROCM
+    return LaunchElementwiseKernel<functor::FastGeLU, CudaT>(
+        GetTuningContext(), context->GetComputeStream(),
+        reinterpret_cast<const CudaT*>(input->Data<T>()), static_cast<int>(input_length),
+        nullptr /* no bias */, 0 /* no bias */,
+        reinterpret_cast<CudaT*>(output->MutableData<T>()));
+#else
     return LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
                                        Stream(context),
                                        static_cast<int>(input_length),
@@ -52,6 +59,7 @@ Status Gelu<T>::ComputeInternal(OpKernelContext* context) const {
                                        nullptr /* no bias */,
                                        reinterpret_cast<CudaT*>(output->MutableData<T>()),
                                        use_half2_);
+#endif
   } else if (approximation_algorithm_ == "none") {
     return LaunchGeluKernel<CudaT>(Stream(context),
                                    reinterpret_cast<const CudaT*>(input->Data<T>()),
