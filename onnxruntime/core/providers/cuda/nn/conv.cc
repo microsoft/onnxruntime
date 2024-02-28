@@ -96,9 +96,7 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 }
 
 template <typename T, bool NHWC>
-Status Conv<T, NHWC>::PrePack([[maybe_unused]] const Tensor& tensor,
-                              [[maybe_unused]] int input_idx,
-                              [[maybe_unused]] AllocatorPtr alloc,
+Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                               bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
@@ -125,6 +123,10 @@ Status Conv<T, NHWC>::PrePack([[maybe_unused]] const Tensor& tensor,
       CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
       is_packed = true;
     }
+  } else {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
   }
 
   return Status::OK();
