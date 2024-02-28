@@ -55,10 +55,17 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     if (global_context.is_wholly_supported_graph) {
 #if defined(IO_BUFFER_ENABLED)
       if ((global_context.device_type.find("GPU") != std::string::npos) &&
-          (global_context_.context != nullptr)) {
+          ((global_context_.context != nullptr) || (global_context_.queue != nullptr))) {
         LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
-        cl_context ctx = static_cast<cl_context>(global_context_.context);
-        remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
+        if (global_context_.context != nullptr) {
+          LOGS_DEFAULT(VERBOSE) << log_tag << "Using OpenCL Context sharing";
+          cl_context ctx = static_cast<cl_context>(global_context_.context);
+          remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
+        } else if (global_context.queue != nullptr) {
+          LOGS_DEFAULT(VERBOSE) << log_tag << "Using OpenCL Command Queue sharing";
+          cl_command_queue queue = static_cast<cl_command_queue>(global_context_.queue);
+          remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), queue);
+        }     
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.LoadNetwork(
             ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);

@@ -623,7 +623,8 @@ typedef struct OrtOpenVINOProviderOptions {
                                  cache_dir{},
                                  context{},
                                  enable_opencl_throttling{},
-                                 enable_dynamic_shapes{} {}
+                                 enable_dynamic_shapes{},
+                                 queue{} {}
 #endif
   /** \brief Device type string
    *
@@ -637,6 +638,7 @@ typedef struct OrtOpenVINOProviderOptions {
   void* context;
   unsigned char enable_opencl_throttling;  ///< 0 = disabled, nonzero = enabled
   unsigned char enable_dynamic_shapes;     ///< 0 = disabled, nonzero = enabled
+  void* queue;
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;

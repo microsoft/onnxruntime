@@ -1713,6 +1713,13 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
+
+  if (legacy_ov_options->queue != nullptr) {
+    std::stringstream queue_string;
+    queue_string << legacy_ov_options->queue;
+    ov_options_converted_map["queue"] = queue_string.str();
+  }
+
   return ov_options_converted_map;
 }
 

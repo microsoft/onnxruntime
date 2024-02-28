@@ -31,6 +31,7 @@ struct GlobalContext {
   int onnx_opset_version;
   void* context = 0;
   bool use_api_2;
+  void* queue = 0;
 };
 
 // Holds context specific to subgraph.
