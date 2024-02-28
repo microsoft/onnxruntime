@@ -141,7 +141,7 @@ def generate_artifacts(
 
             return self._loss(*inputs_to_loss)
 
-    training_block = _TrainingBlock(loss_block)
+    training_block = _TrainingBlock(loss_block, loss_input_names)
 
     if requires_grad is not None and frozen_params is not None and set(requires_grad).intersection(set(frozen_params)):
         raise RuntimeError(
