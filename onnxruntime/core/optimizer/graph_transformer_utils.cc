@@ -57,6 +57,7 @@
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
+#include "core/optimizer/stft_decomposition.h"
 #ifdef MLAS_TARGET_AMD64_IX86
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
@@ -344,6 +345,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
+      transformers.emplace_back(std::make_unique<STFTDecomposition>(dml_ep));
 
 #ifdef MLAS_TARGET_AMD64_IX86
       if (avx2_precision_mode) {
