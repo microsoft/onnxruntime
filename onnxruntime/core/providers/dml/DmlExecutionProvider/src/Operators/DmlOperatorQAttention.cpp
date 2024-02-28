@@ -363,10 +363,9 @@ public:
 
         // Causal Mask: [pastSequenceLength, pastSequenceLength + 1 ... pastSequenceLength + batchSize -1]
         // passed to MHA as maskIndex Tensor when unidirectional == 1
-        std::array<uint32_t, 2> causalMaskOutputShape = {1, batchSize};
-        //std::array<uint32_t, 2> causalMaskOutputShape = {1, pastSequenceLength + sequenceLength};
+        std::array<uint32_t, 4> causalMaskOutputShape = {batchSize, numHeads,  sequenceLength, pastSequenceLength + sequenceLength};
         TensorDesc causalMaskTensorDesc;
-        DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC causalMaskOperatorDesc = {};
+        DML_DIAGONAL_MATRIX1_OPERATOR_DESC causalMaskOperatorDesc = {};
         DML_TENSOR_DESC namedcausalMaskTensorDesc;
 
         if (unidirectional && !hasMask)
@@ -374,13 +373,14 @@ public:
             causalMaskTensorDesc = TensorDesc::ConstructDefaultTensorDesc(MLOperatorTensorDataType::Int32, causalMaskOutputShape);
             namedcausalMaskTensorDesc = causalMaskTensorDesc.GetDmlDesc();
             causalMaskOperatorDesc.ValueDataType = DML_TENSOR_DATA_TYPE_INT32;
-            causalMaskOperatorDesc.ValueStart.Int32 = pastSequenceLength + 1;
-            causalMaskOperatorDesc.ValueDelta.Int32 = 0;
+            causalMaskOperatorDesc.DiagonalFillBegin = INT32_MIN;
+            causalMaskOperatorDesc.DiagonalFillEnd = pastSequenceLength + 1;
+            causalMaskOperatorDesc.Value.Int32 = 1;
             causalMaskOperatorDesc.OutputTensor = &namedcausalMaskTensorDesc;
 
-            maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH;
+            maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN;
         }
-        DML_OPERATOR_DESC causalMaskDesc = { DML_OPERATOR_FILL_VALUE_SEQUENCE, &causalMaskOperatorDesc };
+        DML_OPERATOR_DESC causalMaskDesc = { DML_OPERATOR_DIAGONAL_MATRIX1, &causalMaskOperatorDesc };
 
         DML_MULTIHEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
         std::array<uint32_t, 5> presentKeyOutputShape = {1, batchSize, numHeads, pastSequenceLength + sequenceLength, headSize};
@@ -408,7 +408,7 @@ public:
         mhaOperatorDesc.RelativePositionBiasTensor = nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
-        mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, std::numeric_limits<float>::lowest());
+        mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaOperatorDesc.HeadCount = numHeads;
         mhaOperatorDesc.MaskType = maskType;
         if (hasPast)

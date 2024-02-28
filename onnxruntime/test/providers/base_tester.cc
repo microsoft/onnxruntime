@@ -344,10 +344,6 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
       size_t idx = 0;
       for (auto& expected_data : output_data_) {
         OrtValue& ort_value = fetches_[idx];
-        //if (idx == 0) {
-        //  idx++;
-        //  continue;
-        //}
 
         if (expected_data.def.Exists()) {  // optional edges won't exist (so skip them)
           const auto& name = expected_data.def.Name();
