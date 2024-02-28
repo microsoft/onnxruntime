@@ -67,7 +67,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   is_resize_ ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
   if (rank != static_cast<int32_t>(scales.size()))
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  is_resize_ ? "Resize: input tensor's dimension does not match the scales." : "Upsample: input tensor's dimension does not match the scales.");
+                  is_resize_ ? "Resize: input tensor's dimension does not match the scales."
+                             : "Upsample: input tensor's dimension does not match the scales.");
   if (roi.size() != 2 * X_dims.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
@@ -138,19 +139,19 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
               height_scale = scales[0];
               width_scale = scales[1];
             } else {
-              if (scales[1] == 1.0f) {
-                batch_size = X_dims[0];
-                num_channels = X_dims[1];
-                input_height = X_dims[2];
-                input_width = X_dims[3];
+              if (scales[0] == 1.0f && scales[1] == 1.0f) {
+                batch_size = X_dims[Channels<LAYOUT_NCHW>::N];
+                num_channels = X_dims[Channels<LAYOUT_NCHW>::C];
+                input_height = X_dims[Channels<LAYOUT_NCHW>::H];
+                input_width = X_dims[Channels<LAYOUT_NCHW>::W];
 
-                output_height = output_dims[2];
-                output_width = output_dims[3];
+                output_height = output_dims[Channels<LAYOUT_NCHW>::H];
+                output_width = output_dims[Channels<LAYOUT_NCHW>::W];
 
                 height_scale = scales[2];
                 width_scale = scales[3];
               } else {
-                ORT_THROW("CUDA Resize does not support NCWH layout");
+                return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Resize", ": NHWC is not supported yet");
               }
             }
 
@@ -175,6 +176,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
           } else if (X_dims.size() == 3 || X_dims.size() == 5) {
             const bool is_3D = X_dims.size() == 3;
+
+            if (!is_3D) {
+              if (!(scales[0] == 1.0f && scales[1] == 1.0f)) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Resize", ": NDHWC is not supported yet");
+              }
+            }
 
             const int64_t batch_size = is_3D ? 1 : X_dims[0];
             const int64_t num_channels = is_3D ? 1 : X_dims[1];
@@ -209,7 +216,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                                 output_count);
           } else {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Resize",
+            return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Resize",
                                    ": 'Linear' mode only support 2-D inputs or 3-D inputs ('Bilinear', 'Trilinear') "
                                    "or 4-D inputs or 5-D inputs with the corresponding outermost 2 scale values "
                                    "being 1.");
@@ -217,23 +224,27 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         } break;
         case UpsampleMode::CUBIC: {
           if (X_dims.size() != 2 && X_dims.size() != 4) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, (is_resize_ ? "Resize" : "Upsample"),
+            return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Resize",
                                    ": 'Cubic' mode only support 2-D inputs ('Bicubic') or 4-D inputs "
                                    "with the corresponding outermost 2 scale values being 1.");
           }
 
           const bool is_2D = X_dims.size() == 2;
-          const bool is_nchw = is_2D ? true : (scales[1] == 1.0f);
-          ORT_ENFORCE(is_nchw);  // We are not implementing it yet.
+          const bool is_nchw = is_2D ? true : (scales[1] == 1.0f && scales[1] == 1.0f);
 
-          const int64_t batch_size = is_2D ? 1 : X_dims[0];
-          const int64_t num_channels = is_2D ? 1 : (is_nchw ? X_dims[1] : X_dims[3]);
-          const int64_t input_height = is_2D ? X_dims[0] : (is_nchw ? X_dims[2] : X_dims[1]);
-          const int64_t input_width = is_2D ? X_dims[1] : (is_nchw ? X_dims[3] : X_dims[2]);
-          const int64_t output_height = is_2D ? output_dims[0] : (is_nchw ? output_dims[2] : output_dims[1]);
-          const int64_t output_width = is_2D ? output_dims[1] : (is_nchw ? output_dims[3] : output_dims[2]);
-          const float height_scale = is_2D ? scales[0] : (is_nchw ? scales[2] : scales[1]);
-          const float width_scale = is_2D ? scales[1] : (is_nchw ? scales[3] : scales[2]);
+          ORT_RETURN_IF_NOT(is_nchw,
+                            "Resize 'Cubic' mode only supports NCWH layout "
+                            " with 2-D or 4-D with leading dims equal to 1");
+
+          const int64_t batch_size = is_2D ? 1 : X_dims[Channels<LAYOUT_NCHW>::N];
+          const int64_t num_channels = is_2D ? 1 : X_dims[Channels<LAYOUT_NCHW>::C];
+          const int64_t input_height = is_2D ? X_dims[0] : X_dims[Channels<LAYOUT_NCHW>::H];
+          const int64_t input_width = is_2D ? X_dims[1] : X_dims[Channels<LAYOUT_NCHW>::W];
+
+          const int64_t output_height = is_2D ? output_dims[0] : output_dims[Channels<LAYOUT_NCHW>::H];
+          const int64_t output_width = is_2D ? output_dims[1] : output_dims[Channels<LAYOUT_NCHW>::W];
+          const float height_scale = is_2D ? scales[0] : scales[2];
+          const float width_scale = is_2D ? scales[1] : scales[3];
 
           ResizeAntiAliasImpl(Stream(context), rank, mode_, coordinate_transform_mode_,
                               X_dims, output_dims,
@@ -252,7 +263,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                               output_count);
         } break;
         default:
-          return Status(ONNXRUNTIME, FAIL, "Resize: unexpected mode");
+          return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Resize: unexpected mode");
       }
     } else {
       TArray<int64_t> input_shape(X_dims);
@@ -348,7 +359,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
     return BaseCompute(context, roi_array, scales_array, output_dims);
   }
 
-  // Scales an sizes are input to the node
+  // Scales and sizes are input to the node
   if (scales != nullptr && scales->Shape().Size() != 0) {
     // use scales input data
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");

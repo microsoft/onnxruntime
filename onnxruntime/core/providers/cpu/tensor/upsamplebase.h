@@ -87,14 +87,17 @@ struct AccumulateType<double> {
   using type = double;
 };
 
-// Antialiasing constants
+namespace antialias_constants {
 constexpr float kCubicCoeffA = -0.75f;
 constexpr float kSupportSize = 2.0f;
 constexpr float kBiCubicSupportSize = 4.0f;
+}  // namespace antialias_constants
 
 namespace ConstValue {
 constexpr int32_t mag_factor = 1 << (22 - 1);
-}
+// We use to multiply by 2, let's make a constant which is twice as big
+constexpr int32_t mag_factor_x_2 = 1 << 22;
+}  // namespace ConstValue
 
 template <class T>
 inline constexpr bool is_8bit_v = std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value;
@@ -157,7 +160,7 @@ class UpsampleBase {
       keep_aspect_ratio_policy_ = StringToKeepAspectRatioPolicy(keep_aspect_ratio_policy);
 
       // guard against unit tests that can add an attribute
-      auto axes = info.GetAttrsOrDefault("axes");
+      auto axes = info.GetAttrsOrDefault<int64_t>("axes");
       axes_.assign(axes.cbegin(), axes.cend());
     }
 
@@ -186,7 +189,7 @@ class UpsampleBase {
     nearest_mode_ = StringToNearestMode(nearest_mode_name);
     get_nearest_pixel_ = GetNearestPixelFromOriginal(nearest_mode_);
 
-    cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", kCubicCoeffA);
+    cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", antialias_constants::kCubicCoeffA);
     exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == false || mode_ != LINEAR)) {

@@ -37,12 +37,12 @@ REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
                                             InlinedVector<float>& scales) const {
-  InlinedHashSet<int64_t> axes_set(axes_.begin(), axes_.end());
-
   // AspectRatioPolicy::STRETCH is default policy when opset < 18
   if (keep_aspect_ratio_policy_ == AspectRatioPolicy::STRETCH) {
     return;
   }
+
+  InlinedHashSet<int64_t> axes_set(axes_.begin(), axes_.end());
 
   float scale_in_policy = 0.0f;
   if (keep_aspect_ratio_policy_ == AspectRatioPolicy ::NOT_LARGER) {

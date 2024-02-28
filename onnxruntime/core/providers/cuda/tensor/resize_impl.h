@@ -104,7 +104,6 @@ void ResizeAntiAliasImpl(
     std::tuple<int64_t, int64_t, int64_t> inferred_input_dims,
     std::tuple<int64_t, int64_t, int64_t> inferred_output_dims,
     std::tuple<float, float, float> inferred_dim_rscales,
-    // const TArray<int64_t>& input_strides,
     const TArray<fast_divmod>& output_div_pitches,
     gsl::span<const float> roi_vals,  // CPU
     const std::optional<float>& extrapolation_value,
@@ -140,7 +139,6 @@ inline int32_t ComputeWindowSize(float scaled_support) {
 /// <summary>
 /// Computes scale buffer size in number of elements for allocation purposes.
 /// </summary>
-/// <typeparam name="T"></typeparam>
 /// <param name="output_size"></param>
 /// <param name="window_size"></param>
 /// <returns>Number of elements to fit in the buffer</returns>

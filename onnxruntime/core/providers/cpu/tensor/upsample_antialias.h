@@ -31,8 +31,8 @@ struct FilterParamsBaseAntiAlias {
 
 template <typename T>
 struct FilterParamsAntiAlias {
-  float support_size = kSupportSize;
-  float cubic_coeff_a = kCubicCoeffA;
+  float support_size = antialias_constants::kSupportSize;
+  float cubic_coeff_a = antialias_constants::kCubicCoeffA;
 
   FilterParamsBaseAntiAlias<T> dim_x;
   FilterParamsBaseAntiAlias<T> dim_y;
@@ -63,7 +63,7 @@ struct BilinearParamsAntiAlias : FilterParamsAntiAlias<T> {
 template <typename T>
 struct BiCubicParamsAntiAlias : FilterParamsAntiAlias<T> {
   BiCubicParamsAntiAlias() {
-    this->support_size = kBiCubicSupportSize;
+    this->support_size = antialias_constants::kBiCubicSupportSize;
   }
 
   // taken from
@@ -109,9 +109,9 @@ struct TriLinearParamsAntiAlias : FilterParamsAntiAlias<T> {
 // - [N, H, W, C] and the scales are [1.0, height_scale, width_scale, 1.0]
 template <class T>
 void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
-                                  gsl::span<int64_t> input_h_w_c,
-                                  gsl::span<int64_t> output_h_w_c,
-                                  gsl::span<float> scale_h_w_c,
+                                  gsl::span<const int64_t> input_h_w_c,
+                                  gsl::span<const int64_t> output_h_w_c,
+                                  gsl::span<const float> scale_h_w_c,
                                   gsl::span<const float> roi,
                                   AllocatorPtr& alloc,
                                   const GetOriginalCoordinateFunc& get_original_coordinate,
@@ -199,7 +199,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
 
         // normalize the scale to 1 << 22 for int8/uint8
         if constexpr (std::is_same<T, int32_t>::value) {
-          scale_buffer_int[x] = static_cast<int32_t>(std::round(scale_buffer[x] * ConstValue::mag_factor * 2.f));
+          scale_buffer_int[x] = static_cast<int32_t>(std::round(scale_buffer[x] * ConstValue::mag_factor_x_2));
         }
       }
       /*for (; x < window_size; x++) {
