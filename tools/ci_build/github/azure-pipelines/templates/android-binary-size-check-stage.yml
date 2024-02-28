@@ -31,7 +31,7 @@ stages:
     timeoutInMinutes: 60
     workspace:
       clean: all
-    pool: onnxruntime-Linux-CPU-For-Android-CI
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     steps:
     - checkout: self
       clean: true
