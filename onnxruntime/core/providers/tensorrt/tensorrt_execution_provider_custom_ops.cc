@@ -9,7 +9,7 @@
 #include <unordered_set>
 
 namespace onnxruntime {
-extern TensorrtLogger& GetTensorrtLogger();
+extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 
 /*
  * Create custom op domain list for TRT plugins.
@@ -56,7 +56,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   try {
     // Get all registered TRT plugins from registry
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
-    TensorrtLogger trt_logger = GetTensorrtLogger();
+    TensorrtLogger trt_logger = GetTensorrtLogger(false);
     initLibNvInferPlugins(&trt_logger, "");
 
     int num_plugin_creator = 0;
