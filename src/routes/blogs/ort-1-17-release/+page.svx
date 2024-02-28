@@ -1,6 +1,6 @@
 ---
-title: ONNX Runtime 1.17: CUDA 12 support, Phi-2 optimizations, WebGPU, and more!
-date: '2024-02-28'
+title: 'ONNX Runtime 1.17: CUDA 12 support, Phi-2 optimizations, WebGPU, and more!'
+date: '28th February, 2024'
 description: 'From Phi-2 model optimizations to CUDA 12 support, read this post to learn more about some of the exciting new functionality introduced in the ONNX Runtime 1.17 release.'
 keywords: 'ORT, ONNX Runtime, ONNX, machine learning, deep learning, model optimization, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8, pose detection, CUDA 12, GPU, Windows, browser, WebGPU, DirectML, NPU, Phi-2, Mistral, CodeLlama, SDXL-Turbo, on-device training, DirectML, NPU, WebGPU, Yolov8'
 authors:
@@ -37,11 +37,23 @@ ONNX Runtime also shows significant benefits for training LLMs, and these gains 
 
 To read more about improving generative AI model performance with ONNX Runtime 1.17, check out our recent post on the ONNX Runtime blog: [Accelerating Phi-2, CodeLlama, Gemma and other Gen AI models with ONNX Runtime](https://onnxruntime.ai/blogs/accelerating-phi-2).
 
+<div class="grid grid-cols-1 lg:grid-cols-2">
+<img class="m-auto" src="../accelerating-phi-2/Phi2_Int4_TokenGenerationTP.png" alt="Phi-2 int4 token generation throughput comparison">
+
+<img class="m-auto" src="../accelerating-phi-2/Orca2_7b_int4_TokenGenTP.png" alt="Orca-2 int4 token generation throughput comparison">
+
+<img class="m-auto" src="../accelerating-phi-2/CodeLlama_int4_TokenGenTP.png" alt="CodeLlama int4 token generation throughput comparison">
+
+<img class="m-auto" src="../accelerating-phi-2/Gemma2_int4_tokengenTP.png" alt="Gemma int4 token generation throughput comparison">
+</div>
+
 # In-Browser Training
 
 On-device training allows you to improve the user experience for developer applications using device data. It supports scenarios like federated learning, which trains a global model using data on the device. With the 1.17 release, ORT will now enable training machine learning models in the browser using on-device training.
 
 To learn more about training a model in browser with on-device training, check out this recent post on the Microsoft Open Source Blog: [On-Device Training: Training a model in browser](https://cloudblogs.microsoft.com/opensource/2024/02/06/on-device-training-training-a-model-in-browser/).
+
+<img class="m-auto w50" src="./in_browser_training.jpg" alt="Diagram of the components of the onnxruntime-web JS package">
 
 # DirectML NPU Support
 
@@ -60,6 +72,8 @@ To learn more about how ONNX Runtime Web further accelerates in-browser machine 
 This release adds support for running the YOLOv8 model for pose estimation. Pose estimation involves processing the objects detected in an image and identifying the position and orientation of people in the image. The core YOLOv8 model returns a set of key points, representing specific parts of the detected person's body, such as joints and other distinctive features. Including the pre- and post-processing in the ONNX model allows developers to supply an input image directly, either in common image formats or raw RGB values, and output the image with bounding boxes and key points.
 
 To learn more about how to build and run ONNX models on mobile with built-in pre and post processing for object detection and pose estimation, check out our recent tutorial in the ONNX Runtime documentation: [Object detection and pose estimation with YOLOv8](https://onnxruntime.ai/docs/tutorials/mobile/pose-detection.html).
+
+<img class="m-auto w50" src="./yolov8_pose_estimation.png" alt="Person with pose drawn">
 
 # CUDA 12 Packages
 
