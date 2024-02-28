@@ -16,6 +16,7 @@
   endif()
 
   # Header paths
+  list(APPEND CMAKE_PREFIX_PATH "$ENV{INTEL_OPENVINO_DIR}/runtime/cmake")
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
 
