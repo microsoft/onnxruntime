@@ -4,6 +4,8 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
+# This image is only used in non packaging scenarios for runing tests.
+
 # Build base image with required system packages
 ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 ARG TRT_VERSION=8.6.1.6-1+cuda11.8
@@ -24,6 +26,10 @@ RUN apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     python3-wheel
+
+# Install ffmpeg, which couldn't be installed in UBI8
+# https://stackoverflow.com/questions/73597789/how-to-install-ffmpeg-on-ubi-docker-images
+RUN apt-get install -y --no-install-recommends ffmpeg
 
 RUN pip install --upgrade pip
 
