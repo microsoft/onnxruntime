@@ -10,8 +10,10 @@
 #pragma warning(push)
 #pragma warning(disable : 4100)
 #endif
+
 #include <NvInfer.h>
 #include <NvOnnxParser.h>
+
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
