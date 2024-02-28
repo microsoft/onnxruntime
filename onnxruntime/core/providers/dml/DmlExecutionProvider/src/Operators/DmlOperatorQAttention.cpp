@@ -361,7 +361,8 @@ public:
         const DML_OPERATOR_DESC pastKeySlicedDesc = { DML_OPERATOR_SLICE1, &pastKeySlicedOperatorDesc};
         const DML_OPERATOR_DESC pastValueSlicedDesc = { DML_OPERATOR_SLICE1, &pastValueSlicedOperatorDesc};
 
-        // Causal Mask: [pastSequenceLength, pastSequenceLength + 1 ... pastSequenceLength + batchSize -1]
+        // Causal Mask: Upper Triangular Boolean Matrix
+        // DML adds maskFilterValue to the "off" bits in the mask and sets the "on" bits to 0
         // passed to MHA as maskIndex Tensor when unidirectional == 1
         std::array<uint32_t, 4> causalMaskOutputShape = {batchSize, numHeads,  sequenceLength, pastSequenceLength + sequenceLength};
         TensorDesc causalMaskTensorDesc;

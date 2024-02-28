@@ -932,6 +932,7 @@ void TestQuantizedAttentionPastState(int64_t batch,
 
   std::vector<int64_t> past_dims{2, batch, head_number, past_seq_len, head_size};
   std::vector<float> past_data = random.Gaussian<float>(past_dims, 0.0f, 0.3f);
+
   OpTester test("QAttention", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("num_heads", head_number);
   test.AddAttribute<int64_t>("unidirectional", 1);
