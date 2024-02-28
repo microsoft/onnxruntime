@@ -303,7 +303,6 @@ TEST(BlkQ4_GEMM, Sm80ColBlockingTest) {
 
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, false, false>(256, 1024, 576);
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, false, true>(256, 1024, 576);
-
 }
 
 TEST(BlkQ4_GEMM, Sm80SmallMTest) {
