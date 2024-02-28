@@ -19,7 +19,7 @@ authorsLink:
     'https://www.linkedin.com/in/sophieschoenmeyer/',
     'https://www.linkedin.com/in/parinitaparinita/',
     'https://www.linkedin.com/in/kshama-pawar/',
-    'https://www.linkedin.com/carzh/',
+    'https://www.linkedin.com/in/carzh/',
     'https://www.linkedin.com/in/chadpralle/',
     '',
     'https://www.linkedin.com/in/natkershaw/',
