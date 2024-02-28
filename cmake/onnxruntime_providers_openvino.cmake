@@ -15,15 +15,8 @@
       set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
   endif()
 
-  # Header paths
-  list(APPEND CMAKE_PREFIX_PATH "$ENV{INTEL_OPENVINO_DIR}/runtime/cmake")
-  find_package(InferenceEngine REQUIRED)
-  find_package(ngraph REQUIRED)
-
-  if (OPENVINO_2022_1 OR OPENVINO_2022_2)
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
-  list (OV_20_LIBS openvino::frontend::onnx openvino::runtime)
-  endif()
+  list(APPEND OV_20_LIBS openvino::frontend::onnx openvino::runtime)
 
   if (WIN32)
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
@@ -31,9 +24,9 @@
 
   if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}))
     add_definitions(-DIO_BUFFER_ENABLED=1)
-    list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS} ${OV_20_LIBS} ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
+    list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS} ${OV_20_LIBS} ${InferenceEngine_LIBRARIES} ${PYTHON_LIBRARIES})
   else()
-    list(APPEND OPENVINO_LIB_LIST ${OV_20_LIBS} ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
+    list(APPEND OPENVINO_LIB_LIST ${OV_20_LIBS} ${InferenceEngine_LIBRARIES} ${PYTHON_LIBRARIES})
   endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
