@@ -11,6 +11,7 @@
 	import SDXLTurboImage from '../../images/blogs/sdxl_blog_thumbnail.png';
 	import Phi2Image from '../../routes/blogs/accelerating-phi-2/Phi2_Int4_TokenGenerationTP.png';
 	import { createEventDispatcher } from 'svelte';
+	import ORT117Thumbnail from '../../images/blogs/ort-1-17-thumbnail.png';
 	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
 	onMount(() => {
 		anime({
@@ -40,6 +41,15 @@
 	}
 	let featuredblog = [
 		{
+			title: 'ONNX Runtime 1.17: CUDA 12 support, Phi-2 optimizations, WebGPU, and more!',
+			date: 'February 28th, 2024',
+			blurb:
+				'From Phi-2 model optimizations to CUDA 12 support, read this post to learn more about some of the exciting new functionality introduced in the ONNX Runtime 1.17 release.',
+			link: 'blogs/ort-1-17-release',
+			image: ORT117Thumbnail,
+			imgalt: 'ONNX Runtime 1.17 release logo'
+		},
+		{
 			title: 'Accelerating Phi-2, CodeLlama, Gemma and other Gen AI models with ONNX Runtime',
 			date: 'February 26th, 2024',
 			blurb:
@@ -56,7 +66,9 @@
 			link: 'https://cloudblogs.microsoft.com/opensource/2024/02/06/on-device-training-training-a-model-in-browser',
 			image: WebTrainingImage,
 			imgalt: 'Components of the onnxruntime-web JS package'
-		},
+		}
+	];
+	let blogs = [
 		{
 			title: 'Accelerating SD Turbo and SDXL Turbo Inference with ONNX Runtime and Olive',
 			date: 'January 15th, 2024',
@@ -66,8 +78,6 @@
 			image: SDXLTurboImage,
 			imgalt: 'SD Turbo and SDXL Turbo models with ONNX Runtime and Olive'
 		},
-	];
-	let blogs = [
 		{
 			title: 'Accelerating LLaMA-2 Inference with ONNX Runtime',
 			date: 'November 14th, 2023',
