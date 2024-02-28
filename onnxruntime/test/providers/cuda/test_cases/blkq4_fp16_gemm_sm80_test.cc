@@ -263,7 +263,7 @@ TEST(BlkQ4_GEMM, PrepackSm80Test) {
   testPrepack<true, false>(256, 256);
 }
 
-TEST(BlkQ4_GEMM, Sm80Test) {
+TEST(BlkQ4_GEMM, Sm80RowBlockingTest) {
   Status status = onnxruntime::cuda::test::sm80_supported();
   if (!status.IsOK()) {
     // skip the test if sm80 is not supported
@@ -290,14 +290,30 @@ TEST(BlkQ4_GEMM, Sm80Test) {
 
   onnxruntime::cuda::test::run_blkq4_gemm<64, false, false, false>(256, 1024, 576);
   onnxruntime::cuda::test::run_blkq4_gemm<64, false, false, true>(256, 1024, 576);
+}
 
-  onnxruntime::cuda::test::run_blkq4_gemm<16, true, false, false>(256, 672, 576);
-  onnxruntime::cuda::test::run_blkq4_gemm<16, true, false, true>(256, 672, 576);
+TEST(BlkQ4_GEMM, Sm80ColBlockingTest) {
+  Status status = onnxruntime::cuda::test::sm80_supported();
+  if (!status.IsOK()) {
+    // skip the test if sm80 is not supported
+    return;
+  }
+  onnxruntime::cuda::test::run_blkq4_gemm<16, true, false, false>(64, 672, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<16, true, false, true>(64, 672, 576);
 
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, false, false>(256, 1024, 576);
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, false, true>(256, 1024, 576);
 
-  // small m
+}
+
+TEST(BlkQ4_GEMM, Sm80SmallMTest) {
+  Status status = onnxruntime::cuda::test::sm80_supported();
+  if (!status.IsOK()) {
+    // skip the test if sm80 is not supported
+    return;
+  }
+
+  // // small m
   onnxruntime::cuda::test::run_blkq4_gemm<16, false, true, false>(16, 704, 576);
   onnxruntime::cuda::test::run_blkq4_gemm<16, false, true, true>(16, 704, 576);
 

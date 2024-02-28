@@ -739,20 +739,119 @@ public:
     // First convert 4b weight into fp16(weight + 16)
     weights2Half(weights, dest);
 
+    ElementScale addon[kMmaIterationsB];
+    if constexpr (kMmaIterationsB % 4 == 0) {
+      const b64* scales_ptr = reinterpret_cast<const b64*>(scales.data());
+      uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
+      if constexpr(kHasOffset){
+        const uint32_t* p = reinterpret_cast<const uint32_t*>(offsets.data());
+        CUTLASS_PRAGMA_UNROLL
+        for (int n_idx = 0; n_idx < kMmaIterationsB; n_idx += 4){
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+          asm volatile(
+            "{\n\t"
+            "  .reg  .b32    rb0, rb1, rb2;\n"
+
+            // offset from [d, c, b, a] --> [d, b, c, a]
+            "  prmt.b32      rb2, %4, rb0, 0x3120;\n"
+
+            // static_cast<cutlass::half_t>(-16 - offset)
+            // input [d, b, c, a],
+            "  shl.b32       rb0, rb2, 6;\n"     // rb0 = [x, b, x, a] << 6
+            "  shr.u32       rb1, rb2, 2;\n"     // rb1 = [x, d, x, c] << 6
+            "  lop3.b32      rb0, rb0, 0x03c003c0, 0xcc00cc00, 0xea;\n" // a & 0x03c0 | 0xcc00
+            "  lop3.b32      rb1, rb1, 0x03c003c0, 0xcc00cc00, 0xea;\n"
+            "  mul.rn.f16x2  %0, %2, rb0;\n"    // offset = scale * (-16 - offset)
+            "  mul.rn.f16x2  %1, %3, rb1;\n"
+            "}\n"
+            : "=r"(addon_ptr[0]), "=r"(addon_ptr[1])
+            : "r"(scales_ptr->pair.a), "r"(scales_ptr->pair.b),
+              "r"(p[0]));
+#else
+          assert(0);
+#endif
+          scales_ptr++;
+          p++;
+          addon_ptr += 2;
+        }
+      } else {
+        CUTLASS_PRAGMA_UNROLL
+        for (int n_idx = 0; n_idx < kMmaIterationsB; n_idx += 4){
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+          asm volatile(
+            "{\n\t"
+            "  .reg  .b32    rb0;\n"
+            "  mov.u32       rb0, 0xce00ce00;\n"
+            "  mul.rn.f16x2  %0, %2, rb0;\n"    // offset = scale * (-16 - 8)
+            "  mul.rn.f16x2  %1, %3, rb0;\n"
+            "}\n"
+            : "=r"(addon_ptr[0]), "=r"(addon_ptr[1])
+            : "r"(scales_ptr->pair.a), "r"(scales_ptr->pair.b));
+#else
+          assert(0);
+#endif
+          scales_ptr++;
+          addon_ptr += 2;
+        }
+      }
+    } else if constexpr (kMmaIterationsB % 2 == 0) {
+      const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(scales.data());
+      uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
+
+      if constexpr (kHasOffset){
+        // possible buffer over read 2 bytes here.
+        const uint32_t* p = reinterpret_cast<const uint32_t*>(offsets.data());
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+        asm volatile(
+          "{\n\t"
+          "  .reg  .b32    rb0, rb1, rb2;\n"
+
+          // offset from [?, ?, b, a] --> [?, b, ?, a]
+          "  prmt.b32      rb2, %2, rb0, 0x3120;\n"
+
+          // static_cast<cutlass::half_t>(-16 - offset)
+          // input [d, b, c, a],
+          "  shl.b32       rb0, rb2, 6;\n"     // rb0 = [x, b, x, a] << 6
+          "  lop3.b32      rb0, rb0, 0x03c003c0, 0xcc00cc00, 0xea;\n" // a & 0x03c0 | 0xcc00
+          "  mul.rn.f16x2  %0, %1, rb0;\n"    // offset = scale * (-16 - offset)
+          "}\n"
+          : "=r"(addon_ptr[0])
+          : "r"(scales_ptr[0])
+            "r"(p[0]));
+#else
+        assert(0);
+#endif
+      } else {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+        asm volatile(
+          "{\n\t"
+          "  .reg  .b32    rb0;\n"
+          "  mov.u32       rb0, 0xce00ce00;\n"
+          "  mul.rn.f16x2  %0, %1, rb0;\n"    // offset = scale * (-16 - 8)
+          "}\n"
+          : "=r"(addon_ptr[0])
+          : "r"(scales_ptr[0]));
+#else
+        assert(0);
+#endif
+      }
+    } else {
+      // kMmaIterationsB == 1
+      if constexpr(kHasOffset){
+        uint8_t zp = offsets[0];
+        addon[0] = scales[0] * static_cast<ElementScale>(-16 - static_cast<int>(zp));
+      } else {
+        addon[0] = scales[0] * static_cast<ElementScale>(-16-8);
+      }
+    }
+
     int out_idx = 0;
     CUTLASS_PRAGMA_UNROLL
     for (int n_out = 0; n_out < kMmaIterationsB; n_out++){
-      ElementScale s = scales[n_out];
-      ElementScale offset;
-      if constexpr(kHasOffset){
-        offset = s * static_cast<ElementScale>(-16 - int(offsets[n_out]));
-      } else {
-        offset = s * static_cast<ElementScale>(-16-8);
-      }
       CUTLASS_PRAGMA_UNROLL
       for (int mma_tile_out_idx = 0; mma_tile_out_idx < kBTilesPerMma; mma_tile_out_idx++){
-        dest[out_idx] = s * dest[out_idx] + offset;
-        dest[out_idx + 1] = s * dest[out_idx + 1] + offset;
+        dest[out_idx] = scales[n_out] * dest[out_idx] + addon[n_out];
+        dest[out_idx + 1] = scales[n_out] * dest[out_idx + 1] + addon[n_out];
         out_idx += 2;
       }
     }
