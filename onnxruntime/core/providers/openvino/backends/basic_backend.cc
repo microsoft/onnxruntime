@@ -464,7 +464,8 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 
 #ifdef IO_BUFFER_ENABLED
     if ((global_context_.device_type.find("GPU") != std::string::npos) &&
-        (global_context_.context != nullptr) && global_context_.is_wholly_supported_graph) {
+        ((global_context_.context != nullptr) || (global_context_.queue != nullptr)) &&
+        global_context_.is_wholly_supported_graph) {
       try {
         StartRemoteAsyncInference(context, infer_request);
       } catch (std::string const& msg) {
