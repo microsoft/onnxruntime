@@ -555,6 +555,36 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.assertEqual(sig_out_zp.data_type, onnx.TensorProto.UINT16)
         self.assertEqual(sig_out_sc.float_data[0], np.float32(1.0 / 65536.0))
 
+    def test_get_qnn_qdq_config_ext_data(self):
+        """
+        Test that get_qnn_qdq_config() returns a config that enables external data
+        if the input model has external data.
+        """
+
+        # Create model with a weight large enough (> 1024 bytes) to be stored externally.
+        large_weight = onnx.numpy_helper.from_array(np.random.random((1, 32, 32)).astype(np.float32), "weight")
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Add", ["input", "weight"], ["output"])],
+            "add_ext_data",
+            [onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, (1, 32, 32))],
+            [onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, (1, 32, 32))],
+            initializer=[large_weight],
+        )
+        model = onnx.helper.make_model(
+            graph,
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
+        )
+        onnx.save_model(
+            model,
+            "add_ext_data.onnx",
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location="add_ext_data.bin",
+        )
+
+        qnn_config = get_qnn_qdq_config("add_ext_data.onnx", DummyDataReader(self.activations))
+        self.assertTrue(qnn_config.use_external_data_format)
+
 
 if __name__ == "__main__":
     t = TestTensorQuantOverridesOption()
