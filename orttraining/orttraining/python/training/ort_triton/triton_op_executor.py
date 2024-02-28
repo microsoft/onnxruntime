@@ -23,7 +23,7 @@ from ._utils import gen_unique_name, next_power_of_2
 
 _DEBUG_MODE = "ORTMODULE_TRITON_DEBUG" in os.environ and int(os.getenv("ORTMODULE_TRITON_DEBUG")) == 1
 
-_CUSTOM_KERNELS = dict()  # noqa: RUF012
+_CUSTOM_KERNELS = dict()
 
 
 @functools.lru_cache(None)
@@ -117,7 +117,7 @@ def call_triton_by_name(func_name: str, *tensors, **kwargs):
     torch_tensors = [_from_dlpack(tensor) if tensor is not None else None for tensor in tensors]
     func = getattr(sys.modules[".".join(__name__.split(".")[:-1])], func_name, None)
     if func is None:
-        func = _CUSTOM_KERNELS.get(func_name, None)
+        func = _CUSTOM_KERNELS.get(func_name)
     assert func is not None, f"Function {func_name} is not found in the registered kernels."
     output = func(*torch_tensors, **kwargs)
     if output is not None:
