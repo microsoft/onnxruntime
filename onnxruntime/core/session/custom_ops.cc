@@ -620,17 +620,8 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
   return Status::OK();
 }
 
-namespace {
-struct CustomOpSchemaAndKernels {
-  ONNX_NAMESPACE::OpSchema schema;
-  InlinedVector<const KernelDef*> kernel_defs;
-};
-}  // namespace
-
-void InferOutputTypes(const CustomOpSchemaAndKernels& custom_op_schema_and_kernels,
+void InferOutputTypes(const ONNX_NAMESPACE::OpSchema& schema, gsl::span<const KernelDef* const> kernel_defs,
                       ONNX_NAMESPACE::InferenceContext& infer_ctx) {
-  const auto& schema = custom_op_schema_and_kernels.schema;
-  const auto& kernel_defs = custom_op_schema_and_kernels.kernel_defs;
   const auto& inputs = schema.inputs();
   const auto node_input_num = infer_ctx.getNumInputs();
 
@@ -660,29 +651,32 @@ void InferOutputTypes(const CustomOpSchemaAndKernels& custom_op_schema_and_kerne
       }
 
       variadic_input |= (param.GetOption() == ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic);
+      const bool is_homogeneous = param.GetIsHomogeneous();
 
-      auto hit = type_constraints.find(input_name);
-      if (hit != type_constraints.end()) {
-        const auto& types = hit->second;
-        // For custom ops kernel constraints are never empty
-        assert(!types.empty());
-        if (!std::any_of(types.cbegin(), types.cend(),
-                         [input_type](const DataTypeImpl* type) {
-                           return type->IsCompatible(*input_type);
-                         })) {
-          def_selected = nullptr;
-          variadic_input = false;
-          output_propagate = 0;
-          break;
+      // validate variadic input only if it is homogeneous
+      if (!variadic_input || is_homogeneous) {
+        auto hit = type_constraints.find(input_name);
+        if (hit != type_constraints.end()) {
+          const auto& types = hit->second;
+          // For custom ops kernel constraints are never empty
+          assert(!types.empty());
+          if (!std::any_of(types.cbegin(), types.cend(),
+                           [input_type](const DataTypeImpl* type) {
+                             return type->IsCompatible(*input_type);
+                           })) {
+            def_selected = nullptr;
+            variadic_input = false;
+            output_propagate = 0;
+            break;
+          }
+
+          if (types.size() > 1) {
+            output_propagate = input_type->tensor_type().elem_type();
+          }
+        } else {
+          ORT_THROW("[CustomOP type inferencing error]: no type constraint found for input: ",
+                    input_name, " Op: ", schema.Name());
         }
-
-        if (types.size() > 1) {
-          output_propagate = input_type->tensor_type().elem_type();
-        }
-
-      } else {
-        ORT_THROW("[CustomOP type inferencing error]: no type constraint found for input: ",
-                  input_name, " Op: ", schema.Name());
       }
     }
   }
@@ -691,11 +685,7 @@ void InferOutputTypes(const CustomOpSchemaAndKernels& custom_op_schema_and_kerne
     ORT_THROW("[CustomOP type inferencing error]: no kernel def matches node inputs for Op: ", schema.Name());
   }
 
-  if (variadic_input) {
-    return;
-  }
-
-  const auto& outputs = custom_op_schema_and_kernels.schema.outputs();
+  const auto& outputs = schema.outputs();
   const auto node_output_num = infer_ctx.getNumOutputs();
   const auto& selected_type_constraints = def_selected->TypeConstraints();
 
@@ -710,7 +700,7 @@ void InferOutputTypes(const CustomOpSchemaAndKernels& custom_op_schema_and_kerne
       if (param.GetOption() == ONNX_NAMESPACE::OpSchema::FormalParameterOption::Optional)
         continue;
 
-      ORT_THROW("[CustomOP type inferencing error]: kernel Output: ", i,
+      ORT_THROW("[CustomOP type inferencing error]: kernel Output: ", output_name,
                 " is absent, but not optional. Op : ", schema.Name());
     }
 
@@ -729,7 +719,7 @@ void InferOutputTypes(const CustomOpSchemaAndKernels& custom_op_schema_and_kerne
         // Use the constraint type
         output_type->mutable_tensor_type()->set_elem_type(
             types[0]->GetTypeProto()->tensor_type().elem_type());
-      } else {
+      } else if (!variadic_input) {
         output_type->mutable_tensor_type()->set_elem_type(output_propagate);
       }
     } else {
@@ -780,10 +770,9 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     std::vector<ONNX_NAMESPACE::OpSchema> schemas;
     for (const auto& [name, schema] : schema_map) {
       schemas.push_back(schema);
-      ONNX_NAMESPACE::InferenceFunction infer_fn = [custom_op_schema_and_kernels =
-                                                        CustomOpSchemaAndKernels{schema, std::move(kernel_def_map[name])}](
+      ONNX_NAMESPACE::InferenceFunction infer_fn = [schema, kernel_defs = std::move(kernel_def_map[name])](
                                                        ONNX_NAMESPACE::InferenceContext& infer_ctx) {
-        InferOutputTypes(custom_op_schema_and_kernels, infer_ctx);
+        InferOutputTypes(schema, kernel_defs, infer_ctx);
       };
       schemas.back().TypeAndShapeInferenceFunction(infer_fn);
     }
