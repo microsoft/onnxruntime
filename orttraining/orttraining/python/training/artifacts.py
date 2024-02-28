@@ -120,7 +120,6 @@ def generate_artifacts(
             self._loss_input_names = _loss_input_names
 
         def build(self, *inputs_to_loss):
-
             # If loss_input_names is passed, only pass the specified input names to the loss function.
             if self._loss_input_names:
                 inputs_to_loss = self._loss_input_names
