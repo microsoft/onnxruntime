@@ -140,6 +140,7 @@ public:
         mhaDesc.MaskFilterValue = -10'000.0f;
         mhaDesc.KeyValueHeadCount = kvNumHeads;
         mhaDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(queryHeadSize)));
+        mhaDesc.MaskFilterValue = -10'000.0f;
         DML_OPERATOR_DESC mhaDmlDesc = { DML_OPERATOR_MULTIHEAD_ATTENTION1, &mhaDesc };
 
         if (sequenceLength == 1)
