@@ -55,6 +55,9 @@ stages:
       - checkout: self
         clean: true
         submodules: recursive
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
 
       - powershell: |
           if($env:TELEMETRYGUID)
@@ -231,14 +234,7 @@ stages:
               searchPattern: '**/*.pdb'
               symbolServerType: teamServices
 
-      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - template: ../../templates/compliance.yml
-          parameters :
-            msbuildPlatform: ${{ parameters.sln_platform }}
 
-      - template: ../../templates/component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
 
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
@@ -294,6 +290,12 @@ stages:
             targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'
 
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
+
+      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+        - template: ../../templates/compliance.yml
+          parameters :
+            msbuildPlatform: ${{ parameters.sln_platform }}
+
+      - template: ../../templates/component-governance-component-detection-steps.yml
+        parameters :
+          condition : 'succeeded'
