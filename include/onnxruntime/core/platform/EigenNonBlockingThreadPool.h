@@ -634,12 +634,16 @@ class RunQueue {
   // position, these conditions would be indistinguishable); (2) obtain
   // consistent snapshot of front_/back_ for Size operation using the
   // modification counters.
+#ifdef _MSC_VER
 #pragma warning(push)
-#pragma warning(disable: 4324)
+#pragma warning(disable : 4324)
+#endif
   ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<unsigned> front_;
   ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<unsigned> back_;
   ORT_ALIGN_TO_AVOID_FALSE_SHARING Elem array_[kSize];
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 
   // SizeOrNotEmpty returns current queue size; if NeedSizeEstimate is false,
   // only whether the size is 0 is guaranteed to be correct.
