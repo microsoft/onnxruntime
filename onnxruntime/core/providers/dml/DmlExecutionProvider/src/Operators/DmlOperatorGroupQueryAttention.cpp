@@ -137,7 +137,6 @@ public:
         mhaDesc.OutputPresentKeyTensor = &outputDescs[outputPresentKeyIndex];
         mhaDesc.OutputPresentValueTensor = &outputDescs[outputPresentValueIndex];
         mhaDesc.QueryHeadCount = queryNumHeads;
-        mhaDesc.MaskFilterValue = -10'000.0f;
         mhaDesc.KeyValueHeadCount = kvNumHeads;
         mhaDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(queryHeadSize)));
         mhaDesc.MaskFilterValue = -10'000.0f;
