@@ -372,6 +372,9 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
         case 0:
           heur_mode = cudnn_frontend::HeurMode_t::B;
           break;
+        case 1:
+          heur_mode = cudnn_frontend::HeurMode_t::A;
+          break;
         case 2:
           heur_mode = cudnn_frontend::HeurMode_t::FALLBACK;
           break;
