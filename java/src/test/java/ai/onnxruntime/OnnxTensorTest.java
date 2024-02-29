@@ -4,6 +4,10 @@
  */
 package ai.onnxruntime;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -97,8 +101,8 @@ public class OnnxTensorTest {
     float[] arrValues = new float[] {0, 1, 2, 3, 4};
     try (OnnxTensor t = OnnxTensor.createTensor(env, arrValues)) {
       // array creation isn't backed by buffers
-      Assertions.assertFalse(t.ownsBuffer());
-      Assertions.assertFalse(t.getBufferRef().isPresent());
+      assertFalse(t.ownsBuffer());
+      assertFalse(t.getBufferRef().isPresent());
       FloatBuffer buf = t.getFloatBuffer();
       float[] output = new float[arrValues.length];
       buf.get(output);
@@ -146,7 +150,7 @@ public class OnnxTensorTest {
     directBuffer.rewind();
     try (OnnxTensor t = OnnxTensor.createTensor(env, directBuffer, new long[] {1, 5})) {
       // direct buffers don't trigger a copy
-      Assertions.assertFalse(t.ownsBuffer());
+      assertFalse(t.ownsBuffer());
       // tensors backed by buffers can get the buffer ref back out
       Assertions.assertTrue(t.getBufferRef().isPresent());
       FloatBuffer buf = t.getFloatBuffer();
@@ -427,5 +431,22 @@ public class OnnxTensorTest {
             "Expected " + curVal + " received " + output + ", intermediate float was " + upcast);
       }
     }
+  }
+
+  @Test
+  public void testClose() throws OrtException {
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    long[] input = new long[] {1, 2, 3, 4, 5};
+    OnnxTensor value = OnnxTensor.createTensor(env, input);
+    assertFalse(value.isClosed());
+    long[] output = (long[]) value.getValue();
+    assertArrayEquals(input, output);
+    value.close();
+    // check use after close throws
+    assertThrows(IllegalStateException.class, value::getValue);
+    // check double close doesn't crash (emits warning)
+    TestHelpers.quietLogger(OnnxTensor.class);
+    value.close();
+    TestHelpers.loudLogger(OnnxTensor.class);
   }
 }

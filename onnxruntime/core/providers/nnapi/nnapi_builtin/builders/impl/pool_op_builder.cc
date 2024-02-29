@@ -32,7 +32,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
@@ -40,10 +40,9 @@ class PoolOpBuilder : public BaseOpBuilder {
     return params.use_nchw ? ANEURALNETWORKS_FEATURE_LEVEL_3 : ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
-  bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-      const OpSupportCheckParams& params) const override;
-  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override;
+  bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                    const OpSupportCheckParams& params) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const override;
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
@@ -116,16 +115,16 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   float y_scale = input_operand_type.operandType.scale;
   int32_t y_zero_point = input_operand_type.operandType.zeroPoint;
   if (is_quant_pool) {
-    const auto& initializers = model_builder.GetInitializerTensors();
+    const auto& graph_viewer = model_builder.GetGraphViewer();
     float x_scale = 0.0f;
     int32_t x_zero_point = 0;
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+        graph_viewer, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
 
     // Verify if the scale and zero point values from onnx input and nnapi input match
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        initializers, node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
+        graph_viewer, node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
   }
 
   InlinedVector<uint32_t> input_indices;
@@ -171,7 +170,7 @@ bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
-bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool PoolOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                       const OpSupportCheckParams& /* params */) const {
   const auto& op_name = node_unit.Name();
   const auto& op_type = node_unit.OpType();
@@ -236,7 +235,7 @@ bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
     float input_scale = 0.0f;
     int32_t input_zp = 0;
     auto status = GetQuantizationScaleAndZeroPoint(
-        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), input_scale, input_zp);
+        graph_viewer, node_unit.Inputs()[0], node_unit.ModelPath(), input_scale, input_zp);
     if (!status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
                           << "] GetQuantizationScaleAndZeroPoint for input_scale/zp failed, message: "
@@ -247,7 +246,7 @@ bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
     float output_scale = 0.0f;
     int32_t output_zp = 0;
     status = GetQuantizationScaleAndZeroPoint(
-        initializers, node_unit.Outputs()[0], node_unit.ModelPath(), output_scale, output_zp);
+        graph_viewer, node_unit.Outputs()[0], node_unit.ModelPath(), output_scale, output_zp);
     if (!status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
                           << "] GetQuantizationScaleAndZeroPoint for output_scale/zp failed, message: "
@@ -274,7 +273,7 @@ bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 }
 
 bool PoolOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
   const auto& op_type = node_unit.OpType();
   bool is_quant_pool = IsQuantizedOp(node_unit);
@@ -282,13 +281,13 @@ bool PoolOpBuilder::HasSupportedInputOutputsImpl(
   bool is_average_pool = op_type == "AveragePool" || op_type == "QLinearAveragePool";
   bool is_quant_average_pool = is_quant_pool && is_average_pool;
   if (!is_max_pool && !is_quant_average_pool)
-    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(graph_viewer, node_unit, params);
 
   if (is_quant_average_pool) {
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput))
+    if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kInput))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+    if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput))
       return false;
   }
 

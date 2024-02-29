@@ -29,9 +29,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status Sync() const override;
 
-  Status OnRunStart() override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
-  Status OnRunEnd(bool sync_stream) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   DataLayout GetPreferredLayout() const override;
 
@@ -78,6 +78,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool GetCudnnConv1dPadToNc1d() const { return info_.cudnn_conv1d_pad_to_nc1d; }
   bool IsSkipLayerNormInStrictMode() const { return info_.enable_skip_layer_norm_strict_mode; }
   bool IsNHWCPreferred() const { return info_.prefer_nhwc; }
+  bool UseTF32() const { return info_.use_tf32; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
@@ -114,6 +115,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                      CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
     ~PerThreadContext();
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 
     cublasHandle_t CublasHandle() const {
       return cublas_handle_;

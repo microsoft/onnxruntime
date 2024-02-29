@@ -112,7 +112,7 @@ RUN pip install \
     cerberus \
     sympy \
     h5py \
-    datasets==1.9.0 \
+    datasets==2.17.0 \
     requests \
     sacrebleu==1.5.1 \
     sacremoses \
@@ -125,12 +125,13 @@ RUN pip install \
     pytorch_lightning==1.6.0 \
     pytest-xdist \
     pytest-rerunfailures \
-    ml_dtypes==0.3.0
+    ml_dtypes==0.3.0 \
+    pytest==7.4.4
 
 # Install migraphx
 RUN apt update && apt install -y migraphx
 
-ENV ORTMODULE_ONNX_OPSET_VERSION=15
+ENV ORTMODULE_ONNX_OPSET_VERSION=17
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

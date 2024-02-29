@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -70,7 +71,6 @@ const validateInputs =
       const rank = inputs[0].dims.length;
       if (roiInputIndex > 0 && inputs.length > roiInputIndex && inputs[roiInputIndex].dims.length > 0) {
         inputs[roiInputIndex].getFloat32Array().forEach((value) => roi.push(value));
-
       } else if (attributes.coordinateTransformMode === 'tf_crop_and_resize') {
         throw new Error('Resize requires RoI input to be specified when coordinateTransformMode is tfCropAndResize');
       }
@@ -110,20 +110,20 @@ const validateInputs =
 
 const getOriginalCoordinateFromResizedCoordinate =
     (coordinateTransferMode: CoordinateTransformMode, dType: string): string =>
-        `fn getOriginalCoordinateFromResizedCoordinate(xResized: u32, xScale: ${dType}, lengthResized: u32,
-     lengthOriginal: u32, roiStart: ${dType}, roiEnd: ${dType}) -> ${dType} { ` +
+        `fn getOriginalCoordinateFromResizedCoordinate(xResized: u32, xScale: f32, lengthResized: u32,
+     lengthOriginal: u32, roiStart: f32, roiEnd: f32) -> ${dType} { ` +
     (() => {
           switch (coordinateTransferMode) {
             case 'asymmetric':
-              return `return ${dType}(xResized) / xScale;`;
+              return `return ${dType}(xResized) / ${dType}(xScale);`;
             case 'pytorch_half_pixel':
               return `if (lengthResized > 1) {
-                    return (${dType}(xResized) + 0.5) / xScale - 0.5;
+                    return (${dType}(xResized) + 0.5) / ${dType}(xScale) - 0.5;
                   } else {
                     return 0.0;
                   }`;
             case 'tf_half_pixel_for_nn':
-              return `return (${dType}(xResized) + 0.5) / xScale;`;
+              return `return (${dType}(xResized) + 0.5) / ${dType}(xScale);`;
             case 'align_corners':
               return `if (lengthResized == 1) {
                     return 0.0;
@@ -138,20 +138,20 @@ const getOriginalCoordinateFromResizedCoordinate =
                   }`;
             case 'tf_crop_and_resize':
               return `if (lengthResized > 1) {
-                    return roiStart * ${dType}(lengthOriginal - 1) +
-                        (${dType}(xResized) * (roiEnd - roiStart) * ${dType}(lengthOriginal - 1)) /
+                    return ${dType}(roiStart) * ${dType}(lengthOriginal - 1) +
+                        (${dType}(xResized) * ${dType}(roiEnd - roiStart) * ${dType}(lengthOriginal - 1)) /
                         ${dType}(lengthResized - 1);
                   } else {
-                    return 0.5 * (roiStart + roiEnd) * ${dType}(lengthOriginal - 1);
+                    return 0.5 * ${dType}(roiStart + roiEnd) * ${dType}(lengthOriginal - 1);
                   }`;
             case 'half_pixel_symmetric':
-              return `const outputWidth = xScale * ${dType}(lengthResized);
+              return `const outputWidth = ${dType}xScale * ${dType}(lengthResized);
                   const adjustment = ${dType}(lengthResized) / outputWidth;
                   const center = ${dType}(lengthOriginal) / 2;
                   const offset = center * (1 - adjustment);
-                  return offset + ((${dType}(xResized) + 0.5) / xScale) - 0.5;`;
+                  return offset + ((${dType}(xResized) + 0.5) / ${dType}(xScale)) - 0.5;`;
             case 'half_pixel':
-              return `return ((${dType}(xResized) + 0.5) / xScale) - 0.5;`;
+              return `return ((${dType}(xResized) + 0.5) / ${dType}(xScale)) - 0.5;`;
             default:
               throw new Error(`Coordinate transform mode ${coordinateTransferMode} is not supported`);
           }
@@ -642,11 +642,8 @@ const createResizeProgramInfo =
           outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
           programUniforms: [
-            {type: 'uint32', data: outputSize},
-            {type: 'float32', data: scales},
-            {type: 'float32', data: roi},
-            ...createTensorShapeVariables(inputShape),
-            ...createTensorShapeVariables(outputShape),
+            {type: DataType.uint32, data: outputSize}, {type: DataType.float, data: scales},
+            {type: DataType.float, data: roi}, ...createTensorShapeVariables(inputShape, outputShape)
           ]
         })
       };
@@ -663,6 +660,10 @@ export const resize = (context: ComputeContext, attributes: ResizeAttributes): v
   const scales: number[] = [];
   const sizes: number[] = [];
   const roi: number[] = [];
+
+  // Note that scales in resize are always f32. roi can be f32 or f16.
+  // TODO: Currently this code does not support f16 for roi when passed as optional input.
+
   const opsetVersion = getOpsetVersionFromCustomDataBuffer(context);
   if (attributes.antialias !== 0) {
     throw Error('Only default value (0) for Antialias attribute is supported');

@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -94,32 +95,22 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 
   let previousSum = 0;
   const inputDependencies: ProgramInputTensorInfoDependency[] = [];
-  const inputShapeOrRanks = [];
-  const enableInputShapesUniforms = [];
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
+  const inputRanks = [];
+  const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: outputSize}];
   for (let i = 0; i < inputs.length; ++i) {
     previousSum += inputs[i].dims[adjustedAxis];
     sizeInConcatAxis[i] = previousSum;
-    enableInputShapesUniforms.push(enableShapesUniforms(inputs[i].dims.length));
-    inputShapeOrRanks.push(enableInputShapesUniforms[i] ? inputs[i].dims.length : inputs[i].dims);
-    inputVars[i] = inputVariable(`input${i}`, dataType, inputShapeOrRanks[i]);
-    inputDependencies.push(enableInputShapesUniforms[i] ? 'rank' : 'dims');
-    programUniforms.push({type: 'uint32', data: sizeInConcatAxis[i]});
+    inputRanks.push(inputs[i].dims.length);
+    inputVars[i] = inputVariable(`input${i}`, dataType, inputRanks[i]);
+    inputDependencies.push('rank');
+    programUniforms.push({type: DataType.uint32, data: sizeInConcatAxis[i]});
   }
   for (let i = 0; i < inputs.length; ++i) {
-    if (enableInputShapesUniforms[i]) {
-      programUniforms.push(...createTensorShapeVariables(inputs[i].dims));
-    }
+    programUniforms.push(...createTensorShapeVariables(inputs[i].dims));
   }
+  programUniforms.push(...createTensorShapeVariables(outputShape));
 
-  const enableOutputShapesUniforms = enableShapesUniforms(outputShape.length);
-  if (enableOutputShapesUniforms) {
-    programUniforms.push(...createTensorShapeVariables(outputShape));
-  }
-
-  const outputShapeOrRank = enableOutputShapesUniforms ? outputShape.length : outputShape;
-  const output = outputVariable('output', dataType, outputShapeOrRank);
-
+  const output = outputVariable('output', dataType, outputShape.length);
   const indicesAxis = output.indicesGet('indices', adjustedAxis);
   const sizeInConcatAxisStr =
       Array.from(Array(sizeInConcatAxis.length).keys()).map(i => `uniforms.sizeInConcatAxis${i}`).join(',');
@@ -163,7 +154,9 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createConcatProgramInfo(context.inputs, attributes.axis));
+  // 0 length tensors are valid for concat, remove them
+  const nonEmptyInputs = context.inputs.filter(input => ShapeUtil.size(input.dims) > 0);
+  context.compute(createConcatProgramInfo(nonEmptyInputs, attributes.axis), {inputs: nonEmptyInputs});
 };
 
 export const parseConcatAttributes = (attributes: Record<string, unknown>): ConcatAttributes =>

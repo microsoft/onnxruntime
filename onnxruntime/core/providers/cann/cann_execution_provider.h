@@ -33,7 +33,7 @@ class CANNExecutionProvider : public IExecutionProvider {
   explicit CANNExecutionProvider(const CANNExecutionProviderInfo& info);
   virtual ~CANNExecutionProvider();
 
-  Status OnRunStart() override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
   template <typename T>
   Status Fill(Tensor* y, void* addr, aclrtStream stream) const {
@@ -81,6 +81,7 @@ class CANNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, uint32_t> modelIDs_;
   std::unordered_map<std::string, std::string> models_;
   std::unordered_map<std::string, std::unordered_map<std::size_t, std::string>> names_;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 
 }  // namespace onnxruntime

@@ -1503,10 +1503,8 @@ TEST_F(GraphTest, ShapeInferenceErrorHandling) {
 
   graph.AddNode("node_1", "ShapeInferenceThrowsOp", "node 1", {&input_arg1}, {&output_arg1});
 
-  auto status = graph.Resolve();
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Node (node_1) Op (ShapeInferenceThrowsOp) "
-                                                        "[ShapeInferenceError] try harder"));
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(),
+                                      "Node (node_1) Op (ShapeInferenceThrowsOp) [ShapeInferenceError] try harder");
 }
 
 TEST_F(GraphTest, AddTensorAttribute) {
@@ -2024,10 +2022,9 @@ TEST_F(GraphTest, LoadModelMissingInput) {
   SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {2, 2});
 
   std::shared_ptr<Model> model;
-  Status st = Model::Load(std::move(m), model, nullptr, *logger_);
-  ASSERT_FALSE(st.IsOK());
-  ASSERT_THAT(st.ErrorMessage(), testing::HasSubstr("Invalid model. Node input 'y' is not a graph input, "
-                                                    "initializer, or output of a previous node."));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(Model::Load(std::move(m), model, nullptr, *logger_),
+                                      "Invalid model. Node input 'y' is not a graph input, "
+                                      "initializer, or output of a previous node.");
 }
 
 // if an initializer is backing an optional graph input, it can't be removed even if unused in the graph.

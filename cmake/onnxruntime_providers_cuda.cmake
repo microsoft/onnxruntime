@@ -1,10 +1,25 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
-  )
+
+  if (onnxruntime_CUDA_MINIMAL)
+    file(GLOB onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.cc"
+    )
+    # Remove pch files
+    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/integer_gemm.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/triton_kernel.h"
+    )
+  else()
+    file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+    )
+  endif()
   # Remove pch files
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
@@ -16,11 +31,16 @@
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
-  )
 
+
+  if (onnxruntime_CUDA_MINIMAL)
+    set(onnxruntime_providers_cuda_shared_srcs "")
+  else()
+    file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
+    )
+  endif()
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
@@ -156,12 +176,18 @@
     endif()
 
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
-    if(onnxruntime_CUDNN_HOME)
-      target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-      target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+    if(onnxruntime_CUDA_MINIMAL)
+      target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
+      target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
+    else()
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn CUDA::curand CUDA::cufft CUDA::cudart
+              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+      if(onnxruntime_CUDNN_HOME)
+          target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+          target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+      endif()
     endif()
-
+    
     if (onnxruntime_USE_TRITON_KERNEL)
       # compile triton kernel, generate .a and .h files
       include(onnxruntime_compile_triton_kernel.cmake)
@@ -171,25 +197,24 @@
       target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
       target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
       # lib cuda needed by cuLaunchKernel
-      target_link_libraries(${target} PRIVATE cuda)
+      target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
     endif()
 
     include(cutlass)
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
 
-    target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES}
+     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
     # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
     set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)
     set_target_properties(${target} PROPERTIES FOLDER "ONNXRuntime")
 
     if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
-      target_include_directories(${target} PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-      target_link_directories(${target} PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-      target_link_libraries(${target} PRIVATE cupti)
+      target_link_libraries(${target} PRIVATE CUDA::cupti)
     endif()
 
-    if (onnxruntime_ENABLE_NVTX_PROFILE AND NOT WIN32)
-      target_link_libraries(${target} PRIVATE nvToolsExt)
+    if (onnxruntime_ENABLE_NVTX_PROFILE)
+      target_link_libraries(${target} PRIVATE CUDA::nvtx3)
     endif()
 
     if (onnxruntime_ENABLE_TRAINING_OPS)

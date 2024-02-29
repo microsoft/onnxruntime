@@ -178,8 +178,10 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       return false;
     }
     for (size_t i = 1; i < input_defs.size(); i++) {
-      if (!Contains(initializers, input_defs[i]->Name())) {
-        LOGS(logger, VERBOSE) << "Input [" << input_defs[i]->Name() << "] must be known as initializer";
+      // Optional tensors (constant_value, axes) can be indicated by an empty name, just ignore it.
+      const std::string input_name = GetTensorName(input_defs, i);
+      if (!input_name.empty() && !Contains(initializers, input_name)) {
+        LOGS(logger, VERBOSE) << "Input [" << input_name << "] must be known as initializer";
         return false;
       }
     }

@@ -104,7 +104,8 @@ class ComputeContextImpl implements ComputeContext {
         throw new Error(`Unsupported data type: ${dataType}`);
       }
       const bufferSize = elementSize * ShapeUtil.size(dims);
-      return new TensorViewImpl(this.module, dataType, this.backend.gpuDataManager.create(bufferSize).id, dims);
+      const gpuDataId = bufferSize > 0 ? this.backend.gpuDataManager.create(bufferSize).id : 0;
+      return new TensorViewImpl(this.module, dataType, gpuDataId, dims);
     };
     return this.backend.run(program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput);
   }
@@ -170,7 +171,7 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
           backend.memcpy(src, dst);
         } else {
           LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
-          const data = module.HEAPU8.subarray(src, src + size);
+          const data = module.HEAPU8.subarray(src >>> 0, (src >>> 0) + size);
           backend.upload(dst, data);
         }
       },
@@ -182,13 +183,13 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
                 'verbose',
                 () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-            await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
+            await backend.download(
+                gpuDataId, () => module.HEAPU8.subarray(dataOffset >>> 0, (dataOffset >>> 0) + size));
           },
 
       // jsepCreateKernel
-      (name: string, kernel: number, attribute: unknown) => backend.createKernel(
-          name, kernel, attribute,
-          env.debug || backend.isQueryEnabled() ? module.UTF8ToString(module._JsepGetNodeName(kernel)) : `${kernel}`),
+      (kernelType: string, kernelId: number, attribute: unknown) =>
+          backend.createKernel(kernelType, kernelId, attribute, module.UTF8ToString(module._JsepGetNodeName(kernelId))),
 
       // jsepReleaseKernel
       (kernel: number) => backend.releaseKernel(kernel),
@@ -201,5 +202,11 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
                 contextDataOffset}`);
         const context = new ComputeContextImpl(module, backend, contextDataOffset);
         return backend.computeKernel(kernel, context, errors);
-      });
+      },
+      // jsepCaptureBegin
+      () => backend.captureBegin(),
+      // jsepCaptureEnd
+      () => backend.captureEnd(),
+      // jsepReplay
+      () => backend.replay());
 };

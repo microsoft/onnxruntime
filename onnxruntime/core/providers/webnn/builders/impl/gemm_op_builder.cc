@@ -29,7 +29,7 @@ class GemmOpBuilder : public BaseOpBuilder {
 
 // Add operator related.
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                            const logging::Logger& /* logger */) const {
+                                            const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
   const size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
@@ -38,7 +38,31 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   emscripten::val b = model_builder.GetOperand(node.InputDefs()[b_idx]->Name());
   emscripten::val output = emscripten::val::object();
   if (op_type == "MatMul") {
-    output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b);
+    std::vector<int64_t> a_shape;
+    if (!GetShape(*input_defs[a_idx], a_shape, logger)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Can not get shape of A.");
+    }
+    // The inputs of MatMul must be at least 3D for WebNN CPU backend. Use GEMM for 2D case.
+    // TODO: Remove this workaround when it is fixed in Chromium.
+    if (model_builder.GetWebnnDeviceType() == WebnnDeviceType::CPU && a_shape.size() == 2) {
+      output = model_builder.GetBuilder().call<emscripten::val>("gemm", a, b);
+    } else {
+      output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b);
+    }
+  } else if (op_type == "MatMulInteger") {
+    emscripten::val a_zero_point = emscripten::val::null();
+    emscripten::val b_zero_point = emscripten::val::null();
+    if (input_defs.size() >= 3) {
+      a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
+    } else {
+      a_zero_point = model_builder.GetZeroConstant("uint8");
+    }
+    if (input_defs.size() >= 4) {
+      b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
+    } else {
+      b_zero_point = model_builder.GetZeroConstant("uint8");
+    }
+    output = model_builder.GetBuilder().call<emscripten::val>("matmulInteger", a, a_zero_point, b, b_zero_point);
   } else {  // Gemm
     emscripten::val options = emscripten::val::object();
     NodeAttrHelper helper(node);
@@ -149,6 +173,7 @@ void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
       {
           "Gemm",
           "MatMul",
+          "MatMulInteger",
       };
 
   op_registrations.builders.push_back(std::make_unique<GemmOpBuilder>());

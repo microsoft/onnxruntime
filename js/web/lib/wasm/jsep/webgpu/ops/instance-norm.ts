@@ -25,8 +25,8 @@ const createInstanceNormProgramInfo =
       const inputShape = [xShape[0], xShape[1], normPackedSize];
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'type', 'type'];
       const programUniforms: ProgramUniform[] =
-          [{type: 'uint32', data: normSize}, {type: 'uint32', data: normPackedSize}];
-      programUniforms.push(...createTensorShapeVariables(inputShape), ...createTensorShapeVariables(inputShape));
+          [{type: DataType.uint32, data: normSize}, {type: DataType.uint32, data: normPackedSize}];
+      programUniforms.push(...createTensorShapeVariables(inputShape, inputShape));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const x = inputVariable('x', inputs[0].dataType, inputShape.length, components);
@@ -92,7 +92,7 @@ const createInstanceNormProgramInfo =
     }
     workgroupBarrier();
 
-    let invStdDev = 1 / sqrt(squaredNormShared / f32(uniforms.normSize) + f32(${attributes.epsilon}));
+    let invStdDev = inverseSqrt(squaredNormShared / f32(uniforms.normSize) + f32(${attributes.epsilon}));
     let channelScale = invStdDev * f32(${scale.getByOffset('channel')});
     let channelShift = f32(${bias.getByOffset('channel')}) - meanShared * channelScale;
     for (var h = localIndex; h < uniforms.normPackedSize; h += workgroupSize) {
@@ -132,8 +132,9 @@ const computeMean =
 
       const meanInputDependencies: ProgramInputTensorInfoDependency[] = ['type'];
       const meanProgramUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: wgSize}, {type: 'uint32', data: h}, {type: 'uint32', data: Math.floor(c / components)},
-        {type: 'uint32', data: Math.floor(h * c / components)}
+        {type: DataType.uint32, data: wgSize}, {type: DataType.uint32, data: h},
+        {type: DataType.uint32, data: Math.floor(c / components)},
+        {type: DataType.uint32, data: Math.floor(h * c / components)}
       ];
 
       const getMeanShaderSource = (shaderHelper: ShaderHelper) => {
@@ -182,8 +183,9 @@ const computeMean =
           {inputs: [input], outputs: [-1]})[0];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: unitsOfWork}, {type: 'uint32', data: h},
-        {type: 'uint32', data: Math.floor(c / components)}, {type: 'uint32', data: Math.floor(WG * c / components)}
+        {type: DataType.uint32, data: unitsOfWork}, {type: DataType.uint32, data: h},
+        {type: DataType.uint32, data: Math.floor(c / components)},
+        {type: DataType.uint32, data: Math.floor(WG * c / components)}
       ];
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type', 'type'];
       const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -212,7 +214,7 @@ const computeMean =
     }
     sum = sum / f32(uniforms.H);
     squaredSum = squaredSum / f32(uniforms.H);
-    let invStdDev = 1 / sqrt(squaredSum - sum * sum + f32(${epsilon}));
+    let invStdDev = inverseSqrt(squaredSum - sum * sum + f32(${epsilon}));
     let channelScale = invStdDev * ${sumCastType}(scale[currentChannelNumber]);
     let channelShift = ${sumCastType}(bias[currentChannelNumber]) - sum * channelScale;
 
@@ -246,7 +248,7 @@ const createInstanceNormNHWCProgramInfo =
       const components = getMaxComponents(C);
       const outputSize = ShapeUtil.size(outputShape) / components;
       const programUniforms: ProgramUniform[] =
-          [{type: 'uint32', data: H}, {type: 'uint32', data: Math.floor(C / components)}];
+          [{type: DataType.uint32, data: H}, {type: DataType.uint32, data: Math.floor(C / components)}];
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
       // first compute mean
       const channelScaleShift = computeMean(context, inputs[0], inputs[1], inputs[2], N, H, C, attributes.epsilon);

@@ -193,6 +193,9 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
+
+ private:
+  std::unique_ptr<openvino_ep::GlobalContext> global_context_;
 };
 
 }  // namespace onnxruntime

@@ -258,7 +258,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     cpu_state.sequences.InitDevice(beam_state.sequences_device);
     ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(beam_state.sequences_device.subspan(0, beam_state.sequences_device.size() / 2),
                                                       cpu_state.sequences_space.subspan(0, cpu_state.sequences_space.size() / 2),
-                                                      nullptr,
+                                                      this->ort_stream_,
                                                       DeviceCopyDirection::hostToDevice));
   }
 
@@ -397,12 +397,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                output_sequences_scores);
 
   // Output per token scores
-  if (output_scores) {
-    gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
-    gsl::span<const float> source = beam_state.scores;
-    assert(target.size() == source.size());
-    ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
-  }
+  gsl::span<const float> per_token_scores = beam_state.scores;
+  this->beam_scorer_->OutputScores(per_token_scores, output_scores);
 
   return status;
 }

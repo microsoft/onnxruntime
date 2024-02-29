@@ -1,13 +1,8 @@
 parameters:
-- name: qnn_sdk_path_win
-  displayName: QNN Windows SDK path
+- name: QnnSdk
+  displayName: QNN SDK Version
   type: string
-  default: C:\data\qnnsdk\qnn-v2.17.0.231124_win
-
-- name: qnn_sdk_info
-  displayName: QNN SDK Version Information
-  type: string
-  default: qnn-v2.17.0.231124_win
+  default: qnn-v2.19.2.240210_win
 
 - name: build_config
   displayName: Build Configuration
@@ -42,7 +37,7 @@ jobs:
       buildArch: x64
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-      commonBuildArgs: '--compile_no_warning_as_error --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
+      commonBuildArgs: '--compile_no_warning_as_error --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home C:\data\qnnsdk\${{parameters.QnnSdk}} --parallel --use_binskim_compliant_compile_flags '
 
     steps:
       - template: templates/set-version-number-variables-step.yml
@@ -85,7 +80,7 @@ jobs:
         displayName: 'Generating nuspec for the native Nuget package x64'
         inputs:
           script: |
-            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version $(OnnxRuntimeVersion) --package_name Microsoft.ML.OnnxRuntime.QNN --target_architecture x64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Windows\packages --ort_build_path $(Build.BinariesDirectory)\Windows --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.qnn_sdk_info }}
+            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version $(OnnxRuntimeVersion) --package_name Microsoft.ML.OnnxRuntime.QNN --target_architecture x64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Windows\packages --ort_build_path $(Build.BinariesDirectory)\Windows --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.QnnSdk }}
             cd $(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }}
             nuget pack NativeNuget.nuspec
             mkdir $(Build.ArtifactStagingDirectory)\x64
@@ -125,7 +120,7 @@ jobs:
         displayName: 'Generate CMake Configuration for arm64'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--update --arm64 --build_dir $(Build.BinariesDirectory)\Win_arm64 --skip_submodule_sync --skip_tests --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
+          arguments: '--update --arm64 --build_dir $(Build.BinariesDirectory)\Win_arm64 --skip_submodule_sync --skip_tests --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home C:\data\qnnsdk\${{parameters.QnnSdk}} --parallel'
 
       - task: VSBuild@1
         displayName: 'Build onnxruntime arm64'
@@ -173,7 +168,7 @@ jobs:
         displayName: 'Generating nuspec for the native Nuget package arm64'
         inputs:
           script: |
-            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version $(OnnxRuntimeVersion) --package_name Microsoft.ML.OnnxRuntime.QNN --target_architecture arm64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Win_arm64\packages --ort_build_path $(Build.BinariesDirectory)\Win_arm64 --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.qnn_sdk_info }}
+            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version $(OnnxRuntimeVersion) --package_name Microsoft.ML.OnnxRuntime.QNN --target_architecture arm64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Win_arm64\packages --ort_build_path $(Build.BinariesDirectory)\Win_arm64 --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.QnnSdk }}
             cd $(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}
             nuget pack NativeNuget.nuspec
             mkdir $(Build.ArtifactStagingDirectory)\arm64

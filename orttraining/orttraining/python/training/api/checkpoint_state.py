@@ -222,6 +222,8 @@ class CheckpointState:
     def load_checkpoint(cls, checkpoint_uri: str | os.PathLike) -> CheckpointState:
         """Loads the checkpoint state from the checkpoint file
 
+        The checkpoint file can either be the complete checkpoint or the nominal checkpoint.
+
         Args:
             checkpoint_uri: The path to the checkpoint file.
 

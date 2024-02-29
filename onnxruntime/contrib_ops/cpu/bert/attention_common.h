@@ -64,6 +64,7 @@ struct AttentionParameters {
   bool pass_past_in_kv;
   float mask_filter_value;
   float scale;
+  bool use_tf32;
   AttentionMaskType mask_type;
   AttentionQkvFormat qkv_format;
 };
@@ -82,6 +83,7 @@ struct PackedAttentionParameters {
   int token_count;
   bool has_relative_position_bias;
   bool broadcast_res_pos_bias;
+  bool use_tf32;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
@@ -99,10 +101,15 @@ struct GroupQueryAttentionParameters {
   bool is_unidirectional;  // causal
   int local_window_size;
   bool kv_share_buffer;
+  bool is_packed_qkv;
   bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
+  bool do_rotary;
+  bool rotary_interleaved;
   float scale;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
+  int zeros_count;
+  int* zero_ptr;
 };
 
 namespace attention {
@@ -132,6 +139,10 @@ constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
 constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV";
 // Default value for the above setting.
 constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
+
+// Environment variable to enable loading more KV data in flight in
+// DecoderMaskedMultiHeadAttention/DecoderMaskedSelfAttention kernels
+constexpr const char* kDecoderMaskedAttentionLoadKVDataInFlight = "ORT_DECODER_MASKED_ATTENTION_LOAD_KV_DATA_IN_FLIGHT";
 
 }  // namespace attention
 

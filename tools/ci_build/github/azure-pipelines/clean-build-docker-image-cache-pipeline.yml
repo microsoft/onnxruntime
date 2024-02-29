@@ -19,8 +19,7 @@ variables:
 jobs:
 - job: Clean_Build_Docker_Image_Cache
 
-  pool:
-    vmImage: 'ubuntu-20.04'
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
 
   timeoutInMinutes: 30
 
@@ -28,13 +27,6 @@ jobs:
   - checkout: self
     submodules: false
     fetchDepth: 1
-
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.9'
-      addToPath: true
-      architecture: 'x64'
-    displayName: "Use Python 3.9"
 
   - task: AzureCLI@2
     inputs:

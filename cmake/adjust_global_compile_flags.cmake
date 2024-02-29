@@ -16,9 +16,7 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  string(APPEND CMAKE_C_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
-  string(APPEND CMAKE_CXX_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_UNIMPLEMENTED_SYSCALLS=1")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_UNIMPLEMENTED_SYSCALLS=1 -s DEFAULT_TO_CXX=1")
 
   # Enable LTO for release single-thread build
   if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -74,11 +72,6 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 
   if (MSVC)
-    # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
-    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-      set(onnxruntime_ENABLE_LTO ON)
-    endif()
-
     # undocumented internal flag to allow analysis of a minimal build binary size
     if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " /Zi")
@@ -99,7 +92,7 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
-# enable stream for all the non-minimal build
+# Enable stream for all the non-minimal build
 if (NOT onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_ENABLE_STREAM)
 endif()
@@ -130,6 +123,11 @@ if (onnxruntime_DISABLE_RTTI)
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR->" "$<$<COMPILE_LANGUAGE:CXX>:/we4541>")
   else()
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>")
+    if (onnxruntime_USE_WEBNN)
+      # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
+      # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/7001
+      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0>")
+    endif()
   endif()
 else()
   #MSVC RTTI flag /GR is not added to CMAKE_CXX_FLAGS by default. But, anyway VC++2019 treats "/GR" default on.
@@ -207,7 +205,7 @@ endif()
 
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
-    execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
+    execute_process(COMMAND ${CUDAToolkit_BIN_DIR}/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
     message("NVCC_ERROR = ${NVCC_ERROR}")
     message("NVCC_OUT = ${NVCC_OUT}")
     if ("${NVCC_OUT}" MATCHES "0")
@@ -267,36 +265,10 @@ if (MSVC)
     string(APPEND CMAKE_C_FLAGS " /arch:AVX512")
   endif()
 
-  if (NOT GDK_PLATFORM)
-    add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
-    message("Building ONNX Runtime for Windows 10 and newer")
-    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)
-  endif()
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
     set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
-  endif()
-
-  # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
-  # WinML performs spectre mitigation differently.
-  if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
-    check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
-    if (HAS_QSPECTRE)
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
-    endif()
-  endif()
-  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /DYNAMICBASE")
-  check_cxx_compiler_flag(-guard:cf HAS_GUARD_CF)
-  if (HAS_GUARD_CF)
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /guard:cf")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /guard:cf")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /guard:cf")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /guard:cf")
-    set(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} /guard:cf")
-    set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /guard:cf")
-    set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
   endif()
 else()
   if (NOT APPLE)
@@ -378,16 +350,9 @@ else()
 
 endif()
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    #For Mac compliance
-    message("Adding flags for Mac builds")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
-elseif (WIN32)
-    # parallel build
-    # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
-    string(APPEND CMAKE_CXX_FLAGS " /MP")
+if (WIN32)
     # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
     string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH")
-else()
+elseif(LINUX)
     add_compile_definitions("_GNU_SOURCE")
 endif()

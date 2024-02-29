@@ -138,7 +138,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<GatherToSplitFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(compatible_eps));
       // If a model with Q, DQ nodes is being used for the purpose of training, it must be for
       // Quantization Aware Training. So, replace QDQ nodes with FakeQuant.
@@ -157,8 +157,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<GeluApproximation>(compatible_eps));
       }
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
+      static const ConfigOptions empty_config_options;
       transformers.emplace_back(std::make_unique<ConstantFolding>(
-          execution_provider, false /*skip_dequantize_linear*/, compatible_eps, excluded_initializers));
+          execution_provider, false /*skip_dequantize_linear*/, empty_config_options, compatible_eps,
+          excluded_initializers));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
       // Put fine-grained optimizer (e.g. ShapeOptimizer) after ReshapeFusion to avoid it breaks the strong patterns
       // it defines. ReshapeFusion depends on subgraph pattern matching and do replacement accordingly, ShapeOptimizer
