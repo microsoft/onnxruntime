@@ -8,7 +8,7 @@
   add_compile_definitions(USE_COREML=1)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
-  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "visionOS")
     set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime/core/providers/coreml/mlmodel_format)
     file(GLOB coreml_proto_srcs
       "${COREML_PROTO_ROOT}/*.proto"
@@ -55,7 +55,7 @@
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
   )
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "visionOS")
     list(REMOVE_ITEM onnxruntime_providers_coreml_cc_srcs_nested
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.h"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.cc"
@@ -63,7 +63,7 @@
   endif()
 
   # Add CoreML objective c++ source code
-  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "visionOS")
     file(GLOB
       onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
@@ -86,7 +86,7 @@
   onnxruntime_add_include_to_target(onnxruntime_providers_coreml
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB}  flatbuffers::flatbuffers Boost::mp11 safeint_interface
   )
-  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "visionOS")
     onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
     target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
     add_dependencies(onnxruntime_providers_coreml onnxruntime_coreml_proto)

@@ -1318,7 +1318,7 @@ def generate_build_tree(
         ]
         if args.ios:
             cmake_args += [
-                "-DCMAKE_SYSTEM_NAME=iOS",
+                "-DCMAKE_SYSTEM_NAME=visionOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
                 + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
             ]
@@ -1474,9 +1474,11 @@ def generate_build_tree(
                     else "OFF"
                 ),
                 f"-DCMAKE_BUILD_TYPE={config}",
-                f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
-                else "",
+                (
+                    f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
+                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                    else ""
+                ),
             ],
             cwd=config_build_dir,
             cuda_home=cuda_home,

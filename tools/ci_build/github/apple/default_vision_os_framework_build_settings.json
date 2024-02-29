@@ -1,0 +1,32 @@
+{
+    "build_osx_archs": {
+        "xros": [
+            "arm64"
+        ],
+        "xrsimulator": [
+            "arm64"
+        ]
+    },
+    "build_params": {
+        "base": [
+            "--parallel",
+            "--build_apple_framework",
+            "--minimal_build=extended",
+            "--disable_rtti",
+            "--disable_ml_ops",
+            "--disable_exceptions",
+            "--enable_reduced_operator_type_support",
+            "--use_coreml",
+            "--skip_tests",
+            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
+        ],
+        "xros": [
+            "--ios",
+            "--apple_deploy_target=1.0"
+        ],
+        "xrsimulator": [
+            "--ios",
+            "--apple_deploy_target=1.0"
+        ]
+    }
+}
