@@ -16,6 +16,13 @@ template <typename T>
 class Gemm : protected GemmBase, public OpKernel {
  public:
   Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info) {
+    if (info.GetInputCount() == 2) {  // no bias
+      can_prepacked_ = true;
+    } else {  // has constant 1D bias for fp16
+      // info.GetInputType(2)
+      const Tensor* tensor_bias = nullptr;
+      can_prepacked_ = info.TryGetConstantInput(2, &tensor_bias) && tensor_bias->Shape().NumDimensions() == 1;
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -38,6 +45,7 @@ class Gemm : protected GemmBase, public OpKernel {
                           concurrency::ThreadPool* thread_pool);
 
  protected:
+  bool can_prepacked_;
   TensorShape b_shape_;
   IAllocatorUniquePtr<void> packed_b_;
 

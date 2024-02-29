@@ -186,7 +186,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
     } else
 #endif
     {
-      is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+      is_packed = GemmPackB<float>(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
     }
 
     bool share_prepacked_weights = (prepacked_weights != nullptr);
