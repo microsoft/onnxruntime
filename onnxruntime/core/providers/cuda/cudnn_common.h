@@ -8,7 +8,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #ifndef USE_CUDA_MINIMAL
-#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
+#if !defined(__CUDACC__)
 #include <cudnn_frontend.h>
 #endif
 
@@ -262,7 +262,7 @@ SetPoolingNdDescriptorHelper(cudnnPoolingDescriptor_t poolingDesc,
   return cudnnSetPoolingNdDescriptor(poolingDesc, mode, maxpoolingNanOpt, nbDims, windowDimA, paddingA, strideA);
 }
 
-#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
+#if !defined(__CUDACC__)
 template <bool NHWC = true>
 class CudnnFeTensor final {
  public:

@@ -220,7 +220,7 @@ const Float8E5M2 Consts<Float8E5M2>::One = Float8E5M2(1.0f, true);
 
 #endif
 
-#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
+#if !defined(__CUDACC__)
 static std::vector<int64_t> generateStrides(const std::vector<int64_t>& shape, bool channels_last) {
   // For INT8x4 and INT8x32 we still compute standard strides here to input
   // into the cuDNN functions. We will manually scale by resizeFactor in the cpu ref.
@@ -253,9 +253,11 @@ CudnnFeTensor<NHWC>::CudnnFeTensor(const onnxruntime::TensorShapeVector& shape, 
   if (shape.size() == 1) {
     shape_vec = {1, shape[0], 1, 1};
   } else if (shape.size() == 4) {
-    shape_vec = {shape[0], shape[3], shape[1], shape[2]};
+    if (NHWC) shape_vec = {shape[0], shape[3], shape[1], shape[2]};
+    else shape_vec = {shape[0], shape[1], shape[2], shape[3]};
   } else if (shape.size() == 5) {
-    shape_vec = {shape[0], shape[4], shape[1], shape[2], shape[3]};
+    if (NHWC) shape_vec = {shape[0], shape[4], shape[1], shape[2], shape[3]};
+    else shape_vec = {shape[0], shape[1], shape[2], shape[3], shape[4]};
   } else {
     ORT_THROW("Invalid tensor shape size, tensor name: ", name, ", shape size: ", shape.size());
   }

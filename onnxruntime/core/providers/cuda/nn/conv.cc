@@ -129,14 +129,11 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
 }
 
 template <typename T, bool NHWC>
-Status Conv<T, NHWC>::CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* W, const Tensor* B, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
+Status Conv<T, NHWC>::CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* W, const Tensor* B, const TensorShapeVector& y_dims, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
                                                  const std::vector<int64_t>& pads, const std::vector<int64_t>& strides, const std::vector<int64_t>& dilations, const bool bias_expected, const bool fuse_bias) const {
   s_.bias_fused = fuse_bias;
-
   s_.cudnn_fe_graph = std::make_unique<cudnn_frontend::graph::Graph>();
-
-  cudnn_frontend::DataType_t data_type = CudnnFeTensor<NHWC>::template GetDataType<CudaT>();
-
+  cudnn_frontend::DataType_t data_type = CudnnFeTensor<>::GetDataType<CudaT>();
   s_.cudnn_fe_graph->set_io_data_type(data_type)
       .set_compute_data_type(data_type == cudnn_frontend::DataType_t::HALF ? cudnn_frontend::DataType_t::FLOAT : data_type)
       .set_intermediate_data_type(data_type);
@@ -148,21 +145,39 @@ Status Conv<T, NHWC>::CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* 
                           .set_padding(pads)
                           .set_stride(strides)
                           .set_dilation(dilations);
-
   auto conv_output = s_.cudnn_fe_graph->conv_fprop(s_.cudnn_fe_X, s_.cudnn_fe_W, conv_options);
 
-  if (fuse_bias && !bias_expected && B != nullptr) {
+  if (!bias_expected && B == nullptr) {
+    s_.cudnn_fe_Y = conv_output;
+  } else {
     int64_t bias_size;
     if (B != nullptr) {
       bias_size = B->Shape()[0];
     } else {
       bias_size = W->Shape()[0];
     }
-    s_.cudnn_fe_B = s_.cudnn_fe_graph->tensor(CudnnFeTensor<NHWC>({bias_size}, "b", data_type).Get());
+    auto bias_tensor = CudnnFeTensor<NHWC>({bias_size}, "b", data_type).Get();
     auto bias_options = cudnn_frontend::graph::Pointwise_attributes().set_mode(cudnn_frontend::PointwiseMode_t::ADD);
-    s_.cudnn_fe_Y = s_.cudnn_fe_graph->pointwise(conv_output, s_.cudnn_fe_B, bias_options);
-  } else {
-    s_.cudnn_fe_Y = conv_output;
+    if (fuse_bias) {
+      s_.cudnn_fe_B = s_.cudnn_fe_graph->tensor(bias_tensor);
+      s_.cudnn_fe_Y = s_.cudnn_fe_graph->pointwise(conv_output, s_.cudnn_fe_B, bias_options);
+    } else {
+      s_.cudnn_fe_Y = conv_output;
+      s_.cudnn_fe_bias_graph = std::make_unique<cudnn_frontend::graph::Graph>();
+      s_.cudnn_fe_bias_graph->set_io_data_type(data_type)
+          .set_compute_data_type(data_type == cudnn_frontend::DataType_t::HALF ? cudnn_frontend::DataType_t::FLOAT : data_type)
+          .set_intermediate_data_type(data_type);
+      s_.cudnn_fe_bias_X = s_.cudnn_fe_bias_graph->tensor(CudnnFeTensor<NHWC>(y_dims, "x", data_type).Get());
+      s_.cudnn_fe_B = s_.cudnn_fe_bias_graph->tensor(bias_tensor);
+      s_.cudnn_fe_bias_Y = s_.cudnn_fe_bias_graph->pointwise(s_.cudnn_fe_bias_X, s_.cudnn_fe_B, bias_options);
+      s_.cudnn_fe_bias_Y->set_output(true);
+
+      CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_bias_graph->validate());
+      CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_bias_graph->build_operation_graph(handle));
+      CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_bias_graph->create_execution_plans({heur_mode}));
+      CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_bias_graph->check_support(handle));
+      CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_bias_graph->build_plans(handle));
+    }
   }
   s_.cudnn_fe_Y->set_output(true);
 
@@ -176,7 +191,7 @@ Status Conv<T, NHWC>::CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* 
     s_.workspace_bytes = s_.cudnn_fe_graph->get_workspace_size();
     return Status::OK();
   } else if (fuse_bias && (bias_expected || B != nullptr)) {
-    return CreateCudnnFeExecutionPlan(X, W, B, handle, heur_mode,
+    return CreateCudnnFeExecutionPlan(X, W, B, y_dims, handle, heur_mode,
                                       pads, strides, dilations, bias_expected, false);
   }
   return Status(common::StatusCategory::ONNXRUNTIME,
@@ -232,7 +247,6 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
     if (w_dims_changed) {
       s_.last_w_dims = gsl::make_span(w_dims);
-      if constexpr (!NHWC) s_.cached_benchmark_results.clear();
     }
 
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, channels_last));
@@ -343,156 +357,39 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       }
     }
 
-    if (!channels_last && w_dims_changed) {
-      ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
-    }
-
     // We must delay returning early until here so that the weight dims have been cached properly
     if (s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
 
-    if constexpr (!channels_last) {
-      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
-                                           gsl::narrow_cast<int>(conv_attrs_.group),
-                                           CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>(),
-                                           UseTF32()));
-    }
-#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
-    if constexpr (channels_last) {
-      auto handle = GetCudnnHandle(context);
+    auto handle = GetCudnnHandle(context);
 
-      int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
-      cudnn_frontend::HeurMode_t heur_mode;
-      switch (cudnn_conv_algo) {
-        case 0:
-          heur_mode = cudnn_frontend::HeurMode_t::B;
-          break;
-        case 1:
-          heur_mode = cudnn_frontend::HeurMode_t::A;
-          break;
-        case 2:
-          heur_mode = cudnn_frontend::HeurMode_t::FALLBACK;
-          break;
-        default:
-          heur_mode = cudnn_frontend::HeurMode_t::A;
-          break;
-      }
-
-      size_t kernel_shape_size = kernel_shape.size();
-      ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(X, W, B, handle, heur_mode,
-                                                     std::vector<int64_t>(pads.begin(),
-                                                                          pads.begin() + kernel_shape_size),
-                                                     std::vector<int64_t>(strides.begin(),
-                                                                          strides.begin() + kernel_shape_size),
-                                                     std::vector<int64_t>(dilations.begin(),
-                                                                          dilations.begin() + kernel_shape_size),
-                                                     bias_expected, true));
-
-      if (!s_.bias_fused) {
-        ORT_RETURN_IF_ERROR(s_.y_tensor.Set(CUDNN_TENSOR_NHWC,
-                                            CudnnTensor::GetDataType<CudaT>(),
-                                            static_cast<int>(y_dims_cudnn[0]),
-                                            static_cast<int>(y_dims_cudnn[3]),
-                                            static_cast<int>(y_dims_cudnn[1]),
-                                            static_cast<int>(y_dims_cudnn[2])));
-      }
-    }
-#endif  // ENABLE_CUDA_NHWC_OPS
-
-    if (!channels_last || !s_.bias_fused) {
-      if (B != nullptr) {
-        const auto& b_shape = B->Shape();
-        ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
-        TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
-        b_dims[1] = b_shape[0];
-        ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-        // s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-      } else if (bias_expected) {
-        TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
-        b_dims[1] = w_dims[0];
-        auto malloc_size = b_dims[1] * sizeof(CudaT);
-        ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-        if (s_.b_zero) {
-          CUDA_CALL_THROW(cudaFree(s_.b_zero));
-          s_.b_zero = nullptr;
-        }
-        CUDA_CALL_THROW(cudaMalloc(&s_.b_zero, malloc_size));
-        CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
-      }
+    int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+    cudnn_frontend::HeurMode_t heur_mode;
+    switch (cudnn_conv_algo) {
+      case 0:
+        heur_mode = cudnn_frontend::HeurMode_t::B;
+        break;
+      case 1:
+        heur_mode = cudnn_frontend::HeurMode_t::A;
+        break;
+      case 2:
+        heur_mode = cudnn_frontend::HeurMode_t::FALLBACK;
+        break;
+      default:
+        heur_mode = cudnn_frontend::HeurMode_t::A;
+        break;
     }
 
-    if constexpr (!channels_last) {
-      if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
-        // set math type to tensor core before algorithm search
-        if constexpr (std::is_same<T, MLFloat16>::value) {
-          CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
-        } else if constexpr (std::is_same<T, float>::value) {
-          if (!UseTF32()) {
-            CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_FMA_MATH));
-          }
-        }
-
-        cudnnConvolutionFwdAlgoPerf_t perf;
-        int algo_count = 1;
-        int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
-        ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
-        switch (cudnn_conv_algo) {
-          case 0: {
-            static constexpr int num_algos = CUDNN_CONVOLUTION_FWD_ALGO_COUNT;
-            size_t max_ws_size = cuda_ep->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetCudnnHandle(context), s_, kAllAlgos, num_algos)
-                                                                        : AlgoSearchWorkspaceSize;
-            // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
-            // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
-            IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
-            CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
-                GetCudnnHandle(context),
-                s_.x_tensor,
-                s_.x_data,
-                s_.w_desc,
-                s_.w_data,
-                s_.conv_desc,
-                s_.y_tensor,
-                s_.y_data,
-                1,            // requestedAlgoCount
-                &algo_count,  // returnedAlgoCount
-                &perf,
-                algo_search_workspace.get(),
-                max_ws_size));
-            break;
-          }
-          case 1:
-            CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
-                GetCudnnHandle(context),
-                s_.x_tensor,
-                s_.w_desc,
-                s_.conv_desc,
-                s_.y_tensor,
-                1,            // requestedAlgoCount
-                &algo_count,  // returnedAlgoCount
-                &perf));
-            break;
-
-          default:
-            perf.algo = kDefaultConvAlgo;
-            CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(GetCudnnHandle(context), s_, perf.algo, &perf.memory));
-            if (std::is_same<T, MLFloat16>::value) {
-              perf.mathType = CUDNN_TENSOR_OP_MATH;
-            } else if (std::is_same<T, float>::value && !UseTF32()) {
-              perf.mathType = CUDNN_FMA_MATH;
-            } else {
-              perf.mathType = CUDNN_DEFAULT_MATH;
-            }
-        }
-        s_.cached_benchmark_results.insert(x_dims_cudnn, {perf.algo, perf.memory, perf.mathType});
-      }
-      const auto& perf = s_.cached_benchmark_results.at(x_dims_cudnn);
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
-      s_.algo = perf.algo;
-      s_.workspace_bytes = perf.memory;
-    }
+    size_t kernel_shape_size = kernel_shape.size();
+    ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(X, W, B, y_dims_cudnn, handle, heur_mode,
+                                                   std::vector<int64_t>(pads.begin(),
+                                                                        pads.begin() + kernel_shape_size),
+                                                   std::vector<int64_t>(strides.begin(),
+                                                                        strides.begin() + kernel_shape_size),
+                                                   std::vector<int64_t>(dilations.begin(),
+                                                                        dilations.begin() + kernel_shape_size),
+                                                   bias_expected, cuda_ep->IsFuseBias()));
   } else {
     // set Y
     s_.Y = context->Output(0, s_.y_dims);
@@ -517,8 +414,7 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   }
   auto cudnn_handle = GetCudnnHandle(context);
-#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
-  if constexpr (NHWC) {
+#if !defined(__CUDACC__)
     s_.variant_pack.insert_or_assign(s_.cudnn_fe_X, const_cast<void*>(s_.x_data));
     s_.variant_pack.insert_or_assign(s_.cudnn_fe_W, const_cast<void*>(s_.w_data));
     s_.variant_pack.insert_or_assign(s_.cudnn_fe_Y, s_.y_data);
@@ -531,35 +427,14 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
                                                         s_.variant_pack,
                                                         GetWorkSpace(context->GetComputeStream()).get()));
 
-    if (!s_.bias_fused && nullptr != s_.b_data) {
-      const auto alpha = Consts<CudaT>::One;
-      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data,
-                                           &alpha, s_.y_tensor, s_.y_data));
+    if (!s_.bias_fused && s_.b_data != nullptr) {
+      s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_bias_X, s_.y_data);
+      s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_bias_Y, s_.y_data);
+      s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_B, const_cast<void*>(s_.b_data));
+      CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_bias_graph->execute(cudnn_handle,
+                                                          s_.variant_pack_bias,
+                                                          GetWorkSpace(context->GetComputeStream()).get()));
     }
-  } else {
-#endif
-    const auto alpha = Consts<CudaT>::One;
-    const auto beta = Consts<CudaT>::Zero;
-    IAllocatorUniquePtr<void> workspace = GetWorkSpace(context->GetComputeStream());
-    CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(cudnn_handle,
-                                                  &alpha,
-                                                  s_.x_tensor,
-                                                  s_.x_data,
-                                                  s_.w_desc,
-                                                  s_.w_data,
-                                                  s_.conv_desc,
-                                                  s_.algo,
-                                                  workspace.get(),
-                                                  s_.workspace_bytes,
-                                                  &beta,
-                                                  s_.y_tensor,
-                                                  s_.y_data));
-    if (nullptr != s_.b_data) {
-      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data,
-                                           &alpha, s_.y_tensor, s_.y_data));
-    }
-#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
-  }
 #endif
 
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
