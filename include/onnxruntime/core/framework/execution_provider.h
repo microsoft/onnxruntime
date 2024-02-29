@@ -202,21 +202,19 @@ class IExecutionProvider {
 
   /**
      Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
-     the provider. Currently only CUDA/TensorRT/Rocm execution providers support it.
+     the provider.
    */
   virtual bool IsGraphCaptureEnabled() const { return false; }
 
   /**
-     Indicate whether the graph has been captured and instantiated. Currently
-     only CUDA/TensorRT/Rocm execution providers support it.
+     Indicate whether the graph has been captured and instantiated.
    */
-  virtual bool IsGraphCaptured() const { return false; }
+  virtual bool IsGraphCaptured(int /*graph_annotation_id*/) const { return false; }
 
   /**
-     Run the instantiated graph. Currently only CUDA/TensorRT/Rocm execution providers
-     support it.
+     Run the instantiated graph.
    */
-  virtual common::Status ReplayGraph(const onnxruntime::RunOptions& /*run_options*/) {
+  virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
     return Status::OK();
   }
 

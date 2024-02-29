@@ -401,11 +401,11 @@ bool ROCMExecutionProvider::IsGraphCaptureEnabled() const {
   return info_.enable_hip_graph;
 }
 
-bool ROCMExecutionProvider::IsGraphCaptured() const {
+bool ROCMExecutionProvider::IsGraphCaptured(int) const {
   return GetPerThreadContext().IsGraphCaptured();
 }
 
-Status ROCMExecutionProvider::ReplayGraph(const onnxruntime::RunOptions&) {
+Status ROCMExecutionProvider::ReplayGraph(int /*graph_annotation_id*/) {
   return GetPerThreadContext().ReplayGraph();
 }
 

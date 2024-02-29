@@ -103,7 +103,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
 
         ro = onnxrt.RunOptions()
         if use_graph_annotation:
-            ro.add_run_config_entry("ep.cuda.cuda_graph_annotation", "1")
+            ro.add_run_config_entry("gpu_graph_annotation_id", "1")
 
         # One regular run for the necessary memory allocation and cuda graph capturing
         session.run_with_iobinding(io_binding, ro)

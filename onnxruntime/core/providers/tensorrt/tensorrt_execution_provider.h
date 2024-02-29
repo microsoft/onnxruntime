@@ -249,8 +249,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
   bool IsGraphCaptureEnabled() const override;
-  bool IsGraphCaptured() const override;
-  Status ReplayGraph(const onnxruntime::RunOptions& run_options) override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  Status ReplayGraph(int graph_annotation_id) override;
 
  private:
   mutable TensorrtExecutionProviderInfo info_;

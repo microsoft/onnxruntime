@@ -1781,12 +1781,12 @@ void TensorrtExecutionProvider::CaptureEnd() {
   is_graph_captured_ = true;
 }
 
-bool TensorrtExecutionProvider::IsGraphCaptured() const {
+bool TensorrtExecutionProvider::IsGraphCaptured(int) const {
   return is_graph_captured_;
 }
 
-Status TensorrtExecutionProvider::ReplayGraph(const onnxruntime::RunOptions&) {
-  ORT_ENFORCE(IsGraphCaptured());
+Status TensorrtExecutionProvider::ReplayGraph(int) {
+  ORT_ENFORCE(IsGraphCaptured(0));
   // Please note that CUDAGraph::Replay() is not thread safe.
   // ORT TRT calls ReplayGraph() in compute_func() where synchronization is enforced due to lock_guard(),
   // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
@@ -3549,7 +3549,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // Start CUDA graph capture.
     // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
     // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
-    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
       LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
       cuda_graph_.SetStream(stream);
       CaptureBegin();
@@ -3620,13 +3620,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
     // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
     // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
-    if (cuda_graph_enable_ && !IsGraphCaptured()) {
+    if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
       if (IsGraphCaptureAllowed()) {
         CaptureEnd();
         // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
         // so run the captured graph here to actually execute the work.
-        onnxruntime::RunOptions run_options;
-        ORT_RETURN_IF_ERROR(ReplayGraph(run_options));
+        ORT_RETURN_IF_ERROR(ReplayGraph(0));
       } else {
         IncrementRegularRunCountBeforeGraphCapture();
       }
@@ -3843,7 +3842,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     // Start CUDA graph capture.
     // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
     // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
-    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
       LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
       cuda_graph_.SetStream(stream);
       CaptureBegin();
@@ -3914,13 +3913,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
     // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
     // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
-    if (cuda_graph_enable_ && !IsGraphCaptured()) {
+    if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
       if (IsGraphCaptureAllowed()) {
         CaptureEnd();
         // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
         // so run the captured graph here to actually execute the work.
-        onnxruntime::RunOptions run_options;
-        ORT_RETURN_IF_ERROR(ReplayGraph(run_options));
+        ORT_RETURN_IF_ERROR(ReplayGraph(0));
       } else {
         IncrementRegularRunCountBeforeGraphCapture();
       }

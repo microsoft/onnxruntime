@@ -46,4 +46,5 @@ static const char* const kOrtRunOptionsConfigQnnRpcControlLatency = "qnn.rpc_con
 // Set graph annotation id for CUDA EP. Use with enable_cuda_graph=true.
 // The value should be an integer. If the value is not set, ORT session only captures one cuda graph.
 // If the value is set to -1, cuda graph capture/replay is disabled in that run.
-static const char* const kOrtRunOptionsConfigCudaGraphAnnotation = "ep.cuda.cuda_graph_annotation";
+// User are not expected to set the value to 0.
+static const char* const kOrtRunOptionsConfigCudaGraphAnnotation = "gpu_graph_annotation_id";

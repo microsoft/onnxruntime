@@ -670,12 +670,22 @@ class InferenceSession {
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
   /*
+   * Validate and parses the graph annotation string
+   * The string should be in the format of int.
+   * Set the graph_annotation_id to the parsed value.
+   * If value is -1, skip the graph capture/replay
+   * Value 0 is reserved for the default graph capture/replay
+   * and not allowed to be used by the user.
+   */
+  [[nodiscard]] common::Status ValidateAndParseGraphAnotationString(const std::string& graph_annotation_string,
+                                                                    /*out*/ int& graph_annotation_id) const;
+
+  /*
    * Validate and parses the shrink arena request string from the user
    * List format: "device_0:device_id_0;device_1:device_id_1"
    * If we encounter an invalid request, we return an error
    * back to the user.
    */
-
   [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
                                                                  /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
@@ -867,18 +877,18 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
     }
 
-    bool IsGraphCaptured() const {
-      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured();
+    bool IsGraphCaptured(int graph_annotation_id) const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured(graph_annotation_id);
     }
 
-    bool IsGraphCaptureSkippedOnRun() const {
-      return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id_ == -1;
+    bool AllowGraphCaptureOnRun(int graph_annotation_id) const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != -1;
     }
 
-    Status ReplayGraph(const onnxruntime::RunOptions& run_options) {
-      ORT_ENFORCE(IsGraphCaptured());
+    Status ReplayGraph(int graph_annotation_id) {
+      ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph(run_options);
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }
@@ -888,7 +898,6 @@ class InferenceSession {
     }
 
     IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
-    int graph_annotation_id_ = 0;
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
