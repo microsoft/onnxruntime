@@ -24,6 +24,9 @@ The CUDA Execution Provider enables hardware accelerated computation on Nvidia C
 Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please
 reference [Install ORT](../install).
 
+## Build from source
+See [Build instructions](../build/eps.html#cuda).
+
 ## Requirements
 
 Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that
