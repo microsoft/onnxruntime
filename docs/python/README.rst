@@ -11,7 +11,7 @@ Changes
 1.17.2
 ^^^^^^
 
-Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.17.1
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.17.2
 -------
 
 1.17.1
