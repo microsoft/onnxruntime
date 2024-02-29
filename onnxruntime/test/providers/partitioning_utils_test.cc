@@ -18,7 +18,7 @@ namespace test {
 
 // Test handling of a DQ node that is connected to an initializer at the start of the graph, but not used
 // in a QDQ node group until after an unsupported node in the graph. If we do not process QDQ node units
-// correctly this DQ will incorrectly be in the first partition, with the rest of the QDQ node group in 
+// correctly this DQ will incorrectly be in the first partition, with the rest of the QDQ node group in
 // the second partition.
 TEST(PartitioningUtilsTest, TestQDQHandling) {
   constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/ort_github_issue_19590.onnx");

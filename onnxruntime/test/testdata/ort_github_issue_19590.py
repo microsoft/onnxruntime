@@ -23,13 +23,7 @@ graph_proto = helper.make_graph(
             name="mul0",
         ),
         # Treat as unsupported
-        helper.make_node(
-            "Cast",
-            inputs=["mul:0"],
-            outputs=["mul_uint8"],
-            name="cast0",
-            to=2
-        ),
+        helper.make_node("Cast", inputs=["mul:0"], outputs=["mul_uint8"], name="cast0", to=2),
         # DQ of MatMul A input
         helper.make_node(
             "DequantizeLinear",
@@ -40,7 +34,10 @@ graph_proto = helper.make_graph(
         # MatMul
         helper.make_node(
             "MatMul",
-            inputs=["dq_matmul_a", "dq_matmul_b",],
+            inputs=[
+                "dq_matmul_a",
+                "dq_matmul_b",
+            ],
             outputs=["matmul_ab"],
             name="matmul_ab",
         ),
@@ -71,7 +68,7 @@ graph_proto = helper.make_graph(
         helper.make_tensor("scale1", TensorProto.FLOAT, [1], [30.0]),
         helper.make_tensor("scale2", TensorProto.FLOAT, [1], [40.0]),
         helper.make_tensor("matmul_b_uint8", TensorProto.UINT8, [2, 2], [1, 2, 3, 4]),
-        helper.make_tensor("scale_input", TensorProto.FLOAT, [2], [3., 4.]),
+        helper.make_tensor("scale_input", TensorProto.FLOAT, [2], [3.0, 4.0]),
     ],
 )
 
