@@ -68,7 +68,7 @@ inline std::string TrimString(std::string s) {
 /**
  * So use this simple hash to generate unique int by given string input.
  */
-uint32_t GetHashFromString(const std::string& str_value) {
+inline uint32_t GetHashFromString(const std::string& str_value) {
   uint32_t hash = 0;
   for (char const& c : str_value) {
     hash = hash * 101 + c;
