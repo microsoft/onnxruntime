@@ -768,7 +768,10 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas;
-    for (const auto& [name, schema] : schema_map) {
+    schemas.reserve(schema_map.size());
+    for (const auto& ent : schema_map) {
+      const auto& name = ent.first;
+      const auto& schema = ent.second;
       schemas.push_back(schema);
       ONNX_NAMESPACE::InferenceFunction infer_fn = [schema, kernel_defs = std::move(kernel_def_map[name])](
                                                        ONNX_NAMESPACE::InferenceContext& infer_ctx) {
