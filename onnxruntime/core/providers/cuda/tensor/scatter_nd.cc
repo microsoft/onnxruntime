@@ -119,9 +119,11 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
   void* output_data = output_tensor->MutableDataRaw();
 
   if (input_data != output_data) {
-    // TODO: Run benchmarks to determine if a dedicated kernel doing data copy will be faster than invoking cudaMemcpy ?
+    // TODO: Run benchmarks to determine if a dedicated kernel doing data copy will
+    // be faster than invoking cudaMemcpy ?
     CUDA_RETURN_IF_ERROR(
-        cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
+        cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(),
+                        cudaMemcpyDeviceToDevice, Stream(context)));
   }
 
   // Bail out early

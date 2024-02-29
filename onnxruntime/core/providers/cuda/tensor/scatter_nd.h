@@ -39,18 +39,20 @@ class ScatterNDWithAtomicReduction final : public CudaKernel {
     std::string reduction = info.GetAttrOrDefault<std::string>("reduction", "none");
 
     if (info.GetAttr<std::string>("reduction", &reduction).IsOK()) {
-      if (reduction == "add")
+      if (reduction == "add") {
         reduction_ = ScatterNDReduction::Add;
-      else if (reduction == "mul")
+      } else if (reduction == "mul") {
         reduction_ = ScatterNDReduction::Mul;
-      else if (reduction == "min")
+      } else if (reduction == "min") {
         reduction_ = ScatterNDReduction::Min;
-      else if (reduction == "max")
+      } else if (reduction == "max") {
         reduction_ = ScatterNDReduction::Max;
-      else if (reduction == "none") {
-        LOGS_DEFAULT(WARNING) << "ScatterND with reduction=='none' only garuantees to be correct if indices are not duplicated.";
-      } else
+      } else if (reduction == "none") {
+        LOGS_DEFAULT(WARNING) << "ScatterND with reduction=='none' only garuantees "
+                              << "to be correct if indices are not duplicated.";
+      } else {
         ORT_THROW("Reduction '", reduction, "' is not supported on CUDA and opset >= 13.");
+      }
     }
   }
   Status ComputeInternal(OpKernelContext* context) const override;
