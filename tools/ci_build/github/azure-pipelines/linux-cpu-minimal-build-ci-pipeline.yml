@@ -59,7 +59,7 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: onnxruntime-Linux-CPU-For-Android-CI
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
   variables:
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
