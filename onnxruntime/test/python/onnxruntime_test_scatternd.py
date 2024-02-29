@@ -153,9 +153,7 @@ class TestScatterPerProvider(unittest.TestCase):
     def test_scatterels_cuda(self):
         default_value = [
             "Cast",
-            # "MemcpyToHost",
             "ScatterElements",
-            # "MemcpyFromHost",
             "Sub",
         ]
         expected = {
@@ -163,8 +161,16 @@ class TestScatterPerProvider(unittest.TestCase):
             (np.float16, "none"): default_value,
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
+            (np.float32, "mul"): default_value,
+            (np.float16, "mul"): default_value,
+            (np.float32, "min"): default_value,
+            (np.float16, "min"): default_value,
+            (np.float32, "max"): default_value,
+            (np.float16, "max"): default_value,
         }
-        for opset, dtype, reduction in itertools.product([16, 18], [np.float32, np.float16], ["none", "add"]):
+        for opset, dtype, reduction in itertools.product(
+            [16, 18], [np.float32, np.float16], ["none", "add", "mul", "min", "max"]
+        ):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
@@ -179,9 +185,7 @@ class TestScatterPerProvider(unittest.TestCase):
     def test_scatternd_cuda(self):
         default_value = [
             "Cast",
-            # "MemcpyToHost",
             "ScatterND",
-            # "MemcpyFromHost",
             "Sub",
         ]
         expected = {
@@ -189,8 +193,16 @@ class TestScatterPerProvider(unittest.TestCase):
             (np.float16, "none"): default_value,
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
+            (np.float32, "mul"): default_value,
+            (np.float16, "mul"): default_value,
+            (np.float32, "min"): default_value,
+            (np.float16, "min"): default_value,
+            (np.float32, "max"): default_value,
+            (np.float16, "max"): default_value,
         }
-        for opset, dtype, reduction in itertools.product([16, 18], [np.float32, np.float16], ["none", "add"]):
+        for opset, dtype, reduction in itertools.product(
+            [16, 18], [np.float32, np.float16], ["none", "add", "mul", "min", "max"]
+        ):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
@@ -212,8 +224,14 @@ class TestScatterPerProvider(unittest.TestCase):
             (np.float16, "none"): default_value,
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
+            (np.float32, "mul"): default_value,
+            (np.float16, "mul"): default_value,
+            (np.float32, "min"): default_value,
+            (np.float16, "min"): default_value,
+            (np.float32, "max"): default_value,
+            (np.float16, "max"): default_value,
         }
-        for opset, dtype, reduction in itertools.product([16, 18], [np.float32], ["none", "add"]):
+        for opset, dtype, reduction in itertools.product([16, 18], [np.float32], ["none", "add", "mul", "min", "max"]):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
@@ -235,8 +253,14 @@ class TestScatterPerProvider(unittest.TestCase):
             (np.float16, "none"): default_value,
             (np.float32, "add"): default_value,
             (np.float16, "add"): default_value,
+            (np.float32, "mul"): default_value,
+            (np.float16, "mul"): default_value,
+            (np.float32, "min"): default_value,
+            (np.float16, "min"): default_value,
+            (np.float32, "max"): default_value,
+            (np.float16, "max"): default_value,
         }
-        for opset, dtype, reduction in itertools.product([16, 18], [np.float32], ["none", "add"]):
+        for opset, dtype, reduction in itertools.product([16, 18], [np.float32], ["none", "add", "mul", "min", "max"]):
             with self.subTest(dtype=dtype, reduction=reduction, opset=opset):
                 self.common_scatter(
                     opset,
@@ -269,9 +293,9 @@ class TestScatterPerProvider(unittest.TestCase):
             ir_version=9,
         )
 
-        data = np.zeros((2, 2, 3), dtype=np.float32)
+        data = np.full((2, 2, 3), 0.1, dtype=np.float32)
         indices = np.array([[line], [1 - line], [line]], dtype=np.int64)
-        updates = (2 ** np.arange(18).astype(np.float32).reshape((3, 2, 3))).astype(np.float32)
+        updates = (2 ** (np.arange(18) + 1).astype(np.float32).reshape((3, 2, 3))).astype(np.float32)
 
         feeds = dict(data=data, indices=indices, updates=updates)
         ref = ReferenceEvaluator(model)
@@ -293,6 +317,12 @@ class TestScatterPerProvider(unittest.TestCase):
     def test_scatternd_standalone_cuda(self):
         self._scatternd_standalone_cuda("add", 0)
         self._scatternd_standalone_cuda("add", 1)
+        self._scatternd_standalone_cuda("mul", 0)
+        self._scatternd_standalone_cuda("mul", 1)
+        self._scatternd_standalone_cuda("min", 0)
+        self._scatternd_standalone_cuda("min", 1)
+        self._scatternd_standalone_cuda("max", 0)
+        self._scatternd_standalone_cuda("max", 1)
 
 
 if __name__ == "__main__":
