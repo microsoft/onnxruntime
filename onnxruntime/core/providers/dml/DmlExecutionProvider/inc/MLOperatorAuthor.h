@@ -99,7 +99,8 @@ enum class MLOperatorTensorDataType : uint32_t
     Complex128 = 15,
 
     // Specific to DML
-    Int4 = 16
+    UInt4 = 16,
+    Int4 = 17
 };
 
 //! \enum MLOperatorEdgeType

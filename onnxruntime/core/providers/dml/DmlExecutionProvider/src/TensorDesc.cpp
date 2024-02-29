@@ -272,12 +272,16 @@ void TensorDesc::ForceUnsignedDataType()
         m_bufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_UINT8;
         break;
 
+    case DML_TENSOR_DATA_TYPE_INT4:
+        m_bufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_UINT4;
+        break;
+
     // Nothing to do if already unsigned.
     case DML_TENSOR_DATA_TYPE_UINT64:
     case DML_TENSOR_DATA_TYPE_UINT32:
     case DML_TENSOR_DATA_TYPE_UINT16:
     case DML_TENSOR_DATA_TYPE_UINT8:
-    case DML_TENSOR_DATA_TYPE_INT4:
+    case DML_TENSOR_DATA_TYPE_UINT4:
         break;
 
     default:

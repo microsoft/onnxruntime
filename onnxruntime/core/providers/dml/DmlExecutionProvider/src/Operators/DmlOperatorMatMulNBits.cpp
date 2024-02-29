@@ -21,7 +21,7 @@ public:
         const auto bitCount = kernelInfo.GetAttribute<int64_t>(AttrName::Bits);
 
         MLOperatorTensorDataType mlDataType = kernelInfo.GetInputEdgeDescription(0).tensorDataType;
-        const DML_TENSOR_DATA_TYPE quantizedDataType = bitCount == 4 ? DML_TENSOR_DATA_TYPE_INT4 : DML_TENSOR_DATA_TYPE_INT8;
+        const DML_TENSOR_DATA_TYPE quantizedDataType = bitCount == 4 ? DML_TENSOR_DATA_TYPE_UINT4 : DML_TENSOR_DATA_TYPE_UINT8;
 
         std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
         std::vector<DimensionType> inputShape1 = inputShape0;
