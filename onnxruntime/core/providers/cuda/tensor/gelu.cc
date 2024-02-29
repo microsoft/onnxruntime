@@ -6,6 +6,10 @@
 #include "core/providers/cuda/tensor/gelu.h"
 #include "core/providers/cuda/tensor/gelu_impl.h"
 
+#ifdef USE_ROCM
+#include "contrib_ops/rocm/bert/elementwise.h"
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 
