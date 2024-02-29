@@ -17,8 +17,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 STFTDecomposition::STFTDecomposition(const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
-    : GraphTransformer("STFTDecomposition", compatible_execution_providers)
-{
+    : GraphTransformer("STFTDecomposition", compatible_execution_providers) {
 }
 
 template <typename T>
@@ -51,7 +50,7 @@ NodeArg* AddInitializer(Graph& graph, const char* name, const int64_t (&shape)[T
 
 template <size_t TDims>
 NodeArg* AddShapeInitializer(Graph& graph, const char* name, const int64_t (&shape)[TDims]) {
-  int64_t shape_shape[] = { TDims };
+  int64_t shape_shape[] = {TDims};
   return AddInitializer<int64_t>(graph, name, shape_shape, shape);
 }
 
@@ -75,9 +74,9 @@ std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in, int32_t data_t
   auto def_name = graph.GenerateNodeArgName("Cast");
   auto node_arg = &graph.GetOrCreateNodeArg(def_name, nullptr);
   Node& node = graph.AddNode(graph.GenerateNodeName("Cast"),
-                                    "Cast",
-                                    "",
-                                    {in},
+                             "Cast",
+                             "",
+                             {in},
                              {node_arg});
   node.AddAttribute("to", static_cast<int64_t>(data_type));
   node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -168,7 +167,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       auto output_batch_size = stft.MutableOutputDefs()[0]->Shape()->dim(0).dim_value();
       auto output_num_frames = stft.MutableOutputDefs()[0]->Shape()->dim(1).dim_value();
       auto output_frame_length = stft.MutableOutputDefs()[0]->Shape()->dim(2).dim_value();
-      //auto output_components = stft.MutableOutputDefs()[0]->Shape()->dim(3).dim_value();
+      // auto output_components = stft.MutableOutputDefs()[0]->Shape()->dim(3).dim_value();
       auto weight_size = dft_unique_bins * dft_size;
       auto real_weights_data = std::vector<float>(weight_size);
       auto imag_weights_data = std::vector<float>(weight_size);
@@ -183,7 +182,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         }
       }
 
-      const int64_t weight_shape[] = { dft_unique_bins, 1, 1, dft_size };
+      const int64_t weight_shape[] = {dft_unique_bins, 1, 1, dft_size};
       auto real_weights = AddInitializer<float>(graph, "stft_real_conv_weights", weight_shape, real_weights_data.data());
       auto imaginary_weights = AddInitializer<float>(graph, "stft_imaginary_conv_weights", weight_shape, imag_weights_data.data());
 
@@ -193,12 +192,11 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       const int64_t unsqueezed_output_shape[] = {2, output_batch_size, output_frame_length, output_num_frames};
       auto unsqueezed_shape = AddShapeInitializer(graph, "stft_output_reshaped", unsqueezed_output_shape);
 
-      NodeArg* signal_reshaped_inputs[] = { signal, signal_shape };
+      NodeArg* signal_reshaped_inputs[] = {signal, signal_shape};
       Node* reshape_signal_node = nullptr;
       NodeArg* reshape_output = nullptr;
       std::tie(reshape_signal_node, reshape_output) =
           AddNode(graph, "Reshape", stft.GetExecutionProviderType(), signal_reshaped_inputs);
-
 
       NodeArg* real_weights_final = real_weights;
       NodeArg* imag_weights_final = imaginary_weights;
@@ -206,11 +204,11 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         // When we are missing a window function
         if (real_weights_final->TypeAsProto()->tensor_type().elem_type() != data_type) {
           std::tie(std::ignore, real_weights_final) =
-            AddNodeCast(graph, real_weights_final, data_type);
+              AddNodeCast(graph, real_weights_final, data_type);
         }
         if (imag_weights_final->TypeAsProto()->tensor_type().elem_type() != data_type) {
           std::tie(std::ignore, imag_weights_final) =
-            AddNodeCast(graph, imag_weights_final, data_type);
+              AddNodeCast(graph, imag_weights_final, data_type);
         }
       } else {
         // When we have a window function
@@ -221,7 +219,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         if (window->TypeAsProto()->tensor_type().elem_type() != GetDataType<float>()) {
           Node* window_cast_node = nullptr;
           std::tie(window_cast_node, window_final) =
-            AddNodeCast(graph, window, GetDataType<float>());
+              AddNodeCast(graph, window, GetDataType<float>());
           window_recipient = window_cast_node;
         }
 
@@ -245,9 +243,9 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
             AddNode(graph, "Mul", kCpuExecutionProvider, scale_imag_weights_inputs);
 
         std::tie(std::ignore, real_weights_final) =
-          AddNodeCast(graph, windowed_real_weights_output, data_type);
+            AddNodeCast(graph, windowed_real_weights_output, data_type);
         std::tie(std::ignore, imag_weights_final) =
-          AddNodeCast(graph, windowed_imag_weights_output, data_type);
+            AddNodeCast(graph, windowed_imag_weights_output, data_type);
       }
 
       // Add Convolution (reals)
