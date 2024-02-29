@@ -4586,7 +4586,7 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
-				  
+
   /** \brief Set external data folder path if the model loaded from memory
    *
    * \param[in] options
