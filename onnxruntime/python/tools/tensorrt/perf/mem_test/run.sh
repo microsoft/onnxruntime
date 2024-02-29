@@ -108,19 +108,21 @@ mv valgrind.log result
 CONCURRENCY=2
 FRCNN_FOLDER="/data/ep-perf-models/onnx-zoo-models/FasterRCNN-10/"
 
-cp -r ${FRCNN_FOLDER} ./
+mkdir FasterRCNN-10/
+cp -r ${FRCNN_FOLDER}/test_data_set_0 ${FRCNN_FOLDER}/faster_rcnn_R_50_FPN_1x.onnx ./FasterRCNN-10/
 
 # replicate test inputs
 for (( i=1; i<CONCURRENCY; i++ )); do
     cp -r "./FasterRCNN-10/test_data_set_0/" "./FasterRCNN-10/test_data_set_$i/"
 done
 
+pip install onnx requests packaging
 python ${ORT_SOURCE}/onnxruntime/python/tools/symbolic_shape_infer.py \
     --input="./FasterRCNN-10/faster_rcnn_R_50_FPN_1x.onnx" \
     --output="./FasterRCNN-10/faster_rcnn_R_50_FPN_1x.onnx" \
     --auto_merge
 
-${ORT_SOURCE}/build/Linux/Release/onnx_test_runner -e tensorrt -c 2 ./FasterRCNN-10/ > concurrency_test.log
+${ORT_SOURCE}/build/Linux/Release/onnx_test_runner -e tensorrt -c 2 ./FasterRCNN-10/ > concurrency_test.log 2>&1
 mv concurrency_test.log result
 
 # Run AddressSanitizer 
