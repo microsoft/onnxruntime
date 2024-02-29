@@ -147,7 +147,7 @@ class FusionSkipGroupNorm(Fusion):
 
     def match_transpose_from_nhwc(self, output_name, input_name_to_nodes, output_name_to_node):
         """Match whether an output is from a Transpose(perm=[0,3,1,2]) node."""
-        parent = output_name_to_node[output_name] if output_name in output_name_to_node else None
+        parent = output_name_to_node.get(output_name, None)
         if parent is not None and parent.op_type == "Transpose":
             permutation = OnnxModel.get_node_attribute(parent, "perm")
             if permutation == [0, 3, 1, 2]:

@@ -34,6 +34,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_x64_qnn
+  displayName: 'Whether Windows x86_64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
 - name: build_py_parameters
   displayName: 'Specify extra build parameters'
   type: string
@@ -70,5 +75,6 @@ stages:
     enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
     enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
+    enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
     build_py_parameters: ${{ parameters.build_py_parameters }}
     cmake_build_type: ${{ parameters.cmake_build_type }}

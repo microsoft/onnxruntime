@@ -15,6 +15,11 @@ parameters:
   - 8.6.1.6
   - BIN
 
+- name: UseTensorrtOssParser
+  displayName: Use TensorRT-OSS Parser
+  type: boolean
+  default: false
+
 - name: ModelGroups
   type: object
   default: 
@@ -73,7 +78,7 @@ jobs:
       value: ort-image-$(Build.BuildId)
 
   steps:
-    - ${{ if eq(parameters.TrtVersion, 'BIN') }}:
+    - ${{ if and(eq(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:
       - script: 'ls -al $(trtBinsDir)'
         displayName: 'Show available TensorRT .tar.gz packages'
 
@@ -83,11 +88,19 @@ jobs:
       - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
         displayName: 'Install TensorRT from binaries and build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-    - ${{ else }}:
+    
+    # Build ORT with TensorRT built-in parser 
+    - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:
       - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75'
-        displayName: 'Build latest ORT Image'
+        displayName: 'Build latest ORT Image with TensorRT built-in parser'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-        
+    
+    # Build ORT with TensorRT OSS parser 
+    - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, true)) }}:
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --use_tensorrt_oss_parser'
+        displayName: 'Build latest ORT Image with TensorRT OSS parser'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    
     - ${{ if eq(parameters.MemTest, true) }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
         displayName: 'Run Memory Test'

@@ -180,32 +180,50 @@ namespace Dml
                 // Convert partitionONNXGraph into DML EP GraphDesc
                 ComPtr<IDMLDevice> device;
                 ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
+                // This map will be used to transfer the initializer to D3D12 system heap memory.
+                // 'serializedDmlGraphDesc' will have constant input as intermediate edges, that's why
+                // we need a mapping between intermediateEdgeIndex and indexedSubGraph's (a given partition)
+                // input arg index.
+                //   For ex: Let's say intermediate edge index = idx, then
+                //           indexedSubGraphInputArgIdx = constantEdgeIdxToSubgraphInputArgIdxMap[idx];
+                //           corresponding constant tensor = initializerNameToInitializerMap[indexedSubGraph.GetMetaDef()->inputs[indexedSubGraphInputArgIdx]]
+                // We are using intermediate edge index as a key because same constant tensor can be used by
+                // multiple nodes.
+                std::unordered_map<uint32_t, uint32_t> serializedGraphInputIndexToSubgraphInputIndex;
+                std::unordered_map<std::string_view, uint32_t> serializedGraphLargeConstantNameToSubgraphInputIndex;
+                std::vector<std::unique_ptr<std::byte[]>> smallConstantData;
                 GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
                     isInputsUploadedByDmlEP.data(),
                     isInputsUploadedByDmlEP.size(),
                     m_isInitializerTransferable,
                     m_partitionNodePropsMap,
-                    device.Get(),
                     providerImpl,
                     m_modelPath,
                     m_subgraphNodePointers,
                     m_subgraphInputs,
-                    m_subgraphOutputs);
+                    m_subgraphOutputs,
+                    serializedGraphInputIndexToSubgraphInputIndex,
+                    serializedGraphLargeConstantNameToSubgraphInputIndex,
+                    smallConstantData);
 
                 m_outputShapes = graphDesc.outputShapes;
 
                 // Walk through each graph edge and mark used inputs
                 m_inputsUsed.resize(fusedNodeInputCount, false);
-                for (const DML_INPUT_GRAPH_EDGE_DESC& edge : graphDesc.inputEdges)
-                {
-                    m_inputsUsed[edge.GraphInputIndex] = true;
+                for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end(); it++) {
+                    m_inputsUsed[it->second] = true;
+                }
+                for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end(); it++) {
+                    m_inputsUsed[it->second] = true;
                 }
 
                 // Compile the operator
                 m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
                     graphDesc,
                     *m_indexedSubGraph,
-                    providerImpl);
+                    providerImpl,
+                    &serializedGraphInputIndexToSubgraphInputIndex,
+                    &serializedGraphLargeConstantNameToSubgraphInputIndex);
 
                 // Queue references to objects which must be kept alive until resulting GPU work completes
                 m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());

@@ -92,7 +92,7 @@ class EngineBuilder:
             "unetxl": "unet",
             "vae": "vae_decoder",
         }
-        return name_mapping[model_name] if model_name in name_mapping else model_name
+        return name_mapping.get(model_name, model_name)
 
     def get_cached_model_name(self, model_name):
         model_name = self.get_diffusers_module_name(model_name)

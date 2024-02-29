@@ -90,6 +90,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
+  for (const auto& config_pair : provider_options) {
+    ORT_THROW_IF_ERROR(options->value.config_options.AddConfigEntry((std::string(provider_name) + ":" + config_pair.first).c_str(), config_pair.second.c_str()));
+  }
+
   if (strcmp(provider_name, "DML") == 0) {
 #if defined(USE_DML)
     options->provider_factories.push_back(DMLProviderFactoryCreator::CreateFromProviderOptions(provider_options));

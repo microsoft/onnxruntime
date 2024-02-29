@@ -30,3 +30,15 @@ static const char* const kOrtRunOptionsConfigEnableMemoryArenaShrinkage = "memor
 // Per default it will be set to '0'
 // Taking CUDA EP as an example, it omit triggering cudaStreamSynchronize on the compute stream.
 static const char* const kOrtRunOptionsConfigDisableSynchronizeExecutionProviders = "disable_synchronize_execution_providers";
+
+// Set HTP performance mode for QNN HTP backend before session run.
+// options for HTP performance mode: "burst", "balanced", "default", "high_performance",
+// "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver",
+// "sustained_high_performance". Default to "default".
+static const char* const kOrtRunOptionsConfigQnnPerfMode = "qnn.htp_perf_mode";
+
+// Set HTP performance mode for QNN HTP backend post session run.
+static const char* const kOrtRunOptionsConfigQnnPerfModePostRun = "qnn.htp_perf_mode_post_run";
+
+// Set RPC control latency for QNN HTP backend
+static const char* const kOrtRunOptionsConfigQnnRpcControlLatency = "qnn.rpc_control_latency";

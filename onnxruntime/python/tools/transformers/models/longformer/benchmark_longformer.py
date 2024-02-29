@@ -289,9 +289,7 @@ def test_ort_memory(
 
 
 def load_torch_model(model_name, device):
-    torch_model_name_or_dir = (
-        PRETRAINED_LONGFORMER_MODELS[model_name] if model_name in PRETRAINED_LONGFORMER_MODELS else model_name
-    )
+    torch_model_name_or_dir = PRETRAINED_LONGFORMER_MODELS.get(model_name, model_name)
     model = LongformerModel.from_pretrained(torch_model_name_or_dir)
     model.to(device)
     return model

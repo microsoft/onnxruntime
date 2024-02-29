@@ -37,7 +37,7 @@ jobs:
         wget https://github.com/dotnet/docfx/releases/download/v${DOCFXVERSION}/docfx-linux-x64-v${DOCFXVERSION}.zip -O build/docfx/docfx.zip
         unzip build/docfx/docfx.zip -d build/docfx
     - name: Install NuGet
-      uses: nuget/setup-nuget@v1
+      uses: nuget/setup-nuget@v2
     - name: Build Documentation
       run: |
         build/docfx/docfx metadata csharp/ApiDocs/docfx.json

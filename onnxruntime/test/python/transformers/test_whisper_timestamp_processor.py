@@ -50,7 +50,7 @@ class TestTimestampProcessor(unittest.TestCase):
         ort_out = sess.run(None, ort_inputs)
         ort_out_tensor = torch.from_numpy(ort_out[0])
         ort_transcription = processor.batch_decode(
-            ort_out_tensor[0][0].view(1, -1), skip_special_tokens=True, output_offsets=True
+            ort_out_tensor[0][0].view(1, -1), skip_special_tokens=True, output_offsets=True, decode_with_timestamps=True
         )
         print(ort_transcription)
         expected_transcription = [
@@ -58,7 +58,7 @@ class TestTimestampProcessor(unittest.TestCase):
                 "text": "<|0.00|> Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.<|5.44|>",
                 "offsets": [
                     {
-                        "text": "<|0.00|> Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.<|5.44|>",
+                        "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
                         "timestamp": (0.0, 5.44),
                     }
                 ],

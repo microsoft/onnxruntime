@@ -46,6 +46,8 @@ class PerformanceRunner {
   ~PerformanceRunner();
   Status Run();
 
+  void LogSessionCreationTime();
+
   inline const PerformanceResult& GetResult() const { return performance_result_; }
 
   inline void SerializeResult() const {

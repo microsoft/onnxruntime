@@ -36,6 +36,8 @@
             python benchmark.py -e torchscript onnxruntime -p "int8" -o
         Run OnnxRuntime with the ROCM provider and graph optimization script:
             python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
+        Run OnnxRuntime with bfloat16 fastmath mode kernels on aarch64 platforms with bfloat16 support:
+            python benchmark.py --enable_arm64_bfloat16_fastmath_mlas_gemm
 
     It is recommended to use run_benchmark.sh to launch benchmark.
 """
@@ -106,6 +108,7 @@ def run_onnxruntime(
     use_raw_attention_mask,
     model_fusion_statistics,
     model_source,
+    enable_arm64_bfloat16_fastmath_mlas_gemm,
     args,
 ):
     import onnxruntime
@@ -209,6 +212,7 @@ def run_onnxruntime(
                 enable_all_optimization=True,
                 num_threads=num_threads,
                 verbose=verbose,
+                enable_mlas_gemm_fastmath_arm64_bfloat16=enable_arm64_bfloat16_fastmath_mlas_gemm,
             )
             if ort_session is None:
                 continue
@@ -344,9 +348,7 @@ def run_pytorch(
         else:
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-            max_input_size = (
-                tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-            )
+            max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
 
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
@@ -498,9 +500,7 @@ def run_tensorflow(
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = (
-            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-        )
+        max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
 
         for batch_size in batch_sizes:
             if batch_size <= 0:
@@ -764,6 +764,14 @@ def parse_arguments():
         help="Manually set the model's layer number",
     )
 
+    parser.add_argument(
+        "--enable_arm64_bfloat16_fastmath_mlas_gemm",
+        required=False,
+        action="store_true",
+        help="Enable bfloat16 mlas gemm kernels on aarch64. Supported only for CPU EP ",
+    )
+    parser.set_defaults(enable_arm64_bfloat16_fastmath_mlas_gemm=False)
+
     FusionOptions.add_arguments(parser)
 
     args = parser.parse_args()
@@ -909,6 +917,7 @@ def main():
                     use_raw_attention_mask,
                     model_fusion_statistics,
                     args.model_source,
+                    args.enable_arm64_bfloat16_fastmath_mlas_gemm,
                     args,
                 )
             except Exception:

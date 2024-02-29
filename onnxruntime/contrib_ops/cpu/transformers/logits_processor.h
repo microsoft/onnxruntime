@@ -10,6 +10,7 @@
 #include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
 #include "contrib_ops/cpu/transformers/sampling_parameters.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -33,6 +34,14 @@ struct NextTokenScores {
     }
   }
 };
+
+#ifdef DEBUG_GENERATION
+template <typename T>
+void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
+  std::cout << name << std::endl;
+  ORT_UNUSED_PARAMETER(next_token_scores);
+}
+#endif
 
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
@@ -150,19 +159,25 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TimestampLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TimestampLogitsProcessor(int eos_token_id, int max_initial_timestamp_index)
-      : eos_token_id_(eos_token_id), max_initial_timestamp_index_(max_initial_timestamp_index) {}
+  TimestampLogitsProcessor(int end_of_text_token_id,          // <|endoftext|>
+                           int start_of_transcript_token_id,  // <|startoftranscript|>
+                           int translate_token_id,            // <|translate|>
+                           int transcribe_token_id,           // <|transcribe|>
+                           int start_of_lm_token_id,          // <|startoflm|>
+                           int no_timestamps_token_id,        // <|notimestamps|>
+                           int beginning_timestamp_token_id,  // <|0.00|>
+                           int max_initial_timestamp_index)
+      : end_of_text_token_id_(end_of_text_token_id),
+        start_of_transcript_token_id_(start_of_transcript_token_id),
+        translate_token_id_(translate_token_id),
+        transcribe_token_id_(transcribe_token_id),
+        start_of_lm_token_id_(start_of_lm_token_id),
+        no_timestamps_token_id_(no_timestamps_token_id),
+        beginning_timestamp_token_id_(beginning_timestamp_token_id),
+        max_initial_timestamp_index_(max_initial_timestamp_index) {}
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override {
-    // TODO: translate_token_id_ and transcribe_token_id_ need to support both multilingual and English-only models.
-    const int beg_token_id_ = eos_token_id_ + 107;
-    const int not_token_id_ = eos_token_id_ + 106;
-    const int solm_token_id_ = eos_token_id_ + 105;
-    const int sot_token_id_ = eos_token_id_ + 1;
-    constexpr int translate_token_id_ = 50358;
-    constexpr int transcribe_token_id_ = 50359;
-
     const int batch_beam_size = next_token_scores.batch_beam_size;
     const int vocab_size = next_token_scores.vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
@@ -174,7 +189,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       size_t sample_begin = 0;
       for (size_t j = 0; j < seq_length; j++) {
         sample_begin++;
-        if (sequence[j] >= beg_token_id_) {
+        if (sequence[j] >= beginning_timestamp_token_id_) {
           break;
         }
       }
@@ -182,30 +197,30 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       // Suppress tokens
       for (int j = 0; j < vocab_size; j++) {
         // Suppress notimestamps and solm tokens
-        if (j == not_token_id_ || j == solm_token_id_) {
+        if (j == no_timestamps_token_id_ || j == start_of_lm_token_id_) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
 
         // Suppress sot, translate and transcribe tokens
         if (seq_length > sample_begin) {
-          if (j == sot_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {
+          if (j == start_of_transcript_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {
             beam_token_scores[j] = std::numeric_limits<T>::lowest();
           }
         }
       }
 
       // Timestamps should be in pair except the first one
-      const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
-      const bool penultimate_was_timestamp = seq_length <= sample_begin || sequence[seq_length - 2] >= beg_token_id_;
+      const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beginning_timestamp_token_id_;
+      const bool penultimate_was_timestamp = seq_length <= sample_begin || sequence[seq_length - 2] >= beginning_timestamp_token_id_;
       if (last_was_timestamp) {
         if (penultimate_was_timestamp) {
           // If timestamps show up in pair, or it's the first timestamp, no more timestamp is generated
-          for (int j = beg_token_id_; j < vocab_size; j++) {
+          for (int j = beginning_timestamp_token_id_; j < vocab_size; j++) {
             beam_token_scores[j] = std::numeric_limits<T>::lowest();
           }
         } else {
           // If timestamp doesn't show up in pair, generate timestamp
-          for (int j = 0; j < eos_token_id_; j++) {
+          for (int j = 0; j < end_of_text_token_id_; j++) {
             beam_token_scores[j] = std::numeric_limits<T>::lowest();
           }
         }
@@ -214,7 +229,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       // Find timestamp tokens
       std::vector<int32_t> timestamps;
       for (const auto& word_id : sequence) {
-        if (word_id >= beg_token_id_) {
+        if (word_id >= beginning_timestamp_token_id_) {
           timestamps.push_back(word_id);
         }
       }
@@ -231,13 +246,13 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
           timestamp_last = timestamps.back() + 1;
         }
 
-        for (int j = beg_token_id_; j < timestamp_last; j++) {
+        for (int j = beginning_timestamp_token_id_; j < timestamp_last; j++) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
       }
 
       if (seq_length == sample_begin) {
-        const int last_allowed = beg_token_id_ + max_initial_timestamp_index_;
+        const int last_allowed = beginning_timestamp_token_id_ + max_initial_timestamp_index_;
         for (int j = last_allowed + 1; j < vocab_size; j++) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
@@ -247,8 +262,8 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       float timestamp_logprob = std::numeric_limits<T>::lowest();
       {
         float logsumexp = 0.0f;
-        const float logprob_max = *std::max_element(beam_token_scores.begin() + beg_token_id_, beam_token_scores.end());
-        for (int j = beg_token_id_; j < vocab_size; ++j) {
+        const float logprob_max = *std::max_element(beam_token_scores.begin() + beginning_timestamp_token_id_, beam_token_scores.end());
+        for (int j = beginning_timestamp_token_id_; j < vocab_size; ++j) {
           if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
             logsumexp += expf(beam_token_scores[j] - logprob_max);
           }
@@ -258,9 +273,9 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
         }
       }
 
-      const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beg_token_id_);
+      const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beginning_timestamp_token_id_);
       if (timestamp_logprob > max_text_token_logprob) {
-        for (int j = 0; j < beg_token_id_; ++j) {
+        for (int j = 0; j < beginning_timestamp_token_id_; ++j) {
           beam_token_scores[j] = std::numeric_limits<T>::lowest();
         }
       }
@@ -268,7 +283,13 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
   }
 
  private:
-  int eos_token_id_;
+  int end_of_text_token_id_;
+  int start_of_transcript_token_id_;
+  int translate_token_id_;
+  int transcribe_token_id_;
+  int start_of_lm_token_id_;
+  int no_timestamps_token_id_;
+  int beginning_timestamp_token_id_;
   int max_initial_timestamp_index_;
 };
 
@@ -330,7 +351,15 @@ class LogitsProcessorList : public ILogitsProcessorList {
     // Add timestamp processor for whisper model
     if (parameters.model_type == IGenerationParameters::kModelTypeWhisper && parameters.logits_processor == IGenerationParameters::kLogitsProcessorTypeWhisper) {
       constexpr int max_initial_timestamp_index = 50;
-      timestamp_processor_ = std::make_unique<TimestampLogitsProcessor<float>>(parameters.eos_token_id, max_initial_timestamp_index);
+      // Token ids are passed below in the order that they appear in the tokenizer
+      timestamp_processor_ = std::make_unique<TimestampLogitsProcessor<float>>(parameters.eos_token_id,
+                                                                               parameters.decoder_start_token_id,
+                                                                               parameters.translate_token_id,
+                                                                               parameters.transcribe_token_id,
+                                                                               parameters.start_of_lm_token_id,
+                                                                               parameters.no_timestamps_token_id,
+                                                                               parameters.beginning_timestamp_token_id,
+                                                                               max_initial_timestamp_index);
       processor_list_.push_back(timestamp_processor_.get());
     }
 

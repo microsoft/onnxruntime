@@ -40,6 +40,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_x64_qnn
+  displayName: 'Whether Windows x86_64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
 # TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
 - name: cmake_build_type
   type: string
@@ -459,3 +464,9 @@ stages:
           QNN_SDK: 'qnn-v2.18.0.240101_win'
           PYTHON_VERSION: '3.11'
           NUMPY_VERSION: '1.25.2'
+
+  - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
+      - template: py-win-x64-qnn.yml
+        parameters:
+          MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+          QNN_SDK: 'qnn-v2.18.0.240101_win'

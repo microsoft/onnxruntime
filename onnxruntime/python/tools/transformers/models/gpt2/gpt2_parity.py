@@ -171,12 +171,10 @@ def print_wins(wins, rows, test_name):
 
     rank = 0
     previous_value = -1
-    count = 0
-    for key, value in sorted_wins.items():
+    for count, (key, value) in enumerate(sorted_wins.items()):
         if value != previous_value:
             rank = count
         previous_value = value
-        count += 1
 
         for row in rows:
             if row["run_id"] == key:

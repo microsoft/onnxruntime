@@ -154,7 +154,9 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createConcatProgramInfo(context.inputs, attributes.axis));
+  // 0 length tensors are valid for concat, remove them
+  const nonEmptyInputs = context.inputs.filter(input => ShapeUtil.size(input.dims) > 0);
+  context.compute(createConcatProgramInfo(nonEmptyInputs, attributes.axis), {inputs: nonEmptyInputs});
 };
 
 export const parseConcatAttributes = (attributes: Record<string, unknown>): ConcatAttributes =>

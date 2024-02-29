@@ -67,7 +67,7 @@ TEST(ShapeOptimizerTests, Shape15CannotFold) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{15};
+  std::vector<int> opset_candidates{15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> identity_input_shape;
@@ -145,7 +145,7 @@ TEST(ShapeOptimizerTests, Shape15) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{15};
+  std::vector<int> opset_candidates{15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> identity_input_shape;
@@ -218,7 +218,7 @@ TEST(ShapeOptimizerTests, Shape15TakesGraphInput) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{15};
+  std::vector<int> opset_candidates{15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> shape_input_shape;
@@ -289,7 +289,7 @@ TEST(ShapeOptimizerTests, Shape15GeneratesGraphOutput) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{15};
+  std::vector<int> opset_candidates{15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> identity_input_shape;
@@ -366,7 +366,7 @@ TEST(ShapeOptimizerTests, Slice) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> shape_input_shape;
@@ -446,7 +446,7 @@ TEST(ShapeOptimizerTests, SliceGeneratesGraphOutput) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> shape_input_shape;
@@ -530,7 +530,7 @@ TEST(ShapeOptimizerTests, Gather) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> shape_input_shape;
@@ -639,7 +639,7 @@ TEST(ShapeOptimizerTests, ConcreteDimUsedBySlice) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> dropout_input_shape;
@@ -810,7 +810,7 @@ TEST(ShapeOptimizerTests, ConcreteDimUsedByGatherSlice) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> reshape_input_shape;
@@ -976,7 +976,7 @@ TEST(ShapeOptimizerTests, SymbolicDimUsedByGather_ConcreteDimUsedByGather) {
     return Status::OK();
   };
 
-  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15, 17};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> reshape_input_shape;

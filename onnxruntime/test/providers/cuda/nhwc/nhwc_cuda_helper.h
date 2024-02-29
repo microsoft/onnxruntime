@@ -16,11 +16,13 @@
 
 #define MAKE_PROVIDERS_EPS(eps)                                           \
   std::vector<std::shared_ptr<IExecutionProvider>> execution_providers;   \
-  OrtCUDAProviderOptionsV2 nhwc = {.prefer_nhwc = true};                  \
+  OrtCUDAProviderOptionsV2 nhwc{};                                        \
+  nhwc.prefer_nhwc = true;                                                \
   execution_providers.push_back(CudaExecutionProviderWithOptions(&nhwc)); \
                                                                           \
   double error_tolerance = eps;                                           \
-  OrtCUDAProviderOptionsV2 nchw = {.prefer_nhwc = false};                 \
+  OrtCUDAProviderOptionsV2 nchw{};                                        \
+  nchw.prefer_nhwc = false;                                               \
   auto source_ep = CudaExecutionProviderWithOptions(&nchw);               \
   auto test = op.get_test();                                              \
   test->CompareEPs(std::move(source_ep), execution_providers, error_tolerance);

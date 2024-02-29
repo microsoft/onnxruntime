@@ -166,7 +166,7 @@ public:
 
         MLOperatorGraphDesc operatorGraphDesc = {};
         operatorGraphDesc.nodeCount = static_cast<uint32_t>(opDescs.size());
-        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+        operatorGraphDesc.nodes = opDescs.data();
 
         uint32_t joinNodeIndex = operatorGraphDesc.nodeCount - 2;
         uint32_t quantizeNodeIndex = operatorGraphDesc.nodeCount - 1;

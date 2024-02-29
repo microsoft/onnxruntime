@@ -141,13 +141,14 @@ def get_reduce_info(node: NodeProto, graph: GraphProto, input_rank: int) -> Tupl
 
 
 def next_power_of_2(n: int) -> int:
-    assert n <= 2**32, "32-bit only"
+    """Return the smallest power of 2 greater than or equal to n"""
     n -= 1
     n |= n >> 1
     n |= n >> 2
     n |= n >> 4
     n |= n >> 8
     n |= n >> 16
+    n |= n >> 32
     n += 1
     return n
 

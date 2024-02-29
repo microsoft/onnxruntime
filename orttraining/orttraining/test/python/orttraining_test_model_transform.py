@@ -2,10 +2,8 @@ from onnx import numpy_helper
 
 
 def add_name(model):
-    i = 0
-    for node in model.graph.node:
+    for i, node in enumerate(model.graph.node):
         node.name = "%s_%d" % (node.op_type, i)
-        i += 1
 
 
 def find_single_output_node(model, arg):

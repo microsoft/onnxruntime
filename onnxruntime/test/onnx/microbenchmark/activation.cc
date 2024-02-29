@@ -11,6 +11,7 @@
 #include "core/framework/node_index_info.h"
 #include "core/framework/execution_frame.h"
 #include "contrib_ops/cpu/activations.h"
+#include "core/providers/cpu/tensor/gelu.h"
 #include "core/providers/cpu/activation/activations.h"
 #include <onnx/defs/attr_proto_util.h>
 #include <benchmark/benchmark.h>
@@ -182,7 +183,7 @@ static void RunSingleNode(const std::string& op_name, const std::string& domain,
 }
 
 static void BM_GeluCompute(benchmark::State& state) {
-  RunSingleNode<contrib::Gelu<float>>("Gelu", kMSDomain, {}, state);
+  RunSingleNode<Gelu<float>>("Gelu", kMSDomain, {}, state);
 }
 
 BENCHMARK(BM_GeluCompute)

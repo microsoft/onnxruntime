@@ -24,12 +24,9 @@ limitations under the License.
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "contrib_ops/cuda/bert/fast_gelu_impl.h"
-
-using namespace onnxruntime::cuda;
+#include "core/providers/cuda/tensor/gelu_impl.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 // constants for approximating the normal cdf
@@ -77,6 +74,17 @@ Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int
 
 template <>
 Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
+                            const double* input, const double* bias, double* output, bool /*use_half2*/) {
+  constexpr int blockSize = 256;
+  const int gridSize = (input_length + blockSize - 1) / blockSize;
+  FastGeluKernel<double, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length,
+                                                                        input, bias, output);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template <>
+Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
                             const half* input, const half* bias, half* output, bool use_half2) {
   constexpr int blockSize = 256;
   if (use_half2 && 0 == (bias_length & 1) && prop.major >= 7) {
@@ -114,5 +122,4 @@ Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int
 }
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime

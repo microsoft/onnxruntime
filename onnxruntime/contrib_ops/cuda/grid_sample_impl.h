@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
+template <typename T, bool IsNHWC>
 void GridSampleImpl(
     cudaStream_t stream,
     const T* input_data,

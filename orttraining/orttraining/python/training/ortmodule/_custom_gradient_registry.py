@@ -48,7 +48,7 @@ def _to_gradient_definition(gradient):
                 attr_def.name = key
                 attr_def.value_json = json.dumps(value["value"])
                 attr_def.dtype = value["dtype"]
-                attr_def.is_tensor = value["is_tensor"] if "is_tensor" in value else False
+                attr_def.is_tensor = value.get("is_tensor", False)
                 attributes.append(attr_def)
         node_def.attributes = attributes
         node_defs.append(node_def)

@@ -700,7 +700,7 @@ void ResizeBiCubicAntiAlias(int64_t batch_size,
   BiCubicParamsAntiAlias<typename AccumulateType<T>::type> p;
   p.cubic_coeff_a = cubic_coeff_a;
   SetupUpsampleFilterAntiAlias(p, input_paras, output_paras, scale_paras, roi,
-                               alloc, get_original_coordinate, exclude_outside, false);
+                               alloc, get_original_coordinate, exclude_outside, true);
 
   return UpsampleBaseAntiAlias<T>(p, batch_size, num_channels, input_height, input_width, output_height, output_width,
                                   use_extrapolation, extrapolation_value,

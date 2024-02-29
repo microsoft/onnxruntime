@@ -70,10 +70,13 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #else
-      if (global_context_.disable_dynamic_shapes && dev_prec != "CPU_FP16") {
-        const std::string model = model_proto.SerializeAsString();
-        exe_network_ = global_context_.ie_core.LoadNetwork(
-            model, hw_target, device_config, subgraph_context_.subgraph_name);
+      if (!subgraph_context_.has_dynamic_input_shape &&
+          global_context_.onnx_model_path_name != "" &&
+          dev_prec != "CPU_FP16") {
+        exe_network_ = global_context_.ie_core.LoadNetwork(global_context_.onnx_model_path_name,
+                                                           hw_target,
+                                                           device_config,
+                                                           subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       } else {
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);

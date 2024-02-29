@@ -135,7 +135,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_Allowed) {
       }
     };
 
-    std::vector<int> opsets{12, 13, 14, 15};
+    std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer =
           std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"label"});
@@ -206,7 +206,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_LabelNameNotMat
       }
     };
 
-    std::vector<int> opsets{12, 13, 14, 15};
+    std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer =
           std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"label"});
@@ -277,7 +277,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_ReduceNone) {
       }
     };
 
-    std::vector<int> opsets{12, 13, 14, 15};
+    std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer =
           std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"label"});
@@ -344,7 +344,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_NoIgnoreIndex) 
       }
     };
 
-    std::vector<int> opsets{12, 13, 14, 15};
+    std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer =
           std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"label"});

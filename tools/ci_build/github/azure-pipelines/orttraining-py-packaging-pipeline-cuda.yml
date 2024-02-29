@@ -13,9 +13,9 @@ stages:
   parameters:
     build_py_parameters: --enable_training --update --build
     torch_version: '2.0.0'
-    opset_version: '15'
+    opset_version: '17'
     cuda_version: '11.8'
-    cmake_cuda_architectures: 60;61;70;75;80;86;90
+    cmake_cuda_architectures: 60;61;70;75;80;86
     docker_file: Dockerfile.manylinux2_28_training_cuda11_8
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'

@@ -113,7 +113,7 @@ public:
         MLOperatorGraphDesc operatorGraphDesc = {};
         operatorGraphDesc.nodeCount = 3;
         std::vector<const DML_OPERATOR_DESC*> opDescs{&opDesc1, &opDesc2, &opDesc3};
-        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+        operatorGraphDesc.nodes = opDescs.data();
 
         // set input edges
         std::pair<uint32_t, uint32_t> nodeToNodeInputIndex[5] {{0, 0}, {0, 1}, {0, 2}, {2, 1}, {2, 2}};

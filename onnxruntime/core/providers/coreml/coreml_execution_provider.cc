@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/coreml/coreml_execution_provider.h"
+#include "core/providers/coreml/coreml_provider_factory.h"  // defines flags
 
 #include <algorithm>
 
+#include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
@@ -12,12 +14,10 @@
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/shape_utils.h"
-#endif
 
 namespace onnxruntime {
 
@@ -25,7 +25,24 @@ constexpr const char* COREML = "CoreML";
 
 CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
     : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider},
-      coreml_flags_(coreml_flags) {
+      coreml_flags_(coreml_flags),
+      coreml_version_(coreml::util::CoreMLVersion()) {
+  if (coreml_version_ < MINIMUM_COREML_VERSION) {
+    LOGS_DEFAULT(ERROR) << "CoreML EP is not supported on this platform.";
+  }
+
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (coreml_version_ < MINIMUM_COREML_MLPROGRAM_VERSION &&
+      (coreml_flags_ & COREML_FLAG_CREATE_MLPROGRAM) != 0) {
+    LOGS_DEFAULT(WARNING) << "ML Program is not supported on this OS version. Falling back to NeuralNetwork.";
+    coreml_flags_ ^= COREML_FLAG_CREATE_MLPROGRAM;
+  }
+#else
+  if ((coreml_flags_ & COREML_FLAG_CREATE_MLPROGRAM) != 0) {
+    LOGS_DEFAULT(WARNING) << "ML Program is not supported in this build. Falling back to NeuralNetwork.";
+    coreml_flags_ ^= COREML_FLAG_CREATE_MLPROGRAM;
+  }
+#endif
 }
 
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
@@ -35,28 +52,34 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // We do not run CoreML EP on subgraph, instead we cover this in the control flow nodes
-  // TODO investigate whether we want to support subgraph using CoreML EP
-  if (graph_viewer.IsSubgraph() && !(coreml_flags_ & COREML_FLAG_ENABLE_ON_SUBGRAPH)) {
+  if (coreml_version_ < MINIMUM_COREML_VERSION) {
     return result;
   }
 
   const auto& logger = *GetLogger();
 
-  const bool has_neural_engine = coreml::HasNeuralEngine(logger);
-  if ((coreml_flags_ & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) && !has_neural_engine) {
-    LOGS(logger, VERBOSE) << "The current system does not have Apple Neural Engine";
+  // We do not run CoreML EP on subgraph, instead we cover this in the control flow nodes
+  // TODO investigate whether we want to support subgraph using CoreML EP. May simply require processing the
+  // implicit inputs of the control flow node that contains the subgraph as inputs to the CoreML model we generate.
+  if (graph_viewer.IsSubgraph() && !(coreml_flags_ & COREML_FLAG_ENABLE_ON_SUBGRAPH)) {
     return result;
   }
 
-  const auto builder_params = coreml::MakeOpBuilderParams(graph_viewer, coreml_flags_);
+  const bool has_neural_engine = coreml::HasNeuralEngine(logger);
+  if ((coreml_flags_ & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) && !has_neural_engine) {
+    LOGS(logger, WARNING) << "The current system does not have Apple Neural Engine. CoreML EP will not be used.";
+    return result;
+  }
+
+  const auto builder_params = coreml::MakeOpBuilderParams(graph_viewer, coreml_version_, coreml_flags_);
   const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, builder_params, logger);
 
-  const auto gen_metadef_name = [&]() {
-    HashValue model_hash;
-    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
-    return MakeString(COREML, "_", model_hash, "_", metadef_id);
-  };
+  const auto gen_metadef_name =
+      [&]() {
+        HashValue model_hash;
+        int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+        return MakeString(COREML, "_", model_hash, "_", metadef_id);
+      };
 
   result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
                                             gen_metadef_name, COREML, kCoreMLExecutionProvider);
@@ -86,17 +109,16 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   return result;
 }
 
-#ifdef __APPLE__
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    coreml::ModelBuilder builder(graph_viewer, *GetLogger(), coreml_flags_);
     std::unique_ptr<coreml::Model> coreml_model;
-    const std::string coreml_model_file_path = coreml::util::GetTemporaryFilePath();
-    ORT_RETURN_IF_ERROR(builder.Compile(coreml_model, coreml_model_file_path));
+    ORT_RETURN_IF_ERROR(coreml::ModelBuilder::Build(graph_viewer, *GetLogger(), coreml_version_, coreml_flags_,
+                                                    coreml_model));
 
     {
       const auto& input_defs = fused_node.InputDefs();
@@ -241,22 +263,6 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
   return Status::OK();
 }
-#else
-common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
-    ORT_UNUSED_PARAMETER(fused_node_and_graph);
-    NodeComputeInfo compute_info;
-    compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
-    compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtApi* /* api */,
-                                   OrtKernelContext* /* context */) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
-    };
-    node_compute_funcs.push_back(compute_info);
-  }
-  return Status::OK();
-}
-#endif  //__APPLE__
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace onnxruntime

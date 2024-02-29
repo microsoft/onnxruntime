@@ -1100,12 +1100,10 @@ def create_calibrator(
     calibrator = None
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
-        symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
-        moving_average = False if "moving_average" not in extra_options else extra_options["moving_average"]
-        averaging_constant = 0.01 if "averaging_constant" not in extra_options else extra_options["averaging_constant"]
-        max_intermediate_outputs = (
-            None if "max_intermediate_outputs" not in extra_options else extra_options["max_intermediate_outputs"]
-        )
+        symmetric = extra_options.get("symmetric", False)
+        moving_average = extra_options.get("moving_average", False)
+        averaging_constant = extra_options.get("averaging_constant", 0.01)
+        max_intermediate_outputs = extra_options.get("max_intermediate_outputs", None)
         calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
@@ -1118,9 +1116,9 @@ def create_calibrator(
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
-        num_bins = 128 if "num_bins" not in extra_options else extra_options["num_bins"]
-        num_quantized_bins = 128 if "num_quantized_bins" not in extra_options else extra_options["num_quantized_bins"]
-        symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
+        num_bins = extra_options.get("num_bins", 128)
+        num_quantized_bins = extra_options.get("num_quantized_bins", 128)
+        symmetric = extra_options.get("symmetric", False)
         calibrator = EntropyCalibrater(
             model,
             op_types_to_calibrate,
@@ -1132,9 +1130,9 @@ def create_calibrator(
         )
     elif calibrate_method == CalibrationMethod.Percentile:
         # default settings for percentile algorithm
-        num_bins = 2048 if "num_bins" not in extra_options else extra_options["num_bins"]
-        percentile = 99.999 if "percentile" not in extra_options else extra_options["percentile"]
-        symmetric = True if "symmetric" not in extra_options else extra_options["symmetric"]
+        num_bins = extra_options.get("num_bins", 2048)
+        percentile = extra_options.get("percentile", 99.999)
+        symmetric = extra_options.get("symmetric", True)
         calibrator = PercentileCalibrater(
             model,
             op_types_to_calibrate,
@@ -1147,8 +1145,8 @@ def create_calibrator(
 
     elif calibrate_method == CalibrationMethod.Distribution:
         # default settings for percentile algorithm
-        num_bins = 2048 if "num_bins" not in extra_options else extra_options["num_bins"]
-        scenario = "same" if "scenario" not in extra_options else extra_options["scenario"]
+        num_bins = extra_options.get("num_bins", 2048)
+        scenario = extra_options.get("scenario", "same")
 
         calibrator = DistributionCalibrater(
             model,

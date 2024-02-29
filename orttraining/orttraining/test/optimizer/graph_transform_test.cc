@@ -1523,7 +1523,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs) {
       builder.AddNode("Identity", {add2_out}, {graph_out});
     };
 
-    const std::vector<int> opsets{12, 13, 14, 15};
+    const std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
@@ -1616,7 +1616,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleI
       builder.AddNode("Identity", {add2_out}, {graph_out});
     };
 
-    const std::vector<int> opsets{12, 13, 14, 15};
+    const std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
@@ -1710,7 +1710,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
       builder.AddNode("Identity", {add1_out}, {graph_output2});
     };
 
-    const std::vector<int> opsets{12, 13, 14, 15};
+    const std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),

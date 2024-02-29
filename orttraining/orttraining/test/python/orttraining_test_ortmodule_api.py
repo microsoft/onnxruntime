@@ -34,7 +34,7 @@ from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _f
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
 
-DEFAULT_OPSET = 15
+DEFAULT_OPSET = 17
 
 
 # PyTorch model definitions for tests
@@ -5280,7 +5280,7 @@ def test_sigmoid_grad_opset13():
     assert ort_model._torch_module._execution_manager(True)._runtime_options.onnx_opset_version == 13
 
 
-@pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
+@pytest.mark.parametrize("opset_version", [12, 13, 14, 15, 17])
 def test_opset_version_change(opset_version):
     original_env = None
     if "ORTMODULE_ONNX_OPSET_VERSION" in os.environ:
@@ -6428,7 +6428,7 @@ def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_sea
     reason="This test fail because bert forward loss is nan in updated transformers lib, disable for now."
 )
 def test_bert_result_with_layerwise_recompute():
-    original_val = os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ else None
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
     # Create PyTorch model with dropout disabled.
     pt_model = _get_bert_for_sequence_classification_model(
         "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0

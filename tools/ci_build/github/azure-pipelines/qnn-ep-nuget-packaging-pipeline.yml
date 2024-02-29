@@ -2,7 +2,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: qnn-v2.18.0.240101_win
+  default: qnn-v2.19.2.240210_win
 
 - name: build_config
   displayName: Build Configuration

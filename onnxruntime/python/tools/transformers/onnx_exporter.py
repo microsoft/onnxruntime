@@ -492,10 +492,7 @@ def export_onnx_model_from_pt(
         example_inputs = image_processor(data, return_tensors="pt")
     else:
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-        max_input_size = (
-            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-        )
-
+        max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
         example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
@@ -599,9 +596,7 @@ def export_onnx_model_from_tf(
     # Fix "Using pad_token, but it is not set yet" error.
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-    max_input_size = (
-        tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-    )
+    max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
 
     config, model = load_tf_model(model_name, model_class, cache_dir, config_modifier)
     model.resize_token_embeddings(len(tokenizer))

@@ -14,7 +14,7 @@ from onnx import onnx_pb as onnx_proto
 from sympy import Symbol, simplify
 from sympy.parsing.sympy_parser import parse_expr
 
-from onnxruntime.training.utils import PTable
+from onnxruntime.training.utils import PTable, log_memory_usage
 
 from ._execution_agent import TrainingAgent
 from .options import _MemoryOptimizationLevel, _RuntimeOptions
@@ -509,6 +509,8 @@ class MemoryObserver:
 
         self._is_first_inspect = True
 
+        self._m = m
+
     def is_enabled(self) -> bool:
         """Check if memory inspector is enabled."""
         return self._is_enabled
@@ -621,29 +623,13 @@ class MemoryObserver:
         need_print = self._current_step < 10 or (self._current_step & (self._current_step - 1) == 0)
 
         if need_print:
-            cur_mem_allocated = self._normalize(torch.cuda.memory_allocated())
-            max_mem_allocated = self._normalize(torch.cuda.max_memory_allocated())
-            cur_mem_cached = self._normalize(torch.cuda.memory_reserved())
-            max_mem_cached = self._normalize(torch.cuda.max_memory_reserved())
-            torch_mem_stat = torch.cuda.memory_stats()
-            cur_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.current", 0))
-            max_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.peak", 0))
-
-            mem_stats = [
-                ["phase", _convert_phase_to_string(cur_phase)],
-                ["allocated", cur_mem_allocated],  # current memory allocated for tensors
-                ["max allocated", max_mem_allocated],  # peak memory allocated for tensors
-                ["cached", cur_mem_cached],  # current memory cached for the caching allocator
-                ["max cached", max_mem_cached],  # peak memory cached for caching allocator.
-                ["inactive", cur_mem_inactive],  # amount of inactive, non-releasable memory
-                ["max inactive", max_mem_inactive],  # peak of inactive, non-releasable memory
-            ]
-
-            summ = f"{self._rank_info} step {self._current_step} memory ({MemoryObserver.NORMALIZER_UNIT})"
-            for stat in mem_stats:
-                summ += f" | {stat[0]}: {stat[1]}"
-
-            self._logger.info(summ)
+            log_memory_usage(
+                _convert_phase_to_string(cur_phase),
+                rank_0_only=True,
+                step_info=f"step {self._current_step}",
+                logger=self._logger,
+                module=self._m,
+            )
 
         if cur_phase == self._last_phase:
             self._increase_step()
@@ -654,9 +640,6 @@ class MemoryObserver:
 
     def _increase_step(self):
         self._current_step += 1
-
-    def _normalize(self, mem_size_in_bytes: Union[float, int]) -> str:
-        return f"{float(mem_size_in_bytes) / MemoryObserver.NORMALIZER_FACTOR:.0f}"
 
     def display_memory_optimization_plans(self, memory_optimizer_config, details=False) -> Tuple[List[str], PTable]:
         mem_plan_count = len(self.cluster_id_combination_to_saving_symbolics_map)

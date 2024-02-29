@@ -2,12 +2,10 @@
 # Licensed under the MIT License.
 # pylint: disable=C0103
 
-# -*- coding: utf-8 -*-
-#
-# Configuration file for the Sphinx documentation builder.
+"""Configuration file for the Sphinx documentation builder."""
 
 import os
-import shutil  # noqa: F401
+import shutil
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "_common"))
@@ -127,7 +125,5 @@ def setup(app):
         urllib.request.urlretrieve(url, dest)
     loc = os.path.split(dest)[-1]
     if not os.path.exists(loc):
-        import shutil  # noqa: F811
-
         shutil.copy(dest, loc)
     return app

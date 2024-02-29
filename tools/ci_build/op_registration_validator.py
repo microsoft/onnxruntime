@@ -165,7 +165,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         # domain that have newer registrations in a non-contrib op file differently. They should only be considered
         # deprecated as contrib ops.
         domain_and_op_str = last_r.domain_and_op_str()
-        deprecation_version = deprecated_ops.get(domain_and_op_str, None)
+        deprecation_version = deprecated_ops.get(domain_and_op_str)
 
         allow_missing_unversioned_registration = (
             deprecation_version is not None and last_r.end_version == deprecation_version - 1

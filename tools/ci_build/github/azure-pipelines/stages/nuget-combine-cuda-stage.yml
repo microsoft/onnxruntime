@@ -213,13 +213,6 @@ stages:
             PlatformsSupported: 'linux-x64'
             VerifyNugetSigning: false
 
-        - task: PublishPipelineArtifact@0
-          displayName: 'Publish Pipeline NuGet Artifact'
-          inputs:
-            artifactName: 'drop-signed-nuget-GPU'
-            targetPath: '$(Build.ArtifactStagingDirectory)'
-
-
         - task: MSBuild@1
           displayName: 'Clean C#'
           inputs:
@@ -240,6 +233,12 @@ stages:
         - template: ../templates/component-governance-component-detection-steps.yml
           parameters:
             condition: 'succeeded'
+
+        - task: PublishPipelineArtifact@0
+          displayName: 'Publish Pipeline NuGet Artifact'
+          inputs:
+            artifactName: 'drop-signed-nuget-GPU'
+            targetPath: '$(Build.ArtifactStagingDirectory)'
 
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'

@@ -5,7 +5,7 @@ import os
 import onnx
 import torch
 
-import onnxruntime.training.onnxblock as onnxblock
+from onnxruntime.training import artifacts
 
 
 class MNIST(torch.nn.Module):
@@ -96,42 +96,26 @@ def create_training_artifacts(model_path, artifacts_dir, model_prefix):
     4. The checkpoint file
     """
 
-    class MNISTWithLoss(onnxblock.TrainingModel):
-        def __init__(self):
-            super().__init__()
-            self.loss = onnxblock.loss.CrossEntropyLoss()
+    onnx_model = onnx.load(model_path)
 
-        def build(self, output_name):
-            return self.loss(output_name)
-
-    mnist_with_loss = MNISTWithLoss()
-    onnx_model, eval_model, optimizer_model = onnx.load(model_path), None, None
-
-    # Build the training and eval graphs
-    logging.info("Using onnxblock to create the training artifacts.")
-    with onnxblock.onnx_model(onnx_model) as model_accessor:
-        _ = mnist_with_loss(onnx_model.graph.output[0].name)
-        eval_model = model_accessor.eval_model
-
-    # Build the optimizer graph
-    optimizer = onnxblock.optim.AdamW()
-    with onnxblock.onnx_model() as accessor:
-        _ = optimizer(mnist_with_loss.parameters())
-        optimizer_model = accessor.model
+    requires_grad = [
+        param.name
+        for param in onnx_model.graph.initializer
+        if (not param.name.endswith("_scale") and not param.name.endswith("_zero_point"))
+    ]
+    artifacts.generate_artifacts(
+        onnx_model,
+        requires_grad=requires_grad,
+        loss=artifacts.LossType.CrossEntropyLoss,
+        optimizer=artifacts.OptimType.AdamW,
+        artifact_directory=artifacts_dir,
+        prefix=model_prefix,
+    )
 
     # Create the training artifacts
-    train_model_path = os.path.join(artifacts_dir, f"{model_prefix}_train.onnx")
-    logging.info(f"Saving the training model to {train_model_path}.")
-    onnx.save(onnx_model, train_model_path)
-    eval_model_path = os.path.join(artifacts_dir, f"{model_prefix}_eval.onnx")
-    logging.info(f"Saving the eval model to {eval_model_path}.")
-    onnx.save(eval_model, eval_model_path)
-    optimizer_model_path = os.path.join(artifacts_dir, f"{model_prefix}_optimizer.onnx")
-    logging.info(f"Saving the optimizer model to {optimizer_model_path}.")
-    onnx.save(optimizer_model, optimizer_model_path)
-    trainable_params, non_trainable_params = mnist_with_loss.parameters()
-    checkpoint_path = os.path.join(artifacts_dir, f"{model_prefix}_checkpoint.ckpt")
-    logging.info(f"Saving the checkpoint to {checkpoint_path}.")
-    onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_path)
+    train_model_path = os.path.join(artifacts_dir, f"{model_prefix}training_model.onnx")
+    eval_model_path = os.path.join(artifacts_dir, f"{model_prefix}eval_model.onnx")
+    optimizer_model_path = os.path.join(artifacts_dir, f"{model_prefix}optimizer_model.onnx")
+    checkpoint_path = os.path.join(artifacts_dir, f"{model_prefix}checkpoint")
 
     return train_model_path, eval_model_path, optimizer_model_path, checkpoint_path

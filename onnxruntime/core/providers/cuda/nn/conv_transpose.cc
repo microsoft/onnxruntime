@@ -167,7 +167,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations,
                                            gsl::narrow_cast<int>(conv_transpose_attrs_.group), mode,
-                                           CudnnTensor::GetDataType<CudaT>()));
+                                           CudnnTensor::GetDataType<CudaT>(),
+                                           UseTF32()));
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();
@@ -187,8 +188,13 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
             GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
 
         // set math type to tensor core before algorithm search
-        if constexpr (std::is_same<T, MLFloat16>::value)
+        if constexpr (std::is_same<T, MLFloat16>::value) {
           CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+        } else if constexpr (std::is_same<T, float>::value) {
+          if (!UseTF32()) {
+            CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_FMA_MATH));
+          }
+        }
 
         cudnnConvolutionBwdDataAlgoPerf_t perf;
         int algo_count = 1;

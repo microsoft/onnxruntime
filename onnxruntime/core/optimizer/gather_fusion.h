@@ -8,19 +8,23 @@
 namespace onnxruntime {
 
 /**
-@Class GatherToSplitFusion
+@Class GatherSliceToSplitFusion
 
-Fuse multiple Gather nodes that comsuming one output to one Split node.
+Fuse multiple Gather/Slice nodes that comsuming one output to one Split node.
 */
-class GatherToSplitFusion : public GraphTransformer {
+class GatherSliceToSplitFusion : public GraphTransformer {
  public:
-  GatherToSplitFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("GatherToSplitFusion", compatible_execution_providers) {}
+  GatherSliceToSplitFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("GatherSliceToSplitFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
-  bool IsSupportedGather(const Graph& graph, const Node& node, int64_t& index, int64_t& axis, int64_t& indices_n_dims) const;
+  bool IsSupportedGather(const Graph& graph, const Node& node, int64_t rank, int64_t target_axis, int64_t dim_size,
+                         InlinedVector<bool>& consumed, int64_t& start, bool& need_squeeze) const;
+
+  bool IsSupportedSlice(const Graph& graph, const Node& node, int64_t rank, int64_t target_axis, int64_t dim_size,
+                        InlinedVector<bool>& consumed, int64_t& start, int64_t& end) const;
 };
 
 /**

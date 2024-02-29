@@ -115,6 +115,7 @@ stages:
           searchFolder: '$(Build.BinariesDirectory)'
           testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
+
     - job: Linux_Release
       timeoutInMinutes: 180
       workspace:
@@ -243,7 +244,46 @@ stages:
           ln -s /data/models $(Build.BinariesDirectory)/models
         displayName: link model dir
 
-      
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+            /bin/bash -c "
+              set -ex; \
+              pushd /onnxruntime_src/csharp; \
+              dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln -c Release; \
+              dotnet test /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln -c Release -f net6.0 --no-build -l \"console;verbosity=normal\"; \
+              popd
+              "
+        displayName: 'Dotnet build C# sln and Test'
+
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+              /bin/bash -c "
+                set -ex; \
+                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Release && \
+                /bin/bash /onnxruntime_src/tools/scripts/symbolic_shape_infer_test.sh /build
+              "
+        displayName: 'Run Release tests and symbolic shape infer test'
 
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'

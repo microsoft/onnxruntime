@@ -50,28 +50,34 @@ __device__ T GsReflect(T x, float x_min, float x_max) {
   return static_cast<T>(fx);
 }
 
-template <typename T>
+template <typename T, bool Layout>
 __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t y, int64_t x,
-    int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, float border[4]) {
+                         int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, float border[4]) {
   T pixel = 0.0f;
+
+  auto PixelOffset = [bIdx, cIdx, C, H, W](int64_t x, int64_t y) -> int64_t {
+    return Layout == LAYOUT_NCHW
+       ? (bIdx * C * H * W + cIdx * H * W + y * W + x)
+       : (bIdx * H * W * C + y * W * C + x * C + cIdx);
+  };
+
   if (padding_mode == 0) {  // zeros
     if (x >= 0 && x < W && y >= 0 && y < H) {
-      pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
+      pixel = input_data[PixelOffset(x, y)];
     }
-  } else if (padding_mode == 1) {  //border
+  } else if (padding_mode == 1) {  // border
     x = max((int64_t)0, min((int64_t)W - 1, (int64_t)x));
     y = max((int64_t)0, min((int64_t)H - 1, (int64_t)y));
-    pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
+    pixel = input_data[PixelOffset(x, y)];
   } else {  // Reflection
-    x = (int64_t) GsReflect<T>(x, border[0], border[2]);
-    y = (int64_t) GsReflect<T>(y, border[1], border[3]);
-    pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
+    x = (int64_t)GsReflect<T>(x, border[0], border[2]);
+    y = (int64_t)GsReflect<T>(y, border[1], border[3]);
+    pixel = input_data[PixelOffset(x, y)];
   }
   return pixel;
 }
 
-__device__ void GsGetCubicCoeffs(float x, float coeffs[4])
-{
+__device__ void GsGetCubicCoeffs(float x, float coeffs[4]) {
   float cubic_alpha = -0.75f;
   x = abs(x);
   coeffs[0] = (((cubic_alpha * (x + 1) - 5 * cubic_alpha) * (x + 1) + 8 * cubic_alpha) * (x + 1) - 4 * cubic_alpha);
@@ -93,7 +99,7 @@ __device__ T GsBicubicInterpolate(T p[4][4], float x, float y) {
   return pixel;
 }
 
-template <typename T>
+template <typename T, bool Layout>
 __global__ void _GridSampleKernel(
     const T* input_data,
     const T* grid_data,
@@ -110,16 +116,32 @@ __global__ void _GridSampleKernel(
 {
     CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * H_out * W_out);
     // extract batch index, channel index, y index, x index for current thread
-    int BIdx = idx / (C * H_out * W_out );
-    int tmpBCnt = BIdx * (C * H_out * W_out);
+    int BIdx, yIdx, xIdx, cIdx;
+    if constexpr (Layout == LAYOUT_NCHW) {
+      BIdx = idx / (C * H_out * W_out);
+      int tmpBCnt = BIdx * (C * H_out * W_out);
 
-    int cIdx = (idx - tmpBCnt) / (H_out * W_out);
-    int tmpCCnt = tmpBCnt + cIdx * (H_out * W_out);
+      cIdx = (idx - tmpBCnt) / (H_out * W_out);
+      int tmpCCnt = tmpBCnt + cIdx * (H_out * W_out);
 
-    int yIdx = (idx - tmpCCnt) / W_out;
-    int tmpHCnt = tmpCCnt + yIdx * W_out;
+      yIdx = (idx - tmpCCnt) / W_out;
+      int tmpHCnt = tmpCCnt + yIdx * W_out;
 
-    int xIdx = (idx - tmpHCnt);
+      xIdx = (idx - tmpHCnt);
+    } else {
+      static_assert(Layout == LAYOUT_NHWC, "Unsupported layout");
+
+      BIdx = idx / (H_out * W_out * C);
+      int tmpBCnt = BIdx * (H_out * W_out * C);
+
+      yIdx = (idx - tmpBCnt) / (W_out * C);
+      int tmpHCnt = tmpBCnt + yIdx * (W_out * C);
+
+      xIdx = (idx - tmpHCnt) / C;
+      int tmpWCnt = tmpHCnt + xIdx * C;
+
+      cIdx = (idx - tmpWCnt);
+    }
 
     int grid_idx = BIdx * H_out * W_out + yIdx * W_out + xIdx;
     T grid_X = grid_data[grid_idx * 2 + 0];
@@ -147,8 +169,9 @@ __global__ void _GridSampleKernel(
     if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max ||
         grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) { // out of bound
       if (padding_mode == 1) {  // border
-        grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
-        grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
+        // Clamping must not be done here, see #10607
+        // grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
+        // grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
       } else if (padding_mode == 2) {  // reflection
         grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);
         grid_y_imgSpace = GsReflect(grid_y_imgSpace, y_min, y_max);
@@ -175,10 +198,10 @@ __global__ void _GridSampleKernel(
       w_lb = w_b * w_l;
       w_rb = w_b * w_r;
 
-      T lt_v = PixelAtGrid(input_data, BIdx, cIdx, y1, x1, padding_mode, N, C, H_in, W_in, border);
-      T rt_v = PixelAtGrid(input_data, BIdx, cIdx, y1, x2, padding_mode, N, C, H_in, W_in, border);
-      T lb_v = PixelAtGrid(input_data, BIdx, cIdx, y2, x1, padding_mode, N, C, H_in, W_in, border);
-      T rb_v = PixelAtGrid(input_data, BIdx, cIdx, y2, x2, padding_mode, N, C, H_in, W_in, border);
+      T lt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x1, padding_mode, N, C, H_in, W_in, border);
+      T rt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x2, padding_mode, N, C, H_in, W_in, border);
+      T lb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x1, padding_mode, N, C, H_in, W_in, border);
+      T rb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x2, padding_mode, N, C, H_in, W_in, border);
       T interpoV = w_lt * lt_v + w_rt * rt_v + w_lb * lb_v + w_rb * rb_v;
       output_data[outIdx] = interpoV;
       return;
@@ -186,7 +209,8 @@ __global__ void _GridSampleKernel(
     if (mode == 1) {  // nearest
       int x_n = grid_x_imgSpace;
       int y_n = grid_y_imgSpace;
-      output_data[outIdx] = PixelAtGrid(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
+      output_data[outIdx] =
+        PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
       return;
     }
     if (mode == 2) {  // bicubic
@@ -195,7 +219,8 @@ __global__ void _GridSampleKernel(
       T p[4][4] = {};  // [H][W]
       for (int64_t h = 0; h < 4; h++) {
         for (int64_t w = 0; w < 4; w++) {
-          p[h][w] = PixelAtGrid(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, N, C, H_in, W_in, border);
+          p[h][w] = 
+            PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, N, C, H_in, W_in, border);
         }
       }
       T dx = grid_x_imgSpace - x0 - 1;
@@ -204,7 +229,7 @@ __global__ void _GridSampleKernel(
     }
 }
 
-template <typename T>
+template <typename T, bool IsNHWC>
 void GridSampleImpl(
     cudaStream_t stream,
     const T* input_data,
@@ -216,17 +241,23 @@ void GridSampleImpl(
     const int64_t H_out,
     const int64_t W_out,
     T* output_data) {
-  int blocksPerGrid = (int)(ceil(static_cast<T>(dims[0] * dims[1] * H_out * W_out) / GridDim::maxThreadsPerBlock));
-  _GridSampleKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      input_data, grid_data, mode, padding_mode, align_corners, dims[0], dims[1], dims[2], dims[3], H_out, W_out, output_data);
+  using Ch = Channels<IsNHWC>;
+
+  int blocksPerGrid = static_cast<int>(
+    ceil(static_cast<T>(dims[Ch::N] * dims[Ch::C] * H_out * W_out) / GridDim::maxThreadsPerBlock));
+  _GridSampleKernel<T, IsNHWC><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input_data, grid_data, mode, padding_mode, align_corners, 
+      dims[Ch::N], dims[Ch::C], dims[Ch::H], dims[Ch::W],
+      H_out, W_out, output_data);
 }
 
-#define SPECIALIZED_IMPL(T) \
-  template void GridSampleImpl<T>(cudaStream_t stream, const T* input_data, const T* grid_data, \
-                                  const int64_t mode, const int64_t padding_mode, const int64_t align_corners, \
-                                  const int64_t[4], const int64_t H_out, const int64_t W_out, T* output_data);
+#define SPECIALIZED_IMPL(T, IsNHWC)                                                                                    \
+  template void GridSampleImpl<T, IsNHWC>(cudaStream_t stream, const T* input_data, const T* grid_data,                \
+                                          const int64_t mode, const int64_t padding_mode, const int64_t align_corners, \
+                                          const int64_t[4], const int64_t H_out, const int64_t W_out, T* output_data);
 
-SPECIALIZED_IMPL(float)
+SPECIALIZED_IMPL(float, false)  // NCHW
+SPECIALIZED_IMPL(float, true)   // NHWC
 
 }  // namespace cuda
 }  // namespace contrib

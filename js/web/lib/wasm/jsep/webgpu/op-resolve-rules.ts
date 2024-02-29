@@ -20,6 +20,7 @@ import {gemm, parseGemmAttributes} from './ops/gemm';
 import {instanceNorm} from './ops/instance-norm';
 import {layerNorm} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
+import {matMulNBits, parseMatMulNBitsAttributes} from './ops/matmulnbits';
 import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multi-head-attentiion';
 import {pad} from './ops/pad';
 import * as pool from './ops/pool';
@@ -92,6 +93,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['LessOrEqual', [binaryOps.lessOrEqual]],
   ['Log', [unaryOps.log]],
   ['MatMul', [matMul]],
+  ['MatMulNBits', [matMulNBits, parseMatMulNBitsAttributes]],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
   ['MaxPool', [pool.maxPool, pool.parseMaxPoolAttributes]],
   ['Mul', [binaryOps.mul]],

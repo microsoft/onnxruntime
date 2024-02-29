@@ -45,7 +45,7 @@ def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
     :return: A list of common 'docker build' arguments.
     """
 
-    return [
+    command = [
         "--no-cache",
         "-t",
         f"{args.image_name}",
@@ -54,6 +54,14 @@ def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
         "--build-arg",
         f"ONNXRUNTIME_BRANCH={args.branch}",
     ]
+    if args.use_tensorrt_oss_parser:
+        command.extend(
+            [
+                "--build-arg",
+                "PARSER_CONFIG=--use_tensorrt_oss_parser",
+            ]
+        )
+    return command
 
 
 def is_valid_ver_str(version: str, min_comps: int = 0, max_comps: int = 0) -> bool:
@@ -187,7 +195,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("-r", "--repo_path", required=True, help="Path to the onnxruntime repository")
     parser.add_argument("-i", "--image_name", required=True, help="The resulting Docker image name")
     parser.add_argument("-b", "--branch", default="main", help="Name of the onnxruntime git branch to checkout")
-    parser.add_argument("-t", "--trt_version", default="8.4.1.5", help="TensorRT version (e.g., 8.4.1.5)")
+    parser.add_argument("-t", "--trt_version", default="8.6.1.6", help="TensorRT version (e.g., 8.6.1.6)")
     parser.add_argument("-a", "--cuda_arch", default="75", help="CUDA architecture (e.g., 75)")
 
     # Command-line options for installing TensorRT from binaries.
@@ -208,6 +216,12 @@ def parse_arguments() -> argparse.Namespace:
         help="CUDA version (e.g., 8.6) used to find TensorRT EA binary tar.gz package",
     )
     parser.add_argument("--trt_bins_dir", default="", help="Directory containing TensorRT tar.gz package")
+    parser.add_argument(
+        "--use_tensorrt_oss_parser",
+        action="store_true",
+        default=False,
+        help="Use TensorRT OSS Parser",
+    )
 
     return parser.parse_args()
 

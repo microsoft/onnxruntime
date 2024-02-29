@@ -33,6 +33,8 @@ class Node;
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
+struct OrtRunOptions;
+
 namespace onnxruntime {
 
 /**
@@ -50,6 +52,8 @@ struct NodeComputeInfo {
   ComputeFunc compute_func;
   DestroyFunctionStateFunc release_state_func;
 };
+
+using RunOptions = OrtRunOptions;
 
 enum class DataLayout {
   NCHW,
@@ -184,7 +188,7 @@ class IExecutionProvider {
      Run may not be finished on device This function should be regarded as the
      point after which a new Run would start to submit commands from CPU
   */
-  virtual common::Status OnRunStart() { return Status::OK(); }
+  virtual common::Status OnRunStart(const onnxruntime::RunOptions& /*run_options*/) { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run ended
@@ -192,7 +196,9 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
+  virtual common::Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
+    return Status::OK();
+  }
 
   /**
      Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for

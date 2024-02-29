@@ -20,9 +20,8 @@ def _process_files(filenames, clang_exe, tmpdir):
         bad_lines = []
 
         with open(path, encoding="UTF8") as f:
-            line_num = 0
-            for line in f:
-                line_num += 1  # clang-format line numbers start at 1
+            for i, line in enumerate(f):
+                line_num = i + 1  # clang-format line numbers start at 1
                 if len(line) > 120:
                     bad_lines.append(line_num)
 

@@ -58,10 +58,8 @@ def generate_sgd_test_data(seed, _model_setup_func, data_func, train_step_count,
 
     def _build_param_index_to_name_mapping(model, map_result):
         """Build index to name mapping, which is used to retrieve data from optimizer group."""
-        index = 0
-        for param in model.named_parameters():
+        for index, param in enumerate(model.named_parameters()):
             map_result[index] = param[0]
-            index += 1
 
     torch.manual_seed(seed)
 

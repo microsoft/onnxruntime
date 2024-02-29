@@ -385,11 +385,16 @@ export class WebGpuBackend {
     // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < inputTensorViews.length; ++i) {
-      const gpuData = this.gpuDataManager.get(inputTensorViews[i].data);
-      if (!gpuData) {
-        throw new Error(`no GPU data for input: ${inputTensorViews[i].data}`);
+      const data = inputTensorViews[i].data;
+      // if tensor view data is 0, it means the output is zero-sized tensor, and there is no GPU data for it.
+      if (data === 0) {
+        continue;
       }
-      inputDatas[i] = gpuData;
+      const gpuData = this.gpuDataManager.get(data);
+      if (!gpuData) {
+        throw new Error(`no GPU data for input: ${data}`);
+      }
+      inputDatas.push(gpuData);
     }
 
     const {outputs, dispatchGroup, programUniforms} = program.getRunData(inputTensorViews);
@@ -419,6 +424,11 @@ export class WebGpuBackend {
       const tensorView = (isTemporary || isPersistent) ?
           createIntermediateOutput(outputs[i].dataType, outputs[i].dims) :
           createKernelOutput(validatedOutputIndices[i], outputs[i].dataType, outputs[i].dims);
+      outputTensorViews.push(tensorView);
+      // if tensor view data is 0, it means the output is zero-sized tensor, and there is no GPU data for it.
+      if (tensorView.data === 0) {
+        continue;
+      }
       const gpuData = this.gpuDataManager.get(tensorView.data);
       if (!gpuData) {
         throw new Error(`no GPU data for output: ${tensorView.data}`);
@@ -434,10 +444,24 @@ export class WebGpuBackend {
         }
         persistentData.push(gpuData);
       }
-      outputTensorViews.push(tensorView);
       outputDatas.push(gpuData);
     }
 
+    // when there are any zero-sized tensor in the inputs or outputs, we should report error unless all outputs are
+    // zero-sized tensors.
+    if (inputDatas.length !== inputTensorViews.length || outputDatas.length !== outputTensorViews.length) {
+      // if all outputs are zero-sized tensors, there is no need to run the program.
+      if (outputDatas.length === 0) {
+        TRACE_FUNC_END(program.name);
+        return outputTensorViews;
+      }
+      // if some outputs are zero-sized tensors, report an error.
+      //
+      // TODO: so far we don't see any use case that outputs include both zero-sized tensors and non-zero-sized tensors.
+      // If we see such use case, we need to make a change here to support it.
+      throw new Error(
+          `Program ${program.name} has zero-sized tensor(s) in inputs or outputs. This is not supported now.`);
+    }
 
     // load uniforms
     // TODO: add cache for uniform (is it necessary?)
@@ -686,7 +710,8 @@ export class WebGpuBackend {
   }
   setQueryType(): void {
     this.queryType = 'none';
-    if (this.env.webgpu.profiling?.mode === 'default' || this.env.wasm.trace) {
+    if (this.env.webgpu.profiling?.mode === 'default' ||
+        (typeof this.env.trace === 'undefined' ? this.env.wasm.trace : this.env.trace)) {
       if (this.device.features.has('chromium-experimental-timestamp-query-inside-passes')) {
         this.queryType = 'inside-passes';
       } else if (this.device.features.has('timestamp-query')) {

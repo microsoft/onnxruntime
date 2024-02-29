@@ -1045,7 +1045,7 @@ CANNExecutionProvider::~CANNExecutionProvider() {
 }
 
 // All threads share the same context and stream
-Status CANNExecutionProvider::OnRunStart() {
+Status CANNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   CANN_RETURN_IF_ERROR(aclrtSetDevice(info_.device_id));
 
   return Status::OK();

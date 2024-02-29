@@ -893,7 +893,9 @@ describe('New Conv tests', () => {
             const expected = cpuConv(
                 inputTensor, kernelTensor, biasTensor, testData.autoPad, testData.dilations, testData.pads,
                 testData.strides);
-            if (!validator.areEqual(actual, expected)) {
+            try {
+              validator.checkTensorResult([actual], [expected]);
+            } catch {
               console.log(actual.dims, `[${actual.numberData.slice(0, 20).join(',')},...]`);
               console.log(expected.dims, `[${expected.numberData.slice(0, 20).join(',')},...]`);
               throw new Error('Expected and Actual did not match');

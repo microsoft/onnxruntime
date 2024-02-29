@@ -65,13 +65,13 @@ class LSTM_Helper:  # noqa: N801
             else np.zeros((num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
         )
 
-        f = params["f"] if "f" in params else ActivationFuncs.sigmoid
-        g = params["g"] if "g" in params else ActivationFuncs.tanh
-        h = params["h"] if "h" in params else ActivationFuncs.tanh
-        input_forget = params["input_forget"] if "input_forget" in params else False
-        clip = params["clip"] if "clip" in params else 9999.0
+        f = params.get("f", ActivationFuncs.sigmoid)
+        g = params.get("g", ActivationFuncs.tanh)
+        h = params.get("h", ActivationFuncs.tanh)
+        input_forget = params.get("input_forget", False)
+        clip = params.get("clip", 9999.0)
 
-        self.direction = params["direction"] if "direction" in params else "forward"
+        self.direction = params.get("direction", "forward")
 
         if num_directions == 1:
             if self.direction == "forward":
@@ -266,8 +266,8 @@ class LSTM:  # Base):
         R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)  # noqa: N806
 
         if direction == "bidirectional":
-            W = W = np.tile(W, (2, 1)).reshape(2, number_of_gates * hidden_size, input_size)  # noqa: N806
-            R = R = np.tile(R, (2, 1)).reshape(2, number_of_gates * hidden_size, hidden_size)  # noqa: N806
+            W = np.tile(W, (2, 1)).reshape(2, number_of_gates * hidden_size, input_size)  # noqa: N806
+            R = np.tile(R, (2, 1)).reshape(2, number_of_gates * hidden_size, hidden_size)  # noqa: N806
 
         lstm = LSTM_Helper(X=input, W=W, R=R, direction=direction)
 

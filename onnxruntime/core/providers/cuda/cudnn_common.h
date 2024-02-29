@@ -28,12 +28,12 @@ class CudnnTensor final {
 
   operator cudnnTensorDescriptor_t() const { return tensor_; }
 
+  Status CreateTensorIfNeeded();
+
   template <typename T>
   static cudnnDataType_t GetDataType();
 
  private:
-  Status CreateTensorIfNeeded();
-
   cudnnTensorDescriptor_t tensor_;
 };
 

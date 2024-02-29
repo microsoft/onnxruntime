@@ -105,7 +105,7 @@ def check_graph(graph, opsets, required_ops, global_types, special_types, unsupp
 
         # some models don't have complete imports. use 1 as a default as that's valid for custom domains and should
         # result in an error for any others. not sure why ONNX or ORT validation allows this though.
-        opset = opsets[domain] if domain in opsets else 1
+        opset = opsets.get(domain, 1)
         if (
             domain not in required_ops
             or opset not in required_ops[domain]
