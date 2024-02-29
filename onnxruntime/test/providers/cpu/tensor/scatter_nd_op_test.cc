@@ -183,45 +183,45 @@ TEST(ScatterNDOpTest, ScatterND_batched_3tensor_int64) {
 TEST(ScatterNDOpTest, ScatterND_18_add) {
   OpTester test1("ScatterND", 18);
   test1.AddAttribute("reduction", "add");
-  test1.AddInput<float>("data", {2, 2, 3}, {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1});
+  test1.AddInput<float>("data", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.AddInput<int64_t>("indices", {3, 1}, {0, 1, 0});
-  test1.AddInput<float>("updates", {3, 2, 3}, {2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
-                                               32768, 65536, 131072, 262144});
-  test1.AddOutput<float>("output", {2, 2, 3}, {8194.1, 16388.1, 32776.10, 65552.10, 131104.1, 262208.1, 128.1,
-                                               256.1, 512.1, 1024.1, 2048.1, 4096.1});
+  test1.AddInput<float>("updates", {3, 2, 3}, {2f, 4f, 8f, 16f, 32f, 64f, 128f, 256f, 512f, 1024f, 2048f, 4096f,
+                                               8192f, 16384f, 32768f, 65536f, 131072f, 262144f});
+  test1.AddOutput<float>("output", {2, 2, 3}, {8194.1f, 16388.1f, 32776.10f, 65552.10f, 131104.1f, 262208.1f, 128.1f,
+                                               256.1f, 512.1f, 1024.1f, 2048.1f, 4096.1f});
   test1.Run();
 }
 
 TEST(ScatterNDOpTest, ScatterND_18_mul) {
   OpTester test1("ScatterND", 18);
   test1.AddAttribute("reduction", "mul");
-  test1.AddInput<float>("data", {2, 2, 3}, {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1});
+  test1.AddInput<float>("data", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.AddInput<int64_t>("indices", {3, 1}, {0, 1, 0});
-  test1.AddInput<float>("updates", {3, 2, 3}, {2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
-                                               32768, 65536, 131072, 262144});
-  test1.AddOutput<float>("output", {2, 2, 3}, {1638.4, 6553.6, 26214.4, 104857.6, 419430.4, 1677721.625, 12.8, 25.6,
-                                               51.2, 102.4, 204.8, 409.6});
+  test1.AddInput<float>("updates", {3, 2, 3}, {2f, 4f, 8f, 16f, 32f, 64f, 128f, 256f, 512f, 1024f, 2048f, 4096f,
+                                               8192f, 16384f, 32768f, 65536f, 131072f, 262144f});
+  test1.AddOutput<float>("output", {2, 2, 3}, {1638.4f, 6553.6f, 26214.4f, 104857.6f, 419430.4f, 1677721.625f, 12.8f,
+                                               25.6f, 51.2f, 102.4f, 204.8f, 409.6f});
   test1.Run();
 }
 
 TEST(ScatterNDOpTest, ScatterND_18_min) {
   OpTester test1("ScatterND", 18);
   test1.AddAttribute("reduction", "min");
-  test1.AddInput<float>("data", {2, 2, 3}, {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1});
+  test1.AddInput<float>("data", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.AddInput<int64_t>("indices", {3, 1}, {0, 1, 0});
-  test1.AddInput<float>("updates", {3, 2, 3}, {2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
-                                               32768, 65536, 131072, 262144});
-  test1.AddOutput<float>("output", {2, 2, 3}, {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1});
+  test1.AddInput<float>("updates", {3, 2, 3}, {2f, 4f, 8f, 16f, 32f, 64f, 128f, 256f, 512f, 1024f, 2048f, 4096f,
+                                               8192f, 16384f, 32768f, 65536f, 131072f, 262144f});
+  test1.AddOutput<float>("output", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.Run();
 }
 
 TEST(ScatterNDOpTest, ScatterND_18_max) {
   OpTester test1("ScatterND", 18);
   test1.AddAttribute("reduction", "max");
-  test1.AddInput<float>("data", {2, 2, 3}, {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1});
+  test1.AddInput<float>("data", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.AddInput<int64_t>("indices", {3, 1}, {0, 1, 0});
-  test1.AddInput<float>("updates", {3, 2, 3}, {2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
-                                               32768, 65536, 131072, 262144});
+  test1.AddInput<float>("updates", {3, 2, 3}, {2f, 4f, 8f, 16f, 32f, 64f, 128f, 256f, 512f, 1024f, 2048f, 4096f,
+                                               8192f, 16384f, 32768f, 65536f, 131072f, 262144f});
   test1.AddOutput<float>("output", {2, 2, 3}, {8192.0, 16384.0, 32768.0, 65536.0, 131072.0, 262144.0,
                                                128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0});
   test1.Run();
