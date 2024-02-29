@@ -65,5 +65,12 @@ inline std::string TrimString(std::string s) {
   return s;
 }
 
+/**
+ * @brief A consistent way to construct the full qualified op name.
+ */
+inline std::string GetFullQualifiedOpName(const std::string& op_type, const std::string& domain) {
+  return domain + "::" + op_type;
+}
+
 }  // namespace utils
 }  // namespace onnxruntime

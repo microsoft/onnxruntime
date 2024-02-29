@@ -72,13 +72,6 @@ class UpStreamGraphTransformerBase : public GraphTransformer {
                                 const OpPassThroughConfig<T2>& pass_through_config,
                                 const logging::Logger& logger) const = 0;
 
-  /**
-   * @brief A consistent way to construct the full qualified op name.
-   */
-  std::string GetFullQualifiedOpName(const std::string& op_type, const std::string& domain) const {
-    return domain + "::" + op_type;
-  }
-
   std::unordered_map<std::string, OpPassThroughConfig<T2>> allowed_passthrough_ops_;
 
  private:
