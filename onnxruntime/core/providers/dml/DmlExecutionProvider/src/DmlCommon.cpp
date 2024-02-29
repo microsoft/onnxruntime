@@ -11,6 +11,7 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataTyp
     switch (tensorDataType)
     {
     case MLOperatorTensorDataType::Float: return DML_TENSOR_DATA_TYPE_FLOAT32;
+    case MLOperatorTensorDataType::UInt4: return DML_TENSOR_DATA_TYPE_UINT4;
     case MLOperatorTensorDataType::Int4: return DML_TENSOR_DATA_TYPE_INT4;
     case MLOperatorTensorDataType::UInt8: return DML_TENSOR_DATA_TYPE_UINT8;
     case MLOperatorTensorDataType::Int8: return DML_TENSOR_DATA_TYPE_INT8;
@@ -42,6 +43,7 @@ bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
         case DML_TENSOR_DATA_TYPE_UINT32: return false;
         case DML_TENSOR_DATA_TYPE_UINT16: return false;
         case DML_TENSOR_DATA_TYPE_UINT8: return false;
+        case DML_TENSOR_DATA_TYPE_UINT4: return false;
         case DML_TENSOR_DATA_TYPE_INT64: return true;
         case DML_TENSOR_DATA_TYPE_INT32: return true;
         case DML_TENSOR_DATA_TYPE_INT16: return true;
@@ -71,6 +73,7 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
     switch (tensorDataType)
     {
     case DML_TENSOR_DATA_TYPE_FLOAT32:  return MLOperatorTensorDataType::Float;
+    case DML_TENSOR_DATA_TYPE_UINT4:     return MLOperatorTensorDataType::UInt4;
     case DML_TENSOR_DATA_TYPE_INT4:     return MLOperatorTensorDataType::Int4;
     case DML_TENSOR_DATA_TYPE_UINT8:    return MLOperatorTensorDataType::UInt8;
     case DML_TENSOR_DATA_TYPE_INT8:     return MLOperatorTensorDataType::Int8;
