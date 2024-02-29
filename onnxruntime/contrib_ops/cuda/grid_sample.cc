@@ -9,22 +9,23 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                   \
+#define REGISTER_KERNEL_TYPED(T, VERSION, LAYOUT, DOMAIN)          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
       GridSample,                                                  \
-      kMSDomain,                                                   \
-      1,                                                           \
+      DOMAIN,                                                      \
+      VERSION,                                                     \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
-      GridSample<T>);
+      onnxruntime::contrib::cuda::GridSample<T, LAYOUT>);
 
-REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(float, 1, LAYOUT_NCHW, kMSDomain)
+REGISTER_KERNEL_TYPED(float, 16, LAYOUT_NHWC, kMSInternalNHWCDomain)
 
-template <typename T>
-GridSample<T>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
+template <typename T, bool IsNHWC>
+GridSample<T, IsNHWC>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
   std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
   std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
   align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
@@ -48,8 +49,8 @@ GridSample<T>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
   }
 }
 
-template <typename T>
-Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, bool IsNHWC>
+Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const auto& dims_input = X->Shape().GetDims();
   const Tensor* Grid = context->Input<Tensor>(1);
@@ -61,11 +62,13 @@ Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_ENFORCE(dims_grid[0] == dims_input[0], "Grid batch size ", dims_grid[0], " does not match input batch size ", dims_input[0]);
   ORT_ENFORCE(dims_grid[3] == 2, "Last dimension of grid: ", dims_grid[3], ", expect 2");
 
+  using Ch = Channels<IsNHWC>;
+
   TensorShapeVector dims_output(4);
-  dims_output[0] = dims_input[0];
-  dims_output[1] = dims_input[1];
-  dims_output[2] = dims_grid[1];
-  dims_output[3] = dims_grid[2];
+  dims_output[Ch::N] = dims_input[Ch::N];
+  dims_output[Ch::C] = dims_input[Ch::C];
+  dims_output[Ch::H] = dims_grid[1 /* Grid::H */];
+  dims_output[Ch::W] = dims_grid[2 /* Grid::W */];
   Tensor* Y = context->Output(0, dims_output);
   // Return early if the output tensor is going to be of size 0
   if (Y->Shape().Size() == 0) {
@@ -74,7 +77,7 @@ Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT* Y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
-  GridSampleImpl<CudaT>(
+  GridSampleImpl<CudaT, IsNHWC>(
       Stream(context),
       reinterpret_cast<const CudaT*>(X->Data<T>()),
       reinterpret_cast<const CudaT*>(Grid->Data<T>()),
@@ -89,4 +92,8 @@ Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
 }
 }  // namespace cuda
 }  // namespace contrib
+
+namespace cuda {
+REGISTER_KERNEL_TYPED(float, 16, LAYOUT_NCHW, kOnnxDomain)
+}  // namespace cuda
 }  // namespace onnxruntime

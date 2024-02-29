@@ -1725,10 +1725,17 @@ common::Status InferenceSession::Initialize() {
         // graph optimization level and is generally always applied.
         bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
                                         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableDmlGraphFusion, "0") == "0";
+        std::string dml_graph_serialization_enabled_config_val = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphSerialization, "0");
+        std::transform(dml_graph_serialization_enabled_config_val.begin(),
+                       dml_graph_serialization_enabled_config_val.end(),
+                       dml_graph_serialization_enabled_config_val.begin(),
+                       [](char ch) { return std::tolower(ch); });
+        bool dml_graph_serialization_enabled = dml_graph_serialization_enabled_config_val == "true";
 
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                      dmlExecutionProvider);
+                                                                                                                                      dmlExecutionProvider,
+                                                                                                                                      dml_graph_serialization_enabled);
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }
@@ -2289,8 +2296,8 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     // TODO: only call OnRunStart for all providers in-use
     for (auto& xp : execution_providers_) {
       // call OnRunStart and add to exec_providers_to_stop if successful
-      auto start_func = [&xp, &exec_providers_to_stop]() {
-        auto status = xp->OnRunStart();
+      auto start_func = [&xp, &exec_providers_to_stop, run_options]() {
+        auto status = xp->OnRunStart(run_options);
         if (status.IsOK())
           exec_providers_to_stop.push_back(xp.get());
 
@@ -2326,7 +2333,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 
   // info all execution providers InferenceSession:Run ended
   for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd(/*sync_stream*/ false);
+    auto status = xp->OnRunEnd(/*sync_stream*/ false, run_options);
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
@@ -2448,8 +2455,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // TODO: only call OnRunStart for all providers in-use
       for (auto& xp : execution_providers_) {
         // call OnRunStart and add to exec_providers_to_stop if successful
-        auto start_func = [&xp, &exec_providers_to_stop]() {
-          auto status = xp->OnRunStart();
+        auto start_func = [&xp, &exec_providers_to_stop, &run_options]() {
+          auto status = xp->OnRunStart(run_options);
           if (status.IsOK())
             exec_providers_to_stop.push_back(xp.get());
 
@@ -2490,7 +2497,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // info all execution providers InferenceSession:Run ended
       for (auto* xp : exec_providers_to_stop) {
         bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
-        auto status = xp->OnRunEnd(synchronize_execution_providers);
+        auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
       }
 

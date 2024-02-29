@@ -283,6 +283,23 @@ class ONNXModel:
         node = find_by_name(node_name, graph_nodes_list)
         return node
 
+    def get_largest_node_name_suffix(self, node_name_prefix):
+        """
+        Gets the largest node name (int) suffix for all node names that begin with `node_name_prefix`.
+        Example: for nodes my_prefix_0 and my_prefix_3, this method returns 3.
+        """
+        suffix = -1
+
+        for node in self.model.graph.node:
+            if node.name and node.name.startswith(node_name_prefix):
+                try:
+                    index = int(node.name[len(node_name_prefix) :])
+                    suffix = max(index, suffix)
+                except ValueError:
+                    continue
+
+        return suffix
+
     def find_nodes_by_initializer(self, graph, initializer):
         """
         Find all nodes with given initializer as an input.
