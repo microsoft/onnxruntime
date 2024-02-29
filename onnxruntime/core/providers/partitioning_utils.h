@@ -14,8 +14,9 @@
 namespace onnxruntime {
 struct ComputeCapability;
 class GraphViewer;
-class NodeArg;
 class Node;
+class NodeArg;
+class NodeUnit;
 
 namespace utils {
 
@@ -56,6 +57,8 @@ Create the supported partitions for the execution provider.
 @param generate_metadef_name_fn Callback to create the name for the MetaDef.
 @param execution_provider_name Name of execution provider creating the ComputeCapability instance.
 @param execution_provider_type ExecutionProviderType of the EP creating this ComputeCapability instance.
+@param node_unit_map Map of each Node in the graph_viewer to its NodeUnit. Provide if EP handles QDQ format models.
+                     Should be created by EP calling GetAllNodeUnits.
 @param debug_output Print diagnostic output about the partitions and reasons for partition breaks.
                     No-op in a release build.
 
@@ -68,6 +71,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
+                          const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map = nullptr,
                           bool debug_output = false);
 
 /**

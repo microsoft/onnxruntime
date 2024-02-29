@@ -147,7 +147,8 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
 
 NodeUnit::NodeUnit(const Node& node)
     : target_node_(node),
-      type_(Type::SingleNode) {
+      type_(Type::SingleNode),
+      input_edge_count_(node.GetInputEdgesCount()) {
   InitForSingleNode();
 }
 
@@ -159,6 +160,13 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
       outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)} {
   ORT_THROW_IF_ERROR(QDQ::ValidateNodeGroupDQNodes(graph_viewer, target_node_, dq_nodes_));
+
+  input_edge_count_ = std::accumulate(dq_nodes_.cbegin(), dq_nodes_.cend(), size_t(0),
+                                      [](size_t acc, const Node* node) { return acc + node->GetInputEdgesCount(); });
+
+  // add edges for inputs that are not from DQ nodes. there is one edge to each DQ node.
+  // other inputs could come from initializers or graph inputs (no edges) or other nodes (edge).
+  input_edge_count_ += target_node_.GetInputEdgesCount() - dq_nodes_.size();
 }
 
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }

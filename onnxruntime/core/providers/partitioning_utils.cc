@@ -12,6 +12,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -76,6 +77,11 @@ When selecting the next node to process, we first take:
 The remaining unsupported nodes mark the border of the current group so they will be processed later when we consider
 the next group.
 
+If node_unit_map is provided, we process NodeUnit instances (a logical 'Node' that can be a single node or a
+QDQ node group) instead of individual Node instances. As an EP must take complete NodeUnit instances (i.e. it
+must not break up a QDQ node group by taking a subset of nodes in it), this granularity of processing is valid.
+It is required to ensure we do not break up a QDQ node unit during partitioning.
+
 @param graph_viewer GraphViewer that IExecutionProvider::GetCapability is called with.
 @param is_node_supported_fn Callback to check whether a node is supported.
 @param on_group_closed_fn Callback to indicate a completed partition node group.
@@ -88,6 +94,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     const IsNodeSupportedFn& is_node_supported_fn,
     const OnGroupClosedFn& on_group_closed_fn,
     const std::string& execution_provider_type,
+    const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
     bool debug_output) {
 #ifdef NDEBUG
   ORT_UNUSED_PARAMETER(debug_output);
@@ -111,7 +118,18 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
   // initialize in-degrees and find root nodes
   for (const auto& node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto& node = *graph_viewer.GetNode(node_index);
-    const auto node_input_edge_count = node.GetInputEdgesCount();
+    auto node_input_edge_count = node.GetInputEdgesCount();
+
+    if (node_unit_map != nullptr) {
+      const auto& node_unit = node_unit_map->at(&node);
+      if (&node_unit->GetNode() != &node) {
+        // only process the target node
+        continue;
+      }
+
+      node_input_edge_count = node_unit->InputEdgeCount();
+    }
+
     in_degree.insert({node.Index(), node_input_edge_count});
     if (node_input_edge_count == 0) {
       nodes_to_process.push_back(&node);
@@ -151,6 +169,8 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     }
   };
 
+  int nodes_processed = 0;
+
   while (!nodes_to_process.empty() || !nodes_to_process_with_next_group.empty()) {
     if (nodes_to_process.empty()) {
       // we have processed all the nodes that we can while building this partition node group, start a new one
@@ -159,16 +179,22 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       continue;
     }
 
+    ++nodes_processed;
     const Node& node = *nodes_to_process.front();
     nodes_to_process.pop_front();
 
+    const NodeUnit* node_unit = node_unit_map ? node_unit_map->at(&node) : nullptr;
+    bool is_qdq_node_unit = node_unit && node_unit->UnitType() == NodeUnit::Type::QDQGroup;
+
     // a node that is already assigned to an EP other than current EP is unsupported
-    const bool is_node_supported =
-        (node.GetExecutionProviderType().empty() || node.GetExecutionProviderType() == execution_provider_type) && is_node_supported_fn(node);
+    const bool is_node_supported = (node.GetExecutionProviderType().empty() ||
+                                    node.GetExecutionProviderType() == execution_provider_type) &&
+                                   is_node_supported_fn(node);
 
     if (!is_node_supported && Contains(supported_group_border, &node)) {
       // an unsupported node on the border will be processed after the current partition node group
       nodes_to_process_with_next_group.push_back(&node);
+      --nodes_processed;  // we will process again later, so don't count yet
       continue;
     }
 
@@ -176,30 +202,68 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       // add node to the partition node group
       supported_group.push_back(&node);
 
-      // remove node from the border and add its outputs to the border
-      supported_group_border.erase(&node);
+      if (is_qdq_node_unit) {
+        // add the other nodes in the QDQ node unit
+        for (const auto& dq : node_unit->GetDQNodes()) {
+          supported_group.push_back(dq);
+        }
+        for (const auto& q : node_unit->GetQNodes()) {
+          supported_group.push_back(q);
+        }
+      }
 
-      std::for_each(
-          node.OutputNodesBegin(), node.OutputNodesEnd(),
-          [&supported_group_border](const Node& output) {
-            supported_group_border.insert(&output);
-          });
+      // remove node from the border
+      supported_group_border.erase(&node);
     }
 
-    // adjust in-degrees of the node outputs and add any new nodes to process
-    std::for_each(
-        node.OutputNodesBegin(), node.OutputNodesEnd(),
-        [&](const Node& output) {
-          auto& output_node_in_degree = in_degree[output.Index()];
-          --output_node_in_degree;
+    // For each downstream node:
+    //   1: add the downstream node to the border if the current node is supported
+    //   2: adjust in-degrees of the nodes consuming the current node's outputs, and add any new nodes to process
+    if (node_unit_map) {
+      // if node unit is a single node, output_idx 0 gives the edges from that node.
+      size_t num_output_nodes = is_qdq_node_unit ? node_unit->GetQNodes().size() : 1;
+      for (size_t output_idx = 0; output_idx < num_output_nodes; ++output_idx) {
+        std::for_each(
+            node_unit->OutputEdgesBegin(output_idx), node_unit->OutputEdgesEnd(output_idx),
+            [&](const Node::EdgeEnd& edge_end) {
+              const Node& n = edge_end.GetNode();
+              const NodeUnit& downstream_node_unit = *node_unit_map->at(&n);
+              const Node& output = downstream_node_unit.GetNode();
 
-          if (output_node_in_degree == 0) {
-            nodes_to_process.push_back(&output);
-          }
-        });
+              if (is_node_supported) {
+                supported_group_border.insert(&output);
+              }
+
+              auto& output_node_in_degree = in_degree[output.Index()];
+              --output_node_in_degree;
+
+              if (output_node_in_degree == 0) {
+                nodes_to_process.push_back(&output);
+              }
+            });
+      }
+    } else {
+      std::for_each(
+          node.OutputNodesBegin(), node.OutputNodesEnd(),
+          [&](const Node& output) {
+            if (is_node_supported) {
+              supported_group_border.insert(&output);
+            }
+
+            auto& output_node_in_degree = in_degree[output.Index()];
+            --output_node_in_degree;
+
+            if (output_node_in_degree == 0) {
+              nodes_to_process.push_back(&output);
+            }
+          });
+    }
   }
 
   close_group();
+
+  ORT_ENFORCE(nodes_processed == in_degree.size(),
+              "Processed ", nodes_processed, " nodes. Expected to process ", in_degree.size());
 
   return supported_groups;
 }
@@ -318,11 +382,13 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
+                          const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
                           bool debug_output) {
   const auto groups = CreateSupportedPartitionNodeGroups(graph_viewer,
                                                          is_node_supported_fn,
                                                          on_partition_closed_fn,
                                                          execution_provider_type,
+                                                         node_unit_map,
                                                          debug_output);
 
   std::vector<std::unique_ptr<ComputeCapability>> partitions{};
@@ -360,6 +426,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
       generate_metadef_name_fn,
       execution_provider_name,
       execution_provider_type,
+      nullptr,
       debug_output);
 }
 

@@ -69,6 +69,9 @@ class NodeUnit {
   const std::vector<const Node*>& GetQNodes() const noexcept { return q_nodes_; }
   std::vector<const Node*> GetAllNodesInGroup() const noexcept;
 
+  /// Number of input edges to the logical node. For a QDQ node this is the count of input edges to the DQ nodes
+  /// plus any other edges to the target node for inputs that are not via a DQ node.
+  size_t InputEdgeCount() const { return input_edge_count_; }
   Node::EdgeConstIterator OutputEdgesBegin(size_t index) const;
   Node::EdgeConstIterator OutputEdgesEnd(size_t index) const;
 
@@ -80,6 +83,8 @@ class NodeUnit {
 
   std::vector<NodeUnitIODef> inputs_;
   std::vector<NodeUnitIODef> outputs_;
+
+  size_t input_edge_count_;  // total number of input edges
 
   // Initializing for a single Node
   void InitForSingleNode();

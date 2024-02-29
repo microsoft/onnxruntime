@@ -181,7 +181,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   };
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
-                                            gen_metadef_name, NNAPI, kNnapiExecutionProvider);
+                                            gen_metadef_name, NNAPI, kNnapiExecutionProvider, &node_unit_map);
 
   // Generally, NNAPI supports sub-graphs with at least one non-constant initializer input and one output.
   // So far, we have a few cases that sub-graph has zero valid inputs, like `CastLike`
