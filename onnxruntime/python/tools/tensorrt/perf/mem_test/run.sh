@@ -104,6 +104,25 @@ fi
 
 mv valgrind.log result
 
+# Concurrency Test
+CONCURRENCY=2
+FRCNN_FOLDER="/data/ep-perf-models/onnx-zoo-models/FasterRCNN-10/"
+
+cp -r ${FRCNN_FOLDER} ./
+
+# replicate test inputs
+for (( i=1; i<CONCURRENCY; i++ )); do
+    cp -r "./FasterRCNN-10/test_data_set_0/" "./FasterRCNN-10/test_data_set_$i/"
+done
+
+python ${ORT_SOURCE}/onnxruntime/python/tools/symbolic_shape_infer.py \
+    --input="./FasterRCNN-10/faster_rcnn_R_50_FPN_1x.onnx" \
+    --output="./FasterRCNN-10/faster_rcnn_R_50_FPN_1x.onnx" \
+    --auto_merge
+
+${ORT_SOURCE}/build/Linux/Release/onnx_test_runner -e tensorrt -c 2 ./FasterRCNN-10/ > concurrency_test.log
+mv concurrency_test.log result
+
 # Run AddressSanitizer 
 ASAN_OPTIONS=${ASAN_OPTIONS} ./onnx_memtest
 
