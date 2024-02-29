@@ -49,7 +49,7 @@ Status Gelu<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (approximation_algorithm_ == "tanh") {
 #ifdef USE_ROCM
-    return LaunchElementwiseKernel<functor::FastGeLU, CudaT>(
+    return onnxruntime::contrib::rocm::LaunchElementwiseKernel<onnxruntime::contrib::rocm::functor::FastGeLU, CudaT>(
         GetTuningContext(), context->GetComputeStream(),
         reinterpret_cast<const CudaT*>(input->Data<T>()), static_cast<int>(input_length),
         nullptr /* no bias */, 0 /* no bias */,
