@@ -139,33 +139,33 @@ class CUDAExecutionProvider : public IExecutionProvider {
       constexpr bool is_Float8E4M3FN = std::is_same<T, Float8E4M3FN>::value;
       constexpr bool is_Float8E5M2 = std::is_same<T, Float8E5M2>::value;
 #endif
-      if (is_float) {
+      if constexpr (is_float) {
         if (!constant_ones_float_) {
           constant_ones_float_ = cuda::CreateConstantOnes<float>();
         }
         return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream, count));
-      } else if (is_double) {
+      } else if constexpr (is_double) {
         if (!constant_ones_double_) {
           constant_ones_double_ = cuda::CreateConstantOnes<double>();
         }
         return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream, count));
-      } else if (is_half) {
+      } else if constexpr (is_half) {
         if (!constant_ones_half_) {
           constant_ones_half_ = cuda::CreateConstantOnes<half>();
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream, count));
-      } else if (is_BFloat16) {
+      } else if constexpr (is_BFloat16) {
         if (!constant_ones_bfloat16_) {
           constant_ones_bfloat16_ = cuda::CreateConstantOnes<BFloat16>();
         }
         return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream, count));
 #if !defined(DISABLE_FLOAT8_TYPES)
-      } else if (is_Float8E4M3FN) {
+      } else if constexpr (is_Float8E4M3FN) {
         if (!constant_ones_float8e4m3fn_) {
           constant_ones_float8e4m3fn_ = cuda::CreateConstantOnes<Float8E4M3FN>();
         }
         return reinterpret_cast<const T*>(constant_ones_float8e4m3fn_->GetBuffer(stream, count));
-      } else if (is_Float8E5M2) {
+      } else if constexpr (is_Float8E5M2) {
         if (!constant_ones_float8e5m2_) {
           constant_ones_float8e5m2_ = cuda::CreateConstantOnes<Float8E5M2>();
         }

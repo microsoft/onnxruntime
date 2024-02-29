@@ -599,7 +599,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   static constexpr bool scales_required =
       std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value;
 
-  if (scales_required) {
+  if constexpr (scales_required) {
     if (fc1_scales == nullptr) {
       ORT_THROW("[FT Error][Run MoE FC] Scales expected but scale for first matmul is a null pointer");
     } else if (fc2_scales == nullptr) {
