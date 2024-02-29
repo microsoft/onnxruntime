@@ -91,7 +91,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                       const Node& node,
-                                      const WebnnDeviceType /* device_type */,
+                                      const WebnnDeviceType device_type,
                                       const logging::Logger& logger) const {
   (void)initializers;
   const auto& op_type = node.OpType();
@@ -156,6 +156,55 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                 << " b_shape: [" << b_shape[0] << ", " << b_shape[1] << "]"
                                 << " c_size: " << c_size;
 
+          return false;
+        }
+      }
+    }
+  }
+
+  if (op_type == "MatMul") {
+    std::vector<int64_t> a_shape;
+    {
+      if (!GetShape(*input_defs[a_idx], a_shape, logger))
+        return false;
+
+      if (a_shape.size() < 2) {
+        LOGS(logger, VERBOSE) << "A must be at least 2D";
+        return false;
+      }
+
+      if (Product(a_shape) == 0) {
+        LOGS(logger, VERBOSE) << "A must be non-empty";
+        return false;
+      }
+    }
+
+    std::vector<int64_t> b_shape;
+    {
+      if (!GetShape(*input_defs[b_idx], b_shape, logger))
+        return false;
+
+      if (b_shape.size() < 2) {
+        LOGS(logger, VERBOSE) << "B must be at least 2D";
+        return false;
+      }
+
+      if (Product(b_shape) == 0) {
+        LOGS(logger, VERBOSE) << "B must be non-empty";
+        return false;
+      }
+    }
+    // WebNN CPU backend has two more constraints.
+    // https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/modules/ml/webnn/ml_graph_xnnpack.cc;l=1177
+    if (device_type == WebnnDeviceType::CPU) {
+      if (a_shape.size() != b_shape.size()) {
+        LOGS(logger, VERBOSE) << "The rank of two inputs for WebNN CPU backend MatMul must be the same.";
+        return false;
+      }
+
+      for (size_t i = 0; i < a_shape.size() - 2; i++) {
+        if (a_shape[i] != b_shape[i]) {
+          LOGS(logger, VERBOSE) << "WebNN CPU backend can't support broadcasting for MatMul.";
           return false;
         }
       }
