@@ -127,6 +127,9 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // Reset the backward pass attribute for all nodes.
   ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ResetNodeBackwardPassAttribute(graph, modified));
 
+  // Reset seed attribute for all dropout nodes in the graph if the seed is not set.
+  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::SetSeedForDropoutNodes(graph, modified));
+
   LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_ << ", probe level: "
                         << static_cast<int>(recompute_probe_config_.probe_level)
                         << ", enable_transformer_layer_as_boundary:"
