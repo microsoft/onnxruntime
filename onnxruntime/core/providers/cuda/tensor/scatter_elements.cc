@@ -133,7 +133,7 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   } else if (reduction_ == "max") {
     args.operation = GatherScatterElementsArgs::Operation::MAX;
   } else {
-    ORT_THROW("Unsupported reduction type");
+    ORT_THROW("Unsupported reduction type for ScatterElements.");
   }
 
   // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.

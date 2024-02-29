@@ -9,20 +9,12 @@
 #include "core/providers/cpu/tensor/scatter_nd.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
-/**
- * This implementation assumes there is common indices and
- * reduction is not needed. The code does not check that condition.
- * However in that case, the same output element could be accessed
- * from different threads at the same time and the final value
- * is unlikely to be correct.
- */
-class ScatterNDDisjointAndNoReduction final : public CudaKernel {
- public:
-  explicit ScatterNDDisjointAndNoReduction(const OpKernelInfo& info) : CudaKernel(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
+using onnxruntime::OpKernelContext;
+using onnxruntime::OpKernelInfo;
+using onnxruntime::cuda::CudaKernel;
 
 /**
  * This is an implementation derived from the first one.
@@ -32,7 +24,7 @@ class ScatterNDDisjointAndNoReduction final : public CudaKernel {
  * corresponding to the highest visited index.
  * TODO: change the implementation of avoid conflicts.
  */
-class ScatterNDWithAtomicReduction final : public CudaKernel {
+class ScatterNDOfShape final : public CudaKernel {
   enum class Reduction : int {
     None = 0,
     Add = 1,
@@ -42,8 +34,8 @@ class ScatterNDWithAtomicReduction final : public CudaKernel {
   };
 
  public:
-  explicit ScatterNDWithAtomicReduction(const OpKernelInfo& info) : CudaKernel(info) {
-    std::string reduction = info.GetAttrOrDefault<std::string>("reduction", "none");
+  ScatterNDOfShape(const OpKernelInfo& info) : CudaKernel(info) {
+    std::string reduction = info.GetAttrOrDefault<std::string>("reduction", "add");
 
     if (info.GetAttr<std::string>("reduction", &reduction).IsOK()) {
       if (reduction == "add")
@@ -58,8 +50,9 @@ class ScatterNDWithAtomicReduction final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  Reduction reduction_{Reduction::None};
+  Reduction reduction_{Reduction::Add};
 };
 
 }  // namespace cuda
+}  // contrib
 }  // namespace onnxruntime
