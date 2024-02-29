@@ -112,7 +112,10 @@ def _test_apple_packages(args):
         subprocess.run(["pod", "cache", "clean", "--all"], shell=False, check=True, cwd=target_proj_path)
 
         # install pods
-        subprocess.run(["pod", "install"], shell=False, check=True, cwd=target_proj_path)
+        # set env to skip macos test targets accordingly
+        env = os.environ.copy()
+        env["SKIP_MACOS_TEST"] = "true" if args.skip_macos_test else "false"
+        subprocess.run(["pod", "install"], shell=False, check=True, cwd=target_proj_path, env=env)
 
         # run the tests
         if not args.prepare_test_project_only:
@@ -127,24 +130,53 @@ def _test_apple_packages(args):
 
             simulator_device_info = json.loads(simulator_device_info)
 
-            subprocess.run(
-                [
-                    "xcrun",
-                    "xcodebuild",
-                    "test",
-                    "-workspace",
-                    "./apple_package_test.xcworkspace",
-                    "-scheme",
-                    "ios_package_test",
-                    "-destination",
-                    f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
-                ],
-                shell=False,
-                check=True,
-                cwd=target_proj_path,
-            )
+            # Xcode UI tests seem to be flaky: https://github.com/orgs/community/discussions/68807
+            # Add a couple of retries if we get this error:
+            #   ios_package_testUITests-Runner Failed to initialize for UI testing:
+            #   Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 "Timed out while loading Accessibility."
+            attempts = 0
+            cmd = [
+                "xcrun",
+                "xcodebuild",
+                "test",
+                "-workspace",
+                "./apple_package_test.xcworkspace",
+                "-scheme",
+                "ios_package_test",
+                "-destination",
+                f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
+            ]
 
-            if PackageVariant[args.variant] != PackageVariant.Mobile:
+            while True:
+                attempts += 1
+                completed_process = subprocess.run(
+                    cmd,
+                    shell=False,
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    cwd=target_proj_path,
+                )
+
+                # print so it's in CI output
+                print(completed_process.stdout)
+
+                if completed_process.returncode != 0:
+                    print(f"Running ios_package_test failed. Return code was {completed_process.returncode}")
+                    print("xcrun xcodebuild test stderr:")
+                    print(completed_process.stderr)
+                    print("---")
+
+                    if "Timed out while loading Accessibility" in completed_process.stderr and attempts < 3:
+                        continue
+
+                    raise subprocess.CalledProcessError(
+                        completed_process.returncode, " ".join(cmd), completed_process.stdout, completed_process.stderr
+                    )
+
+                break
+
+            if PackageVariant[args.variant] != PackageVariant.Mobile and not args.skip_macos_test:
                 subprocess.run(
                     [
                         "xcrun",
@@ -204,6 +236,12 @@ def parse_args():
         "--prepare_test_project_only",
         action="store_true",
         help="Prepare the test project only, without running the tests",
+    )
+
+    parser.add_argument(
+        "--skip_macos_test",
+        action="store_true",
+        help="Skip macos platform tests. Specify this argument when build targets only contain ios archs. ",
     )
 
     return parser.parse_args()

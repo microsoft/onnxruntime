@@ -49,11 +49,12 @@ Status SaveCheckpoint(const CheckpointState& state, const PathString& checkpoint
  * @param trainable_tensor_protos trainable parameters in TensorProto format.
  * @param non_trainable_tensor_protos non-trainable parameters in TensorProto format.
  * @param checkpoint_path file where checkpoint is saved.
+ * @param nominal_checkpoint flag indicating whether to save the complete checkpoint or the nominal checkpoint.
  * @return Status
  */
 Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                       gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
-                      const PathString& checkpoint_path);
+                      const PathString& checkpoint_path, const bool nominal_checkpoint);
 #endif
 
 /**

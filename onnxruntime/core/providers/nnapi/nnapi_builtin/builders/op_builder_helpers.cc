@@ -679,16 +679,15 @@ Status HandleAutoPad(const Shape& input_shape,
   return Status::OK();
 }
 
-Status GetBinaryOpQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    float& a_scale, float& b_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
+Status GetBinaryOpQuantizationScaleAndZeroPoint(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                                float& a_scale, float& b_scale, float& y_scale,
+                                                int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-      initializers, node_unit.Inputs()[0], node_unit.ModelPath(), a_scale, a_zero_point));
+      graph_viewer, node_unit.Inputs()[0], node_unit.ModelPath(), a_scale, a_zero_point));
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-      initializers, node_unit.Inputs()[1], node_unit.ModelPath(), b_scale, b_zero_point));
+      graph_viewer, node_unit.Inputs()[1], node_unit.ModelPath(), b_scale, b_zero_point));
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-      initializers, node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
+      graph_viewer, node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
 
   return Status::OK();
 }
@@ -699,16 +698,18 @@ Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
     std::optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
   is_per_tensor_u8s8 = false;
-  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& graph_viewer(model_builder.GetGraphViewer());
+
   // Get scale and zero points
   // We will handle per-channel weight scale and zero point later
   ORT_RETURN_IF_ERROR(
-      GetBinaryOpQuantizationScaleAndZeroPoint(initializers, node_unit,
+      GetBinaryOpQuantizationScaleAndZeroPoint(graph_viewer, node_unit,
                                                a_scale, w_scale, y_scale,
                                                a_zero_point, w_zero_point, y_zero_point));
 
   const auto& inputs = node_unit.Inputs();
-  const auto& weight_tensor = *initializers.at(inputs[1].node_arg.Name());
+  // all these were checked to be constant in GemmOpBuilder::IsOpSupportedImpl
+  const auto& weight_tensor = *graph_viewer.GetConstantInitializer(inputs[1].node_arg.Name());
 
   // We are done here if this is u8u8 QLinearConv
   if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
@@ -719,7 +720,7 @@ Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   // For this case we will need to convert the int8 weight tensor to uint8
   // And have same scale and 128 as zero point
   // The conversion of the weight tensor itself will be done in the OpBuilder
-  const auto& scale_tensor = *initializers.at(inputs[1].quant_param->scale.Name());
+  const auto& scale_tensor = *graph_viewer.GetConstantInitializer(inputs[1].quant_param->scale.Name());
   int64_t scale_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
   if (scale_dim == 1) {
     w_zero_point = 128;
@@ -964,6 +965,18 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
   return Status::OK();
 }
 
+// NOTE: Skipping Reshape results in invalid output on some SnapDragon chipsets. Whilst the NNAPI spec says the input
+// to FullyConnnected can be > 2D, those chipsets don't handle this correctly.
+//
+// CanSkipReshape could potentially be re-enabled in the future if we no longer want to support those old chipsets.
+// However, the Reshape of newer chipsets may not run on CPU so there may not be a performance issue to try and avoid,
+// so CanSkipReshape could be redundant anyway.
+//
+// Known bad chipsets: Qualcomm Snapdragon 850, 855, 865, 870.
+//
+// See https://github.com/microsoft/onnxruntime/issues/19518
+
+/*
 // We can skip the Reshape if all the output edges satisfies both the following conditions
 // 1. The output of the reshape/flatten is not an output of the graph
 // 2. The output of the reshape/flatten is the input 0 of one or more GEMM/Matmul operators,
@@ -976,7 +989,7 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
 // between NNAPI CPU impl and Hardware Accelerator impl and will speed up the execution
 // If we are going to skip the reshape, we will still add correct shape and operand type for the output in
 // onnxruntime::nnapi::Model.
-bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
+static bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                     size_t input_rank, size_t output_rank) {
   // Since we know this is a Reshape NodeUnit, so we can safely assume there is only 1 output
   // and the node_unit has only one output node.
@@ -1038,33 +1051,37 @@ bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit
                         << node_unit.Name() << "] with output, " << output_name;
   return true;
 }
+*/
 
 Status AddReshapeOperator(ModelBuilder& model_builder,
                           const NodeUnit& node_unit,
                           const std::string& input,
                           const std::vector<int32_t>& shape) {
   auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   const auto input_shape = shaper[input];
   const auto output_shape = shaper[output];
-  const auto input_rank = input_shape.size();
-  const auto output_rank = output_shape.size();
 
   // For reshape, the output type should be the same as the input type except the shape is different
   auto output_operand_type = operand_types.at(input);
   output_operand_type.SetDimensions(output_shape);
 
+  /* See CanSkipReshape definition above for explanation of why this is disabled.
   // Since Reshape is not running using hardware in NNAPI for some CPU (e.g. Qualcomm SD for now)
   // We will try to see if we the skip the Reshape to prevent context switching between
   // NNAPI CPU impl and NNAPI hardware accelerator impl
   if (CanSkipReshape(model_builder, node_unit, input_rank, output_rank)) {
-    // Since reshape can be skipped, only register the dimension and type, with same index and new name
+    const auto& operand_indices(model_builder.GetOperandIndices());
+    const auto input_rank = input_shape.size();
+    const auto output_rank = output_shape.size();
+    // Since reshape can be skipped, only register the dimension and type, with same index and new name.
+    // This essentially redirects the downstream operator builders to the input of the skipped Reshape node,
+    // but with the output shape of the Reshape node.
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
-  } else {
-    // We still need to perform a reshape here
+  } else */
+  {
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
     ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output));
   }
@@ -1072,20 +1089,20 @@ Status AddReshapeOperator(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool IsQuantizationScaleSupported(const InitializedTensorSet& initializers,
+bool IsQuantizationScaleSupported(const GraphViewer& graph_viewer,
                                   const NodeUnitIODef& io_def,
                                   const OpSupportCheckParams& params,
                                   const std::string& op_type,
                                   bool is_quant_matmul,
                                   bool is_conv_matmul_u8s8_weight) {
   const auto scale_name = io_def.quant_param->scale.Name();
-  auto it = initializers.find(scale_name);
-  if (it == initializers.cend()) {
-    LOGS_DEFAULT(VERBOSE) << "The scale of " << op_type << " must be an initializer tensor";
+  const auto* scale = graph_viewer.GetConstantInitializer(scale_name);
+  if (!scale) {
+    LOGS_DEFAULT(VERBOSE) << "The scale of " << op_type << " must be a constant initializer";
     return false;
   }
 
-  const auto& scale_tensor = *it->second;
+  const auto& scale_tensor = *scale;
   int64_t scales_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
   if (!is_conv_matmul_u8s8_weight) {
     if (scales_dim != 1) {
@@ -1123,7 +1140,7 @@ bool IsQuantizationScaleSupported(const InitializedTensorSet& initializers,
   return true;
 }
 
-bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
+bool IsQuantizationZeroPointSupported(const GraphViewer& graph_viewer,
                                       const NodeUnitIODef& io_def,
                                       const std::string& op_type,
                                       const Path& model_path,
@@ -1134,12 +1151,13 @@ bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
     return true;
 
   const auto& zero_point_name = io_def.quant_param->zero_point->Name();
-  if (!Contains(initializers, zero_point_name)) {
-    LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be an initializer tensor";
+  const auto* zero_point = graph_viewer.GetConstantInitializer(zero_point_name);
+  if (!zero_point) {
+    LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be a constant initializer";
     return false;
   }
 
-  const auto& zero_tensor = *initializers.at(zero_point_name);
+  const auto& zero_tensor = *zero_point;
   int64_t zero_dim = zero_tensor.dims().empty() ? 1 : zero_tensor.dims()[0];
 
   if (!is_conv_matmul_u8s8_weight) {
@@ -1194,8 +1212,9 @@ bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
   return true;
 }
 
-bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                            const std::vector<size_t>& indices, const OpSupportCheckParams& params, ArgType arg_type) {
+bool IsQuantizedIOSupported(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                            const std::vector<size_t>& indices, const OpSupportCheckParams& params,
+                            ArgType arg_type) {
   const auto& op_type = node_unit.OpType();
   auto quant_op_type = GetQuantizedOpType(node_unit);
 
@@ -1247,12 +1266,12 @@ bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const Node
     }
 
     // Check scale and zero point
-    if (!IsQuantizationScaleSupported(initializers, io_def, params, op_type,
+    if (!IsQuantizationScaleSupported(graph_viewer, io_def, params, op_type,
                                       is_quant_matmul, is_conv_matmul_u8s8_weight)) {
       return false;
     }
 
-    if (!IsQuantizationZeroPointSupported(initializers, io_def, op_type, node_unit.ModelPath(),
+    if (!IsQuantizationZeroPointSupported(graph_viewer, io_def, op_type, node_unit.ModelPath(),
                                           is_quant_matmul, is_conv_matmul_u8s8_weight)) {
       return false;
     }
@@ -1261,33 +1280,27 @@ bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const Node
   return true;
 }
 
-bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
+bool HasRequiredScaleAndZeroPoint(const GraphViewer& graph_viewer,
                                   const std::string& op_desc,
                                   const NodeUnitIODef& io_def,
                                   const Path& path,
                                   float required_scale, int32_t required_zp) {
   float scale = 0.0f;
   int32_t zp = 0;
-  auto status = GetQuantizationScaleAndZeroPoint(initializers, io_def, path,
-                                                 scale, zp);
+  auto status = GetQuantizationScaleAndZeroPoint(graph_viewer, io_def, path, scale, zp);
   if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << op_desc
-                        << " GetQuantizationScaleAndZeroPoint failed, message: "
-                        << status.ErrorMessage();
+    LOGS_DEFAULT(ERROR) << op_desc << " GetQuantizationScaleAndZeroPoint failed, message: " << status.ErrorMessage();
     return false;
   }
 
   if (scale != required_scale) {
-    LOGS_DEFAULT(VERBOSE) << op_desc
-                          << " scale can only be [" << required_scale
-                          << "], actual scale: " << scale;
+    LOGS_DEFAULT(VERBOSE) << op_desc << " scale can only be [" << required_scale << "], actual scale: " << scale;
     return false;
   }
 
   if (zp != required_zp) {
-    LOGS_DEFAULT(VERBOSE) << op_desc
-                          << "] zero point can only be [" << required_zp
-                          << "], actual zero point: " << scale;
+    LOGS_DEFAULT(VERBOSE) << op_desc << "] zero point can only be [" << required_zp << "], actual zero point: "
+                          << zp;
     return false;
   }
 

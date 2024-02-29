@@ -33,8 +33,6 @@ class QnnBackendManager {
  public:
   QnnBackendManager(std::string&& backend_path,
                     ProfilingLevel profiling_level,
-                    uint32_t rpc_control_latency,
-                    HtpPerformanceMode htp_performance_mode,
                     ContextPriority context_priority,
                     std::string&& qnn_saver_path,
                     uint32_t device_id,
@@ -42,8 +40,6 @@ class QnnBackendManager {
                     uint32_t soc_model)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
-        rpc_control_latency_(rpc_control_latency),
-        htp_performance_mode_(htp_performance_mode),
         context_priority_(context_priority),
         qnn_saver_path_(qnn_saver_path),
         device_id_(device_id),
@@ -87,11 +83,18 @@ class QnnBackendManager {
 
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
-  Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model);
+  Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
-  Status SetHtpPowerConfig();
+  Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
+
+  Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
+                           HtpPerformanceMode htp_performance_mode);
+
+  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
+                              uint32_t rpc_control_latency);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -140,6 +143,8 @@ class QnnBackendManager {
 
   const std::string& GetSdkVersion() { return sdk_build_version_; }
 
+  Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
+
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
@@ -148,8 +153,6 @@ class QnnBackendManager {
   Status LoadQnnSaverBackend();
 
   Status UnloadLib(void* handle);
-
-  Status DestroyHTPPowerConfigID();
 
   void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
 
@@ -231,15 +234,12 @@ class QnnBackendManager {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
-  uint32_t rpc_control_latency_ = 0;
-  HtpPerformanceMode htp_performance_mode_;
   ContextPriority context_priority_;
   std::string sdk_build_version_ = "";
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
   const std::string qnn_saver_path_;
-  uint32_t htp_power_config_client_id_ = 0;
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;

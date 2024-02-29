@@ -172,6 +172,9 @@ stages:
   - job: Stable_Diffusion
     variables:
       skipComponentGovernanceDetection: true
+      CLIP_MODEL_CACHE: $(Agent.TempDirectory)/clip_cache
+      STABLE_DIFFUSION_MODEL_CACHE: $(Agent.TempDirectory)/stablediffusion_cache
+      GenerateImage_DIR: $(Agent.TempDirectory)/images
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
@@ -188,9 +191,23 @@ stages:
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    - task: Cache@2
+      inputs:
+        key: stable_diffusion | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/pipeline_stable_diffusion.py
+        restoreKeys: |
+          stable_diffusion | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/pipeline_stable_diffusion.py
+          stable_diffusion
+        path: $(STABLE_DIFFUSION_MODEL_CACHE)
+      displayName: Cache stable diffusion model
+
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/Release:/Release nvcr.io/nvidia/pytorch:22.11-py3 \
-          bash -c '
+        mkdir -p $(GenerateImage_DIR)
+        docker run --rm --gpus all -v $PWD:/workspace \
+          -v $(Build.BinariesDirectory)/Release:/Release \
+          -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
+          -v $(GenerateImage_DIR):/images:rw \
+          nvcr.io/nvidia/pytorch:22.11-py3 \
+          bash -c ' \
             set -ex; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
@@ -199,15 +216,33 @@ stages:
             python3 -m pip install -r requirements-cuda11.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo Generate an image guided by a text prompt; \
-            python3 demo_txt2img.py --seed 1 --deterministic "astronaut riding a horse on mars" ; \
-            find $(pwd) -name "*.png" ; \
+            python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
+            find $(pwd)/ORT_CUDA -name "*.png" -exec cp {} /images/ \; ; \
             popd ; \
             '
       displayName: 'Run stable diffusion demo'
       workingDirectory: $(Build.SourcesDirectory)
 
+    # For verification we will check the generated image looks .
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish code coverage report'
+      inputs:
+          artifactName: "Generated-Image"
+          targetPath: '$(GenerateImage_DIR)'
+
+    - task: Cache@2
+      inputs:
+        key: clip_model | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/test/check_image.py
+        restoreKeys: |
+          clip_model | $(Build.SourcesDirectory)/onnxruntime/python/tools/transformers/models/stable_diffusion/test/check_image.py
+          clip_model
+        path: $(CLIP_MODEL_CACHE)
+      displayName: Cache clip model
+
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:22.11-py3 \
+        docker run --rm --gpus all -v $PWD:/workspace \
+          -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
+          nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c '
             set -ex; \
             python3 --version; \
@@ -217,7 +252,7 @@ stages:
             pushd test; \
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
-            python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2; \
+            python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2 --cache_dir /model_cache ; \
             popd ; \
             popd ; \
             '
@@ -233,17 +268,13 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-T4
+    pool: Onnxruntime-Linux-A10-24G
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
 
     - checkout: self
-      clean: true
-      submodules: none
-
-    - checkout: LLaMa2Onnx
       clean: true
       submodules: none
 
@@ -255,47 +286,139 @@ stages:
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPackage@1
-      displayName: 'Download Llama2 model'
-      inputs:
-        packageType: upack
-        feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
-        version: 1.0.0
-        definition: '772ebce3-7e06-46d5-b3cc-82040ec4b2ce'
-        downloadPath: $(Agent.TempDirectory)/llama2_onnx_ft16
-
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: onnxruntime/tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
-        Context: onnxruntime/tools/ci_build/github/linux/docker/
-        ScriptName: onnxruntime/tools/ci_build/get_docker_image.py
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
 
+    - task: DownloadPackage@1
+      displayName: 'Download Meta Llama2 model'
+      inputs:
+        packageType: upack
+        feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+        version: 1.0.0
+        definition: '6fe0c4ed-9d0e-4d66-94cc-fb6a111d02a5'
+        downloadPath: $(Agent.TempDirectory)/meta_llama2_7b_hf
+
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory)/Llama-2-Onnx:/workspace \
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
-           -v $(Agent.TempDirectory)/llama2_onnx_ft16:/models \
+           -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest \
             bash -c "
               set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
               python3 -m pip install --upgrade pip ; \
+              pushd models/llama ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m pip install sentencepiece ; \
-              pushd /workspace ; \
-              python3 MinimumExample/Example_ONNX_LlamaV2.py --onnx_file /models/ONNX/LlamaV2_7B_FT_float16.onnx \
-                --embedding_file /models/embeddings.pth --tokenizer_path tokenizer.model --prompt 'What is the lightest element?' > /workspace/answer.txt ; \
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
               popd ; \
             "
-      displayName: 'Run Llama2 demo'
+      displayName: 'Run Llama2 to Onnx F16 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+- stage: Whisper_ONNX
+  dependsOn:
+  - Build_Onnxruntime_Cuda
+  jobs:
+  - job: Whisper_ONNX
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: Onnxruntime-Linux-A10-24G
+    steps:
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Onnxruntime Artifact'
+        ArtifactName: 'drop-ort-linux-gpu'
+        TargetPath: '$(Build.BinariesDirectory)/ort-artifact/'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimepackagestest
+        UpdateDepsTxt: false
+
+    - task: DownloadPackage@1
+      # The model data in artifact is downloaded from openai/whisper-large-v3 in huggingface model hub
+      # In order to save size, removed .git directory and pickled files, and keep the safetensors model files
+      displayName: 'Download Whisper Model'
+      inputs:
+        packageType: upack
+        feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+        version: 1.0.0
+        definition: 'b583ce7c-1a8f-4099-ae28-5d5f56c478b1'
+        downloadPath: $(Agent.TempDirectory)/whisper_large_v3
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
+           onnxruntimepackagestest \
+            bash -c '
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/whisper ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              python3 -m models.whisper.convert_to_onnx -m /whisper_large_v3 --output whisperlargev3 --use_external_data_format ; \
+              popd ; \
+            '
+      displayName: 'Convert Whisper Model'
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        set -ex
-        real=$(cat $(Build.SourcesDirectory)/Llama-2-Onnx/answer.txt)
-        trim_actual=$(tr -dc '[[:print:]]' <<< "$real")
-        expected="The lightest element is hydrogen. Hydrogen is the lightest element on the periodic table, with an atomic mass of 1.00794 u (unified atomic mass units)."
-        [ "$expected" == "$trim_actual" ] && exit 0 || exit 1
-      displayName: 'Check result'
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
+           onnxruntimepackagestest \
+            bash -c '
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/whisper ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              ls whisperlargev3; \
+              python3 -m models.whisper.benchmark \
+                  --benchmark-type ort \
+                  --audio-path models/whisper/test/1272-141231-0002.mp3 \
+                  --model-name openai/whisper-large-v3 \
+                  --ort-model-path /workspace/onnxruntime/python/tools/transformers/whisperlargev3/whisper_large_v3_beamsearch.onnx \
+                  --precision fp32 \
+                  --device cuda > ort_output.txt ; \
+              cat ort_output.txt ; \
+              diff ort_output.txt /workspace/onnxruntime/python/tools/transformers/models/whisper/test/whisper_ort_output.txt && exit 0 || exit 1
+              popd ; \
+            '
+      displayName: 'Test Whisper ONNX Model'
+      workingDirectory: $(Build.SourcesDirectory)

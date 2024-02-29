@@ -1,7 +1,7 @@
 # This file is auto updated by dependabot
 lintrunner-adapters>=0.11.0
 # RUFF
-ruff==0.1.4
+ruff==0.2.1
 # BLACK-ISORT
 black==23.10.1
 isort==5.12.0

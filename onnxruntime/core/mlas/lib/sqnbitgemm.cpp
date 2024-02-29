@@ -39,23 +39,17 @@ enum SQNBitGemmVariant {
 
 SQNBitGemmVariant
 GetSQNBitGemmVariant(
-    size_t M,
-    size_t N,
-    size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(N);
-    MLAS_UNREFERENCED_PARAMETER(K);
-
     if (BlkBitWidth == 4 &&
         (BlkLen == 16 || BlkLen == 32 || BlkLen == 64 || BlkLen == 128 || BlkLen == 256)) {
         if (ComputeType == CompFp32 ||
             ComputeType == CompUndef) {  // treat CompUndef (undefined) as CompFp32
             return SQNBitGemmVariant_BitWidth4_CompFp32;
-        } else if (ComputeType == CompInt8 && M == 1) {
+        } else if (ComputeType == CompInt8) {
             return SQNBitGemmVariant_BitWidth4_CompInt8;
         }
     }
@@ -67,9 +61,6 @@ GetSQNBitGemmVariant(
 
 bool MLASCALL
 MlasIsSQNBitGemmAvailable(
-    size_t M,
-    size_t N,
-    size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
@@ -80,7 +71,7 @@ MlasIsSQNBitGemmAvailable(
         return false;
     }
 
-    const auto Variant = GetSQNBitGemmVariant(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
 
     switch (Variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp32: {
@@ -164,7 +155,7 @@ MlasSQNBitGemmBatchWorkspaceSize(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const auto Variant = GetSQNBitGemmVariant(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
 
     const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(Variant, M, N, K, BlkLen);
     if (PerGemmWorkspaceStride == 0) {
@@ -178,91 +169,24 @@ MlasSQNBitGemmBatchWorkspaceSize(
     return WorkspaceSize + Alignment - 1;
 }
 
-namespace
-{
-
-void
-SQ4BitGemmPackQuantBData(
-    size_t N,
-    size_t K,
-    size_t BlkLen,
-    const std::byte* QuantBDataBegin,
-    std::byte* PackedQuantBDataBegin,
-    MLAS_THREADPOOL* ThreadPool
-)
-{
-    constexpr size_t BlkBitWidth = 4;
-
-    assert(BlkLen % 16 == 0);
-
-    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-    const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t Iterations = N * BlockCountK;  // one iteration per block
-
-    MlasTrySimpleParallel(
-        ThreadPool, Iterations,
-        [&](ptrdiff_t tid) {
-            const size_t n = tid / BlockCountK;
-            const size_t k_blk = tid % BlockCountK;
-
-            const size_t data_offset = n * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
-            const std::byte* QuantBData = QuantBDataBegin + data_offset;
-            std::byte* PackedQuantBData = PackedQuantBDataBegin + data_offset;
-
-            //
-            // Pack 16 4-bit values (8 bytes) at a time like this:
-            //
-            // src: | v0 v1 | v2 v3 | v4 v5 | v6 v7 | v8 v9 | vA vB | vC vD | vE vF |
-            //   =>
-            // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
-            //
-            for (size_t kk = 0; kk < BlkLen; kk += 16) {
-                for (size_t byte_pair_idx = 0; byte_pair_idx < 4; ++byte_pair_idx) {
-                    const std::byte src0 = QuantBData[byte_pair_idx];
-                    const std::byte src1 = QuantBData[byte_pair_idx + 4];
-
-                    std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
-                    std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
-
-                    dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
-                    dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
-                }
-
-                QuantBData += 8;
-                PackedQuantBData += 8;
-            }
-        }
-    );
-}
-
-}  // namespace
-
 size_t MLASCALL
 MlasSQNBitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
-    size_t BlkLen
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    // Ensure that a general implementation is available on this platform.
-    // For now, all implementations share the same packed format.
-    {
-        // Currently, there are implementations specific to M = 1, so pick a more general M > 1.
-        constexpr size_t M = 2;
-        // A CompUndef implementation should be available if any is available.
-        constexpr MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType = CompUndef;
-        const bool HasGeneralImplementation =
-            MlasIsSQNBitGemmAvailable(M, N, K, BlkBitWidth, BlkLen, ComputeType);
-        if (!HasGeneralImplementation) {
-            return 0;
-        }
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return 0;
     }
 
-    if (BlkBitWidth == 4) {
-        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        return PackedQuantBDataSize;
+    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPackQuantBDataSize != nullptr) {
+        return Dispatch->SQ4BitGemmPackQuantBDataSize(
+            N, K, BlkLen, ComputeType
+        );
     }
 
     return 0;
@@ -274,20 +198,28 @@ MlasSQNBitGemmPackQuantBData(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const void* QuantBData,
     void* PackedQuantBData,
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    if (BlkBitWidth == 4) {
-        SQ4BitGemmPackQuantBData(
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return;
+    }
+
+    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
+        Dispatch->SQ4BitGemmPackQuantBData(
             N,
             K,
             BlkLen,
+            ComputeType,
             static_cast<const std::byte*>(QuantBData),
             static_cast<std::byte*>(PackedQuantBData),
             ThreadPool
         );
+        return;
     }
 }
 
@@ -512,7 +444,37 @@ SQ4BitGemm_CompInt8(
         return;
     }
 
-    assert(false && "not implemented for M > 1");
+    // This is a naive M > 1 implementation that repeatedly calls the M=1 kernel.
+    // TODO Replace it with an optimized implementation.
+    size_t CountN;
+    for (size_t n = 0; n < RangeCountN; n += CountN) {
+        CountN = std::min(RangeCountN - n, size_t{128});
+
+        const std::byte* a_row = QuantA;
+        const std::byte* b_col = QuantBData + n * ldb;
+        const float* b_col_scale = QuantBScale + n * k_blks;
+        const std::byte* b_col_zp =
+            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+        float* c_blk = C + n;
+        const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
+
+        for (size_t m = 0; m < RangeCountM; ++m) {
+            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
+                BlkLen,
+                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+            );
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM, RangeStartN + n,
+                    RangeCountM, CountN, ldc
+                );
+            }
+
+            c_blk += ldc;
+            a_row += lda;
+        }
+    }
 }
 
 typedef void(InitializeWorkspaceFn)(
@@ -594,7 +556,7 @@ MlasSQNBitGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    const auto Variant = GetSQNBitGemmVariant(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
     assert(Variant != SQNBitGemmVariantInvalid);
 
     //

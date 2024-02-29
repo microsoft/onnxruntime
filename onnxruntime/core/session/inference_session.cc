@@ -46,10 +46,11 @@
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/platform/Barrier.h"
-#include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #ifdef _WIN32
 #include "core/platform/tracing.h"
+#include <Windows.h>
+#include "core/platform/windows/telemetry.h"
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -145,28 +146,30 @@ static bool HasMemcpyNodes(const Graph& graph) {
   return false;
 }
 
-static bool AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
-  bool nodes_on_cpu_and_cuda_eps_only = true;
+static bool AreAllComputeNodesAssignedToCudaOrJsEp(const Graph& graph) {
+  bool nodes_on_cpu_and_cuda_and_js_eps_only = true;
 
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
     // Empty node provider means CPU EP
     if (!node_provider.empty() &&
-        !(node_provider == kCudaExecutionProvider || node_provider == kRocmExecutionProvider) &&
+        !(node_provider == kCudaExecutionProvider ||
+          node_provider == kRocmExecutionProvider ||
+          node_provider == kJsExecutionProvider) &&
         node_provider != kCpuExecutionProvider) {
-      nodes_on_cpu_and_cuda_eps_only = false;
+      nodes_on_cpu_and_cuda_and_js_eps_only = false;
       break;
     }
   }
 
-  // If we see nodes assigned to EPs other than CPU or CUDA
+  // If we see nodes assigned to EPs other than CPU, or CUDA/JS
   // (or) if there are Memcpy nodes, then all compute nodes have
-  // not been parititoned to the CUDA EP.
+  // not been parititoned to the CUDA/JS EP.
   // We allow CPU EPs to show up in the EP list as long as thre is no Memcpy
   // involved as shape subgraphs will be forced onto CPU and these will not have
   // Memcpy nodes involved.
-  return nodes_on_cpu_and_cuda_eps_only && !HasMemcpyNodes(graph);
+  return nodes_on_cpu_and_cuda_and_js_eps_only && !HasMemcpyNodes(graph);
 }
 
 static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
@@ -239,6 +242,10 @@ Status GetMinimalBuildOptimizationHandling(
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
+std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
+#ifdef _WIN32
+OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+#endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -349,17 +356,47 @@ void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
-  // a monotonically increasing session id for use in telemetry
-  session_id_ = global_session_id_.fetch_add(1);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
+
+  // a monotonically increasing session id for use in telemetry
+  session_id_ = global_session_id_.fetch_add(1);
+
+#ifdef _WIN32
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  active_sessions_[global_session_id_++] = this;
+
+  // Register callback for ETW capture state (rundown)
+  WindowsTelemetry::RegisterInternalCallback(
+      [this](
+          LPCGUID SourceId,
+          ULONG IsEnabled,
+          UCHAR Level,
+          ULONGLONG MatchAnyKeyword,
+          ULONGLONG MatchAllKeyword,
+          PEVENT_FILTER_DESCRIPTOR FilterData,
+          PVOID CallbackContext) {
+        (void)SourceId;
+        (void)Level;
+        (void)MatchAnyKeyword;
+        (void)MatchAllKeyword;
+        (void)FilterData;
+        (void)CallbackContext;
+
+        // Check if this callback is for capturing state
+        if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
+            ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
+          LogAllSessions();
+        }
+      });
+#endif
 
   SetLoggingManager(session_options, session_env);
 
   // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
-  TraceSessionOptions(session_options);
+  TraceSessionOptions(session_options, false);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
@@ -473,7 +510,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 }
 
-void InferenceSession::TraceSessionOptions(const SessionOptions& session_options) {
+void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState) {
+  (void)captureState;  // Otherwise Linux build error
+
   LOGS(*session_logger_, INFO) << session_options;
 
 #ifdef _WIN32
@@ -496,7 +535,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.graph_optimization_level), "graph_optimization_level"),
                     TraceLoggingBoolean(session_options.use_per_session_threads, "use_per_session_threads"),
                     TraceLoggingBoolean(session_options.thread_pool_allow_spinning, "thread_pool_allow_spinning"),
-                    TraceLoggingBoolean(session_options.use_deterministic_compute, "use_deterministic_compute"));
+                    TraceLoggingBoolean(session_options.use_deterministic_compute, "use_deterministic_compute"),
+                    TraceLoggingBoolean(captureState, "isCaptureState"));
 
   TraceLoggingWrite(
       telemetry_provider_handle,
@@ -509,7 +549,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
       TraceLoggingInt32(session_options.intra_op_param.dynamic_block_base_, "dynamic_block_base_"),
       TraceLoggingUInt32(session_options.intra_op_param.stack_size, "stack_size"),
       TraceLoggingString(!session_options.intra_op_param.affinity_str.empty() ? session_options.intra_op_param.affinity_str.c_str() : "", "affinity_str"),
-      TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"));
+      TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"),
+      TraceLoggingBoolean(captureState, "isCaptureState"));
 
   for (const auto& config_pair : session_options.config_options.configurations) {
     TraceLoggingWrite(
@@ -518,7 +559,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
         TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
         TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
-        TraceLoggingString(config_pair.second.c_str(), "Value"));
+        TraceLoggingString(config_pair.second.c_str(), "Value"),
+        TraceLoggingBoolean(captureState, "isCaptureState"));
   }
 #endif
 }
@@ -613,6 +655,12 @@ InferenceSession::~InferenceSession() {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
   }
+
+  // Unregister the session
+#ifdef _WIN32
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+#endif
+  active_sessions_.erase(global_session_id_);
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1677,10 +1725,17 @@ common::Status InferenceSession::Initialize() {
         // graph optimization level and is generally always applied.
         bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
                                         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableDmlGraphFusion, "0") == "0";
+        std::string dml_graph_serialization_enabled_config_val = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphSerialization, "0");
+        std::transform(dml_graph_serialization_enabled_config_val.begin(),
+                       dml_graph_serialization_enabled_config_val.end(),
+                       dml_graph_serialization_enabled_config_val.begin(),
+                       [](char ch) { return std::tolower(ch); });
+        bool dml_graph_serialization_enabled = dml_graph_serialization_enabled_config_val == "true";
 
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                      dmlExecutionProvider);
+                                                                                                                                      dmlExecutionProvider,
+                                                                                                                                      dml_graph_serialization_enabled);
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }
@@ -1715,8 +1770,7 @@ common::Status InferenceSession::Initialize() {
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
-      // Currently CUDA graph is only considered by CUDA EP and TRT EP, and
-      // HIP graph is only considered by ROCM EP.
+      // Currently graph capture is only considered by CUDA EP, TRT EP, ROCM EP and JS EP.
       //
       // Check for CUDA EP:
       // If the CUDA EP is part of the providers list for this session AND
@@ -1730,6 +1784,12 @@ common::Status InferenceSession::Initialize() {
       // All the graph nodes have been assigned to the TRT EP,
       // Then the TRT EP is cached for triggering a ReplayGraph() in Run().
       //
+      // Check for JS EP:
+      // If the JS EP is part of the providers list for this session AND
+      // The JS EP is configured to do a graph capture AND
+      // All the "compute" graph nodes have been assigned to the JS EP,
+      // Then the JS EP is cached for triggering a ReplayGraph() in Run().
+      //
       // Check for ROCM EP:
       // If the ROCM EP is part of the providers list for this session AND
       // The ROCM EP is configured to do a graph capture AND
@@ -1739,48 +1799,54 @@ common::Status InferenceSession::Initialize() {
       std::vector<const char*> graph_support_ep_list = {
           onnxruntime::kTensorrtExecutionProvider,
           onnxruntime::kCudaExecutionProvider,
-          onnxruntime::kRocmExecutionProvider};
+          onnxruntime::kRocmExecutionProvider,
+          onnxruntime::kJsExecutionProvider};
 
       for (auto& it : graph_support_ep_list) {
         auto* target_ep = execution_providers_.Get(it);
 
         if (target_ep && target_ep->IsGraphCaptureEnabled()) {
-          // CUDA/HIP Graphs can't work with control flow nodes
+          // Graphs capture can't work with control flow nodes
           if (HasControlflowNodes(graph)) {
-            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA/HIP Graph feature as requested by the user "
-                                          << "as the model has control flow nodes which can't be supported by CUDA/HIP Graphs.";
+            LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
+                                          << "as the model has control flow nodes which can't be supported by "
+                                          << target_ep->Type();
 
             ORT_RETURN_IF_ERROR_SESSIONID_(
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                "This session cannot use the CUDA/HIP Graph feature as requested by the user "
-                                "as the model has control flow nodes which can't be supported by CUDA/HIP Graphs."));
+                                "This session cannot use the graph capture feature as requested by the user "
+                                "as the model has control flow nodes which can't be supported by" +
+                                    target_ep->Type()));
           }
 
           if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kRocmExecutionProvider) == 0) {
-            // Ensure that all nodes have been partitioned to CUDA or CPU EP && there are no memcpy nodes
+              strcmp(target_ep->Type().c_str(), onnxruntime::kRocmExecutionProvider) == 0 ||
+              strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0) {
+            // Ensure that all nodes have been partitioned to CUDA/JS or CPU EP && there are no memcpy nodes
             // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
             // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
             // which is all we care about.
-            if (!AreAllComputeNodesAssignedToCudaEp(graph)) {
-              LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA/HIP Graph feature as requested by the user "
-                                            << " as all compute graph nodes have not been partitioned to the CUDA/HIP EP.";
+            if (!AreAllComputeNodesAssignedToCudaOrJsEp(graph)) {
+              LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
+                                            << " as all compute graph nodes have not been partitioned to the "
+                                            << target_ep->Type();
 
               ORT_RETURN_IF_ERROR_SESSIONID_(
                   ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "This session cannot use the CUDA/HIP Graph feature as requested by the user "
-                                  " as all compute graph nodes have not been partitioned to the CUDA/HIP EP."));
+                                  "This session cannot use the graph capture feature as requested by the user "
+                                  " as all compute graph nodes have not been partitioned to the " +
+                                      target_ep->Type()));
             }
 
             // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
             if (HasShapeSubgraphNodes(graph)) {
               LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
-                                              << "Use the CUDA/HIP Graph feature with caution. "
+                                              << "Use the graph capture feature with caution. "
                                               << "As long as the intermediate shapes produced in the model "
-                                              << "using the representative input used to capture the CUDA/HIP graph, "
+                                              << "using the representative input used to capture the graph, "
                                               << "will match the shapes produced in the model for other inputs "
                                               << "of the same shape as the representative input (common case), "
-                                              << "it is safe to use the CUDA/HIP Graph feature.";
+                                              << "it is safe to use the graph capture feature.";
             }
           } else {
             // Following code path is for TRT EP currently.
@@ -2230,8 +2296,8 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     // TODO: only call OnRunStart for all providers in-use
     for (auto& xp : execution_providers_) {
       // call OnRunStart and add to exec_providers_to_stop if successful
-      auto start_func = [&xp, &exec_providers_to_stop]() {
-        auto status = xp->OnRunStart();
+      auto start_func = [&xp, &exec_providers_to_stop, run_options]() {
+        auto status = xp->OnRunStart(run_options);
         if (status.IsOK())
           exec_providers_to_stop.push_back(xp.get());
 
@@ -2267,7 +2333,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 
   // info all execution providers InferenceSession:Run ended
   for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd(/*sync_stream*/ false);
+    auto status = xp->OnRunEnd(/*sync_stream*/ false, run_options);
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
@@ -2389,8 +2455,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // TODO: only call OnRunStart for all providers in-use
       for (auto& xp : execution_providers_) {
         // call OnRunStart and add to exec_providers_to_stop if successful
-        auto start_func = [&xp, &exec_providers_to_stop]() {
-          auto status = xp->OnRunStart();
+        auto start_func = [&xp, &exec_providers_to_stop, &run_options]() {
+          auto status = xp->OnRunStart(run_options);
           if (status.IsOK())
             exec_providers_to_stop.push_back(xp.get());
 
@@ -2431,7 +2497,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // info all execution providers InferenceSession:Run ended
       for (auto* xp : exec_providers_to_stop) {
         bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
-        auto status = xp->OnRunEnd(synchronize_execution_providers);
+        auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
       }
 
@@ -3056,5 +3122,15 @@ const IOBinding* SessionIOBinding::Get() const {
 IOBinding* SessionIOBinding::Get() {
   return binding_.get();
 }
+
+#ifdef _WIN32
+void InferenceSession::LogAllSessions() {
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  for (const auto& session_pair : active_sessions_) {
+    InferenceSession* session = session_pair.second;
+    TraceSessionOptions(session->session_options_, true);
+  }
+}
+#endif
 
 }  // namespace onnxruntime

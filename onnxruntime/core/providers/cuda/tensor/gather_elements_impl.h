@@ -10,6 +10,14 @@ namespace onnxruntime {
 namespace cuda {
 
 struct GatherScatterElementsArgs {
+  enum class Operation {
+    NONE,
+    ADD,
+    MUL,
+    MAX,
+    MIN
+  };
+
   int64_t rank;
   int64_t axis;
   int64_t input_size;
@@ -19,6 +27,9 @@ struct GatherScatterElementsArgs {
   TArray<fast_divmod> indices_fdms;
   TArray<int64_t> indices_strides;
   int64_t indices_size;
+  // operation used to combine values associated the same
+  // memory location in the output tensor.
+  Operation operation;
 };
 
 template <typename T, typename TIndex>

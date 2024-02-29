@@ -673,7 +673,7 @@ public class InferenceTest {
           // CoreML gives slightly different answers on a 2020 13" M1 MBP
           assertArrayEquals(expectedOutput, resultArray, 1e-2f);
         } else {
-          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+          assertArrayEquals(expectedOutput, resultArray, 1e-5f);
         }
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);

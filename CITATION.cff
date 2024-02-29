@@ -3,8 +3,7 @@ title: ONNX Runtime
 message: "Please use this information to cite ONNX Runtime in
   research or other publications."
 authors:
-  - affiliation: Microsoft Corporation
-    given-names: ONNX Runtime developers
+  - name: ONNX Runtime developers
 date-released: 2018-11-29
 url: "https://onnxruntime.ai"
 repository-code: "https://github.com/microsoft/onnxruntime"

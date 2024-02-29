@@ -83,10 +83,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         std::vector<int64_t> mapping_split;
         mapping_split.insert(mapping_split.begin(), num_outputs - 1, input_shape[axis] / num_outputs);
         mapping_split.insert(mapping_split.end(), input_shape[axis] % num_outputs);
-        std::vector<int32_t> converted_splits;
-        std::transform(mapping_split.cbegin(), mapping_split.cend(),
-                       std::back_inserter(converted_splits),
-                       [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
+        std::vector<uint32_t> converted_splits = GetVecUint32FromVecInt64(mapping_split);
         output_array = model_builder.GetBuilder().call<emscripten::val>("split",
                                                                         input,
                                                                         emscripten::val::array(converted_splits),
@@ -136,9 +133,9 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   int32_t axis = helper.Get("axis", 0);
   axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
 
-  if (input_defs.size() == 2) {
-    // Inputs contains optional 'split' input
-    const auto& split_name = input_defs[1]->Name();
+  const std::string split_name = GetTensorName(input_defs, 1);
+  // Inputs contain optional 'split' input.
+  if (!split_name.empty()) {
     if (!Contains(initializers, split_name)) {
       LOGS(logger, VERBOSE) << "The split must be a constant initializer.";
       return false;
@@ -166,7 +163,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       LOGS(logger, VERBOSE) << "Sum of the split's values must be equal to the dim value at 'axis' specified.";
       return false;
     }
-  } else if (input_defs.size() == 1) {
+  } else {
     if (helper.HasAttr("num_outputs")) {
       // Split has 'num_outputs' attribute when opset is 18.
       const int32_t num_outputs = helper.Get("num_outputs", 1);

@@ -41,6 +41,17 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property BOOL onlyEnableForDevicesWithANE;
 
+/**
+ * Only allow CoreML EP to take nodes with inputs with static shapes. By default it will also allow inputs with
+ * dynamic shapes. However, the performance may be negatively impacted if inputs have dynamic shapes.
+ */
+@property BOOL onlyAllowStaticInputShapes;
+
+/**
+ * Create an MLProgram. By default it will create a NeuralNetwork model. Requires Core ML 5 or later.
+ */
+@property BOOL createMLProgram;
+
 @end
 
 @interface ORTSessionOptions (ORTSessionOptionsCoreMLEP)

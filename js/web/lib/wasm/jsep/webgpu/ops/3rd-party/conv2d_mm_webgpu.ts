@@ -19,12 +19,13 @@
 //
 // modified to fit the needs of the project
 
+import {DataType} from '../../../../wasm-common';
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
 import {ConvAttributes} from '../conv';
-import {getActivationSnippet} from '../fuse-utils';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet} from '../fuse-utils';
 
 import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
@@ -129,7 +130,7 @@ const conv2dCommonSnippet =
           isChannelsLast ? typeSnippet(innerElementSizeX, dataType) : typeSnippet(innerElementSizeW, dataType);
       const bType =
           isChannelsLast ? typeSnippet(innerElementSizeW, dataType) : typeSnippet(innerElementSizeX, dataType);
-      const applyActivation = getActivationSnippet(attributes, resType);
+      const applyActivation = getActivationSnippet(attributes, resType, dataType);
       const userCode = `
     fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${aType} {
       ${isChannelsLast ? sampleX : sampleW}
@@ -189,16 +190,12 @@ export const createConv2DMatMulProgramInfo =
       const elementsSize = isVec4 ? [innerElementSize, 4, 4] : [1, 1, 1];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner},
-        {type: 'int32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'int32', data: attributes.strides},
-        {type: 'int32', data: attributes.dilations}
+        {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
+        {type: DataType.int32, data: dimInner}, {type: DataType.int32, data: [attributes.pads[0], attributes.pads[1]]},
+        {type: DataType.int32, data: attributes.strides}, {type: DataType.int32, data: attributes.dilations}
       ];
-      if (attributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
-      }
-      programUniforms.push(
-          ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
+      appendActivationUniformsData(attributes, programUniforms);
+      programUniforms.push(...createTensorShapeVariables(inputs[0].dims, inputs[1].dims));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
@@ -212,9 +209,7 @@ export const createConv2DMatMulProgramInfo =
           {name: 'pad', type: 'i32', length: 2}, {name: 'stride', type: 'i32', length: 2},
           {name: 'dilation', type: 'i32', length: 2}
         ];
-        if (attributes.activation === 'Clip') {
-          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
-        }
+        appendActivationUniforms(attributes, uniforms);
 
         // TODO: support component 2, 3.
         const components = isVec4 ? 4 : 1;

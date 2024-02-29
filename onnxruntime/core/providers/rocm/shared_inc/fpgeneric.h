@@ -115,7 +115,8 @@ inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
                                         const half* B, int ldb,
                                         const float* beta,
                                         half* C, int ldc,
-                                        const hipDeviceProp_t&) {
+                                        const hipDeviceProp_t&,
+                                        bool /*use_tf32*/) {
   return rocblasGemmHelper(handle,
                            transa,
                            transb,
@@ -154,7 +155,7 @@ inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
                          rocblas_gemm_algo_standard, 0, 0);
 }
 
-// Compatible for function call with the extra hipDeviceProp_t argument
+// Compatible for function call with extra arguments (see cublasGemmHelper)
 template <typename Scalar>
 rocblas_status rocblasGemmHelper(rocblas_handle handle,
                                  rocblas_operation transa,
@@ -165,7 +166,8 @@ rocblas_status rocblasGemmHelper(rocblas_handle handle,
                                  const Scalar* B, int ldb,
                                  const Scalar* beta,
                                  Scalar* C, int ldc,
-                                 const hipDeviceProp_t&) {
+                                 const hipDeviceProp_t&,
+                                 bool /*use_tf32*/) {
   return rocblasGemmHelper(handle,
                            transa,
                            transb,
@@ -404,7 +406,7 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          rocblas_gemm_algo_standard, 0, 0);
 }
 
-// Compatible for function call with the extra hipDeviceProp_t argument
+// Compatible for function call with with extra arguments (see cublasGemmStridedBatchedHelper)
 template <typename Scalar>
 rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                                rocblas_operation transa,
@@ -419,7 +421,8 @@ rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                                Scalar* C, int ldc,
                                                intmax_t strideC,
                                                int batchCount,
-                                               const hipDeviceProp_t&) {
+                                               const hipDeviceProp_t&,
+                                               bool /*use_tf32*/) {
   return rocblasGemmStridedBatchedHelper(handle,
                                          transa,
                                          transb,
@@ -445,7 +448,8 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                                       __half* C, int ldc,
                                                       intmax_t strideC,
                                                       int batchCount,
-                                                      const hipDeviceProp_t&) {
+                                                      const hipDeviceProp_t&,
+                                                      bool /*use_tf32*/) {
   return rocblasGemmStridedBatchedHelper(handle,
                                          transa,
                                          transb,
