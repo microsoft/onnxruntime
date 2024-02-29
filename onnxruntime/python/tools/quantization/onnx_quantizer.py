@@ -154,7 +154,7 @@ class ONNXQuantizer:
         if self.mode not in QuantizationMode:
             raise ValueError(f"unsupported quantization mode {self.mode}")
 
-        self.tensor_quant_overrides = self._get_and_check_tensor_quant_overrides()
+        self.tensor_quant_overrides, self.tensor_quant_override_types = self._get_and_check_tensor_quant_overrides()
         self.quantization_params = self.calculate_quantization_params()
 
         # QuantizeRange tensor name and zero tensor name for scale and zero point calculation.
@@ -177,8 +177,10 @@ class ONNXQuantizer:
     def _get_and_check_tensor_quant_overrides(self):
         """
         Get tensor quantization overrides and check correctness.
+        Also returns a set of quantization types (as TensorProto) specified across all overrides.
         """
         tensor_quant_overrides = self.extra_options.get("TensorQuantOverrides", {})
+        tensor_quant_override_types = set()
 
         # Validate that compatible/valid overrides are provided.
         if tensor_quant_overrides:
@@ -211,6 +213,8 @@ class ONNXQuantizer:
                     # other channels.
                     if index == 0:
                         quant_type = quant_overrides.get("quant_type")
+                        if quant_type is not None:
+                            tensor_quant_override_types.add(quant_type.tensor_type)
                     elif quant_type != quant_overrides.get("quant_type"):
                         raise ValueError(
                             "Channel quantization types for tensor '{tensor_name}' do not match at index {index}."
@@ -231,7 +235,7 @@ class ONNXQuantizer:
                                     f"Tensor override option '{key}' is invalid with 'scale' and 'zero_point'"
                                 )
 
-        return tensor_quant_overrides
+        return tensor_quant_overrides, tensor_quant_override_types
 
     def get_per_tensor_quant_overrides(self, tensor_name):
         quant_overrides_list = self.tensor_quant_overrides.get(tensor_name, [{}])
@@ -747,8 +751,7 @@ class ONNXQuantizer:
                 raise ValueError(f"Unexpected type {type(params['scale'])} and param_name={param_name!r}")
             scale_values = np.array([params["scale"]])
             assert scale_values.dtype != np.float64
-            # zero_point_type = params["quant_type"]
-            assert zero_point_type == params["quant_type"]
+            zero_point_type = params["quant_type"]
         else:
             zero_point_values = np.array([use_zeropoint])
             scale_values = np.array([use_scale])
