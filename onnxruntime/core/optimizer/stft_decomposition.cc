@@ -57,13 +57,12 @@ NodeArg* AddShapeInitializer(Graph& graph, const char* name, const int64_t (&sha
 
 template <size_t TNumInputs>
 std::pair<Node*, NodeArg*> AddNode(Graph& graph,
-                                   const char* name,
                                    const char* op_type,
                                    ProviderType execution_provider_type,
                                    NodeArg* (&inputs)[TNumInputs]) {
-  auto def_name = graph.GenerateNodeArgName(name);
+  auto def_name = graph.GenerateNodeArgName(op_type);
   auto node_arg = &graph.GetOrCreateNodeArg(def_name, nullptr);
-  Node& node = graph.AddNode(graph.GenerateNodeName(name),
+  Node& node = graph.AddNode(graph.GenerateNodeName(op_type),
                              op_type,
                              "",
                              gsl::make_span(inputs, inputs + TNumInputs),
@@ -72,10 +71,10 @@ std::pair<Node*, NodeArg*> AddNode(Graph& graph,
   return std::make_pair(&node, node_arg);
 }
 
-std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in, int32_t data_type, const char* name) {
-  auto def_name = graph.GenerateNodeArgName(name);
+std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in, int32_t data_type) {
+  auto def_name = graph.GenerateNodeArgName("Cast");
   auto node_arg = &graph.GetOrCreateNodeArg(def_name, nullptr);
-  Node& node = graph.AddNode(graph.GenerateNodeName(name),
+  Node& node = graph.AddNode(graph.GenerateNodeName("Cast"),
                                     "Cast",
                                     "",
                                     {in},
@@ -184,28 +183,21 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         }
       }
 
-      // FILTER_OUT_CHANNEL
-      // FILTER_IN_CHANNEL
-      // FILTER_SPATIAL
-      const int64_t weight_shape[] = { dft_unique_bins, 1, dft_size };
-      auto real_weights = AddInitializer<float>(graph, "STFT_real_conv_weights", weight_shape, real_weights_data.data());
-      auto imaginary_weights = AddInitializer<float>(graph, "STFT_imaginary_conv_weights", weight_shape, imag_weights_data.data());
+      const int64_t weight_shape[] = { dft_unique_bins, 1, 1, dft_size };
+      auto real_weights = AddInitializer<float>(graph, "stft_real_conv_weights", weight_shape, real_weights_data.data());
+      auto imaginary_weights = AddInitializer<float>(graph, "stft_imaginary_conv_weights", weight_shape, imag_weights_data.data());
 
-      const int64_t signal_reshaped[] = {batch_size, 1, signal_length};
-      auto signal_shape = AddShapeInitializer(graph, "STFTSignalReshaped", signal_reshaped);
-
-      //const int64_t output_shape[] = {output_batch_size, output_num_frames, output_frame_length, output_components};
-      //auto output_shape = AddShapeInitializer(graph, "STFTOutputReshaped", output_shape);
+      const int64_t signal_reshaped[] = {batch_size, 1, 1, signal_length};
+      auto signal_shape = AddShapeInitializer(graph, "stft_signal_shape", signal_reshaped);
 
       const int64_t unsqueezed_output_shape[] = {2, output_batch_size, output_frame_length, output_num_frames};
-      auto unsqueezed_shape = AddShapeInitializer(graph, "STFTUnsqueezedOutputReshaped", unsqueezed_output_shape);
-
+      auto unsqueezed_shape = AddShapeInitializer(graph, "stft_output_reshaped", unsqueezed_output_shape);
 
       NodeArg* signal_reshaped_inputs[] = { signal, signal_shape };
       Node* reshape_signal_node = nullptr;
       NodeArg* reshape_output = nullptr;
       std::tie(reshape_signal_node, reshape_output) =
-          AddNode(graph, "signal_reshaped", "Reshape", stft.GetExecutionProviderType(), signal_reshaped_inputs);
+          AddNode(graph, "Reshape", stft.GetExecutionProviderType(), signal_reshaped_inputs);
 
 
       NodeArg* real_weights_final = real_weights;
@@ -214,22 +206,22 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         // When we are missing a window function
         if (real_weights_final->TypeAsProto()->tensor_type().elem_type() != data_type) {
           std::tie(std::ignore, real_weights_final) =
-            AddNodeCast(graph, real_weights_final, data_type, "real_weights_final");
+            AddNodeCast(graph, real_weights_final, data_type);
         }
         if (imag_weights_final->TypeAsProto()->tensor_type().elem_type() != data_type) {
           std::tie(std::ignore, imag_weights_final) =
-            AddNodeCast(graph, imag_weights_final, data_type, "imag_weights_final");
+            AddNodeCast(graph, imag_weights_final, data_type);
         }
       } else {
         // When we have a window function
-        const int64_t window_reshaped_shape[] = {1, 1, dft_size};
-        auto window_shape = AddShapeInitializer(graph, "STFTWindowReshaped", window_reshaped_shape);
+        const int64_t window_reshaped_shape[] = {1, 1, 1, dft_size};
+        auto window_shape = AddShapeInitializer(graph, "stft_window_shape", window_reshaped_shape);
 
         auto window_final = window;
         if (window->TypeAsProto()->tensor_type().elem_type() != GetDataType<float>()) {
           Node* window_cast_node = nullptr;
           std::tie(window_cast_node, window_final) =
-            AddNodeCast(graph, window, GetDataType<float>(), "window_as_fp32");
+            AddNodeCast(graph, window, GetDataType<float>());
           window_recipient = window_cast_node;
         }
 
@@ -237,7 +229,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         Node* window_reshape_node;
         NodeArg* window_reshaped = nullptr;
         std::tie(window_reshape_node, window_reshaped) =
-            AddNode(graph, "window_reshaped", "Reshape", kCpuExecutionProvider, window_reshaped_inputs);
+            AddNode(graph, "Reshape", kCpuExecutionProvider, window_reshaped_inputs);
         if (!window_recipient) {
           window_recipient = window_reshape_node;
         }
@@ -245,17 +237,17 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         NodeArg* scale_real_weights_inputs[] = {real_weights, window_reshaped};
         NodeArg* windowed_real_weights_output = nullptr;
         std::tie(std::ignore, windowed_real_weights_output) =
-            AddNode(graph, "scale_real_weights", "Mul", kCpuExecutionProvider, scale_real_weights_inputs);
+            AddNode(graph, "Mul", kCpuExecutionProvider, scale_real_weights_inputs);
 
         NodeArg* scale_imag_weights_inputs[] = {imaginary_weights, window_reshaped};
         NodeArg* windowed_imag_weights_output = nullptr;
         std::tie(std::ignore, windowed_imag_weights_output) =
-            AddNode(graph, "scale_imag_weights", "Mul", kCpuExecutionProvider, scale_imag_weights_inputs);
+            AddNode(graph, "Mul", kCpuExecutionProvider, scale_imag_weights_inputs);
 
         std::tie(std::ignore, real_weights_final) =
-          AddNodeCast(graph, windowed_real_weights_output, data_type, "real_weights_final");
+          AddNodeCast(graph, windowed_real_weights_output, data_type);
         std::tie(std::ignore, imag_weights_final) =
-          AddNodeCast(graph, windowed_imag_weights_output, data_type, "imag_weights_final");
+          AddNodeCast(graph, windowed_imag_weights_output, data_type);
       }
 
       // Add Convolution (reals)
@@ -263,37 +255,37 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       Node* real_conv_node = nullptr;
       NodeArg* real_conv_output = nullptr;
       std::tie(real_conv_node, real_conv_output) =
-          AddNode(graph, "conv_real_inputs", "Conv", stft.GetExecutionProviderType(), conv_real_inputs);
-      real_conv_node->AddAttribute("strides", std::vector<int64_t>{frame_step_value});
+          AddNode(graph, "Conv", stft.GetExecutionProviderType(), conv_real_inputs);
+      real_conv_node->AddAttribute("strides", std::vector<int64_t>{1, frame_step_value});
 
       // Add Convolution (imaginary)
       NodeArg* conv_imag_inputs[] = {reshape_output, imag_weights_final};
       Node* imag_conv_node = nullptr;
       NodeArg* imag_conv_output = nullptr;
       std::tie(imag_conv_node, imag_conv_output) =
-          AddNode(graph, "conv_imag_inputs", "Conv", stft.GetExecutionProviderType(), conv_imag_inputs);
-      imag_conv_node->AddAttribute("strides", std::vector<int64_t>{frame_step_value});
+          AddNode(graph, "Conv", stft.GetExecutionProviderType(), conv_imag_inputs);
+      imag_conv_node->AddAttribute("strides", std::vector<int64_t>{1, frame_step_value});
 
       // Concatenate
       NodeArg* concatenate_inputs[] = {real_conv_output, imag_conv_output};
       Node* concat_node = nullptr;
       NodeArg* concatenated_conv_output = nullptr;
       std::tie(concat_node, concatenated_conv_output) =
-          AddNode(graph, "concatenate", "Concat", stft.GetExecutionProviderType(), concatenate_inputs);
+          AddNode(graph, "Concat", stft.GetExecutionProviderType(), concatenate_inputs);
       concat_node->AddAttribute("axis", static_cast<int64_t>(0));
 
       // Unsqueeze Reshape
       NodeArg* unsqueeze_reshape_inputs[] = {concatenated_conv_output, unsqueezed_shape};
       NodeArg* unsqueezed_output = nullptr;
       std::tie(std::ignore, unsqueezed_output) =
-          AddNode(graph, "unsqueeze_reshaped", "Reshape", stft.GetExecutionProviderType(), unsqueeze_reshape_inputs);
+          AddNode(graph, "Reshape", stft.GetExecutionProviderType(), unsqueeze_reshape_inputs);
 
       // Transpose
       NodeArg* transpose_inputs[] = {unsqueezed_output};
       Node* transpose_node = nullptr;
       NodeArg* transpose_output = nullptr;
       std::tie(transpose_node, transpose_output) =
-          AddNode(graph, "transpose", "Transpose", stft.GetExecutionProviderType(), transpose_inputs);
+          AddNode(graph, "Transpose", stft.GetExecutionProviderType(), transpose_inputs);
       transpose_node->AddAttribute("perm", std::vector<int64_t>{1, 3, 2, 0});
 
       signal_recipient = reshape_signal_node;
@@ -333,7 +325,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     // copy STFT outputs to stft_producer
     stft_producer->MutableOutputDefs() = stft.MutableOutputDefs();
-    auto stft_producer_target_idx = stft_producer->Index();    
+    auto stft_producer_target_idx = stft_producer->Index();
     for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
       graph.AddEdge(stft_producer_target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
     }
