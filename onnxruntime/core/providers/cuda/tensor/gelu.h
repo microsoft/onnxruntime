@@ -19,9 +19,7 @@ class Gelu final : public UnaryElementwise {
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
-#ifndef USE_ROCM
   const bool use_half2_{true};
-#endif
 
   std::string approximation_algorithm_;
 };
