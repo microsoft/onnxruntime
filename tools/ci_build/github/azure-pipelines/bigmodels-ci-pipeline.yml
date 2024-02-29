@@ -408,6 +408,8 @@ stages:
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              python3 -m pip install librosa ; \
+              python3 -m pip install ffmpeg-python ; \
               ls whisperlargev3; \
               python3 -m models.whisper.benchmark \
                   --benchmark-type ort \
