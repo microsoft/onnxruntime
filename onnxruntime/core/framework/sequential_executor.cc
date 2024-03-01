@@ -628,6 +628,12 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                         fetch_allocators, session_state, logger, device_streams);
   auto* plan = session_state.GetExecutionPlan();
 
+  static int a = 1;
+  if (a == 1) {
+    std::cout << "pengwa_executin plan" << std::make_pair(plan, &session_state) << std::endl;
+    a += 1;
+  }
+
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
   SessionScope session_scope(session_state, ctx.GetExecutionFrame());

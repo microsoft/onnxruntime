@@ -18,7 +18,7 @@
 namespace onnxruntime::optimizer::memory_optimizer {
 
 // Uncomment for debugging Memory optimizer (MO).
-// #define MO_NEED_LOG_DEBUG_INFO 1
+#define MO_NEED_LOG_DEBUG_INFO 1
 
 #ifndef MO_LOG_DEBUG_INFO
 #ifdef MO_NEED_LOG_DEBUG_INFO

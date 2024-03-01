@@ -91,9 +91,27 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
             },
         },
         {
+            utils::GetFullQualifiedOpName("BiasDropout", kMSDomain),
+            {
+                {1, {3, 4}},  // ignore ratio (optional) and training mode (optional)
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("BiasSoftmaxDropout", kMSDomain),
+            {
+                {1, {2}},  // ignore ratio (optional)
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("BitmaskBiasDropout", kMSDomain),
+            {
+                {1, {3, 4}},  // ignore ratio (optional) and training mode (optional)
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("BitmaskDropout", kMSDomain),
             {
-                {1, {1, 2}},  // The ratio and mode input are trivial whether they exist or not in backward
+                {1, {1, 2}},  // ignore ratio (optional) and training mode (optional)
             },
         },
         {
@@ -111,6 +129,13 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
             {
                 {1, {}},
 
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("ConstantOfShape", kOnnxDomain),
+            {
+                {9, {0}},  // ignore the `input`, e.g. the shape of the expected output tensor
+                {20, {0}},
             },
         },
         {
@@ -183,6 +208,15 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
             },
         },
         {
+            utils::GetFullQualifiedOpName("Less", kOnnxDomain),
+            {
+                {1, {}},
+                {7, {}},
+                {9, {}},
+                {13, {}},
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("Mul", kOnnxDomain),
             {
                 {1, {}},
@@ -190,6 +224,12 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
                 {7, {}},
                 {13, {}},
                 {14, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("Range", kOnnxDomain),
+            {
+                {11, {0, 1, 2}},  // ignore start, end, delta, because they are scalars.
             },
         },
         {
@@ -296,11 +336,9 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
         {
             utils::GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
             {
-#ifndef DISABLE_CONTRIB_OPS
                 // Opset 1 in ONNX official does not have LayerNormalization,
                 // while our contrib op defined LayerNormalization in opset 1 in ONNX domain.
                 {1, {}},
-#endif
                 {17, {}},
             },
         },

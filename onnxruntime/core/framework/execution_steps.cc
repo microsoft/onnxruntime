@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "core/framework/execution_steps.h"
 #include "core/framework/sequential_executor.h"
+
 namespace onnxruntime {
+
 BarrierStep::BarrierStep(size_t id, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
                                                             barrier_id_{id} {}
 
@@ -16,8 +19,8 @@ Status BarrierStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string BarrierStep::ToString() const {
-  return ::onnxruntime::MakeString("Set a barrier with id: ",
-                                   barrier_id_, ", count: ", 2, ".");
+  // Set a barrier with id: barrier_id_, count: 2.
+  return MakeString("Barrier - BarrierId: ", barrier_id_, ", Count: ", 2);
 }
 
 WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle,
@@ -42,11 +45,12 @@ Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string WaitOnEPStep::ToString() const {
-  return ::onnxruntime::MakeString("WaitOnEPStep: wait on notification with id: ",
-                                   notification_idx_, ". ");
+  // wait on notification with notification_idx_
+  return MakeString("WaitOnEP - NotificationIndex: ", notification_idx_);
 }
 
-LaunchKernelStep::LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(index) {}
+LaunchKernelStep::LaunchKernelStep(NodeIndex index, std::string_view node_name)
+    : SequentialExecutionPlan::ExecutionStep(index), node_name_(node_name) {}
 
 Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
                                  size_t stream_idx,
@@ -67,7 +71,7 @@ Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string LaunchKernelStep::ToString() const {
-  return ::onnxruntime::MakeString("Launch kernel with node id: ", node_index_, ". ");
+  return MakeString("LaunchKernel - ", "NodeIndex: ", node_index_, ", Name: ", node_name_);
 }
 
 ActivateNotificationStep::ActivateNotificationStep(
@@ -82,19 +86,20 @@ Status ActivateNotificationStep::Execute(StreamExecutionContext& ctx,
   if (ctx.GetNotification(notification_idx_)) {
     ctx.GetNotification(notification_idx_)->ActivateAndUpdate();
   }
-  LOGS(ctx.GetLogger(), VERBOSE) << "stream " << stream_idx
-                                 << " activate notification with index " << notification_idx_;
+  LOGS(ctx.GetLogger(), VERBOSE) << "ActivateNotification - Stream: " << stream_idx
+                                 << ", NotificationIndex: " << notification_idx_;
   continue_flag = true;
   return Status::OK();
 }
 
 std::string ActivateNotificationStep::ToString() const {
-  return ::onnxruntime::MakeString("ActivateNotificationStep: activate notification with id: ",
-                                   notification_idx_, ". ");
+  return MakeString("ActivateNotificationStep: activate notification with id: ",
+                    notification_idx_, ". ");
 }
 
-TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
-                                                                                                 trigger_point_index_(trigger_point_index) {}
+TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index, NodeIndex node_index)
+    : SequentialExecutionPlan::ExecutionStep(node_index),
+      trigger_point_index_(trigger_point_index) {}
 
 Status TriggerDownstreamStep::Execute(StreamExecutionContext& ctx,
                                       size_t /*stream_idx*/,
@@ -107,7 +112,7 @@ Status TriggerDownstreamStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string TriggerDownstreamStep::ToString() const {
-  return ::onnxruntime::MakeString("TriggerDownstreamStep: trigger downstream of trigger point: ",
-                                   trigger_point_index_, ".");
+  // Trigger downstream of trigger point: trigger_point_index_.
+  return MakeString("TriggerDownstream - TriggerPointIndex: ", trigger_point_index_);
 }
 }  // namespace onnxruntime
