@@ -341,6 +341,16 @@
         },
         "comments": "composable_kernel"
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "150798fe976556078f443fdb059a1ff0361f58a2",
+          "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
+        },
+        "comments": "cudnn_frontend"
+      }
     }
   ]
 }

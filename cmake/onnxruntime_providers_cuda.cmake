@@ -175,22 +175,12 @@
       endif()
     endif()
 
-    set(CUDNN_FRONTEND_BUILD_SAMPLES OFF)
-    set(CUDNN_FRONTEND_BUILD_UNIT_TESTS OFF)
-    set(CUDNN_FRONTEND_BUILD_PYTHON_BINDINGS OFF)
-    set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
-    FetchContent_Declare(
-        cudnn_frontend
-        GIT_REPOSITORY https://github.com/NVIDIA/cudnn-frontend
-        GIT_TAG v1.1.0
-        )
-    FetchContent_MakeAvailable(cudnn_frontend)
-
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
     if(onnxruntime_CUDA_MINIMAL)
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
       target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
     else()
+      include(cudnn_frontend)
       target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
       if(onnxruntime_CUDNN_HOME)
@@ -198,7 +188,7 @@
           target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
       endif()
     endif()
-    
+
     if (onnxruntime_USE_TRITON_KERNEL)
       # compile triton kernel, generate .a and .h files
       include(onnxruntime_compile_triton_kernel.cmake)
