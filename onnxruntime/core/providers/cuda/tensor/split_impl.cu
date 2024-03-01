@@ -157,5 +157,67 @@ Status SplitImpl(cudaStream_t stream, const size_t element_size, const int block
   return Status::OK();
 }
 
+template <typename T>
+__global__ void _Split3InnerKernel(const int64_t size0,
+                                   const int64_t size1,
+                                   const int64_t size2,
+                                   const T* input_data,
+                                   T* output_data0,
+                                   T* output_data1,
+                                   T* output_data2,
+                                   const int64_t outer_size,
+                                   const int64_t inner_size) {
+  int64_t data_id = blockIdx.x * blockDim.x + threadIdx.x;
+  int64_t row_id = data_id / inner_size;
+  int64_t col_id = data_id % inner_size;
+
+  if (row_id >= outer_size || col_id >= inner_size) {
+    return;
+  }
+  if (col_id < size0) {
+    output_data0[row_id * size0 + col_id] = input_data[data_id];
+  } else if (col_id < size0 + size1) {
+    output_data1[row_id * size1 + col_id - size0] = input_data[data_id];
+  } else {
+    output_data2[row_id * size2 + col_id - size0 - size1] = input_data[data_id];
+  }
+}
+
+Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t size0, const int64_t size1,
+                   const int64_t size2, const void* input_data, void* output_data0, void* output_data1,
+                   void* output_data2, const gsl::span<const int64_t>& input_shape) {
+  int64_t outer_size = 1;
+  for (size_t i = 0; i < input_shape.size() - 1; ++i) {
+      outer_size *= input_shape[i];
+  }
+  int64_t inner_size = input_shape[input_shape.size() - 1];
+  assert (inner_size == (size0 + size1 + size2));
+
+  int64_t N = outer_size * inner_size;
+  int blocksPerGrid = CeilDiv(N, kNumThreadsPerBlock);
+  dim3 block(kNumThreadsPerBlock);
+  dim3 grid(blocksPerGrid);
+
+  switch (element_size) {
+#define CASE_ELEMENT_TYPE(type)                                                                 \
+  case sizeof(type): {                                                                          \
+    _Split3InnerKernel<<<grid, block, 0, stream>>>(size0, size1, size2,                           \
+        reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data),                       \
+        reinterpret_cast<ToCudaType<type>::MappedType*>(output_data0),                           \
+        reinterpret_cast<ToCudaType<type>::MappedType*>(output_data1),                           \
+        reinterpret_cast<ToCudaType<type>::MappedType*>(output_data2), outer_size, inner_size);  \
+  } break
+    CASE_ELEMENT_TYPE(int8_t);
+    CASE_ELEMENT_TYPE(int16_t);
+    CASE_ELEMENT_TYPE(int32_t);
+    CASE_ELEMENT_TYPE(int64_t);
+#undef CASE_ELEMENT_TYPE
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Split3Inner operator");
+  }
+
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime
