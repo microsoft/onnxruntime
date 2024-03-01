@@ -249,7 +249,7 @@ void CPUIDInfo::ArmWindowsInit() {
 #endif
 
   if (pytorch_cpuinfo_init_) {
-    has_fp16_ = cpuinfo_has_arm_neon_fp16_arith() || has_arm_neon_dot_;
+    has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
