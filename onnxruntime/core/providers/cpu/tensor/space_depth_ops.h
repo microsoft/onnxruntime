@@ -53,7 +53,7 @@ class SpaceDepthBase {
 
     } else {  // DepthToSpace op
       if ((input_depth % (blocksize_ * blocksize_) != 0)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DepthToSpace requires input depth to be a multiple of (block_size * blok_size)");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DepthToSpace requires input depth to be a multiple of (block_size * block_size)");
       }
 
       output_depth = input_depth / blocksize_ / blocksize_;
