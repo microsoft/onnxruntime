@@ -99,7 +99,6 @@ std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in, int32_t data_t
       2) Both (frame_step) *and* either (window or frame_length) inputs must be constant.
     Otherwise the transform will not be applied.
 
-
     Subgraph pattern 1: STFT with optional Window parameter set
               [root]--(signal)--------------------+
               [root]--(frame_step)---------------+|
