@@ -210,7 +210,7 @@ Status CUDAExecutionProvider::PerThreadContext::SetCudaGraphAnnotationId(
     ORT_TRY {
       cuda_graph_annotation_id = std::stoi(graph_annotation_str.value());
     }
-    ORT_CATCH(const std::invalid_argument& e) {
+    ORT_CATCH(const std::invalid_argument&) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Invalid graph annotation id: " + graph_annotation_str.value() +
                         ". Please provide integer value for graph annotation id.");
