@@ -464,7 +464,7 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
     std::vector<DmlOutputSerializedGraphEdge> outputEdges;
     std::vector<DmlIntermediateSerializedGraphEdge> intermediateEdges;
 
-    // Iterate the output edges first because nodes are not in topologically sorted.
+    // Iterate the output edges first because nodes are not topologically sorted.
     for (uint32_t nodeIndex = 0; nodeIndex < flatbufferGraphDesc->nodes()->size(); nodeIndex++)
     {
         const dml::ir::DmlGraphNode* flatbufferNode = flatbufferGraphDesc->nodes()->Get(nodeIndex);
