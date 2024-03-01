@@ -4,9 +4,8 @@
 #include <unordered_set>
 
 #include "core/framework/provider_options.h"
-#include "core/providers/tensorrt/tensorrt_execution_provider.h"
-#include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
-
+#include "tensorrt_execution_provider_custom_ops.h"
+#include "tensorrt_execution_provider.h"
 
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger();

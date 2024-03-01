@@ -6,8 +6,8 @@
 #include <string>
 #include <filesystem>
 
+#include "core/providers/tensorrt/nv_includes.h"
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/tensorrt/tensorrt_includes.h"
 
 namespace onnxruntime {
 

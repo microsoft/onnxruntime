@@ -99,8 +99,11 @@ steps:
       ccache --version
       ccache --show-config
 
-      "cl.exe from path: $((Get-Command cl).Path)"
-      
+      "cl.exe from path: $((Get-Command cl).Path). Version:"
+      (cl.exe -?) -match 'Compiler Version'
+      "C:\ProgramData\chocolatey\bin\cl.exe version:"
+      (C:\ProgramData\chocolatey\bin\cl.exe -?) -match 'Compiler Version'
+
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
   - ${{ if eq(parameters.WITHCACHE, true) }}:

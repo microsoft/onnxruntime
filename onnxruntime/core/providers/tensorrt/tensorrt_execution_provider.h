@@ -6,10 +6,11 @@
 #include <cudnn.h>
 #include <cublas_v2.h>
 
+#include "core/providers/tensorrt/nv_includes.h"
+
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_graph.h"
-#include "core/providers/tensorrt/tensorrt_execution_provider_info.h"
-#include "core/providers/tensorrt/tensorrt_includes.h"
+#include "tensorrt_execution_provider_info.h"
 
 namespace onnxruntime {
 
