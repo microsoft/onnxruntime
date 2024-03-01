@@ -185,7 +185,7 @@ export const concat = (context: ComputeContext, attributes: ConcatAttributes): v
   // 0 length tensors are valid for concat, remove them
   const nonEmptyInputs = context.inputs.filter(input => ShapeUtil.size(input.dims) > 0);
   if (nonEmptyInputs.length > 0) {
-    context.compute(createConcatProgramInfo(nonEmptyInputs, attributes.axis, outputShape), {inputs: nonEmptyInputs});
+    context.compute(createConcatProgramInfo(nonEmptyInputs, adjustedAxis, outputShape), {inputs: nonEmptyInputs});
   } else {
     context.output(0, outputShape);
   }
