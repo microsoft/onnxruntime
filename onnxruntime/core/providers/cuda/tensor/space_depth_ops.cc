@@ -150,7 +150,6 @@ static Status SpaceDepthOpCudaImpl(const cudaDeviceProp& prop,
                                    const cublasHandle_t cublas_handle,
                                    const Tensor& input, Tensor& output,
                                    const std::vector<size_t>& permutation,
-                                   const int64_t batch_size,
                                    const TensorShape& virtual_input_shape,
                                    const TensorShape& virtual_output_shape) {
   return Transpose::DoTranspose(prop, stream, cublas_handle, permutation, input, output,
@@ -199,9 +198,8 @@ Status SpaceToDepth<Layout>::ComputeInternal(OpKernelContext* context) const {
                                         : std::vector<size_t>{0, 1, 3, 2, 4, 5};
 
   ORT_RETURN_IF_ERROR(
-      SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(context), GetCublasHandle(context), input, output, permutation, batch,
-                           virtual_input_shape,
-                           virtual_output_shape));
+      SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(context), GetCublasHandle(context), input, output, permutation,
+                           virtual_input_shape, virtual_output_shape));
 
   return Status::OK();
 }
@@ -265,10 +263,7 @@ Status DepthToSpace<Layout>::ComputeInternal(OpKernelContext* context) const {
   }
 
   ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(context), GetCublasHandle(context), input, output,
-                                           permutation,
-                                           batch,
-                                           virtual_input_shape,
-                                           virtual_output_shape));
+                                           permutation, virtual_input_shape, virtual_output_shape));
 
   return Status::OK();
 }
