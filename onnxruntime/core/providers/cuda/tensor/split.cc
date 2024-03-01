@@ -76,6 +76,25 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
   auto input_dims = input_shape.GetDims();
   auto output_dimensions{input_shape.AsShapeVector()};
 
+  if (split_sizes.size() == 3 && (axis == 2)) {
+    output_dimensions[axis] = split_sizes[0];
+    Tensor *output0 = ctx->Output(0, TensorShape{output_dimensions});
+    output_dimensions[axis] = split_sizes[1];
+    Tensor *output1 = ctx->Output(1, TensorShape{output_dimensions});
+    output_dimensions[axis] = split_sizes[2];
+    Tensor *output2 = ctx->Output(2, TensorShape{output_dimensions});
+
+    return Split3Inner(Stream(ctx),
+                       input_tensor->DataType()->Size(),
+                       split_sizes[0], split_sizes[1],
+                       split_sizes[2],
+                       input_tensor->DataRaw(),
+                       output0->MutableDataRaw(),
+                       output1->MutableDataRaw(),
+                       output2->MutableDataRaw(),
+                       input_dims);
+  }
+
   CudaAsyncBuffer<void*> output_ptr(this, num_outputs);
   gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();
   TensorShapeVector axis_dimension_input_output_mapping(input_dims[axis]);
