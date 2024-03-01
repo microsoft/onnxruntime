@@ -94,7 +94,9 @@ std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in, int32_t data_t
 
 /*
     This function decomposes a STFT node into a subgraph.
-    The decomposition requires that (frame_step) *and* either (window or frame_length) inputs be constant.
+    The decomposition requires that:
+      1) The signal input is real valued and not complex valued!
+      2) Both (frame_step) *and* either (window or frame_length) inputs must be constant.
     Otherwise the transform will not be applied.
 
 
