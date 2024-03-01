@@ -415,7 +415,7 @@ template <typename EdgeType> void PopulateEdges(
                 if (edgeToOutgoingNodeIndexMap.find(edgeName->string_view()) == edgeToOutgoingNodeIndexMap.end())
                 {
                     throw std::range_error("Neither there is any graph input with name " + edgeName->str() + 
-                                           "nor there is any node which has " + edgeName->str() + " as one of the output.");
+                                           " nor there is any node which has " + edgeName->str() + " as one of the output.");
                 }
                 auto& intermediateEdgeNodeIndex = edgeToOutgoingNodeIndexMap[edgeName->string_view()];
                 DmlIntermediateSerializedGraphEdge intermediateEdge = {};
@@ -464,6 +464,20 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
     std::vector<DmlOutputSerializedGraphEdge> outputEdges;
     std::vector<DmlIntermediateSerializedGraphEdge> intermediateEdges;
 
+    // Iterate the output edges first because nodes are not in topologically sorted.
+    for (uint32_t nodeIndex = 0; nodeIndex < flatbufferGraphDesc->nodes()->size(); nodeIndex++)
+    {
+        const dml::ir::DmlGraphNode* flatbufferNode = flatbufferGraphDesc->nodes()->Get(nodeIndex);
+
+        PopulateEdges<DmlOutputSerializedGraphEdge>(
+            nodeIndex,
+            flatbufferNode->outputNames(),
+            graphOutputEdgeToIndexMap,
+            outputEdges,
+            intermediateEdges,
+            edgeToOutgoingNodeIndexMap);
+    }
+
     for (uint32_t nodeIndex = 0; nodeIndex < flatbufferGraphDesc->nodes()->size(); nodeIndex++)
     {
         const dml::ir::DmlGraphNode* flatbufferNode = flatbufferGraphDesc->nodes()->Get(nodeIndex);
@@ -475,14 +489,7 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
             inputEdges,
             intermediateEdges,
             edgeToOutgoingNodeIndexMap);
-        PopulateEdges<DmlOutputSerializedGraphEdge>(
-            nodeIndex,
-            flatbufferNode->outputNames(),
-            graphOutputEdgeToIndexMap,
-            outputEdges,
-            intermediateEdges,
-            edgeToOutgoingNodeIndexMap);
-
+        
         DmlSerializedGraphNode node = {};
         if (flatbufferNode->name()->size() == 0)
         {
