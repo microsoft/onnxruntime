@@ -150,6 +150,45 @@ def qnn_preprocess_model(
     return modified
 
 
+class InputOutputNameMap:
+    def __init__(
+        self,
+        orig_tensor_names: set[str],
+        orig_graph_inputs: dict[str, onnx.ValueInfoProto],
+        orig_graph_outputs: dict[str, onnx.ValueInfoProto],
+    ):
+        self.orig_tensor_names = orig_tensor_names
+        self.orig_graph_inputs = orig_graph_inputs
+        self.orig_graph_outputs = orig_graph_outputs
+        self.updated_io_names = {}
+        self.new_value_infos = []
+
+    def get_new_name(self, orig_name: str):
+        if orig_name in self.updated_io_names:
+            return self.updated_io_names[orig_name]
+
+        # Make a new tensor name that is unique among all tensors in the graph.
+        prefix: str = f"{orig_name}_channel_first_"
+        suffix: int = -1
+        for tensor_name in self.orig_tensor_names:
+            if tensor_name.startswith(prefix) and tensor_name[len(prefix) :].isdigit():
+                index = int(tensor_name[len(prefix) :])
+                suffix = max(suffix, index)
+
+        suffix += 1  # This is the first available suffix.
+        new_name = f"{prefix}{suffix!s}"
+
+        # Add new value_info objects for these new tensors.
+        orig_value_info = self.orig_graph_inputs.get(orig_name) or self.orig_graph_outputs[orig_name]
+        value_info_proto = onnx.ValueInfoProto()
+        value_info_proto.CopyFrom(orig_value_info)
+        value_info_proto.name = new_name
+        self.new_value_infos.append(value_info_proto)
+
+        self.updated_io_names[orig_name] = new_name
+        return self.updated_io_names[orig_name]
+
+
 def update_io_to_channel_last(
     model: onnx.ModelProto,
     inputs_to_update: list[str] | None,
@@ -180,46 +219,21 @@ def update_io_to_channel_last(
     orig_tensor_names.update(set(orig_graph_inputs))
     orig_tensor_names.update(set(orig_graph_outputs))
     orig_tensor_names.update(input_name for node in graph.node for input_name in node.input if input_name)
-    updated_io_names = {}  # Maps original input (or output) name to its updated name used within the graph.
-    new_value_infos = []
 
-    # Internal helper function that returns the updated name of a graph input (or output).
-    def get_updated_io_name(orig_name):
-        if orig_name in updated_io_names:
-            return updated_io_names[orig_name]
-
-        # Make a new tensor name that is unique among all tensors in the graph.
-        prefix: str = f"{orig_name}_channel_first_"
-        suffix: int = -1
-        for tensor_name in orig_tensor_names:
-            if tensor_name.startswith(prefix) and tensor_name[len(prefix) :].isdigit():
-                index = int(tensor_name[len(prefix) :])
-                suffix = max(suffix, index)
-
-        suffix += 1  # This is the first available suffix.
-        new_name = f"{prefix}{suffix!s}"
-
-        # Add new value_info objects for these new tensors.
-        orig_value_info = orig_graph_inputs.get(orig_name) or orig_graph_outputs[orig_name]
-        value_info_proto = onnx.ValueInfoProto()
-        value_info_proto.CopyFrom(orig_value_info)
-        value_info_proto.name = new_name
-        new_value_infos.append(value_info_proto)
-
-        updated_io_names[orig_name] = new_name
-        return updated_io_names[orig_name]
+    # Maps original input (or output) name to its updated name used within the graph.
+    io_map = InputOutputNameMap(orig_tensor_names, orig_graph_inputs, orig_graph_outputs)
 
     # Update each node's inputs/outputs to use the transposed versions.
     for node in graph.node:
         for i in range(len(node.input)):
             if node.input[i] and node.input[i] in inputs_to_update:
-                node.input[i] = get_updated_io_name(node.input[i])
+                node.input[i] = io_map.get_new_name(node.input[i])
             elif node.input[i] and node.input[i] in outputs_to_update:
-                node.input[i] = get_updated_io_name(node.input[i])
+                node.input[i] = io_map.get_new_name(node.input[i])
 
         for i in range(len(node.output)):
             if node.output[i] in outputs_to_update:
-                node.output[i] = get_updated_io_name(node.output[i])
+                node.output[i] = io_map.get_new_name(node.output[i])
 
     # Update graph inputs to channel-last and a Transpose (to channel-first) after each.
     for g_input_name in inputs_to_update:
@@ -249,7 +263,7 @@ def update_io_to_channel_last(
             "Transpose",
             name=f"{transpose_node_name_prefix}{transpose_node_name_start_suffix!s}",
             inputs=[g_input.name],
-            outputs=[get_updated_io_name(g_input.name)],
+            outputs=[io_map.get_new_name(g_input.name)],
             perm=transpose_perm,
         )
         transpose_node_name_start_suffix += 1
@@ -282,7 +296,7 @@ def update_io_to_channel_last(
         transpose_node = onnx.helper.make_node(
             "Transpose",
             name=f"{transpose_node_name_prefix}{transpose_node_name_start_suffix!s}",
-            inputs=[get_updated_io_name(g_output.name)],
+            inputs=[io_map.get_new_name(g_output.name)],
             outputs=[g_output.name],
             perm=transpose_perm,
         )
@@ -290,4 +304,4 @@ def update_io_to_channel_last(
 
         graph.node.extend([transpose_node])
 
-    graph.value_info.extend(new_value_infos)
+    graph.value_info.extend(io_map.new_value_infos)

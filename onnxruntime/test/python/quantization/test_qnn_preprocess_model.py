@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 
+import onnxruntime
 from onnxruntime.quantization.execution_providers.qnn import qnn_preprocess_model
 from onnxruntime.quantization.quant_utils import model_has_external_data, ms_domain
 
@@ -180,9 +181,9 @@ class TestQnnPreprocessModel(unittest.TestCase):
         output_x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, shape)
         output_y = onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, shape)
 
-        add_node = onnx.helper.make_node("Add", ["A", "B"], ["add_out"])
-        abs_node = onnx.helper.make_node("Abs", ["add_out"], ["X"])
-        mul_node = onnx.helper.make_node("Mul", ["X", "B"], ["Y"])
+        add_node = onnx.helper.make_node("Add", ["A", "B"], ["add_out"], name="add_node")
+        abs_node = onnx.helper.make_node("Abs", ["add_out"], ["X"], name="abs_node")
+        mul_node = onnx.helper.make_node("Mul", ["X", "B"], ["Y"], name="mul_node")
 
         graph = onnx.helper.make_graph(
             [add_node, abs_node, mul_node],
@@ -216,6 +217,46 @@ class TestQnnPreprocessModel(unittest.TestCase):
 
         num_transposes = sum(1 for node in preproc_model.graph.node if node.op_type == "Transpose")
         self.assertEqual(num_transposes, 4)
+
+        # Check that the outputs of the new model are the same, but transposed.
+        input_a = np.arange(0.0, 24.0, 1.0, dtype=np.float32).reshape((1, 2, 3, 4))
+        input_a_t = input_a.transpose(0, 2, 3, 1)
+        input_b = np.arange(1.0, 25.0, 1.0, dtype=np.float32).reshape((1, 2, 3, 4))
+        input_b_t = input_b.transpose(0, 2, 3, 1)
+
+        orig_session = onnxruntime.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        orig_results = orig_session.run(None, {"A": input_a, "B": input_b})
+
+        new_session = onnxruntime.InferenceSession(
+            preproc_model.SerializeToString(), providers=["CPUExecutionProvider"]
+        )
+        new_results = new_session.run(None, {"A": input_a_t, "B": input_b_t})
+
+        self.assertEqual(len(orig_results), len(new_results))
+        for idx, orig_output in enumerate(orig_results):
+            transposed_output = new_results[idx]
+            np.testing.assert_allclose(
+                orig_output,
+                transposed_output.transpose(0, 3, 1, 2),
+                err_msg=f"Channel-last model output {idx} differs",
+            )
+
+    def test_make_io_channel_last_rank_error(self):
+        """
+        Test making a model's inputs and outputs channel-last with a rank < 3 (error).
+        """
+        model = self.build_multi_input_output_model((1, 2))
+        onnx.save_model(model, "model.onnx")
+
+        with self.assertRaises(ValueError) as context:
+            qnn_preprocess_model(
+                "model.onnx",
+                "model.qnn_pp.onnx",
+                inputs_to_make_channel_last=["A", "B"],
+                outputs_to_make_channel_last=["X", "Y"],
+            )
+
+        self.assertIn("to be of rank >= 3", str(context.exception))
 
 
 if __name__ == "__main__":
