@@ -200,7 +200,7 @@ class TestQnnPreprocessModel(unittest.TestCase):
         """
         Test making a model's inputs and outputs channel-last.
         """
-        model = self.build_multi_input_output_model((1, 2, 3))
+        model = self.build_multi_input_output_model((1, 2, 3, 4))
         onnx.save_model(model, "model.onnx")
         modified = qnn_preprocess_model(
             "model.onnx",
@@ -212,7 +212,7 @@ class TestQnnPreprocessModel(unittest.TestCase):
         self.assertTrue(modified)
 
         preproc_model = onnx.load_model("model.qnn_pp.onnx")
-        self.assertEqual(len(preproc_model.graph.node), 6)
+        self.assertEqual(len(preproc_model.graph.node), 7)
 
         num_transposes = sum(1 for node in preproc_model.graph.node if node.op_type == "Transpose")
         self.assertEqual(num_transposes, 4)
