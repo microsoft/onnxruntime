@@ -6,19 +6,8 @@
 #include <string>
 #include <filesystem>
 
-// Ignore warning C4100: unreferenced formal parameter
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4100)
-#endif
-
-#include <NvInfer.h>
-
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/tensorrt/tensorrt_includes.h"
 
 namespace onnxruntime {
 

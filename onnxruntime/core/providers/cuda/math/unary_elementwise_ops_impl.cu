@@ -126,10 +126,10 @@ struct OP_Cast {
     UnaryElementWiseImpl(stream, input_data, output_data, OP_Cast<InT, OutT>(), count);                  \
   }
 
-#define IMPL_CAST_IMPL_THROW(InT, OutT)                                                                  \
-  void Explicit_Impl_Cast(cudaStream_t /*stream*/, const InT* /*input_data*/, OutT* /*output_data*/,     \
-                          size_t /*count*/) {                                                            \
-    ORT_THROW("Cast from " #InT " to " #OutT " must define saturate.");                                  \
+#define IMPL_CAST_IMPL_THROW(InT, OutT)                                                              \
+  void Explicit_Impl_Cast(cudaStream_t /*stream*/, const InT* /*input_data*/, OutT* /*output_data*/, \
+                          size_t /*count*/) {                                                        \
+    ORT_THROW("Cast from " #InT " to " #OutT " must define saturate.");                              \
   }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
