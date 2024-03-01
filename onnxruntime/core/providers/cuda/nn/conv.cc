@@ -129,6 +129,7 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
   return Status::OK();
 }
 
+#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* W, const Tensor* B, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
                                                  const std::vector<int64_t>& pads, const std::vector<int64_t>& strides, const std::vector<int64_t>& dilations, const bool bias_expected, const bool fuse_bias) const {
@@ -183,6 +184,7 @@ Status Conv<T, NHWC>::CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* 
   return Status(common::StatusCategory::ONNXRUNTIME,
                 common::StatusCode::EP_FAIL, supported.get_message());
 }
+#endif
 
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) const {
@@ -359,7 +361,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                            gsl::narrow_cast<int>(conv_attrs_.group),
-                                           CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
+                                           CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>(), UseTF32()));
     }
 
 #if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
