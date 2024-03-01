@@ -10,7 +10,7 @@ namespace onnxruntime {
 /**
 @Class GemmTransposeB
 
-Rewrite rule that transpose constant B if transB is true
+Rewrite rule that transposes constant input B if transB is true
 */
 class GemmTransposeB : public RewriteRule {
  public:
