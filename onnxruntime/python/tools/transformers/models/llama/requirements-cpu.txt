@@ -1,3 +1,2 @@
 -r requirements.txt
 onnxruntime>=1.16.2
-psutil
