@@ -99,25 +99,19 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   const size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
 
   std::vector<int64_t> a_shape;
-  {
-    if (!GetShape(*input_defs[a_idx], a_shape, logger))
-      return false;
-
-    if (Product(a_shape) == 0) {
-      LOGS(logger, VERBOSE) << "A must be non-empty";
-      return false;
-    }
+  if (!GetShape(*input_defs[a_idx], a_shape, logger))
+    return false;
+  if (Product(a_shape) == 0) {
+    LOGS(logger, VERBOSE) << "A must be non-empty";
+    return false;
   }
 
   std::vector<int64_t> b_shape;
-  {
-    if (!GetShape(*input_defs[b_idx], b_shape, logger))
-      return false;
-
-    if (Product(b_shape) == 0) {
-      LOGS(logger, VERBOSE) << "B must be non-empty";
-      return false;
-    }
+  if (!GetShape(*input_defs[b_idx], b_shape, logger))
+    return false;
+  if (Product(b_shape) == 0) {
+    LOGS(logger, VERBOSE) << "B must be non-empty";
+    return false;
   }
 
   if (op_type == "Gemm") {
@@ -165,6 +159,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
 
     // WebNN CPU backend has two more constraints.
     // https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/modules/ml/webnn/ml_graph_xnnpack.cc;l=1177
+    // TODO: Remove this workaround when Chromium enables broadcast for MatMul on WebNN CPU backend.
     if (device_type == WebnnDeviceType::CPU) {
       if (a_shape.size() != b_shape.size()) {
         LOGS(logger, VERBOSE) << "The rank of two inputs for WebNN CPU backend MatMul must be the same.";
