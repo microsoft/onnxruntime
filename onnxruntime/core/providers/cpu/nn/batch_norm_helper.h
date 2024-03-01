@@ -25,6 +25,8 @@ class BatchNormHelper {
                                        const Tensor* var,
                                        bool is_spatial = true,
                                        bool is_nhwc = false) {
+    // NHWC dependent shape: X
+    // All other shapes are assumed to be in NCHW layout?
     const auto& x_dims = X->Shape().GetDims();
 
     // If x_dims size < 2, num_channels defaults to 1.
@@ -53,11 +55,15 @@ class BatchNormHelper {
     if (scale_dims[0] != num_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input scale: 0th dimension != ", num_channels);
     }
+    // N & C do not belong to features
+    // skip the first element for NHWC and the first two elements for NCHW.
+    int feature_offset = is_nhwc ? 1 : 2;
+
     // in non-spatial cases - the other dims of 'scale' must be validated
     if (!is_spatial) {
       for (int feature = 0; feature < num_feature_dims; ++feature) {
-        if (scale_dims[1 + feature] != x_dims[2 + feature]) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input scale: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
+        if (scale_dims[1 + feature] != x_dims[feature_offset + feature]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input scale: ", (1 + feature), " dimension != ", x_dims[feature_offset + feature]);
         }
       }
     }
@@ -73,8 +79,8 @@ class BatchNormHelper {
     // in non-spatial cases - the other dims of 'B' must be validated
     if (!is_spatial) {
       for (int feature = 0; feature < num_feature_dims; ++feature) {
-        if (B_dims[1 + feature] != x_dims[2 + feature]) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input B: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
+        if (B_dims[1 + feature] != x_dims[feature_offset + feature]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input B: ", (1 + feature), " dimension != ", x_dims[feature_offset + feature]);
         }
       }
     }
@@ -90,8 +96,8 @@ class BatchNormHelper {
     // in non-spatial cases - the other dims of 'mean' must be validated
     if (!is_spatial) {
       for (int feature = 0; feature < num_feature_dims; ++feature) {
-        if (mean_dims[1 + feature] != x_dims[2 + feature]) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input mean: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
+        if (mean_dims[1 + feature] != x_dims[feature_offset + feature]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input mean: ", (1 + feature), " dimension != ", x_dims[feature_offset + feature]);
         }
       }
     }
@@ -107,8 +113,8 @@ class BatchNormHelper {
     // in non-spatial cases - the other dims of 'var' must be validated
     if (!is_spatial) {
       for (int feature = 0; feature < num_feature_dims; ++feature) {
-        if (var_dims[1 + feature] != x_dims[2 + feature]) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input var: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
+        if (var_dims[1 + feature] != x_dims[feature_offset + feature]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input var: ", (1 + feature), " dimension != ", x_dims[feature_offset + feature]);
         }
       }
     }
