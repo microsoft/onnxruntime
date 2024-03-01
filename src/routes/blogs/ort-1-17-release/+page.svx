@@ -69,7 +69,7 @@ To learn more about NPU support in DirectML, check out this recent post on the W
 
 WebGPU enables web developers to harness GPU hardware for high-performance computations. The ONNX Runtime 1.17 release introduces the official launch of the WebGPU execution provider in ONNX Runtime Web, allowing sophisticated models to run entirely and efficiently within the browser (see the [list of WebGPU browser compatibility](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status)). This advancement, demonstrated by the effective execution of models such as SD-Turbo, unlocks new possibilities in scenarios where CPU-based in-browser machine learning faces challenges in meeting performance standards.
 
-To learn more about how ONNX Runtime Web further accelerates in-browser machine learning with WebGPU, stay tuned for our upcoming blog post.
+To learn more about how ONNX Runtime Web further accelerates in-browser machine learning with WebGPU, check out our recent post on the Microsoft Open Source Blog: [ONNX Runtime Web unleashes generative AI in the browser using WebGPU](https://cloudblogs.microsoft.com/opensource/2024/02/29/onnx-runtime-web-unleashes-generative-ai-in-the-browser-using-webgpu/).
 
 # YOLOv8 Pose Estimation Scenario with ONNX Runtime Mobile
 
