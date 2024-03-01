@@ -42,6 +42,7 @@
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_sum_fusion.h"
+#include "core/optimizer/gemm_transpose_b.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
@@ -125,6 +126,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<GemmSumFusion>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
+      rules.push_back(std::make_unique<GemmTransposeB>());
       rules.push_back(std::make_unique<NotWhereFusion>());
       rules.push_back(std::make_unique<ConvAddFusion>());
       rules.push_back(std::make_unique<ConvMulFusion>());

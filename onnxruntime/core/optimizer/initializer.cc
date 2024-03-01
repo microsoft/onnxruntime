@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include "core/mlas/inc/mlas.h"
 
 #include "core/common/gsl.h"
 #include "core/common/path.h"
@@ -13,6 +14,33 @@
 #include "core/platform/env.h"
 
 namespace onnxruntime {
+
+size_t GetElementSizeByType(int32_t elem_type) {
+  switch (elem_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:
+      return sizeof(int8_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      return sizeof(int16_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return sizeof(int32_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      return sizeof(int64_t);
+    default:
+      ORT_THROW("Initializer.cc:GetElementSizeByType unsupported types.");
+  }
+}
 
 Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
                          std::string_view name,
@@ -289,6 +317,41 @@ Initializer& Initializer::div(const Initializer& other) {
 Initializer& Initializer::sqrt() {
   utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(data_.GetElementType());
   t_disp.Invoke<Sqrt>(data_);
+  return *this;
+}
+
+Initializer& Initializer::transpose() {
+  ORT_ENFORCE(data_.Shape().NumDimensions() == 2, "Initializer::transpose only supports 2D Tensor.");
+
+  int64_t M = data_.Shape()[0];
+  int64_t N = data_.Shape()[1];
+  ORT_ENFORCE(M > 0 && N > 0, "Initializer::transpose: tensor shape needs to be positive.");
+
+  Tensor b_transposed(data_.DataType(), {N, M}, std::make_shared<CPUAllocator>());
+  size_t element_size = GetElementSizeByType(data_type());
+  switch (element_size) {
+    case 1:
+      MlasTranspose(static_cast<const uint16_t*>(data_.DataRaw()),
+                    static_cast<uint16_t*>(b_transposed.MutableDataRaw()),
+                    M,
+                    N);
+      break;
+    case 2:
+      MlasTranspose(static_cast<const uint16_t*>(data_.DataRaw()),
+                    static_cast<uint16_t*>(b_transposed.MutableDataRaw()),
+                    M,
+                    N);
+      break;
+    case 4:
+      MlasTranspose(static_cast<const uint16_t*>(data_.DataRaw()),
+                    static_cast<uint16_t*>(b_transposed.MutableDataRaw()),
+                    M,
+                    N);
+      break;
+    default:
+      ORT_THROW("Initializer::transpose only supports element with size 1, 2, 4.");
+  }
+  data_ = std::move(b_transposed);
   return *this;
 }
 
