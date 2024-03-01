@@ -13,14 +13,14 @@ export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
 }
 
-const validateInputs = (inputs: readonly TensorView[]): void => {
+const validateInputs = (inputs: readonly TensorView[], referenceIndex: number): void => {
   if (!inputs || inputs.length < 1) {
     throw new Error('too few inputs');
   }
 
-  const inputType = inputs[0].dataType;
-  const inputDimensionality = inputs[0].dims.length;
-
+  const inputType = inputs[referenceIndex].dataType;
+  const inputDimensionality = inputs[referenceIndex].dims.length;
+  const referenceInput = inputs[referenceIndex];
   for (const input of inputs) {
     // make sure types of all inputs match
     if (input.dataType !== inputType) {
@@ -28,7 +28,8 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     }
 
     // make sure the dimensionality of all inputs are the same
-    if (input.dims.length !== inputDimensionality) {
+    if (input.dims.length !== inputDimensionality && ShapeUtil.size(input.dims) > 0 &&
+        ShapeUtil.size(referenceInput.dims) > 0) {
       throw new Error('input tensors should have the same shape');
     }
   }
@@ -64,29 +65,47 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
   return codeLines.join('\n');
 };
 
-const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): ProgramInfo => {
-  const inputShape = inputs[0].dims.slice();
+const computeReferenceIndex = (inputs: readonly TensorView[]): number => {
+  // find a none zero tensor to determine the output shape
+  let referenceIndex = 0;
+  for (let j = 0; j < inputs.length; j++) {
+    const size = ShapeUtil.size(inputs[j].dims);
+    if (size > 0) {
+      referenceIndex = j;
+      break;
+    }
+  }
+  return referenceIndex;
+};
+
+const computeOutputShape = (inputs: readonly TensorView[], axis: number, referenceIndex: number): number[] => {
+  const inputShape = inputs[referenceIndex].dims.slice();
   if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
     throw new Error('axis specified for concat doesn\'t match input dimensionality');
   }
-  const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
   // ensure all of the non-concatenated axes match each other
   // calculate the shape of the output tensor while we do that
   const outputShape = inputShape.slice(0);
-  for (let i = 1; i < inputs.length; i++) {
+  for (let i = 0; i < inputs.length; i++) {
+    if (i === referenceIndex) {
+      continue;
+    }
     const dataNShape = inputs[i].dims.slice();
     for (let axisIndex = 0; axisIndex < inputShape.length; axisIndex++) {
       // add to the placeholder for computing output shape
-      if (axisIndex === adjustedAxis) {
-        outputShape[adjustedAxis] += dataNShape[axisIndex];
+      if (axisIndex === axis) {
+        outputShape[axis] += dataNShape[axisIndex];
       }
       // ensure all non-cancatenated axes match each other
-      else if (inputShape[axisIndex] !== dataNShape[axisIndex]) {
+      else if (inputShape[axisIndex] !== dataNShape[axisIndex] && ShapeUtil.size(dataNShape) > 0) {
         throw new Error('non concat dimensions must match');
       }
     }
   }
+  return outputShape;
+};
 
+const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number, outputShape: number[]): ProgramInfo => {
   const outputSize = ShapeUtil.size(outputShape);
 
   const sizeInConcatAxis = new Array<number>(inputs.length);
@@ -98,7 +117,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
   const inputRanks = [];
   const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: outputSize}];
   for (let i = 0; i < inputs.length; ++i) {
-    previousSum += inputs[i].dims[adjustedAxis];
+    previousSum += inputs[i].dims[axis];
     sizeInConcatAxis[i] = previousSum;
     inputRanks.push(inputs[i].dims.length);
     inputVars[i] = inputVariable(`input${i}`, dataType, inputRanks[i]);
@@ -111,7 +130,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
   programUniforms.push(...createTensorShapeVariables(outputShape));
 
   const output = outputVariable('output', dataType, outputShape.length);
-  const indicesAxis = output.indicesGet('indices', adjustedAxis);
+  const indicesAxis = output.indicesGet('indices', axis);
   const sizeInConcatAxisStr =
       Array.from(Array(sizeInConcatAxis.length).keys()).map(i => `uniforms.sizeInConcatAxis${i}`).join(',');
   const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -132,12 +151,16 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
     var indices = ${output.offsetToIndices('global_idx')};
 
     let inputIndex = calculateInputIndex(${indicesAxis});
-    if (inputIndex != 0u) {
-      let sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}u>(${sizeInConcatAxisStr});
-      ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
-    }
+    if (inputIndex < ${inputs.length}u) {
+      if (inputIndex != 0u) {
+        let sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}u>(${sizeInConcatAxisStr});
+        ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
+      }
 
-    ${assignOutputData(inputVars, output)}
+      ${assignOutputData(inputVars, output)}
+    } else {
+      ${output.setByOffset('global_idx', '0')}
+    }
   }`;
 
   return {
@@ -153,10 +176,19 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 };
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
-  validateInputs(context.inputs);
+  const referenceIndex = computeReferenceIndex(context.inputs);
+  validateInputs(context.inputs, referenceIndex);
+  const axis = attributes.axis;
+  const inputShape = context.inputs[referenceIndex].dims;
+  const adjustedAxis = (attributes.axis < 0) ? inputShape.length + axis : axis;
+  const outputShape = computeOutputShape(context.inputs, adjustedAxis, referenceIndex);
   // 0 length tensors are valid for concat, remove them
   const nonEmptyInputs = context.inputs.filter(input => ShapeUtil.size(input.dims) > 0);
-  context.compute(createConcatProgramInfo(nonEmptyInputs, attributes.axis), {inputs: nonEmptyInputs});
+  if (nonEmptyInputs.length > 0) {
+    context.compute(createConcatProgramInfo(nonEmptyInputs, attributes.axis, outputShape), {inputs: nonEmptyInputs});
+  } else {
+    context.output(0, outputShape);
+  }
 };
 
 export const parseConcatAttributes = (attributes: Record<string, unknown>): ConcatAttributes =>
