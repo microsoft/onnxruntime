@@ -161,11 +161,10 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     auto batch_size_dim = signal->Shape()->dim(0);
     auto signal_length_dim = signal->Shape()->dim(1);
     auto signal_components_dim = signal->Shape()->dim(2);
-    CONTINUE_IF_NO_DIM_VALUE(batch_size_dim);
     CONTINUE_IF_NO_DIM_VALUE(signal_length_dim);
     CONTINUE_IF_NO_DIM_VALUE(signal_components_dim);
 
-    auto batch_size = batch_size_dim.dim_value();
+    auto batch_size = batch_size_dim.has_dim_value() ? batch_size_dim.dim_value() : -1i64;
     auto signal_length = signal_length_dim.dim_value();
     auto is_real = signal_components_dim.dim_value() == 1;
     auto data_type = signal->TypeAsProto()->tensor_type().elem_type();
@@ -209,7 +208,6 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     Node* window_recipient = nullptr;
     Node* stft_producer = nullptr;
     if (is_real) {
-      auto output_batch_size = stft.MutableOutputDefs()[0]->Shape()->dim(0).dim_value();
       auto output_num_frames = stft.MutableOutputDefs()[0]->Shape()->dim(1).dim_value();
       auto output_frame_length = stft.MutableOutputDefs()[0]->Shape()->dim(2).dim_value();
       auto weight_size = dft_unique_bins * dft_size;
@@ -233,7 +231,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       const int64_t signal_reshaped[] = {batch_size, 1, 1, signal_length};
       auto signal_shape = AddShapeInitializer(graph, "stft_signal_shape", signal_reshaped);
 
-      const int64_t unsqueezed_output_shape[] = {2, output_batch_size, output_frame_length, output_num_frames};
+      const int64_t unsqueezed_output_shape[] = {2, batch_size, output_frame_length, output_num_frames};
       auto unsqueezed_shape = AddShapeInitializer(graph, "stft_output_reshaped", unsqueezed_output_shape);
 
       NodeArg* signal_reshaped_inputs[] = {signal, signal_shape};
