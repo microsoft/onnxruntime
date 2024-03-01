@@ -451,7 +451,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // CPU doesn't support fp16
     if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
         x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-          continue;
+      continue;
     }
 
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale, bias};
@@ -700,7 +700,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // CPU doesn't support fp16
     if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
         x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-          continue;
+      continue;
     }
 
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
