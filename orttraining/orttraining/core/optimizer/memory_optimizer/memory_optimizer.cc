@@ -139,7 +139,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
   // Reset seed attribute for all dropout nodes in the graph if the seed is not set.
   ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::SetSeedForDropoutNodes(graph, modified));
-  
+
   size_t recomputed_node_count = 0;
 
   ptrdiff_t yield_op_order_in_topological_sort;
