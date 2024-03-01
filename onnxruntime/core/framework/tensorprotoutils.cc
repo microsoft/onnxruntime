@@ -27,6 +27,7 @@
 #include "core/framework/to_tensor_proto_element_type.h"
 #include "core/session/ort_apis.h"
 #include "onnx/defs/tensor_proto_util.h"
+#include "onnx/checker.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -89,6 +90,46 @@ bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
   return !(l == r);
 }
 
+#ifdef _WIN32
+namespace checker {
+std::wstring resolve_external_data_location(
+    const std::wstring& base_dir,
+    const std::wstring& location,
+    const std::string& tensor_name) {
+  auto file_path = std::filesystem::path(location);
+  if (file_path.is_absolute()) {
+    fail_check(
+        "Location of external TensorProto ( tensor name: ",
+        tensor_name,
+        ") should be a relative path, but it is an absolute path: ",
+        location.c_str());
+  }
+  auto relative_path = file_path.lexically_normal().make_preferred().wstring();
+  // Check that normalized relative path contains ".." on Windows.
+  if (relative_path.find(L"..", 0) != std::string::npos) {
+    fail_check(
+        "Data of TensorProto ( tensor name: ",
+        tensor_name,
+        ") should be file inside the ",
+        base_dir.c_str(),
+        ", but the '",
+        location.c_str(),
+        "' points outside the directory");
+  }
+  std::wstring data_path = onnxruntime::ConcatPathComponent(base_dir, relative_path);
+  struct _stat64 buff;
+  if (data_path.empty() || (data_path[0] != '#' && _wstat64(data_path.c_str(), &buff) != 0)) {
+    fail_check(
+        "Data of TensorProto ( tensor name: ",
+        tensor_name,
+        ") should be stored in ",
+        location.c_str(),
+        ", but it doesn't exist or is not accessible.");
+  }
+  return data_path;
+}
+}  // namespace checker
+#endif  // _WIN32
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -145,8 +186,7 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
     external_file_path = location;
   } else {
     if (tensor_proto_dir != nullptr) {
-      external_file_path = onnxruntime::ConcatPathComponent(tensor_proto_dir,
-                                                            external_data_info->GetRelPath());
+      external_file_path = ONNX_NAMESPACE::checker::resolve_external_data_location(std::basic_string<ORTCHAR_T> (tensor_proto_dir), external_data_info->GetRelPath(), "");
     } else {
       external_file_path = external_data_info->GetRelPath();
     }

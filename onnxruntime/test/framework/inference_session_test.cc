@@ -3002,5 +3002,18 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 
+TEST(InferenceSessionTests, ModelWithAbsolutePathForExternalTensorData) {
+  SessionOptions so;
+
+  so.session_logid = "InferenceSessionTests.ModelWithAbsolutePathForExternalTensorData";
+
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("C:/Users/liqfu/Downloads/model_with_absolute_path_for_external_tensor_data.onnx")));
+  common::Status st = session_object.Initialize();
+
+  ASSERT_FALSE(st.IsOK());
+  EXPECT_THAT(st.ErrorMessage(),
+              ::testing::ContainsRegex("Location of external TensorProto \\(*\\) should be a relative path, but it is an absolute path"));
+}
 }  // namespace test
 }  // namespace onnxruntime
