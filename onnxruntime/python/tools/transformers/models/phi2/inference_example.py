@@ -394,8 +394,8 @@ def run_phi2(
     # Run simple benchmark. Time the decoder only.
     if run_benchmark:
         token_num = 32
-        for batch_size in [2]:
+        for batch_size in [1, 2, 4, 8]:
             generator.append_static_inputs(batch_size)
-            for sequence_length in [16]:
+            for sequence_length in [16, 512]:
                 prompt_shape = (batch_size, sequence_length)
                 generator.generate_benchmark(prompt_shape, token_num, cuda_graph_annotation=batch_size)

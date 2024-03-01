@@ -56,16 +56,14 @@ void CUDAGraph::SetGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation
 }
 
 void CUDAGraph::CaptureBegin() {
-  if (cuda_graph_annotation_id_ == kCudaGraphAnnotationDefault) {
-    ORT_ENFORCE(!has_graph_exec_,
-                "This cuda graph has already captured a graph. "
-                "Create a new instance to capture a new graph.");
-  } else {
-    if (!IsGraphCaptureAllowedOnRun()) {
-      LOGS_DEFAULT(INFO) << "Skipping graph capture for cuda_graph_annotation_id " << cuda_graph_annotation_id_;
-      return;
-    }
+  if (!IsGraphCaptureAllowedOnRun()) {
+    LOGS_DEFAULT(INFO) << "Skipping graph capture for cuda_graph_annotation_id " << cuda_graph_annotation_id_;
+    return;
   }
+ 
+  ORT_ENFORCE(!cuda_graph_set_.Contains(cuda_graph_annotation_id_),
+              "This cuda graph has already captured a graph. "
+              "Create a new instance to capture a new graph.");
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
   // For now cuda graph can only work with a single thread. In the future, we
@@ -98,6 +96,7 @@ void CUDAGraph::CaptureEnd() {
 
 Status CUDAGraph::Replay() {
   if (!IsGraphCaptureAllowedOnRun()) {
+    LOGS_DEFAULT(INFO) << "Skipping graph replay for cuda_graph_annotation_id " << cuda_graph_annotation_id_;
     return Status::OK();
   }
   // Although this function is not thread safe, the lock is not needed here because

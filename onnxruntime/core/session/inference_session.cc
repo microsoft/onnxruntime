@@ -2880,7 +2880,7 @@ common::Status InferenceSession::ValidateAndParseGraphAnotationString(const std:
   ORT_TRY {
     graph_annotation_id = std::stoi(graph_annotation_string);
   }
-  ORT_CATCH(const std::exception& e) {
+  ORT_CATCH(const std::exception&) {
     ORT_HANDLE_EXCEPTION([&]() {
       retval = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                       "Expect the graph annotation to be an integer");
