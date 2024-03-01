@@ -126,7 +126,7 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
                                                      per_column, has_zp, has_bias);
 
   if (std::is_same_v<OType, float>) {
-    test.AddOutput<float>("Y", {M, N}, Y_data);
+    test.AddOutput<float>("Y", {M, N}, Y_data, 0.02f);
   } else {
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
     test.SetOutputAbsErr("Y", 0.5f);
