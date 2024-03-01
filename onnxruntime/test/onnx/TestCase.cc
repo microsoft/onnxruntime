@@ -754,6 +754,10 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
       if (!dir_entry.is_regular_file()) continue;
       std::filesystem::path filename_str = dir_entry.path().filename();
+      if (filename_str.empty() || filename_str.native()[0] == ORT_TSTR('.')) {
+        // Ignore hidden files.
+        continue;
+      }
       bool is_onnx_format = filename_str.has_extension() && (filename_str.extension().compare(ORT_TSTR(".onnx")) == 0);
       bool is_ort_format = filename_str.has_extension() && (filename_str.extension().compare(ORT_TSTR(".ort")) == 0);
       bool is_valid_model = false;

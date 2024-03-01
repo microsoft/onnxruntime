@@ -50,7 +50,9 @@ void OnnxModelInfo::InitOnnxModelInfo(const std::filesystem::path& model_url) { 
   const bool parse_result = model_pb.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
   if (!parse_result) {
     (void)Env::Default().FileClose(model_fd);
-    ORT_THROW("Failed to load model because protobuf parsing failed.");
+    std::ostringstream oss;
+    oss << "Failed to load model from " << model_url << " because protobuf parsing failed.";
+    ORT_THROW(oss.str());
   }
   (void)Env::Default().FileClose(model_fd);
   {
