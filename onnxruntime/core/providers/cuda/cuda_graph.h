@@ -31,10 +31,10 @@ struct CudaGraphSet {
   CudaGraphSet_t cuda_graphs_;
 };
 
-struct CUDAGraph {
-  CUDAGraph(){};
-  CUDAGraph(cudaStream_t stream);
-  ~CUDAGraph();
+struct CUDAGraphManager {
+  CUDAGraphManager(){};
+  CUDAGraphManager(cudaStream_t stream);
+  ~CUDAGraphManager();
 
   void SetStream(cudaStream_t stream);
   void SetGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id);
@@ -59,5 +59,7 @@ struct CUDAGraph {
 
   cudaStream_t stream_ = nullptr;  // Does not own the stream
 };
+
+using CUDAGraph = CUDAGraphManager;
 
 }  // namespace onnxruntime

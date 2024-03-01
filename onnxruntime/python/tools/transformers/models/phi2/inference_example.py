@@ -240,12 +240,12 @@ class ORTGenerator:
             if prompt_run:
                 if self.use_cuda_graph:
                     # Disable CUDA graph for the prompt run
-                    self.ro.add_run_config_entry("gpu_graph_annotation_id", "-1")
+                    self.ro.add_run_config_entry("gpu_graph_id", "-1")
                 self.sess.run_with_iobinding(io_binding, self.ro)
                 if self.use_cuda_graph:
                     # Enable CUDA graph for the decoding run
                     self.ro.add_run_config_entry(
-                        "gpu_graph_annotation_id", str(cuda_graph_annotation) if self.use_traced_inputs else "-1"
+                        "gpu_graph_id", str(cuda_graph_annotation) if self.use_traced_inputs else "-1"
                     )
                 prompt_run = False
             else:
