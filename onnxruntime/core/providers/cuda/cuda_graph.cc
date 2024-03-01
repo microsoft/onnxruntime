@@ -60,7 +60,7 @@ void CUDAGraph::CaptureBegin() {
     LOGS_DEFAULT(INFO) << "Skipping graph capture for cuda_graph_annotation_id " << cuda_graph_annotation_id_;
     return;
   }
- 
+
   ORT_ENFORCE(!cuda_graph_set_.Contains(cuda_graph_annotation_id_),
               "This cuda graph has already captured a graph. "
               "Create a new instance to capture a new graph.");
