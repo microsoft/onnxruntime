@@ -28,6 +28,7 @@
 #include "core/session/ort_apis.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "onnx/checker.h"
+#include "onnx/common/path.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -102,7 +103,7 @@ std::wstring resolve_external_data_location(
         "Location of external TensorProto ( tensor name: ",
         tensor_name,
         ") should be a relative path, but it is an absolute path: ",
-        location.c_str());
+        wstring_to_utf8str(location));
   }
   auto relative_path = file_path.lexically_normal().make_preferred().wstring();
   // Check that normalized relative path contains ".." on Windows.
@@ -111,9 +112,9 @@ std::wstring resolve_external_data_location(
         "Data of TensorProto ( tensor name: ",
         tensor_name,
         ") should be file inside the ",
-        base_dir.c_str(),
+        wstring_to_utf8str(base_dir),
         ", but the '",
-        location.c_str(),
+        wstring_to_utf8str(location),
         "' points outside the directory");
   }
   std::wstring data_path = onnxruntime::ConcatPathComponent(base_dir, relative_path);
@@ -123,7 +124,7 @@ std::wstring resolve_external_data_location(
         "Data of TensorProto ( tensor name: ",
         tensor_name,
         ") should be stored in ",
-        location.c_str(),
+        wstring_to_utf8str(location),
         ", but it doesn't exist or is not accessible.");
   }
   return data_path;
@@ -186,7 +187,8 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
     external_file_path = location;
   } else {
     if (tensor_proto_dir != nullptr) {
-      external_file_path = ONNX_NAMESPACE::checker::resolve_external_data_location(std::basic_string<ORTCHAR_T> (tensor_proto_dir), external_data_info->GetRelPath(), "");
+      external_file_path = ONNX_NAMESPACE::checker::resolve_external_data_location(
+          std::basic_string<ORTCHAR_T>(tensor_proto_dir), external_data_info->GetRelPath(), tensor_proto.name());
     } else {
       external_file_path = external_data_info->GetRelPath();
     }

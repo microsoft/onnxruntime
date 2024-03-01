@@ -3008,12 +3008,26 @@ TEST(InferenceSessionTests, ModelWithAbsolutePathForExternalTensorData) {
   so.session_logid = "InferenceSessionTests.ModelWithAbsolutePathForExternalTensorData";
 
   InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("C:/Users/liqfu/Downloads/model_with_absolute_path_for_external_tensor_data.onnx")));
+  ASSERT_STATUS_OK(session_object.Load("testdata/model_with_absolute_path_for_external_tensor_data.onnx"));
   common::Status st = session_object.Initialize();
 
   ASSERT_FALSE(st.IsOK());
   EXPECT_THAT(st.ErrorMessage(),
-              ::testing::ContainsRegex("Location of external TensorProto \\(*\\) should be a relative path, but it is an absolute path"));
+              ::testing::ContainsRegex(".*Location of external TensorProto \\(.*\\) should be a relative path, but it is an absolute path: .*"));
+}
+
+TEST(InferenceSessionTests, ModelWithTraversalPathForExternalTensorData) {
+  SessionOptions so;
+
+  so.session_logid = "InferenceSessionTests.ModelWithTraversalPathForExternalTensorData";
+
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load("testdata/model_with_traversal_path_for_external_tensor_data.onnx"));
+  common::Status st = session_object.Initialize();
+
+  ASSERT_FALSE(st.IsOK());
+  EXPECT_THAT(st.ErrorMessage(),
+              ::testing::ContainsRegex(".*Data of TensorProto \\(.*\\) should be file inside the .*, but the \\'.*\\' points outside the directory"));
 }
 }  // namespace test
 }  // namespace onnxruntime
