@@ -141,13 +141,12 @@ namespace Dml::GraphDescBuilder
             intermediateEdge.FromNodeIndex = shiftedIndicesMapping[intermediateEdge.FromNodeIndex];
             intermediateEdge.ToNodeIndex = shiftedIndicesMapping[intermediateEdge.ToNodeIndex];
             // We need to update the edge name only when the name contains the intermediateEdge.FromNodeIndex
-            std::string oldEdgeName = intermediateEdge.Name;
-            size_t pos = oldEdgeName.find("nodeIdx:");
+            size_t pos = intermediateEdge.Name.find("nodeIdx:");
             if (pos != std::string::npos)
             {
                 if (pos != 0)
                 {
-                    intermediateEdge.Name = oldEdgeName.substr(0, pos);
+                    intermediateEdge.Name = intermediateEdge.Name.substr(0, pos);
                 }
                 intermediateEdge.Name += "nodeIdx:" + std::to_string(intermediateEdge.FromNodeIndex) + "-outputIdx:" + std::to_string(intermediateEdge.FromNodeOutputIndex);
             }
