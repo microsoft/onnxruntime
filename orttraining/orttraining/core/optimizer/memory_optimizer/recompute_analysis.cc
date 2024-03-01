@@ -19,7 +19,7 @@ namespace onnxruntime::optimizer::memory_optimizer {
 
 namespace {
 
-constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 15;
+constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 50;
 
 static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
   const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
@@ -512,6 +512,24 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
         const auto current_node_input_index = input_edge.GetDstArgIndex();
         if (std::find(igorable_input_arg_indices.begin(), igorable_input_arg_indices.end(), current_node_input_index) ==
             igorable_input_arg_indices.end()) {
+          // If the tensor size is constant and very small, we stop adding the input edge into queue.
+          auto output_shape = parent_node.OutputDefs()[parent_node_output_index]->Shape();
+          if (output_shape) {
+            bool all_constant_dim = true;
+            int64_t num_elem = 1;
+            // for (const auto dim: output_shape->dim)
+            for (int k = 0, end = output_shape->dim_size(); k < end; ++k) {
+              if (!output_shape->dim()[k].has_dim_value()) {
+                all_constant_dim = false;
+                num_elem *= output_shape->dim()[k].dim_value();
+              }
+            }
+            if (all_constant_dim && num_elem < 1 * 1024 * 1024) {
+              // Skip this input index.
+              continue;
+            }
+          }
+
           NodeOutputPort next_p = std::make_pair(&parent_node, parent_node_output_index);
 
           MO_LOG_DEBUG_INFO(logger, "Node " + parent_node.Name() + "(" + parent_node.OpType() + ")'s " +
