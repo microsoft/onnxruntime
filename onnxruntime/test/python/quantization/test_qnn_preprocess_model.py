@@ -165,6 +165,58 @@ class TestQnnPreprocessModel(unittest.TestCase):
         for node in fused_model.graph.node:
             self.assertIn(node.op_type, expected_op_types)
 
+    def build_multi_input_output_model(self, shape):
+        """
+        Returns the following model.
+                               +----------> [X]
+                               |
+        [A] ---> Add ---> Abs -+-> Mul ---> [Y]
+                  ^                 ^
+                  |                 |
+        [B] ------+-----------------+
+        """
+        input_a = onnx.helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, shape)
+        input_b = onnx.helper.make_tensor_value_info("B", onnx.TensorProto.FLOAT, shape)
+        output_x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, shape)
+        output_y = onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, shape)
+
+        add_node = onnx.helper.make_node("Add", ["A", "B"], ["add_out"])
+        abs_node = onnx.helper.make_node("Abs", ["add_out"], ["X"])
+        mul_node = onnx.helper.make_node("Mul", ["X", "B"], ["Y"])
+
+        graph = onnx.helper.make_graph(
+            [add_node, abs_node, mul_node],
+            "multi_io_graph",
+            [input_a, input_b],
+            [output_x, output_y],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        return onnx.shape_inference.infer_shapes(model)
+
+    def test_make_io_channel_last(self):
+        """
+        Test making a model's inputs and outputs channel-last.
+        """
+        model = self.build_multi_input_output_model((1, 2, 3))
+        onnx.save_model(model, "model.onnx")
+        modified = qnn_preprocess_model(
+            "model.onnx",
+            "model.qnn_pp.onnx",
+            inputs_to_make_channel_last=["A", "B"],
+            outputs_to_make_channel_last=["X", "Y"],
+        )
+
+        self.assertTrue(modified)
+
+        preproc_model = onnx.load_model("model.qnn_pp.onnx")
+        self.assertEqual(len(preproc_model.graph.node), 6)
+
+        num_transposes = sum(1 for node in preproc_model.graph.node if node.op_type == "Transpose")
+        self.assertEqual(num_transposes, 4)
+
 
 if __name__ == "__main__":
     unittest.main()
