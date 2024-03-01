@@ -296,13 +296,12 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
         {
             utils::GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
             {
-                {17, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("LayerNormalization", kMSDomain),
-            {
+#ifndef DISABLE_CONTRIB_OPS
+                // Opset 1 in ONNX official does not have LayerNormalization,
+                // while our contrib op defined LayerNormalization in opset 1 in ONNX domain.
                 {1, {}},
+#endif
+                {17, {}},
             },
         },
         {
