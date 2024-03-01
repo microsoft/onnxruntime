@@ -92,6 +92,50 @@ std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in, int32_t data_t
     continue;               \
   }
 
+/*
+    This function decomposes a STFT node into a subgraph.
+    The decomposition requires that (frame_step) *and* either (window or frame_length) inputs be constant.
+    Otherwise the transform will not be applied.
+
+
+    Subgraph pattern 1: STFT with optional Window parameter set
+              [root]--(signal)--------------------+
+              [root]--(frame_step)---------------+|
+              [root]--(window)------------------+||
+              [root]--(frame_length) ----------+|||
+                                               ||||
+                                               vvvv
+                                              [STFT]--(output)-->
+    After Fusion:
+              [root]--(signal)-------------------------+
+              [root]                                   |
+              [root]--(window)--+                      |
+              [root]            |                      |
+                                v                      v
+         (only for non-fp32) [Cast]             +--[Reshape]
+                                |               |      |
+                                v               |      v
+                            [Reshape]-->[Mul]---|-->[Conv]-------+
+                                |               |                |
+                                |               +-----|          |
+                                |                     v          v
+                                +------>[Mul]------>[Conv]-->[Concat]-->[Reshape]-->[Transpose]--(output)-->
+
+
+    Subgraph pattern 2: STFT without optional Window parameter set
+              [root]--(signal)-------------------+
+              [root]--(frame_step)--------------+|
+              [root]                             |
+              [root]--(frame_length) ----------+||
+                                               |||
+                                               vvv
+                                              [STFT]--(output)-->
+    After Fusion:
+              [root]--(signal)-->[Reshape]-->[Conv]
+              [root]                 |         |
+              [root]                 |         v
+              [root]                 +------>[Conv]-->[Concat]-->[Reshape]-->[Transpose]--(output)-->
+*/
 Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
@@ -167,7 +211,6 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       auto output_batch_size = stft.MutableOutputDefs()[0]->Shape()->dim(0).dim_value();
       auto output_num_frames = stft.MutableOutputDefs()[0]->Shape()->dim(1).dim_value();
       auto output_frame_length = stft.MutableOutputDefs()[0]->Shape()->dim(2).dim_value();
-      // auto output_components = stft.MutableOutputDefs()[0]->Shape()->dim(3).dim_value();
       auto weight_size = dft_unique_bins * dft_size;
       auto real_weights_data = std::vector<float>(weight_size);
       auto imag_weights_data = std::vector<float>(weight_size);
@@ -295,7 +338,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     auto input_edges = graph_utils::GraphEdge::GetNodeInputEdges(stft);
     auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(stft);
 
-    // Copy inputs...
+    // Copy inputs
     auto signal_target_idx = signal_recipient->Index();
     auto window_target_idx = window_recipient->Index();
     for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
@@ -321,7 +364,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       graph.AddEdge(edge.src_node, target_idx, edge.src_arg_index, arg_index);
     }
 
-    // copy STFT outputs to stft_producer
+    // Copy STFT outputs to stft_producer
     stft_producer->MutableOutputDefs() = stft.MutableOutputDefs();
     auto stft_producer_target_idx = stft_producer->Index();
     for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
