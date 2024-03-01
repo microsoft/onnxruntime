@@ -47,14 +47,15 @@ void ortenv_setup() {
 #pragma warning(pop)
 #endif
 
-auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-
 class DummyLogger : public nvinfer1::ILogger {
  public:
   DummyLogger(Severity /*verbosity*/) {}
   void log(Severity /*severity*/, const char* /*msg*/) noexcept override {}
 };
 DummyLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+
+auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+
 #endif
 
 #define TEST_MAIN main
