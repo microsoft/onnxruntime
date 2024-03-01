@@ -598,5 +598,63 @@
         ]
       }
     ]
+  },
+  {
+    "name": "Concat 2D axis=0; Preserve dims",
+    "operator": "Concat",
+    "attributes": [{ "name": "axis", "data": 0, "type": "int" }],
+    "cases": [
+      {
+        "name": "All input tensors have 0 in dims along the axis",
+        "inputs": [
+          {
+            "data": [],
+            "dims": [0, 1, 1],
+            "type": "float32"
+          },
+          {
+            "data": [],
+            "dims": [0, 1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [],
+            "dims": [0, 1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Concat 2D axis=1; Preserve dims",
+    "operator": "Concat",
+    "attributes": [{ "name": "axis", "data": 1, "type": "int" }],
+    "cases": [
+      {
+        "name": "All input tensors have 0 in dims along the other axis",
+        "inputs": [
+          {
+            "data": [],
+            "dims": [0, 1, 1],
+            "type": "float32"
+          },
+          {
+            "data": [],
+            "dims": [0, 1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [],
+            "dims": [0, 2, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
   }
 ]

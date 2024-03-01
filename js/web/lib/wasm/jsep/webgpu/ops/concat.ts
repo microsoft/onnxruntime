@@ -65,18 +65,6 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
   return codeLines.join('\n');
 };
 
-const computeReferenceIndex = (inputs: readonly TensorView[]): number => {
-  // find a none zero tensor to determine the output shape
-  let referenceIndex = 0;
-  for (let j = 0; j < inputs.length; j++) {
-    const size = ShapeUtil.size(inputs[j].dims);
-    if (size > 0) {
-      referenceIndex = j;
-      break;
-    }
-  }
-  return referenceIndex;
-};
 
 const computeOutputShape = (inputs: readonly TensorView[], axis: number, referenceIndex: number): number[] => {
   const inputShape = inputs[referenceIndex].dims.slice();
@@ -176,11 +164,19 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number, ou
 };
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
-  const referenceIndex = computeReferenceIndex(context.inputs);
+  // find a none zero tensor to determine the output shape
+  // Choose input with max rank if  all input tensors are zero size to make the output shape independent of the order of
+  // the inputs.
+  let referenceIndex = context.inputs.findIndex(input => ShapeUtil.size(input.dims) > 0);
+  if (referenceIndex === -1) {
+    referenceIndex =
+        context.inputs.map(input => input.dims.length)
+            .reduce((maxRankIndex, rank, index, array) => rank > array[maxRankIndex] ? index : maxRankIndex, 0);
+  }
+
   validateInputs(context.inputs, referenceIndex);
-  const axis = attributes.axis;
   const inputShape = context.inputs[referenceIndex].dims;
-  const adjustedAxis = (attributes.axis < 0) ? inputShape.length + axis : axis;
+  const adjustedAxis = attributes.axis + (attributes.axis < 0 ? inputShape.length : 0);
   const outputShape = computeOutputShape(context.inputs, adjustedAxis, referenceIndex);
   // 0 length tensors are valid for concat, remove them
   const nonEmptyInputs = context.inputs.filter(input => ShapeUtil.size(input.dims) > 0);
