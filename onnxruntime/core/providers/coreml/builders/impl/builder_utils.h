@@ -11,13 +11,15 @@
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/common.h"
-
 #include "core/providers/coreml/builders/coreml_spec.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 class NodeArg;
 
 namespace coreml {
+class ModelBuilder;
+
 // Try to see if we can map explicit padding to auto padding for Conv/Pool
 // Since usually use auto padding is more efficient
 Status HandleAutoPad(const std::vector<int64_t> input_shape,
@@ -45,6 +47,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
 // Copy the int64_t array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int64_t> data);
 
+#if defined(COREML_ENABLE_MLPROGRAM)
 //
 // MLProgram utils
 //
@@ -130,5 +133,17 @@ void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
 /// <param name="op">Operation to update.</param>
 /// <param name="output">NodeArg with details of output to add.</param>
 void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output);
+
+/// <summary>
+/// Add pad_type and pad values.
+/// </summary>
+/// <param name="op">Operator to update</param>
+/// <param name="model_builder">ModelBuilder to add constants with.</param>
+/// <param name="op_type">Operator type.</param>
+/// <param name="helper">Node attribute helper.</param>
+/// <param name="num_spatial_dims">Number of spatial dims in input. Generally rank - 2 (ignore N and C dims).</param>
+void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
+                       const NodeAttrHelper& helper, int num_spatial_dims);
+#endif  // defined(COREML_ENABLE_MLPROGRAM)
 }  // namespace coreml
 }  // namespace onnxruntime

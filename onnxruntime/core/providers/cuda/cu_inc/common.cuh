@@ -194,13 +194,13 @@ template <>
 __device__ __inline__ half _Ceil(half a) { return half(ceilf((float)a)); }
 
 template <typename T>
-__device__ __inline__ T _Floor(T a);
+__device__ __host__ __inline__ T _Floor(T a);
 
 template <>
-__device__ __inline__ float _Floor(float a) { return floorf(a); }
+__device__ __host__ __inline__ float _Floor(float a) { return floorf(a); }
 
 template <>
-__device__ __inline__ double _Floor(double a) { return floor(a); }
+__device__ __host__ __inline__ double _Floor(double a) { return floor(a); }
 
 template <>
 __device__ __inline__ half _Floor(half a) { return half(floorf((float)a)); }
@@ -230,13 +230,13 @@ template <>
 __device__ __inline__ half _Erf(half a) { return half(erff((float)a)); }
 
 template <typename T>
-__device__ __inline__ T _Round(T a);
+__device__ __host__ __inline__ T _Round(T a);
 
 template <>
-__device__ __inline__ float _Round(float a) { return rintf(a); }
+__device__ __host__ __inline__ float _Round(float a) { return rintf(a); }
 
 template <>
-__device__ __inline__ double _Round(double a) { return rint(a); }
+__device__ __host__ __inline__ double _Round(double a) { return rint(a); }
 
 template <>
 __device__ __inline__ half _Round(half a) {

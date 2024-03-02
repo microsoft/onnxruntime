@@ -9,12 +9,16 @@ namespace coreml {
 class Execution {};
 
 Model::Model(const std::string& /*path*/,
+             std::vector<std::string>&& model_input_names,
+             std::vector<std::string>&& model_output_names,
              std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
              std::unordered_set<std::string>&& scalar_outputs,
              std::unordered_set<std::string>&& int64_outputs,
              const logging::Logger& /*logger*/,
              uint32_t /*coreml_flags*/)
     : execution_(std::make_unique<Execution>()),
+      model_input_names_(std::move(model_input_names)),
+      model_output_names_(std::move(model_output_names)),
       input_output_info_(std::move(input_output_info)),
       scalar_outputs_(std::move(scalar_outputs)),
       int64_outputs_(std::move(int64_outputs)) {

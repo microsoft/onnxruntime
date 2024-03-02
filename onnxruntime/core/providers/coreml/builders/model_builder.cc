@@ -144,14 +144,18 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-      // from: int64_data/raw, to: longints
-      if (has_raw_data) {
-        CopyRawDataToRepeatedField<int64_t>(tensor_proto, *tensor_value.mutable_longints()->mutable_values());
+      // enable when this is proven to not be the case
+      ORT_THROW(
+          "INT64 is unexpected as CoreML uses 32-bit int for indices. "
+          "Most likely an initializer that should have been skipped was not.");
+      //// from: int64_data/raw, to: longints
+      // if (has_raw_data) {
+      //   CopyRawDataToRepeatedField<int64_t>(tensor_proto, *tensor_value.mutable_longints()->mutable_values());
 
-      } else {
-        tensor_value.mutable_longints()->mutable_values()->CopyFrom(tensor_proto.int64_data());
-      }
-      break;
+      //} else {
+      //  tensor_value.mutable_longints()->mutable_values()->CopyFrom(tensor_proto.int64_data());
+      //}
+      // break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
       // from: int32_data/raw, to: bytes
@@ -186,18 +190,22 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT64: {
-      // from: uint64_data/raw, to: longints
-      if (has_raw_data) {
-        CopyRawDataToRepeatedField<uint64_t>(tensor_proto, *tensor_value.mutable_longints()->mutable_values());
-      } else {
-        // TODO: Is this safe? Need to check the CopyFrom implementation. As it's a straight copy of bytes this
-        // hopefully can do it as one block instead of iterating and potentially doing a static_cast of each
-        // individual value.
-        tensor_value.mutable_longints()->mutable_values()->CopyFrom(
-            reinterpret_cast<const google::protobuf::RepeatedField<int64_t>&>(tensor_proto.uint64_data()));
-      }
+      // enable when this is proven to not be the case
+      ORT_THROW(
+          "UINT64 is unexpected as CoreML uses 32-bit int for indices. "
+          "Most likely an initializer that should have been skipped was not.");
+      //// from: uint64_data/raw, to: longints
+      // if (has_raw_data) {
+      //   CopyRawDataToRepeatedField<uint64_t>(tensor_proto, *tensor_value.mutable_longints()->mutable_values());
+      // } else {
+      //   // TODO: Is this safe? Need to check the CopyFrom implementation. As it's a straight copy of bytes this
+      //   // hopefully can do it as one block instead of iterating and potentially doing a static_cast of each
+      //   // individual value.
+      //   tensor_value.mutable_longints()->mutable_values()->CopyFrom(
+      //       reinterpret_cast<const google::protobuf::RepeatedField<int64_t>&>(tensor_proto.uint64_data()));
+      // }
 
-      break;
+      // break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL: {
       // from: int32_data/raw, to: bools
@@ -392,23 +400,28 @@ std::string GetModelOutputPath(bool create_ml_program) {
 }  // namespace
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                           int32_t coreml_version, uint32_t coreml_flags)
+                           int32_t coreml_version, uint32_t coreml_flags,
+                           std::vector<std::string>&& onnx_input_names,
+                           std::vector<std::string>&& onnx_output_names)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       coreml_version_(coreml_version),
       coreml_flags_(coreml_flags),
       create_ml_program_((coreml_flags_ & COREML_FLAG_CREATE_MLPROGRAM) != 0),
       model_output_path_(GetModelOutputPath(create_ml_program_)),
+      onnx_input_names_(std::move(onnx_input_names)),
+      onnx_output_names_(std::move(onnx_output_names)),
       coreml_model_(std::make_unique<CoreML::Specification::Model>()) {
   if (create_ml_program_) {
 #if defined(COREML_ENABLE_MLPROGRAM)
     coreml_model_->set_specificationversion(CoreMLSpecVersion());
     MILSpec::Program& mlprogram = *coreml_model_->mutable_mlprogram();
-    MILSpec::Function& main = (*mlprogram.mutable_functions())["main"];
+    mlprogram.set_version(1);
+    mlprogram_main_fn_ = &(*mlprogram.mutable_functions())["main"];
 
     const std::string coreml_opset = "CoreML" + std::to_string(CoreMLVersion());
-    *main.mutable_opset() = coreml_opset;
-    mlprogram_main_ = &(*main.mutable_block_specializations())[coreml_opset];
+    *mlprogram_main_fn_->mutable_opset() = coreml_opset;
+    mlprogram_main_block_ = &(*mlprogram_main_fn_->mutable_block_specializations())[coreml_opset];
 
     // create the ModelPackage. this creates the output directory.
     mlpackage_ = std::make_unique<MPL::ModelPackage>(model_output_path_, /* create */ true);
@@ -426,6 +439,8 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
     weights_file_writer_ = std::make_unique<StorageWriter>(weights_info->path() + "/weight.bin");
 #else
     // should never happen due to handling in coreml_execution_provider.cc
+    // throw here so all other code in this class can assume create_ml_program_ is only ever true in a build
+    // where ML Program support is enabled.
     ORT_THROW("ML Program is not enabled in this build");
 #endif
   } else {
@@ -434,6 +449,28 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
     auto* neural_network = coreml_model_->mutable_neuralnetwork();
     neural_network->set_arrayinputshapemapping(
         CoreML::Specification::NeuralNetworkMultiArrayShapeMapping::EXACT_ARRAY_MAPPING);
+  }
+
+  // populate names.
+  const auto& initializers = graph_viewer_.GetAllInitializedTensors();
+  const auto& inputs = graph_viewer_.GetInputs();
+  // rough guess to try and avoid reallocs. most nodes produce one output but some have more so allow for that.
+  // also need to convert attributes to constants so allow for that
+  unique_names_.reserve(initializers.size() + inputs.size() + size_t(graph_viewer_.NumberOfNodes() * 1.5));
+  for (const auto& pair : initializers) {
+    unique_names_.insert(pair.first);
+  }
+
+  for (const auto* input : inputs) {
+    unique_names_.insert(input->Name());
+  }
+
+  for (const auto& node : graph_viewer_.Nodes()) {
+    for (const auto& def : node.OutputDefs()) {
+      if (def->Exists()) {
+        unique_names_.insert(def->Name());
+      }
+    }
   }
 }
 
@@ -455,11 +492,94 @@ void ModelBuilder::AddLayer(std::unique_ptr<NeuralNetworkLayer> layer) {
   neural_network->mutable_layers()->AddAllocated(layer.release());
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
-
 /*
  * ML Program related helpers
  */
+#if defined(COREML_ENABLE_MLPROGRAM)
+const std::string& ModelBuilder::GetSafeName(const std::string& name) {
+  // Check the name is valid according to the MILSpec rules
+  // `Identifiers, generally used for names and keys, must match the regular expression [A-Za-z\_][A-Za-z0-9\_@]*.`
+  //
+  // There is a secondary list of reserved words that the coremltools python uses, but it's not clear if those are
+  // required here, or if we will ever hit a model that uses one of them. Due to that, skip checking them for now as
+  // it adds cost and code complexity
+  // https://github.com/apple/coremltools/blob/8b37641f243b1a3e81452feea311c6e30dcc9287/coremltools/converters/mil/mil/passes/defs/preprocess.py#L151C1-L175C10
+  // static InlinedHashSet<std::string> reserved_names =
+  //    {"any", "bool", "program", "func", "tensor", "list", "dict", "tuple", "true", "false",
+  //     "string", "bf16", "fp16", "fp32", "fp64", "int8", "int16", "int32", "int64",
+  //     "uint8", "uint16", "uint32", "uint64"};
+
+  // handle empty name. shouldn't happen but code below assumes name is not empty
+  if (name.empty()) {
+    return name;
+  }
+
+  // We don't need '@' or '\' even though they're allowed. Optimize for a good name that does not need to be changed.
+
+  // has been sanitized and changed already
+  const auto entry = values_to_rename_.find(name);
+  if (entry != values_to_rename_.end()) {
+    return entry->second;
+  }
+
+  // Replace anything but a good char with '_'. If first char is 0-9 we prefix with '_';
+  bool changed = false;
+  std::string result = name;
+
+  if (std::isdigit(result[0])) {
+    changed = true;
+    result = '_' + name;
+  }
+
+  for (char& c : result) {
+    if (!std::isalnum(c) && c != '_') {
+      changed = true;
+      c = '_';
+    }
+  }
+
+  if (!changed) {
+    return name;  // return original as the return value is a reference that must remain valid
+  }
+
+  return (values_to_rename_[name] = GetUniqueName(result));
+}
+
+void ModelBuilder::SanitizeNames() {
+  // ML Model level inputs/outputs
+  auto* desc = coreml_model_->mutable_description();
+  for (auto& input : *desc->mutable_input()) {
+    input.set_name(GetSafeName(input.name()));
+  }
+
+  for (auto& output : *desc->mutable_output()) {
+    output.set_name(GetSafeName(output.name()));
+  }
+
+  // main function inputs/outputs.
+  for (auto& input : *mlprogram_main_fn_->mutable_inputs()) {
+    input.set_name(GetSafeName(input.name()));
+  }
+
+  // outputs from block with operations for current coreml version
+  for (auto& output : *mlprogram_main_block_->mutable_outputs()) {
+    output = GetSafeName(output);
+  }
+
+  // iterate operations changing input/output/node names
+  for (auto& op : *mlprogram_main_block_->mutable_operations()) {
+    for (auto& input : *op.mutable_inputs()) {
+      for (auto& arg : *input.second.mutable_arguments()) {
+        arg.set_name(GetSafeName(arg.name()));
+      }
+    }
+
+    for (auto& output : *op.mutable_outputs()) {
+      output.set_name(GetSafeName(output.name()));
+    }
+  }
+}
+
 std::unique_ptr<COREML_SPEC::MILSpec::Operation> ModelBuilder::CreateOperation(const Node& node,
                                                                                std::string_view op_type,
                                                                                std::string_view suffix) {
@@ -472,14 +592,9 @@ std::unique_ptr<COREML_SPEC::MILSpec::Operation> ModelBuilder::CreateOperation(c
   return op;
 }
 
-void ModelBuilder::AddConstant(std::string_view name, const ONNX_NAMESPACE::TensorProto& initializer) {
-  MILSpec::Value coreml_tensor = OnnxTensorToCoreMLTensor(initializer, *weights_file_writer_);
-  AddConstantOperation(name, std::move(coreml_tensor));
-}
-
-void ModelBuilder::AddConstantOperation(std::string_view name, MILSpec::Value&& coreml_tensor) {
+const std::string& ModelBuilder::AddConstantOperation(std::string_view name, MILSpec::Value&& coreml_tensor) {
   // Replicates coremltools/converters/mil/backend/mil/load.py translate_const logic
-  MILSpec::Operation& const_op = *mlprogram_main_->mutable_operations()->Add();
+  MILSpec::Operation& const_op = *mlprogram_main_block_->mutable_operations()->Add();
   const_op.set_type("const");
 
   MILSpec::NamedValueType& output = *const_op.mutable_outputs()->Add();
@@ -487,58 +602,63 @@ void ModelBuilder::AddConstantOperation(std::string_view name, MILSpec::Value&& 
   *output.mutable_type() = coreml_tensor.type();
 
   auto& attr_map = *const_op.mutable_attributes();
-  attr_map["name"] = CreateScalarTensorValue(std::string(name));
+  // the operation name doesn't really matter as it isn't used elsewhere, so sanitize name now
+  attr_map["name"] = CreateScalarTensorValue(GetSafeName(output.name()));
   attr_map["val"] = std::move(coreml_tensor);
+
+  return output.name();
 }
 
 // Add operation to the Block for the main function in the ML Program
 void ModelBuilder::AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation> operation) {
-  mlprogram_main_->mutable_operations()->AddAllocated(operation.release());
+  mlprogram_main_block_->mutable_operations()->AddAllocated(operation.release());
 }
 
-std::string ModelBuilder::AddTensorValueAsConstantOperation(std::string_view op_type, std::string_view value_type,
-                                                            MILSpec::Value&& input_value) {
+const std::string& ModelBuilder::AddTensorValueAsConstantOperation(std::string_view op_type,
+                                                                   std::string_view value_type,
+                                                                   MILSpec::Value&& input_value) {
   auto unique_value_name = GetUniqueName(MakeString(op_type, "_", value_type));
-  AddConstantOperation(unique_value_name, std::move(input_value));
-  return unique_value_name;
+  return AddConstantOperation(unique_value_name, std::move(input_value));
 }
 
 template <typename T>
-std::string ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
-                                          std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const T> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   // add specialization below
   static_assert(false_for_T<T>, "Missing specialization for value type");
-  return "";  // unreachable
+
+  return "ModelBuilder::AddConstant error";  // unreachable
 }
 
 template <>
-std::string ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
-                                          gsl::span<const float> value,
-                                          std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const float> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<float>(value, shape);
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
 template <>
-std::string ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
-                                          gsl::span<const int64_t> value,
-                                          std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const int64_t> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<int64_t, int32_t>(value, shape);  // CoreML uses int32
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
 template <>
-std::string ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
-                                          gsl::span<const bool> value,
-                                          std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const bool> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<bool>(value, shape);
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
 template <>
-std::string ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
-                                          gsl::span<const std::string> value,
-                                          std::optional<gsl::span<const int64_t>> shape) {
+std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
+                                               gsl::span<const std::string> value,
+                                               std::optional<gsl::span<const int64_t>> shape) {
   auto input_value = CreateTensorValue<std::string>(value, shape);
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
@@ -581,11 +701,13 @@ Status ModelBuilder::RegisterInitializers() {
       continue;
     }
 
-    if (create_ml_program_) {
 #if defined(COREML_ENABLE_MLPROGRAM)
-      AddConstant(name, tensor);
+    if (create_ml_program_) {
+      MILSpec::Value coreml_tensor = OnnxTensorToCoreMLTensor(tensor, *weights_file_writer_);
+      ORT_IGNORE_RETURN_VALUE(AddConstantOperation(name, std::move(coreml_tensor)));
+    } else
 #endif
-    } else {
+    {
       std::unique_ptr<NeuralNetworkLayer> layer = std::make_unique<NeuralNetworkLayer>();
       layer->set_name(GetUniqueName("initializer_" + name));
 
@@ -616,32 +738,33 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
   if (is_input) {
     // input should not be an initializer
-    if (Contains(GetInitializerTensors(), name))
+    if (Contains(GetInitializerTensors(), name)) {
       return Status::OK();
+    }
 
     // This input will not be used
-    if (Contains(skipped_inputs_, name))
+    if (Contains(skipped_inputs_, name)) {
       return Status::OK();
+    }
   }
 
   auto* model_description = coreml_model_->mutable_description();
-  auto& input_output = is_input
-                           ? *model_description->mutable_input()->Add()
-                           : *model_description->mutable_output()->Add();
+  auto& input_output = is_input ? *model_description->mutable_input()->Add()
+                                : *model_description->mutable_output()->Add();
 
   input_output.set_name(name);
+
   auto* multi_array = input_output.mutable_type()->mutable_multiarraytype();
 
   std::vector<int64_t> shape;
-  ORT_RETURN_IF_NOT(GetShape(node_arg, shape, logger_),
-                    "Unable to get shape for ", input_output_type, ": ", name);
+  ORT_RETURN_IF_NOT(GetShape(node_arg, shape, logger_), "Unable to get shape for ", input_output_type, ": ", name);
 
   if (shape.empty()) {
-    // If we have an empty shape, this is a scalar input,
-    // Since all the input output of CoreML EP is MultiArray, we will make the scalar input output as a {1} MultiArray
+    // If we have an empty shape, this is a scalar
+    // Since all the input/output of CoreML EP is MultiArray, we will make the scalar input/output a {1} MultiArray
     shape.push_back(1);
 
-    // we need to change the shapes of these scalar outputs back to {} when CoreML EP returns these values to ORT
+    // we need to change the shapes of scalar outputs back to {} when CoreML EP returns values to ORT
     if (!is_input) {
       AddScalarOutput(name);
     }
@@ -713,13 +836,20 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
-    MILSpec::Function& main = (*coreml_model_->mutable_mlprogram()->mutable_functions())["main"];
     if (is_input) {
-      // the model inputs need to be wired up as args to the 'main' function
-      main.mutable_inputs()->Add(CreateNamedTensorValueType(node_arg));
+      // the model inputs need to be wired up as args to the 'main' function.
+      auto tensor_value_type = CreateNamedTensorValueType(node_arg);
+      tensor_value_type.set_name(name);
+      if (node_arg.Shape()->dim_size() == 0) {
+        // update shape from {} to {1} (same change we made at the model input level above).
+        tensor_value_type.mutable_type()->mutable_tensortype()->set_rank(1);
+        tensor_value_type.mutable_type()->mutable_tensortype()->add_dimensions()->mutable_constant()->set_size(1);
+      }
+
+      mlprogram_main_fn_->mutable_inputs()->Add(std::move(tensor_value_type));
     } else {
       // the model outputs need to be set as outputs of the Block for the 'main' function
-      *mlprogram_main_->mutable_outputs()->Add() = node_arg.Name();
+      *mlprogram_main_block_->mutable_outputs()->Add() = name;
     }
   }
 #endif  // defined(COREML_ENABLE_MLPROGRAM)
@@ -744,7 +874,7 @@ Status ModelBuilder::ProcessNodes() {
       // This shouldn't happen as this is called from CoreMLExecutionProvider::Compile and should only be processing
       // nodes that we said were supported and were returned from CoreMLExecutionProvider::GetCapability.
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Node [", node.Name(), "], type [", node.OpType(), "] is not supported");
+                             "Node [", node.Name(), "], type [", node.OpType(), "] was not able to be processed");
     }
   }
 
@@ -766,6 +896,12 @@ Status ModelBuilder::CreateModel() {
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(ProcessNodes());
   ORT_RETURN_IF_ERROR(RegisterModelOutputs());
+
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (create_ml_program_) {
+    SanitizeNames();
+  }
+#endif
 
   return Status::OK();
 }
@@ -795,7 +931,7 @@ Status ModelBuilder::SaveModel() {
 #if defined(COREML_ENABLE_MLPROGRAM)
   // need to delete the ModelPackage instance for it to write out the manifest. clear out the other ML Program
   // related types as well.
-  mlprogram_main_ = nullptr;
+  mlprogram_main_block_ = nullptr;
   mlpackage_.reset();
   weights_file_writer_.reset();
 #endif
@@ -804,11 +940,51 @@ Status ModelBuilder::SaveModel() {
 }
 
 Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
-  model = std::make_unique<Model>(model_output_path_,
-                                  std::move(input_output_info_),
-                                  std::move(scalar_outputs_),
-                                  std::move(int64_outputs_),
-                                  logger_, coreml_flags_);
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (create_ml_program_) {
+    // we need to provide the sanitized names for model inputs/outputs so that info is captured.
+    // the input/output matching when we execute the model from the CoreML EP is based on order, so the change
+    // to the names doesn't matter for that.
+    auto get_sanitized_names = [this](std::vector<std::string>&& names) -> std::vector<std::string> {
+      std::vector<std::string> output(std::move(names));
+
+      for (std::string& name : output) {
+        name = GetSafeName(name);
+      }
+
+      return output;
+    };
+
+    // also need to update the keys in input_output_info_
+    auto get_sanitized_io_info = [this](std::unordered_map<std::string, OnnxTensorInfo>&& info) {
+      std::unordered_map<std::string, OnnxTensorInfo> output;
+      output.reserve(info.size());
+
+      for (auto entry = info.begin(), end = info.end(); entry != end; ++entry) {
+        output.emplace(GetSafeName(entry->first), std::move(entry->second));
+      }
+
+      return output;
+    };
+
+    model = std::make_unique<Model>(model_output_path_,
+                                    get_sanitized_names(std::move(onnx_input_names_)),
+                                    get_sanitized_names(std::move(onnx_output_names_)),
+                                    get_sanitized_io_info(std::move(input_output_info_)),
+                                    std::move(scalar_outputs_),
+                                    std::move(int64_outputs_),
+                                    logger_, coreml_flags_);
+  } else
+#endif
+  {
+    model = std::make_unique<Model>(model_output_path_,
+                                    std::move(onnx_input_names_),
+                                    std::move(onnx_output_names_),
+                                    std::move(input_output_info_),
+                                    std::move(scalar_outputs_),
+                                    std::move(int64_outputs_),
+                                    logger_, coreml_flags_);
+  }
 
   return model->LoadModel();  // load using CoreML API, including compilation
 }
@@ -816,8 +992,11 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
 // static
 Status ModelBuilder::Build(const GraphViewer& graph_viewer, const logging::Logger& logger,
                            int32_t coreml_version, uint32_t coreml_flags,
+                           std::vector<std::string>&& onnx_input_names,
+                           std::vector<std::string>&& onnx_output_names,
                            std::unique_ptr<Model>& model) {
-  ModelBuilder builder(graph_viewer, logger, coreml_version, coreml_flags);
+  ModelBuilder builder(graph_viewer, logger, coreml_version, coreml_flags,
+                       std::move(onnx_input_names), std::move(onnx_output_names));
 
   ORT_RETURN_IF_ERROR(builder.CreateModel());
   ORT_RETURN_IF_ERROR(builder.SaveModel());
@@ -847,20 +1026,31 @@ void ModelBuilder::AddInputToSkip(const std::string& input_name) {
   skipped_inputs_.insert(input_name);
 }
 
-std::string ModelBuilder::GetUniqueName(std::string_view base_name) {
-  std::string unique_name;
-  do {
-    std::ostringstream os;
-    os << base_name << "_token_" << name_token_++;
-    unique_name = os.str();
-  } while (Contains(unique_names_, unique_name));
+const std::string& ModelBuilder::GetUniqueName(const std::string& base_name) {
+  if (unique_names_.find(base_name) == unique_names_.end()) {
+    return *unique_names_.insert(base_name).first;
+  }
 
-  return unique_name;
+  std::string unique_name;
+  std::string suffix;
+
+  // supports up to 1000 unique names without having to grow in the loop
+  unique_name.reserve(base_name.size() + 5);
+  unique_name = base_name;
+
+  while (Contains(unique_names_, unique_name)) {
+    // assign followed by += to avoid creating temporary strings.
+    unique_name = base_name;
+    unique_name += "__";
+    unique_name += std::to_string(name_token_++);
+  }
+
+  return *unique_names_.insert(unique_name).first;
 }
 
-std::string ModelBuilder::GetUniqueName(const Node& node, std::string_view suffix) {
+const std::string& ModelBuilder::GetUniqueName(const Node& node, std::string_view suffix) {
   if (node.Name().empty()) {
-    return GetUniqueName(MakeString("Node_", node.Index(), "_", node.OpType(), suffix));
+    return GetUniqueName(MakeString(node.OpType(), "_", node.Index(), suffix));
   } else {
     return GetUniqueName(node.Name() + std::string(suffix));
   }

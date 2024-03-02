@@ -24,6 +24,7 @@ class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareF
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
 class contrib__AdamWOptimizerBase__Prepare;
 class contrib__SGDOptimizerV2Base__Prepare;
+class UpsampleBase;
 
 using PadsVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize * 2>;
 
@@ -201,6 +202,10 @@ struct ProviderHostCPU {
   virtual void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) = 0;
   virtual Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) = 0;
   virtual Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
+
+  virtual void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
+                                                      gsl::span<const int64_t> input_dims,
+                                                      InlinedVector<float>& scales) const = 0;
 
 #ifdef ENABLE_ATEN
   virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;
