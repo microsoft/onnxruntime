@@ -16,7 +16,6 @@
 #include "core/framework/endian_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
-#include "onnx/checker.h"
 
 namespace onnxruntime {
 namespace test {
@@ -97,7 +96,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
 
   // bad model paths
   EXPECT_THROW(Initializer i(tensor_proto_base, Path{}), OnnxRuntimeException);
-  EXPECT_THROW(Initializer i(tensor_proto_base, Path::Parse(ToPathString("invalid/directory"))), ONNX_NAMESPACE::checker::ValidationError);
+  EXPECT_THROW(Initializer i(tensor_proto_base, Path::Parse(ToPathString("invalid/directory"))), OnnxRuntimeException);
 
   // bad length
   {
