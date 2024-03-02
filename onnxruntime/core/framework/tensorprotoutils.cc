@@ -27,8 +27,6 @@
 #include "core/framework/to_tensor_proto_element_type.h"
 #include "core/session/ort_apis.h"
 #include "onnx/defs/tensor_proto_util.h"
-#include "onnx/checker.h"
-#include "onnx/common/path.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -90,52 +88,98 @@ bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
   return !(l == r);
 }
-
-#ifdef _WIN32
-namespace checker {
-std::wstring resolve_external_data_location(
-    const std::wstring& base_dir,
-    const std::wstring& location,
-    const std::string& tensor_name) {
-  auto file_path = std::filesystem::path(location);
-  if (file_path.is_absolute()) {
-    fail_check(
-        "Location of external TensorProto ( tensor name: ",
-        tensor_name,
-        ") should be a relative path, but it is an absolute path: ",
-        wstring_to_utf8str(location));
-  }
-  auto relative_path = file_path.lexically_normal().make_preferred().wstring();
-  // Check that normalized relative path contains ".." on Windows.
-  if (relative_path.find(L"..", 0) != std::string::npos) {
-    fail_check(
-        "Data of TensorProto ( tensor name: ",
-        tensor_name,
-        ") should be file inside the ",
-        wstring_to_utf8str(base_dir),
-        ", but the '",
-        wstring_to_utf8str(location),
-        "' points outside the directory");
-  }
-  std::wstring data_path = onnxruntime::ConcatPathComponent(base_dir, relative_path);
-  struct _stat64 buff;
-  if (data_path.empty() || (data_path[0] != '#' && _wstat64(data_path.c_str(), &buff) != 0)) {
-    fail_check(
-        "Data of TensorProto ( tensor name: ",
-        tensor_name,
-        ") should be stored in ",
-        wstring_to_utf8str(location),
-        ", but it doesn't exist or is not accessible.");
-  }
-  return data_path;
-}
-}  // namespace checker
-#endif  // _WIN32
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 namespace {
-
+template <typename T>
+T resolve_external_data_location(
+    const T& base_dir,
+    const T& location,
+    const std::string& tensor_name) {
+  if constexpr (std::is_same_v<T, std::wstring>) {
+    auto file_path = std::filesystem::path(location);
+    if (file_path.is_absolute()) {
+      ORT_THROW(
+          "Location of external TensorProto ( tensor name: ",
+          tensor_name,
+          ") should be a relative path, but it is an absolute path: ",
+          ToUTF8String(location));
+    }
+    auto relative_path = file_path.lexically_normal().make_preferred().wstring();
+    // Check that normalized relative path contains ".." on Windows.
+    if (relative_path.find(L"..", 0) != std::string::npos) {
+      ORT_THROW(
+          "Data of TensorProto ( tensor name: ",
+          tensor_name,
+          ") should be file inside the ",
+          ToUTF8String(base_dir),
+          ", but the '",
+          ToUTF8String(location),
+          "' points outside the directory");
+    }
+    std::wstring data_path = onnxruntime::ConcatPathComponent(base_dir, relative_path);
+    struct _stat64 buff;
+    if (data_path.empty() || (data_path[0] != '#' && _wstat64(data_path.c_str(), &buff) != 0)) {
+      ORT_THROW(
+          "Data of TensorProto ( tensor name: ",
+          tensor_name,
+          ") should be stored in ",
+          ToUTF8String(location),
+          ", but it doesn't exist or is not accessible.");
+    }
+    return data_path;
+  }
+  else if constexpr (std::is_same_v<T, std::string>) {
+    if (location.empty()) {
+      ORT_THROW("Location of external TensorProto ( tensor name: ", tensor_name, ") should not be empty.");
+    } else if (location[0] == '/') {
+      ORT_THROW(
+          "Location of external TensorProto ( tensor name: ",
+          tensor_name,
+          ") should be a relative path, but it is an absolute path: ",
+          location);
+    }
+    std::string relative_path = clean_relative_path(location);
+    // Check that normalized relative path contains ".." on POSIX
+    if (relative_path.find("..", 0) != std::string::npos) {
+      ORT_THROW(
+          "Data of TensorProto ( tensor name: ",
+          tensor_name,
+          ") should be file inside the ",
+          base_dir,
+          ", but the '",
+          location,
+          "' points outside the directory");
+    }
+    std::string data_path = path_join(base_dir, relative_path);
+    // use stat64 to check whether the file exists
+#if defined(__APPLE__) || defined(__wasm__) || !defined(__GLIBC__)
+    struct stat buffer;  // APPLE, wasm and non-glic stdlibs do not have stat64
+    if (data_path.empty() || (data_path[0] != '#' && stat((data_path).c_str(), &buffer) != 0)) {
+#else
+    struct stat64 buffer;  // All POSIX under glibc except APPLE and wasm have stat64
+    if (data_path.empty() || (data_path[0] != '#' && stat64((data_path).c_str(), &buffer) != 0)) {
+#endif
+      ORT_THROW(
+          "Data of TensorProto ( tensor name: ",
+          tensor_name,
+          ") should be stored in ",
+          location,
+          ", but it doesn't exist or is not accessible.");
+    }
+    // Do not allow symlinks or directories.
+    if (data_path.empty() || (data_path[0] != '#' && !S_ISREG(buffer.st_mode))) {
+      ORT_THROW(
+          "Data of TensorProto ( tensor name: ",
+          tensor_name,
+          ") should be stored in ",
+          data_path,
+          ", but it is not regular file.");
+    }
+    return data_path;
+  }
+}
 // This function doesn't support string tensors
 static Status UnpackTensorWithRawDataImpl(const void* raw_data, size_t raw_data_len,
                                           size_t expected_num_elements, size_t element_size,
@@ -187,7 +231,7 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
     external_file_path = location;
   } else {
     if (tensor_proto_dir != nullptr) {
-      external_file_path = ONNX_NAMESPACE::checker::resolve_external_data_location(
+      external_file_path = resolve_external_data_location(
           std::basic_string<ORTCHAR_T>(tensor_proto_dir), external_data_info->GetRelPath(), tensor_proto.name());
     } else {
       external_file_path = external_data_info->GetRelPath();
