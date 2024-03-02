@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
 #include <cstdint>
