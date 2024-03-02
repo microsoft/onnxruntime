@@ -3008,7 +3008,11 @@ TEST(InferenceSessionTests, ModelWithAbsolutePathForExternalTensorData) {
   so.session_logid = "InferenceSessionTests.ModelWithAbsolutePathForExternalTensorData";
 
   InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load("testdata/model_with_absolute_path_for_external_tensor_data.onnx"));
+#ifdef _WIN32_
+  ASSERT_STATUS_OK(session_object.Load("testdata/model_with_windows_absolute_path_for_external_tensor_data.onnx"));
+#else
+  ASSERT_STATUS_OK(session_object.Load("testdata/model_with_linux_absolute_path_for_external_tensor_data.onnx"));
+#endif
   common::Status st = session_object.Initialize();
 
   ASSERT_FALSE(st.IsOK());

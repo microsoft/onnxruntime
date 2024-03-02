@@ -2124,14 +2124,5 @@ TEST_F(GraphTest, SubgraphOutputIsOuterScopeValue) {
               ::testing::ContainsRegex("Subgraph output \\(.*\\) is an outer scope value being returned directly."));
 }
 
-TEST_F(GraphTest, ModelWithAbsolutePathForExternalTensorData) {
-  std::shared_ptr<Model> model;
-  common::Status st = Model::Load(ORT_TSTR("C:/Users/liqfu/Downloads/model_with_absolute_path_for_external_tensor_data.onnx"), model, nullptr, *logger_);
-  common::Status st2 = Model::Save(*model, std::string("C:/Users/liqfu/Downloads/model_with_absolute_path_for_external_tensor_data_save.onnx"));
-  ASSERT_FALSE(st.IsOK());
-  EXPECT_THAT(st.ErrorMessage(),
-              ::testing::ContainsRegex("Subgraph output \\(.*\\) is an outer scope value being returned directly."));
-}
-
 }  // namespace test
 }  // namespace onnxruntime
