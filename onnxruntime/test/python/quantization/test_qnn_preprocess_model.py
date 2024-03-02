@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 
+import onnxruntime
 from onnxruntime.quantization.execution_providers.qnn import qnn_preprocess_model
 from onnxruntime.quantization.quant_utils import model_has_external_data, ms_domain
 
@@ -164,6 +165,98 @@ class TestQnnPreprocessModel(unittest.TestCase):
         expected_op_types = {"Gelu", "LpNormalization", "LayerNormalization"}
         for node in fused_model.graph.node:
             self.assertIn(node.op_type, expected_op_types)
+
+    def build_multi_input_output_model(self, shape):
+        """
+        Returns the following model.
+                               +----------> [X]
+                               |
+        [A] ---> Add ---> Abs -+-> Mul ---> [Y]
+                  ^                 ^
+                  |                 |
+        [B] ------+-----------------+
+        """
+        input_a = onnx.helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, shape)
+        input_b = onnx.helper.make_tensor_value_info("B", onnx.TensorProto.FLOAT, shape)
+        output_x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, shape)
+        output_y = onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, shape)
+
+        add_node = onnx.helper.make_node("Add", ["A", "B"], ["add_out"], name="add_node")
+        abs_node = onnx.helper.make_node("Abs", ["add_out"], ["X"], name="abs_node")
+        mul_node = onnx.helper.make_node("Mul", ["X", "B"], ["Y"], name="mul_node")
+
+        graph = onnx.helper.make_graph(
+            [add_node, abs_node, mul_node],
+            "multi_io_graph",
+            [input_a, input_b],
+            [output_x, output_y],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        return onnx.shape_inference.infer_shapes(model)
+
+    def test_make_io_channel_last(self):
+        """
+        Test making a model's inputs and outputs channel-last.
+        """
+        model = self.build_multi_input_output_model((1, 2, 3, 4))
+        onnx.save_model(model, "model.onnx")
+        modified = qnn_preprocess_model(
+            "model.onnx",
+            "model.qnn_pp.onnx",
+            inputs_to_make_channel_last=["A", "B"],
+            outputs_to_make_channel_last=["X", "Y"],
+        )
+
+        self.assertTrue(modified)
+
+        preproc_model = onnx.load_model("model.qnn_pp.onnx")
+        self.assertEqual(len(preproc_model.graph.node), 7)
+
+        num_transposes = sum(1 for node in preproc_model.graph.node if node.op_type == "Transpose")
+        self.assertEqual(num_transposes, 4)
+
+        # Check that the outputs of the new model are the same, but transposed.
+        input_a = np.arange(0.0, 24.0, 1.0, dtype=np.float32).reshape((1, 2, 3, 4))
+        input_a_t = input_a.transpose(0, 2, 3, 1)
+        input_b = np.arange(1.0, 25.0, 1.0, dtype=np.float32).reshape((1, 2, 3, 4))
+        input_b_t = input_b.transpose(0, 2, 3, 1)
+
+        orig_session = onnxruntime.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        orig_results = orig_session.run(None, {"A": input_a, "B": input_b})
+
+        new_session = onnxruntime.InferenceSession(
+            preproc_model.SerializeToString(), providers=["CPUExecutionProvider"]
+        )
+        new_results = new_session.run(None, {"A": input_a_t, "B": input_b_t})
+
+        self.assertEqual(len(orig_results), len(new_results))
+        for idx, orig_output in enumerate(orig_results):
+            transposed_output = new_results[idx]
+            np.testing.assert_allclose(
+                orig_output,
+                transposed_output.transpose(0, 3, 1, 2),
+                err_msg=f"Channel-last model output {idx} differs",
+            )
+
+    def test_make_io_channel_last_rank_error(self):
+        """
+        Test making a model's inputs and outputs channel-last with a rank < 3 (error).
+        """
+        model = self.build_multi_input_output_model((1, 2))
+        onnx.save_model(model, "model.onnx")
+
+        with self.assertRaises(ValueError) as context:
+            qnn_preprocess_model(
+                "model.onnx",
+                "model.qnn_pp.onnx",
+                inputs_to_make_channel_last=["A", "B"],
+                outputs_to_make_channel_last=["X", "Y"],
+            )
+
+        self.assertIn("to be of rank >= 3", str(context.exception))
 
 
 if __name__ == "__main__":
