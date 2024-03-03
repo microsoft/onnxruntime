@@ -169,7 +169,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     }
   };
 
-  int nodes_processed = 0;
+  size_t nodes_processed = 0;
 
   while (!nodes_to_process.empty() || !nodes_to_process_with_next_group.empty()) {
     if (nodes_to_process.empty()) {
