@@ -34,6 +34,7 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | CumSum | ai.onnx(11-13,14+) |  |
+| DepthToSpace | ai.onnx(11-12,13+); com.ms.internal.nhwc(11-12,13+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
 | Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
