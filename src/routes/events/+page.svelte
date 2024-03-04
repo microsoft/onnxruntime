@@ -28,7 +28,7 @@
 	let videos = [
 		{
 			title: 'Workshop: LLMs Fine Tuning and Inferencing Using ONNXRuntime',
-			link: 'https://www.youtube.com/embed/lOp8WK0fa94?si=rHn8fxAii3Ksr8Ey'
+			link: 'https://www.youtube-nocookie.com/embed/lOp8WK0fa94?si=rHn8fxAii3Ksr8Ey'
 		}
 	];
 </script>
