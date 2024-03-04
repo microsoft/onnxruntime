@@ -13,6 +13,12 @@ export declare namespace Env {
     'ort-wasm-simd-threaded.wasm'?: string;
     /* eslint-enable @typescript-eslint/naming-convention */
   };
+  export type WorkerPaths = string | {
+    /* eslint-disable @typescript-eslint/naming-convention */
+    'ort-wasm-threaded-main-script'?: string;
+    'ort-wasm-threaded-worker-script'?: string;
+    /* eslint-enable @typescript-eslint/naming-convention */
+  };
   export interface WebAssemblyFlags {
     /**
      * set or get number of thread(s). If omitted or set to 0, number of thread(s) will be determined by system. If set
@@ -61,6 +67,12 @@ export declare namespace Env {
      * @defaultValue `false`
      */
     proxy?: boolean;
+
+    /**
+     * Set a custom URL to the threaded main and worker js scripts. If not set, blob: URL will be used to load worker.
+     * Useful when your host CSP policy doesn't allow blob: URL to load worker code.
+     */
+    workerPaths?: WorkerPaths;
   }
 
   export interface WebGLFlags {
