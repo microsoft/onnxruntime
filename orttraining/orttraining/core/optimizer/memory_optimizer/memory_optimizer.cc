@@ -167,11 +167,30 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
                   .IsOK());
 
   // The second pass - apply the transformation.
-  // Iterate through the nodes in reversed topological order and find the subgraph that can be alleviated.
+  // Note 1: Iterate through the nodes in reversed topological order and find the subgraph that can be alleviated.
   // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
   // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
   // layers.
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  //
+  // Note 2: Use default order which tries to BFS from the outputs, so the nearest node to graph output will be visited first.
+  // Imagine there is a such subgraph
+  // labels-------------
+  //    \              |
+  //    node1          |
+  //      \            |
+  //      node2        |
+  //        \          |
+  //       YieldOp  node1_recompute
+  //         |      /
+  //       node2_grad
+  //           |
+  // In PriorityBased order, node1_recompute will be visited first, recompute node will be added at last because we
+  // do this following reversed topological order. Then node1_recompute node will have lowest priority to execute.
+  // If at this time, the queue to visit contains only recompute nodes, then node1_recompute will be run at last,
+  // affecting the backward critical path, which is not what we want.
+  // Current workaround is to use default order, which will execute node1 right before node2 in this case.
+
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) {
