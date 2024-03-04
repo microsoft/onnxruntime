@@ -68,8 +68,15 @@ bool LabelEncoderFusion::SatisfyCondition(const Graph& graph, const Node& node, 
   }
 
   // Is one of the supported operations
-  return IsValidForFusion<std::string, int64_t, std::string>(node, next_node) ||
-         IsValidForFusion<std::string, std::string, std::string>(node, next_node);
+  return 
+		IsValidForFusion<std::string, std::string, std::string>(node, next_node) ||
+		IsValidForFusion<std::string, std::string, int64_t>(node, next_node) ||
+		IsValidForFusion<std::string, int64_t, std::string>(node, next_node) ||
+		IsValidForFusion<std::string, int64_t, int64_t>(node, next_node) ||
+		IsValidForFusion<int64_t, std::string, std::string>(node, next_node) ||
+		IsValidForFusion<int64_t, std::string, int64_t>(node, next_node) ||
+		IsValidForFusion<int64_t, int64_t, std::string>(node, next_node) ||
+		IsValidForFusion<int64_t, int64_t, int64_t>(node, next_node);
 }
 
 /**
@@ -149,8 +156,14 @@ Status LabelEncoderFusion::ApplyHelper(
 Status LabelEncoderFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
   auto& next_node = *graph.GetNode(node.OutputNodesBegin()->Index());
 
-  FUSE_IF_VALID(std::string, int64_t, std::string);
   FUSE_IF_VALID(std::string, std::string, std::string);
+  FUSE_IF_VALID(std::string, std::string, int64_t);
+  FUSE_IF_VALID(std::string, int64_t, std::string);
+  FUSE_IF_VALID(std::string, int64_t, int64_t);
+  FUSE_IF_VALID(int64_t, std::string, std::string);
+  FUSE_IF_VALID(int64_t, std::string, int64_t);
+  FUSE_IF_VALID(int64_t, int64_t, std::string);
+  FUSE_IF_VALID(int64_t, int64_t, int64_t);
 
   return Status::OK();
 }
