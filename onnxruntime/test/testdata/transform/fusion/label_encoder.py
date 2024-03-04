@@ -2,7 +2,6 @@ from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
-
 opsets = []
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 19
@@ -46,19 +45,19 @@ def GenerateModel(model_name):  # noqa: N802
             values_strings=["a", "b", "c"],
             default_string="default",
         ),
-        # string -> int -> string
+        # string -> string -> string
         helper.make_node(
             "LabelEncoder",
             ["A"],
-            ["le_2_int_1"],
-            "le_2_int_1",
+            ["le_2_string_1"],
+            "le_2_string_1",
             domain="ai.onnx.ml",
             keys_strings=["a", "b", "c"],
             values_strings=["3", "2", "1"],
         ),
         helper.make_node(
             "LabelEncoder",
-            ["le_2_int_1"],
+            ["le_2_string_1"],
             ["le_2_string_2"],
             "le_2_string_2",
             domain="ai.onnx.ml",
@@ -66,27 +65,37 @@ def GenerateModel(model_name):  # noqa: N802
             values_strings=["a", "b", "c"],
             default_string="default",
         ),
-        # middle encoder is graph output
+        # string -> string -> int -> string
         helper.make_node(
             "LabelEncoder",
             ["A"],
-            ["le_3_int_1"],
-            "le_3_int_1",
+            ["le_3_string_1"],
+            "le_3_string_1",
             domain="ai.onnx.ml",
             keys_strings=["a", "b", "c"],
-            values_int64s=[0, 1, 2],
+            values_strings=["3", "2", "1"],
         ),
         helper.make_node(
             "LabelEncoder",
-            ["le_3_int_1"],
-            ["le_3_string_2"],
-            "le_3_string_2",
+            ["le_3_string_1"],
+            ["le_3_int_2"],
+            "le_3_int_2",
             domain="ai.onnx.ml",
-            keys_int64s=[0, 1, 2],
-            values_strings=["a", "b", "c"],
+            keys_strings=["2", "1", "0"],
+            values_int64s=[1, 2, 3],
+            default_int64=-1,
         ),
-        helper.make_node("Identity", ["le_3_int_1"], ["Y"], "output"),
-        # middle encoder is consumed twice
+        helper.make_node(
+            "LabelEncoder",
+            ["le_3_int_2"],
+            ["le_3_string_3"],
+            "le_3_string_3",
+            domain="ai.onnx.ml",
+            keys_int64s=[1, 2, 3],
+            values_strings=["1", "2", "3"],
+            default_string="default",
+        ),
+        # middle encoder is graph output
         helper.make_node(
             "LabelEncoder",
             ["A"],
@@ -105,7 +114,27 @@ def GenerateModel(model_name):  # noqa: N802
             keys_int64s=[0, 1, 2],
             values_strings=["a", "b", "c"],
         ),
-        helper.make_node("Mul", ["le_4_int_1", "le_4_int_1"], ["mul_2"], "mul_2"),
+        helper.make_node("Identity", ["le_4_int_1"], ["Y"], "output"),
+        # middle encoder is consumed twice
+        helper.make_node(
+            "LabelEncoder",
+            ["A"],
+            ["le_5_int_1"],
+            "le_5_int_1",
+            domain="ai.onnx.ml",
+            keys_strings=["a", "b", "c"],
+            values_int64s=[0, 1, 2],
+        ),
+        helper.make_node(
+            "LabelEncoder",
+            ["le_5_int_1"],
+            ["le_5_string_2"],
+            "le_5_string_2",
+            domain="ai.onnx.ml",
+            keys_int64s=[0, 1, 2],
+            values_strings=["a", "b", "c"],
+        ),
+        helper.make_node("Mul", ["le_5_int_1", "le_5_int_1"], ["mul_5"], "mul_5"),
     ]
 
     inputs = [  # inputs
@@ -119,8 +148,10 @@ def GenerateModel(model_name):  # noqa: N802
         [  # outputs
             helper.make_tensor_value_info("le_1_string_2", TensorProto.STRING, ["M", "K"]),
             helper.make_tensor_value_info("le_2_string_2", TensorProto.STRING, ["M", "K"]),
-            helper.make_tensor_value_info("le_3_string_2", TensorProto.STRING, ["M", "K"]),
+            helper.make_tensor_value_info("le_3_string_3", TensorProto.STRING, ["M", "K"]),
+            helper.make_tensor_value_info("le_4_string_2", TensorProto.STRING, ["M", "K"]),
             helper.make_tensor_value_info("Y", TensorProto.INT64, ["M", "K"]),
+            helper.make_tensor_value_info("mul_5", TensorProto.INT64, ["M", "K"]),
         ],
         [],
     )

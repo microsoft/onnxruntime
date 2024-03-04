@@ -1907,7 +1907,7 @@ TEST_F(GraphTransformationTests, LabelEncoderFusion) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["ai.onnx.ml.LabelEncoder"] == 8);
+  ASSERT_TRUE(op_to_count["ai.onnx.ml.LabelEncoder"] == 11);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
@@ -1916,7 +1916,7 @@ TEST_F(GraphTransformationTests, LabelEncoderFusion) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["ai.onnx.ml.LabelEncoder"] == 6);
+  ASSERT_TRUE(op_to_count["ai.onnx.ml.LabelEncoder"] == 7);
 }
 
 TEST_F(GraphTransformationTests, NotWhereFusion) {

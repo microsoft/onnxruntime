@@ -92,7 +92,7 @@ Status LabelEncoderFusion::ApplyHelper(
   ProtoHelperNodeContext node_helper_ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> node_helper(&node_helper_ctx);
 
-  ProtoHelperNodeContext next_node_helper_ctx(node);
+  ProtoHelperNodeContext next_node_helper_ctx(next_node);
   OpNodeProtoHelper<ProtoHelperNodeContext> next_node_helper(&next_node_helper_ctx);
 
   const std::vector<T1> node_keys =
