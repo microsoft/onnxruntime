@@ -473,7 +473,8 @@ bool CUDAExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 }
 
 Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id) {
-  // SetAnnotationId is not needed here
+  // SetAnnotationId may not need here since IsGraphCaptured() is called before it.
+  // But it is better to keep it here to make sure the graph_annotation_id is set correctly.
   ORT_RETURN_IF_ERROR(GetPerThreadContext().SetCudaGraphAnnotationId(graph_annotation_id));
   return GetPerThreadContext().ReplayGraph();
 }

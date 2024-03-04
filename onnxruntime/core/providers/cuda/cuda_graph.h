@@ -24,7 +24,7 @@ struct CudaGraphSet {
   void Clear();
   bool Contains(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
   void Put(CudaGraphAnnotation_t cuda_graph_annotation_id, cudaGraphExec_t graph_exec);
-  cudaGraphExec_t Get(CudaGraphAnnotation_t cuda_graph_annotation_id);
+  cudaGraphExec_t Get(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
 
  private:
   CudaGraphSet_t cuda_graphs_;

@@ -29,7 +29,7 @@ void CudaGraphSet::Put(CudaGraphAnnotation_t cuda_graph_annotation_id, cudaGraph
   cuda_graphs_.emplace(cuda_graph_annotation_id, graph_exec);
 }
 
-cudaGraphExec_t CudaGraphSet::Get(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+cudaGraphExec_t CudaGraphSet::Get(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
   ORT_ENFORCE(Contains(cuda_graph_annotation_id));
   return cuda_graphs_.at(cuda_graph_annotation_id);
 }
