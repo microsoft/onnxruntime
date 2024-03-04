@@ -619,6 +619,10 @@ TEST(GradientCheckerTest, ReduceSumGrad) {
   OpDef op_def_13{"ReduceSum", kOnnxDomain, 13};
 
   RunReductionTests(op_def_13, true, true);
+
+  OpDef op_def_18{"ReduceSum", kOnnxDomain, 18};
+
+  RunReductionTests(op_def_18, true, true);
 }
 
 TEST(GradientCheckerTest, ReduceL2Grad) {
