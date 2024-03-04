@@ -146,8 +146,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     CONTINUE_IF_NULL(node);
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-    if (node->OpType() != "STFT" ||
-        !graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
+    if (node->OpType() != "STFT") {
       continue;
     }
 

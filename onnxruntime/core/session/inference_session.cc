@@ -1761,7 +1761,7 @@ common::Status InferenceSession::Initialize() {
         if (is_mcdm_device) {
           const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
           auto stft_decomposition_transformer = std::make_unique<STFTDecomposition>(dml_ep);
-          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(stft_decomposition_transformer), onnxruntime::TransformerLevel::Level2));
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(stft_decomposition_transformer), onnxruntime::TransformerLevel::Level1));
         }
       }
 #endif

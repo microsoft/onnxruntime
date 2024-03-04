@@ -344,8 +344,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
-      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
-                                                                  session_options.config_options));
 
 #ifdef MLAS_TARGET_AMD64_IX86
       if (avx2_precision_mode) {
