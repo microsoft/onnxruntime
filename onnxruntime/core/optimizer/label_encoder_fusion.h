@@ -25,7 +25,8 @@ class LabelEncoderFusion : public RewriteRule {
   bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
   Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 
-	template<class T1, class T2, class T3>
-  Status ApplyHelper(Graph &graph, Node &node, Node &next_node, RewriteRuleEffect& rule_effect) const; };
+  template <class T1, class T2, class T3>
+  Status ApplyHelper(Graph& graph, Node& node, Node& next_node, RewriteRuleEffect& rule_effect) const;
+};
 
 }  // namespace onnxruntime
