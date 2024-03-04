@@ -670,17 +670,6 @@ class InferenceSession {
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
   /*
-   * Validate and parses the graph annotation string
-   * The string should be in the format of int.
-   * Set the graph_annotation_id to the parsed value.
-   * If value is -1, skip the graph capture/replay
-   * Value 0 is reserved for the default graph capture/replay
-   * and not allowed to be used by the user.
-   */
-  [[nodiscard]] common::Status ValidateAndParseGraphAnotationString(const std::string& graph_annotation_string,
-                                                                    /*out*/ int& graph_annotation_id) const;
-
-  /*
    * Validate and parses the shrink arena request string from the user
    * List format: "device_0:device_id_0;device_1:device_id_1"
    * If we encounter an invalid request, we return an error

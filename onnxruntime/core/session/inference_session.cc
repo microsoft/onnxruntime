@@ -2387,7 +2387,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
   const std::string& graph_annotation_str =
       run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "");
   if (!graph_annotation_str.empty()) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseGraphAnotationString(graph_annotation_str, graph_annotation_id));
+    if (!TryParseStringWithClassicLocale<int>(graph_annotation_str, graph_annotation_id)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse the cuda graph annotation id: ", 
+                             graph_annotation_str);
+    }
   }
 
   // Increment/decrement concurrent_num_runs_ and control
@@ -2872,25 +2875,6 @@ Status InferenceSession::SetTuningResults(
 
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
   return session_state_->GetAllocator(mem_info);
-}
-
-common::Status InferenceSession::ValidateAndParseGraphAnotationString(const std::string& graph_annotation_string,
-                                                                      /*out*/ int& graph_annotation_id) const {
-  Status retval = Status::OK();
-  ORT_TRY {
-    graph_annotation_id = std::stoi(graph_annotation_string);
-  }
-  ORT_CATCH(const std::exception&) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      retval = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Expect the graph annotation to be an integer");
-    });
-  }
-  if (graph_annotation_id == 0) {
-    retval = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Expect the graph annotation to be non-zero");
-  }
-  return retval;
 }
 
 common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::string& ort_device_list,

@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
+#include "core/common/parse_string.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -207,13 +208,9 @@ Status CUDAExecutionProvider::PerThreadContext::SetCudaGraphAnnotationId(
   // If graph annotation is not provided, fall back to the one cuda graph per session behavior
   CudaGraphAnnotation_t cuda_graph_annotation_id = 0;
   if (graph_annotation_str.has_value()) {
-    ORT_TRY {
-      cuda_graph_annotation_id = std::stoi(graph_annotation_str.value());
-    }
-    ORT_CATCH(const std::invalid_argument&) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Invalid graph annotation id: " + graph_annotation_str.value() +
-                        ". Please provide integer value for graph annotation id.");
+    if(!TryParseStringWithClassicLocale(*graph_annotation_str, cuda_graph_annotation_id)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, 
+                             "Failed to parse the cuda graph annotation id: ", *graph_annotation_str);
     }
   }
 
@@ -464,7 +461,7 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunO
 }
 
 bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
-  return info_.enable_cuda_graph && GetPerThreadContext().IsGraphCaptureAllowedOnRun();
+  return info_.enable_cuda_graph;
 }
 
 bool CUDAExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
