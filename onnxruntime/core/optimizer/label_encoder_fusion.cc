@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/label_encoder_fusion.h"
+#include <sys/_types/_pid_t.h>
 #include <iostream>
 
 #include "core/framework/op_node_proto_helper.h"
@@ -14,15 +15,35 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-#define LABEL_ENCODER_VALID_FOR_FUSING(from, mid, to)                              \
-  node.GetAttributes().find("keys_" from) != node.GetAttributes().end() &&         \
-      node.GetAttributes().find("values_" mid) != node.GetAttributes().end() &&    \
-      next_node.GetAttributes().find("keys_" mid) != node.GetAttributes().end() && \
-      next_node.GetAttributes().find("values_" to) != node.GetAttributes().end()
+#define KEYS_ATTR_NAME(T) ("keys_" + GetTypename<T>() + "s")
+#define VALUES_ATTR_NAME(T) ("values_" + GetTypename<T>() + "s")
+#define DEFAULT_VALUE_ATTR_NAME(T) ("default_" + GetTypename<T>())
 
-#define KEYS_ATTR_NAME(T) ("keys_" + getTypeNameString<T>() + "s")
-#define VALUES_ATTR_NAME(T) ("values_" + getTypeNameString<T>() + "s")
-#define DEFAULT_VALUE_ATTR_NAME(T) ("default_" + getTypeNameString<T>())
+// May be needed somewhere else
+// Think about moving into utils
+template <typename>
+[[maybe_unused]] constexpr bool false_for_T = false;
+
+template <typename T>
+constexpr std::string GetTypename() {
+  if constexpr (std::is_same<T, int64_t>()) {
+    return "int64";
+  } else if constexpr (std::is_same<T, std::string>()) {
+    return "string";
+  } else if constexpr (std::is_same<T, float>()) {
+    return "float";
+  } else {
+    static_assert(false_for_T<T>, "Unsupported type");
+  }
+}
+
+template <typename T1, typename T2, typename T3>
+bool LabelEncoderFusion::IsValidForFusion(const Node& node, const Node& next_node) const {
+  return (node.GetAttributes().find(KEYS_ATTR_NAME(T1)) != node.GetAttributes().end() &&
+          node.GetAttributes().find(VALUES_ATTR_NAME(T2)) != node.GetAttributes().end() &&
+          next_node.GetAttributes().find(KEYS_ATTR_NAME(T2)) != node.GetAttributes().end() &&
+          next_node.GetAttributes().find(VALUES_ATTR_NAME(T3)) != node.GetAttributes().end());
+}
 
 /**
 Transform that fuses two consecutive LabelEncoder nodes
@@ -47,21 +68,15 @@ bool LabelEncoderFusion::SatisfyCondition(const Graph& graph, const Node& node, 
   }
 
   // Is one of the supported operations
-  return LABEL_ENCODER_VALID_FOR_FUSING("strings", "int64s", "strings");
+  return IsValidForFusion<std::string, int64_t, std::string>(node, next_node) ||
+         IsValidForFusion<std::string, std::string, std::string>(node, next_node);
 }
 
-template <class T1>
-std::string getTypeNameString() {
-  if constexpr (std::is_same<T1, int64_t>()) {
-    return "int64";
-  } else if constexpr (std::is_same<T1, std::string>()) {
-    return "string";
-  } else if constexpr (std::is_same<T1, float>()) {
-    return "float";
-  }
-}
-
-template <class T1, class T2, class T3>
+/**
+Since we need to be polymorphic on the datatype
+we will dispatch to this method from the main Apply
+*/
+template <typename T1, typename T2, typename T3>
 Status LabelEncoderFusion::ApplyHelper(
     Graph& graph,
     Node& node,
@@ -125,13 +140,17 @@ Status LabelEncoderFusion::ApplyHelper(
   return Status::OK();
 }
 
+#define FUSE_IF_VALID(T1, T2, T3)                      \
+  if (IsValidForFusion<T1, T2, T3>(node, next_node)) { \
+    return ApplyHelper<T1, T2, T3>(                    \
+        graph, node, next_node, rule_effect);          \
+  }
+
 Status LabelEncoderFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
   auto& next_node = *graph.GetNode(node.OutputNodesBegin()->Index());
 
-  if (LABEL_ENCODER_VALID_FOR_FUSING("strings", "int64s", "strings")) {
-    return ApplyHelper<std::string, int64_t, std::string>(
-        graph, node, next_node, rule_effect);
-  }
+  FUSE_IF_VALID(std::string, int64_t, std::string);
+  FUSE_IF_VALID(std::string, std::string, std::string);
 
   return Status::OK();
 }

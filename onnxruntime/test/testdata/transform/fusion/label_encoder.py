@@ -46,7 +46,7 @@ def GenerateModel(model_name):  # noqa: N802
             values_strings=["a", "b", "c"],
             default_string="default",
         ),
-        # middle encoder is consumed twice
+        # string -> int -> string
         helper.make_node(
             "LabelEncoder",
             ["A"],
@@ -54,7 +54,7 @@ def GenerateModel(model_name):  # noqa: N802
             "le_2_int_1",
             domain="ai.onnx.ml",
             keys_strings=["a", "b", "c"],
-            values_int64s=[0, 1, 2],
+            values_strings=["3", "2", "1"],
         ),
         helper.make_node(
             "LabelEncoder",
@@ -62,10 +62,10 @@ def GenerateModel(model_name):  # noqa: N802
             ["le_2_string_2"],
             "le_2_string_2",
             domain="ai.onnx.ml",
-            keys_int64s=[0, 1, 2],
+            keys_strings=["2", "1", "0"],
             values_strings=["a", "b", "c"],
+            default_string="default",
         ),
-        helper.make_node("Mul", ["le_2_int_1", "le_2_int_1"], ["mul_2"], "mul_2"),
         # middle encoder is graph output
         helper.make_node(
             "LabelEncoder",
@@ -86,6 +86,26 @@ def GenerateModel(model_name):  # noqa: N802
             values_strings=["a", "b", "c"],
         ),
         helper.make_node("Identity", ["le_3_int_1"], ["Y"], "output"),
+        # middle encoder is consumed twice
+        helper.make_node(
+            "LabelEncoder",
+            ["A"],
+            ["le_4_int_1"],
+            "le_4_int_1",
+            domain="ai.onnx.ml",
+            keys_strings=["a", "b", "c"],
+            values_int64s=[0, 1, 2],
+        ),
+        helper.make_node(
+            "LabelEncoder",
+            ["le_4_int_1"],
+            ["le_4_string_2"],
+            "le_4_string_2",
+            domain="ai.onnx.ml",
+            keys_int64s=[0, 1, 2],
+            values_strings=["a", "b", "c"],
+        ),
+        helper.make_node("Mul", ["le_4_int_1", "le_4_int_1"], ["mul_2"], "mul_2"),
     ]
 
     inputs = [  # inputs
@@ -98,7 +118,7 @@ def GenerateModel(model_name):  # noqa: N802
         inputs,
         [  # outputs
             helper.make_tensor_value_info("le_1_string_2", TensorProto.STRING, ["M", "K"]),
-            helper.make_tensor_value_info("le_3_string_2", TensorProto.STRING, ["M", "K"]),
+            helper.make_tensor_value_info("le_2_string_2", TensorProto.STRING, ["M", "K"]),
             helper.make_tensor_value_info("le_3_string_2", TensorProto.STRING, ["M", "K"]),
             helper.make_tensor_value_info("Y", TensorProto.INT64, ["M", "K"]),
         ],
