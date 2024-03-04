@@ -63,6 +63,15 @@ stages:
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuildcentos8x64
 
+      - task: Cache@2
+        inputs:
+          key: onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+          restoreKeys: |
+            onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+          path: $(Agent.TempDirectory)/data/onnx
+          cacheHitVar: CACHE_RESTORED
+        displayName: 'Cache ONNX node test data'
+
       - template: templates/linux-build-step-with-cache.yml
         parameters:
           WithCache: false
@@ -77,7 +86,7 @@ stages:
                 script: |
                   mkdir -p $HOME/.onnx
                   docker run --rm \
-                    --volume /data/onnx:/data/onnx:ro \
+                    --volume $(Agent.TempDirectory)/data/onnx:/data/onnx:ro \
                     --volume /data/models:/data/models:ro \
                     --volume $(Build.SourcesDirectory):/onnxruntime_src \
                     --volume $(Build.BinariesDirectory):/build \
@@ -159,6 +168,15 @@ stages:
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuild
 
+      - task: Cache@2
+        inputs:
+          key: onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+          restoreKeys: |
+            onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+          path: $(Agent.TempDirectory)/data/onnx
+          cacheHitVar: CACHE_RESTORED
+        displayName: 'Cache ONNX node test data'
+
       - task: PythonScript@0
         displayName: 'Update deps.txt'
         inputs:
@@ -211,7 +229,7 @@ stages:
                 script: |
                   mkdir -p $HOME/.onnx
                   docker run --rm \
-                    --volume /data/onnx:/data/onnx:ro \
+                    --volume $(Agent.TempDirectory)/data/onnx:/data/onnx:ro \
                     --volume $(Build.SourcesDirectory):/onnxruntime_src \
                     --volume $(Build.BinariesDirectory):/build \
                     --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
@@ -247,7 +265,7 @@ stages:
       - bash: |
           mkdir -p $HOME/.onnx
           docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Agent.TempDirectory)/data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
             --volume /data/models:/build/models:ro \
@@ -269,7 +287,7 @@ stages:
       - bash: |
           mkdir -p $HOME/.onnx
           docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Agent.TempDirectory)/data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
             --volume /data/models:/build/models:ro \
