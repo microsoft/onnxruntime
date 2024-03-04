@@ -71,6 +71,61 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
     return Status::OK();                                                                          \
   }
 
+namespace op_kernel_type_control {
+using IsInfTypesOpset10 = TypeList<float, double>;
+using IsInfTypesOpset20 = TypeList<float, double, MLFloat16, BFloat16
+#if !defined(DISABLE_FLOAT8_TYPES)
+                                   ,
+                                   Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+#endif
+                                   >;
+}  // namespace op_kernel_type_control
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    IsInf,
+    kOnnxDomain,
+    10,
+    19,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", BuildKernelDefConstraints<float, double>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    IsInf);
+
+ONNX_OPERATOR_KERNEL_EX(
+    IsInf,
+    kOnnxDomain,
+    20,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<op_kernel_type_control::IsInfTypesOpset20>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    IsInf);
+
+IsInf::IsInf(const OpKernelInfo& info) : UnaryElementwise(info) {
+  int64_t detect_positive = 0, detect_negative = 0;
+  Status status = info.GetAttr("detect_positive", &detect_positive);
+  ORT_ENFORCE(status.IsOK(), "Failed to obtain detect_positive");
+  status = info.GetAttr("detect_negative", &detect_negative);
+  ORT_ENFORCE(status.IsOK(), "Failed to obtain detect_negative");
+
+  detect_positive_ = static_cast<bool>(detect_positive);
+  detect_negative_ = static_cast<bool>(detect_negative);
+  opset_ = info.node().SinceVersion();
+}
+
+Status IsInf::ComputeInternal(OpKernelContext* context) const {
+  UnaryElementwisePreparation p;
+  ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));
+
+  Explicit_Impl_IsInf(Stream(context), opset_, detect_positive_, detect_negative_,
+                      p.input_tensor->GetElementType(), p.input_tensor->DataRaw(),
+                      p.output_tensor->MutableData<bool>(),
+                      p.input_tensor->Shape().Size());
+  return Status::OK();
+}
+
+
 #define UNARY_OP_VERSIONED_TYPED(name, startver, endver, T) \
   UNARY_ELEMENTWISE_REGISTER_VERSIONED_KERNEL(name, startver, endver, T)
 

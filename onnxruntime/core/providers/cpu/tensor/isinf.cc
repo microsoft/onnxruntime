@@ -23,7 +23,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
 using IsInfTypesOpset20 =
     TypeList<
         float,
-        double
+        double,
+        MLFloat16,
+        BFloat16
 #if !defined(DISABLE_FLOAT8_TYPES)
         ,
         Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
@@ -87,29 +89,67 @@ namespace isinf_internal {
 template <class T>
 struct ComputeDispatchTarget {
   void operator()(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_negative) const {
-    const auto total_items = X.Shape().Size();
+    auto input_data = X.DataAsSpan<T>();
     auto output_data = Y.MutableData<bool>();
 
     if (detect_positive && detect_negative) {
       EigenMap<bool>(Y) = EigenMap<T>(X).array().isInf();
     } else if (detect_positive) {
-      auto input_data = X.Data<T>();
-      auto end_data = input_data + total_items;
       std::transform(
-          input_data, end_data, output_data, [](T v) {
+          input_data.begin(), input_data.end(), output_data, [](T v) {
             return (v == std::numeric_limits<T>::infinity());
           });
 
     } else if (detect_negative) {
-      auto input_data = X.Data<T>();
-      auto end_data = input_data + total_items;
       std::transform(
-          input_data, end_data, output_data, [](T v) {
+          input_data.begin(), input_data.end(), output_data, [](T v) {
             return (v == -std::numeric_limits<T>::infinity());
           });
     } else {
       // all false
-      memset(output_data, false, onnxruntime::narrow<size_t>(total_items));
+      memset(output_data, false, input_data.size());
+    }
+  }
+};
+
+template <>
+struct ComputeDispatchTarget<MLFloat16> {
+  void operator()(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_negative) const {
+    auto output_data = Y.MutableData<bool>();
+    auto input_data = X.DataAsSpan<MLFloat16>();
+    if (detect_positive && detect_negative) {
+      std::transform(input_data.begin(), input_data.end(), output_data,
+                     [](MLFloat16 v) { return v.IsInfinity(); });
+    } else if (detect_positive) {
+      std::transform(input_data.begin(), input_data.end(), output_data,
+                     [](MLFloat16 v) { return v.IsPositiveInfinity(); });
+    } else if (detect_negative) {
+      std::transform(input_data.begin(), input_data.end(), output_data,
+                     [](MLFloat16 v) { return v.IsNegativeInfinity(); });
+    } else {
+      // all false
+      memset(output_data, false, input_data.size());
+    }
+  }
+};
+
+template <>
+struct ComputeDispatchTarget<BFloat16> {
+  void operator()(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_negative) const {
+    auto output_data = Y.MutableData<bool>();
+    auto input_data = X.DataAsSpan<BFloat16>();
+    if (detect_positive && detect_negative) {
+      std::transform(input_data.begin(), input_data.end(), output_data,
+                     [](BFloat16 v) { return v.IsInfinity(); });
+    } else if (detect_positive) {
+      std::transform(input_data.begin(), input_data.end(), output_data,
+                     [](BFloat16 v) { return v.IsPositiveInfinity(); });
+    } else if (detect_negative) {
+      std::transform(input_data.begin(), input_data.end(), output_data,
+                     [](BFloat16 v) { return v.IsNegativeInfinity(); });
+    } else {
+      // all false
+      memset(output_data, false, input_data.size());
     }
   }
 };

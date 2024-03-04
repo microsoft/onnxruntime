@@ -46,6 +46,7 @@ namespace cuda {
 UNARY_OPS()
 #undef UNARY_OP_NAME_EXPR
 
+
 // Cast
 
 #define DECL_IMPL_CAST(InT, OutT) \
@@ -137,5 +138,12 @@ void Impl_CastSat(
 
 #endif
 
+// IsInf
+void Explicit_Impl_IsInf(cudaStream_t stream, int op_set,
+                         bool detect_positive, bool detect_negative,
+                         int32_t input_data_type,
+                         const void* input_raw, bool* output_data,
+                         size_t count);
 }  // namespace cuda
+
 }  // namespace onnxruntime
