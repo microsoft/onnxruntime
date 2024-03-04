@@ -31,6 +31,7 @@ jobs:
   variables:
     webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
     runCodesignValidationInjection: false
+    CHROME_BIN: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
   timeoutInMinutes: 60
   workspace:
     clean: all
@@ -95,18 +96,6 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
       flattenFolders: true
     displayName: 'Binplace js files'
-  - script: |
-      npm i -g puppeteer
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Use puppeteer to prepare Chrome for tests'
-  - script: |
-      FOR /F "tokens=* USEBACKQ" %%F IN (`where /r %HOMEDRIVE%%HOMEPATH%\.cache\puppeteer chrome.exe`) DO (
-        SET var=%%F
-        ECHO found chrome.exe: %%F
-      )
-      ECHO ##vso[task.setvariable variable=CHROME_BIN;]%var%
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Set CHROME_BIN'
   - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'
