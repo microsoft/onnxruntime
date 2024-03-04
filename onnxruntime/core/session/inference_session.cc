@@ -397,7 +397,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   // TraceSessionOptions logging is disabled as it causes a crash in SecureKernel
   // Disabling the logging temporarily until the logging crash is resolved.
-  //TraceSessionOptions(session_options, false);
+  // TraceSessionOptions(session_options, false);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
