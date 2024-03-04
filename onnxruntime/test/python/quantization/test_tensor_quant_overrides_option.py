@@ -13,7 +13,7 @@ import onnx
 
 from onnxruntime import quantization
 from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config
-from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType
+from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType, ms_domain
 
 
 class DummyDataReader(quantization.CalibrationDataReader):
@@ -422,6 +422,36 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             )
             self.assertEqual(zp, expected_zp)
             self.assertEqual(scale, np.float32(expected_scale))
+
+    def test_16bit_overrides_set_ms_domain(self):
+        """
+        Test that overriding a tensor to 16bit (when default is 8bit) automatically sets the 'com.microsoft'
+        domain on DQ and Q ops.
+        """
+        qdq_model_name = "model_quant_overrides_to_16bit.onnx"
+        inp_zp, _, sig_out_zp, _, _, _, _, _, out_zp, _ = self.perform_qdq_quantization(
+            qdq_model_name,
+            activation_type=onnx.TensorProto.UINT8,  # Default to 8bit activations
+            extra_options={
+                "TensorQuantOverrides": {
+                    "INP": [{"quant_type": quantization.QuantType.QUInt16}],
+                    "SIG_OUT": [{"quant_type": quantization.QuantType.QUInt16}],
+                }
+            },
+        )
+
+        # Input and Sigmoid's output should be overridden to 16bit
+        self.assertEqual(inp_zp.data_type, onnx.TensorProto.UINT16)
+        self.assertEqual(sig_out_zp.data_type, onnx.TensorProto.UINT16)
+
+        # Output should the default uint8 type
+        self.assertEqual(out_zp.data_type, onnx.TensorProto.UINT8)
+
+        # Q/DQ ops should all have the 'com.microsoft' domain
+        qdq_model = onnx.load_model(qdq_model_name)
+        for node in qdq_model.graph.node:
+            if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+                self.assertEqual(node.domain, ms_domain)
 
     def test_override_validation_nonexisting_tensor(self):
         """
