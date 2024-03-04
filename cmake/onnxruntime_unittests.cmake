@@ -1175,80 +1175,81 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 
 
-if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP AND NOT ${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-  #perf test runner
-  set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
-  set(onnxruntime_perf_test_src_patterns
-  "${onnxruntime_perf_test_src_dir}/*.cc"
-  "${onnxruntime_perf_test_src_dir}/*.h")
+if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if(NOT ${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    #perf test runner
+    set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
+    set(onnxruntime_perf_test_src_patterns
+    "${onnxruntime_perf_test_src_dir}/*.cc"
+    "${onnxruntime_perf_test_src_dir}/*.h")
 
-  if(WIN32)
-    list(APPEND onnxruntime_perf_test_src_patterns
-      "${onnxruntime_perf_test_src_dir}/windows/*.cc"
-      "${onnxruntime_perf_test_src_dir}/windows/*.h" )
-  else ()
-    list(APPEND onnxruntime_perf_test_src_patterns
-      "${onnxruntime_perf_test_src_dir}/posix/*.cc"
-      "${onnxruntime_perf_test_src_dir}/posix/*.h" )
-  endif()
+    if(WIN32)
+      list(APPEND onnxruntime_perf_test_src_patterns
+        "${onnxruntime_perf_test_src_dir}/windows/*.cc"
+        "${onnxruntime_perf_test_src_dir}/windows/*.h" )
+    else ()
+      list(APPEND onnxruntime_perf_test_src_patterns
+        "${onnxruntime_perf_test_src_dir}/posix/*.cc"
+        "${onnxruntime_perf_test_src_dir}/posix/*.h" )
+    endif()
 
-  file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
-    ${onnxruntime_perf_test_src_patterns}
-    )
-  onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
-  if(MSVC)
-    target_compile_options(onnxruntime_perf_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
+    file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
+      ${onnxruntime_perf_test_src_patterns}
+      )
+    onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
+    if(MSVC)
+      target_compile_options(onnxruntime_perf_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-  endif()
-  target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
+    endif()
+    target_include_directories(onnxruntime_perf_test PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})
-  if (onnxruntime_USE_ROCM)
-    target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
-  endif()
-  if (WIN32)
-    target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
-    if (NOT DEFINED SYS_PATH_LIB)
-      set(SYS_PATH_LIB shlwapi)
+    if (onnxruntime_USE_ROCM)
+      target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
     endif()
-  endif()
+    if (WIN32)
+      target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
+      if (NOT DEFINED SYS_PATH_LIB)
+        set(SYS_PATH_LIB shlwapi)
+      endif()
+    endif()
 
-  if (onnxruntime_BUILD_SHARED_LIB)
-    #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
-    #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless.
-    set(onnxruntime_perf_test_libs
+    if (onnxruntime_BUILD_SHARED_LIB)
+      #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
+      #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless.
+      set(onnxruntime_perf_test_libs
             onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
             ${onnxruntime_EXTERNAL_LIBRARIES}
             ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
-    if(NOT WIN32)
-      list(APPEND onnxruntime_perf_test_libs nsync::nsync_cpp)
-      if(onnxruntime_USE_SNPE)
-        list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)
+      if(NOT WIN32)
+        list(APPEND onnxruntime_perf_test_libs nsync::nsync_cpp)
+        if(onnxruntime_USE_SNPE)
+          list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)
+        endif()
+      endif()
+      if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+        list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
+      endif()
+      target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
+      if(WIN32)
+        target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
+      endif()
+    else()
+      target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+    endif()
+    set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
+      target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+    endif()
+
+    if (onnxruntime_USE_TVM)
+      if (WIN32)
+        target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
       endif()
     endif()
-    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-      list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
-    endif()
-    target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
-    if(WIN32)
-      target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
-    endif()
-  else()
-    target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
   endif()
-  set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
-
-  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
-    target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-  endif()
-
-  if (onnxruntime_USE_TVM)
-    if (WIN32)
-      target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
-    endif()
-  endif()
-
   # shared lib
   if (onnxruntime_BUILD_SHARED_LIB)
     onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
