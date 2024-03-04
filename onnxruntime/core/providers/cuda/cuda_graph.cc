@@ -13,10 +13,6 @@ CudaGraphSet::~CudaGraphSet() {
   Clear();
 }
 
-bool CudaGraphSet::IsEmpty() const {
-  return cuda_graphs_.empty();
-}
-
 void CudaGraphSet::Clear() {
   for (auto& it : cuda_graphs_) {
     CUDA_CALL_THROW(cudaGraphExecDestroy(it.second));
@@ -29,19 +25,13 @@ bool CudaGraphSet::Contains(CudaGraphAnnotation_t cuda_graph_annotation_id) cons
 }
 
 void CudaGraphSet::Put(CudaGraphAnnotation_t cuda_graph_annotation_id, cudaGraphExec_t graph_exec) {
-  if (Contains(cuda_graph_annotation_id)) {
-    // This should not happen
-    throw std::runtime_error("CudaGraphSet::Put: cuda_graph_annotation_id already exists");
-  }
+  ORT_ENFORCE(!Contains(cuda_graph_annotation_id));
   cuda_graphs_.emplace(cuda_graph_annotation_id, graph_exec);
 }
 
-bool CudaGraphSet::Get(CudaGraphAnnotation_t cuda_graph_annotation_id, cudaGraphExec_t& graph_exec) {
-  if (!Contains(cuda_graph_annotation_id)) {
-    return false;
-  }
-  graph_exec = cuda_graphs_.at(cuda_graph_annotation_id);
-  return true;
+cudaGraphExec_t CudaGraphSet::Get(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  ORT_ENFORCE(Contains(cuda_graph_annotation_id));
+  return cuda_graphs_.at(cuda_graph_annotation_id);
 }
 
 CUDAGraphManager::CUDAGraphManager(cudaStream_t stream) : stream_(stream) {
@@ -56,10 +46,7 @@ void CUDAGraphManager::SetGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_ann
 }
 
 void CUDAGraphManager::CaptureBegin() {
-  if (!IsGraphCaptureAllowedOnRun()) {
-    LOGS_DEFAULT(INFO) << "Skipping graph capture for cuda_graph_annotation_id " << cuda_graph_annotation_id_;
-    return;
-  }
+  ORT_ENFORCE(IsGraphCaptureAllowedOnRun());
 
   ORT_ENFORCE(!cuda_graph_set_.Contains(cuda_graph_annotation_id_),
               "This cuda graph has already captured a graph. "
@@ -74,41 +61,28 @@ void CUDAGraphManager::CaptureBegin() {
 }
 
 void CUDAGraphManager::CaptureEnd() {
-  if (!IsGraphCaptureAllowedOnRun()) {
-    LOGS_DEFAULT(INFO) << "Skipping graph capture for cuda_graph_annotation_id " << cuda_graph_annotation_id_;
-    return;
-  }
+  ORT_ENFORCE(IsGraphCaptureAllowedOnRun());
 
-  CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph_));
-  if (graph_ == NULL) {
+  cudaGraph_t graph = NULL;
+  CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));
+  if (graph == NULL) {
     ORT_THROW("CUDAGraph::CaptureEnd: graph_ is NULL");
   }
-  has_graph_ = true;
 
   cudaGraphExec_t graph_exec = NULL;
-  CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec, graph_, NULL, NULL, 0));
-  CUDA_CALL_THROW(cudaGraphDestroy(graph_));
-  has_graph_ = false;
+  CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0));
+  CUDA_CALL_THROW(cudaGraphDestroy(graph));
 
   cuda_graph_set_.Put(cuda_graph_annotation_id_, graph_exec);
-  has_graph_exec_ = true;
 }
 
 Status CUDAGraphManager::Replay() {
-  if (!IsGraphCaptureAllowedOnRun()) {
-    LOGS_DEFAULT(INFO) << "Skipping graph replay for cuda_graph_annotation_id " << cuda_graph_annotation_id_;
-    return Status::OK();
-  }
+  ORT_ENFORCE(IsGraphCaptureAllowedOnRun());
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
   LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id " << cuda_graph_annotation_id_;
 
-  cudaGraphExec_t graph_exec = NULL;
-  if (!cuda_graph_set_.Get(cuda_graph_annotation_id_, graph_exec)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME,
-                           FAIL,
-                           "CUDAGraph::Replay: cuda_graph_set_ does not contain the cuda_graph_annotation_id");
-  }
+  cudaGraphExec_t graph_exec = cuda_graph_set_.Get(cuda_graph_annotation_id_);
   CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec, stream_));
 
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
@@ -120,20 +94,11 @@ bool CUDAGraphManager::IsGraphCaptureAllowedOnRun() const {
 }
 
 bool CUDAGraphManager::IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
-  if (!IsGraphCaptureAllowedOnRun()) {
-    return false;
-  }
   return cuda_graph_set_.Contains(cuda_graph_annotation_id);
 }
 
 void CUDAGraphManager::Reset() {
-  if (has_graph_) {
-    CUDA_CALL_THROW(cudaGraphDestroy(graph_));
-    has_graph_ = false;
-  }
-  if (!cuda_graph_set_.IsEmpty()) {
-    cuda_graph_set_.Clear();
-  }
+  cuda_graph_set_.Clear();
 }
 
 CUDAGraphManager::~CUDAGraphManager() {

@@ -21,11 +21,10 @@ struct CudaGraphSet {
   CudaGraphSet(){};
   ~CudaGraphSet();
 
-  bool IsEmpty() const;
   void Clear();
   bool Contains(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
   void Put(CudaGraphAnnotation_t cuda_graph_annotation_id, cudaGraphExec_t graph_exec);
-  bool Get(CudaGraphAnnotation_t cuda_graph_annotation_id, cudaGraphExec_t& graph_exec);
+  cudaGraphExec_t Get(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
  private:
   CudaGraphSet_t cuda_graphs_;
@@ -49,11 +48,6 @@ struct CUDAGraphManager {
   bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
 
  private:
-  cudaGraph_t graph_ = NULL;
-
-  bool has_graph_ = false;
-  bool has_graph_exec_ = false;
-
   CudaGraphSet cuda_graph_set_;
   CudaGraphAnnotation_t cuda_graph_annotation_id_ = kCudaGraphAnnotationDefault;
 
