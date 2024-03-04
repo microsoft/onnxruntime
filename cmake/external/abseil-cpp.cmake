@@ -19,7 +19,7 @@ if(WIN32 AND NOT Patch_FOUND)
   set(ABSL_ENABLE_INSTALL ON)
 endif()
 # NB! Advancing Abseil version changes its internal namespace,
-# currently absl::lts_20230125 which affects abseil-cpp.natvis debugger
+# currently absl::lts_20240116 which affects abseil-cpp.natvis debugger
 # visualization file, that must be adjusted accordingly, unless we eliminate
 # that namespace at build time.
 FetchContent_Declare(

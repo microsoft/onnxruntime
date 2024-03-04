@@ -389,7 +389,7 @@ class ONNXQuantizer:
     def quantize_model(self):
         if self.has_QDQ_nodes():
             logging.warning(
-                "Please check if the model is already quantized."
+                "Please check if the model is already quantized. "
                 "Note you don't need to quantize a QAT model. OnnxRuntime support to run QAT model directly."
             )
 
@@ -446,6 +446,23 @@ class ONNXQuantizer:
             return False
         return self.parent.is_valid_quantize_weight(weight_name)
 
+    def _get_default_tensor_type(self, tensor_name):
+        if "DefaultTensorType" in self.extra_options:
+            logging.info(
+                "get_tensor_type returns DefaultTensorType for tensor name %r, use %d",
+                tensor_name,
+                self.extra_options["DefaultTensorType"],
+            )
+            return self.extra_options["DefaultTensorType"]
+        raise RuntimeError(
+            f"Unable to find data type for weight_name={tensor_name!r}. "
+            f"shape_inference failed to return a type probably this node is "
+            f"from a different domain or using an input produced by such an operator. "
+            f"This may happen if you quantize a model already quantized. "
+            f"You may use extra_options `DefaultTensorType` to indicate "
+            f"the default weight type, usually `onnx.TensorProto.FLOAT`."
+        )
+
     def get_tensor_type(self, tensor_name, mandatory=False):
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight is not None:
@@ -454,11 +471,11 @@ class ONNXQuantizer:
             vi = self.value_infos[tensor_name]
             if vi.type.HasField("tensor_type"):
                 if mandatory and vi.type.tensor_type.elem_type == 0:
-                    raise RuntimeError(f"Unable to find data type for weight_name={tensor_name!r}")
+                    return self._get_default_tensor_type(tensor_name)
                 return vi.type.tensor_type.elem_type
         if (not self.enable_subgraph_quantization) or (self.parent is None):
             if mandatory:
-                raise RuntimeError(f"Unable to find data type for weight_name={tensor_name!r}")
+                return self._get_default_tensor_type(tensor_name)
             return None
         otype = self.parent.is_valid_quantize_weight(tensor_name)
         if otype is not None:
@@ -468,7 +485,7 @@ class ONNXQuantizer:
             if res is not None:
                 return res
         if mandatory:
-            raise RuntimeError(f"Unable to find data type for weight_name={tensor_name!r}")
+            return self._get_default_tensor_type(tensor_name)
         return None
 
     def is_float_tensor(self, tensor_name):
@@ -1336,9 +1353,15 @@ class ONNXQuantizer:
         if (value_name in self.quantized_value_map) and (value_name not in self.generated_value_names):
             quantized_value = self.quantized_value_map[value_name]
             # Add DequantizeLinear Node for this input
+
             scale_init = find_by_name(quantized_value.scale_name, self.model.initializer())
-            # axis is not specified so scale_init must be a scalar.
-            assert onnx.numpy_helper.to_array(scale_init).size == 1
+
+            # In case we are working with subgraphs, the graph `producer_name` is set to `"onnx-quantizer"` in the `quantize_subgraph` method. In this case, the scale initializer may be on the top level graph, so the check below can not be done.
+            if self.model.model.producer_name != "onnx-quantizer" or (
+                self.model.model.producer_name == "onnx-quantizer" and scale_init is not None
+            ):
+                # axis is not specified so scale_init must be a scalar.
+                assert onnx.numpy_helper.to_array(scale_init).size == 1
 
             dqlinear_name = value_name + "_DequantizeLinear"
             dqlinear_node = self.model.find_node_by_name(dqlinear_name, self.new_nodes, self.model.graph())
