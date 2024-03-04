@@ -274,7 +274,7 @@ PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig&
     : performance_test_config_(test_config),
       test_model_info_(CreateModelInfo(test_config)) {
   session_create_start_ = std::chrono::high_resolution_clock::now();
-  session_ = std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info);
+  session_ = std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info_);
   session_create_end_ = std::chrono::high_resolution_clock::now();
 }
 
