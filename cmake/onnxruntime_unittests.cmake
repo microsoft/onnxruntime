@@ -1175,7 +1175,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 
 
-if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP AND NOT ${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
   #perf test runner
   set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
   set(onnxruntime_perf_test_src_patterns
@@ -1212,11 +1212,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       set(SYS_PATH_LIB shlwapi)
     endif()
   endif()
-  if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-    set_target_properties(onnxruntime_perf_test PROPERTIES
-      XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-    )
-  endif()
 
   if (onnxruntime_BUILD_SHARED_LIB)
     #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
@@ -1238,12 +1233,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
     if(WIN32)
       target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
-    endif()
-    if(tensorflow_C_PACKAGE_PATH)
-      target_include_directories(onnxruntime_perf_test PRIVATE ${tensorflow_C_PACKAGE_PATH}/include)
-      target_link_directories(onnxruntime_perf_test PRIVATE ${tensorflow_C_PACKAGE_PATH}/lib)
-      target_link_libraries(onnxruntime_perf_test PRIVATE tensorflow)
-      target_compile_definitions(onnxruntime_perf_test PRIVATE HAVE_TENSORFLOW)
     endif()
   else()
     target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
