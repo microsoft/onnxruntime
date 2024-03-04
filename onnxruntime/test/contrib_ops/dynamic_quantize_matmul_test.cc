@@ -29,7 +29,7 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
                                            const std::vector<float>& Bias, std::vector<float>& Y_data,
                                            bool per_column, bool has_zp, bool has_bias) {
   // DynamicQuantize Matrix A
-  const uint32_t num_elements = M * K;
+  const uint32_t num_elements = static_cast<uint32_t>(M * K);
   std::vector<T> QuantA_data(num_elements);
   std::vector<float> A_scale;
   std::vector<T> A_zero_point;

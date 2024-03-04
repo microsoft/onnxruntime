@@ -54,8 +54,8 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
-                0 // guaranteedBaseOffsetAlignment
+                NchwDimensionCount,  // minDimensionCount
+                0  // guaranteedBaseOffsetAlignment
             );
 
         TensorDesc intermediateQuantizedAScaleTensorDesc = TensorDesc(
@@ -65,8 +65,8 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
-                0 // guaranteedBaseOffsetAlignment
+                NchwDimensionCount,  // minDimensionCount
+                0  // guaranteedBaseOffsetAlignment
             );
 
         TensorDesc intermediateQuantizedAZeroPointTensorDesc = TensorDesc(
@@ -76,8 +76,8 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
-                0 // guaranteedBaseOffsetAlignment
+                NchwDimensionCount,  // minDimensionCount
+                0  // guaranteedBaseOffsetAlignment
             );
 
         DML_TENSOR_DESC namedIntermediateQuantizedATensorDesc = intermediateQuantizedATensorDesc.GetDmlDesc();
@@ -120,7 +120,7 @@ public:
             if (inputIndex == OnnxInputIndex::B_zero_point && !hasBZP) continue;
             if (inputIndex == OnnxInputIndex::Bias && !hasBias) continue;
             DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
-            inputEdge.GraphInputIndex = inputIndex; // OnnxInputIndex and DmlInputIndex are identity for QLinearSigmoid
+            inputEdge.GraphInputIndex = inputIndex;  // OnnxInputIndex and DmlInputIndex are identity for QLinearSigmoid
             inputEdge.ToNodeIndex = nodeToNodeInputIndex[inputIndex].first;
             inputEdge.ToNodeInputIndex = nodeToNodeInputIndex[inputIndex].second;
             inputEdges.push_back(inputEdge);
@@ -170,4 +170,4 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(DynamicQuantizeMatMul, DmlOperatorDynamicQuantizeMatMul);
-} // namespace Dml
+}  // namespace Dml
