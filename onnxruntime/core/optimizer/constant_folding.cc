@@ -16,17 +16,12 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-static std::string GenerateName() {
-  static int i = 0;
-  return (std::ostringstream() << "ConstantFolding" << i++).str();
-}
-
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  bool skip_dequantize_linear,
                                  const ConfigOptions& config_options,
                                  const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                  const InlinedHashSet<std::string>& excluded_initializers) noexcept
-    : GraphTransformer(GenerateName().c_str(), compatible_execution_providers),
+    : GraphTransformer("ConstantFolding", compatible_execution_providers),
       skip_dequantize_linear_(skip_dequantize_linear),
       config_options_(config_options),
       excluded_initializers_(excluded_initializers),
