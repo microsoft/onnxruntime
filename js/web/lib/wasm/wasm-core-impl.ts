@@ -84,10 +84,13 @@ export const initRuntime = async(env: Env): Promise<void> => {
  * @param epName
  */
 export const initEp = async(env: Env, epName: string): Promise<void> => {
-  if (!BUILD_DEFS.DISABLE_WEBGPU && (epName === 'webgpu' || epName === 'webnn')) {
+  if (!BUILD_DEFS.DISABLE_WEBGPU && (epName === 'webgpu' || epName === 'webnn') && !env.webgpu.device) {
     // perform WebGPU availability check
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
+    }
+    if (epName === 'webnn' && (typeof navigator === 'undefined' || !(navigator as any).ml)) {
+      throw new Error('WebNN is not supported in current environment');
     }
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) {
