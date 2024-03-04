@@ -68,12 +68,9 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
-        float A_dequantized = (static_cast<int>(QuantA_data[m * K + k]) - static_cast<int>(A_zero_point[0]))
-                               * A_scale[0];
+        float A_dequantized = (static_cast<int>(QuantA_data[m * K + k]) - static_cast<int>(A_zero_point[0])) * A_scale[0];
 
-        float B_dequantized = has_zp ? 
-                              (static_cast<int>(B_data[k * N + n]) - static_cast<int>(B_zero_point[n])) * B_scale[n] :
-                              B_data[k * N + n] * B_scale[n];
+        float B_dequantized = has_zp ? (static_cast<int>(B_data[k * N + n]) - static_cast<int>(B_zero_point[n])) * B_scale[n] : B_data[k * N + n] * B_scale[n];
 
         sum += A_dequantized * B_dequantized;
       }
@@ -103,9 +100,7 @@ void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
   std::vector<float> A_data = random.Uniform<float>(A_dims, -1.0f, 1.0f);
   std::vector<T> B_data;
   std::vector<T> tmp_B_data = random.Uniform<T>(B_dims,
-                                                (std::is_same_v<T, int8_t>) ?
-                                                std::numeric_limits<int8_t>::lowest() / 2 :
-                                                std::numeric_limits<uint8_t>::lowest(),
+                                                (std::is_same_v<T, int8_t>) ? std::numeric_limits<int8_t>::lowest() / 2 : std::numeric_limits<uint8_t>::lowest(),
                                                 std::numeric_limits<T>::max() / 2);
   std::transform(tmp_B_data.begin(), tmp_B_data.end(), std::back_inserter(B_data), [](int32_t v) -> T {
     return static_cast<T>(v);
