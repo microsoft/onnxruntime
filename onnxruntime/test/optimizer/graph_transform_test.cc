@@ -68,6 +68,7 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/label_encoder_fusion.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1898,6 +1899,24 @@ TEST_F(GraphTransformationTests, DivMulFusion) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 5);
   ASSERT_TRUE(op_to_count["Mul"] == 2);
+}
+
+TEST_F(GraphTransformationTests, LabelEncoderFusion) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/label_encoder.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["ai.onnx.ml.LabelEncoder"] == 6);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<LabelEncoderFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["ai.onnx.ml.LabelEncoder"] == 5);
 }
 
 TEST_F(GraphTransformationTests, NotWhereFusion) {

@@ -45,6 +45,7 @@
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
@@ -132,6 +133,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<MatmulBNFusion>());
       rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
+      rules.push_back(std::make_unique<LabelEncoderFusion>());
       break;
 
     case TransformerLevel::Level2:
