@@ -911,8 +911,8 @@ void TestQuantizedAttentionPastState(int64_t batch,
   std::vector<int64_t> input_dims{batch, seq_len, hidden_size};
   std::vector<InputT> input_data = random.Gaussian<InputT>(input_dims, input_mean, static_cast<InputT>(input_range / 6), input_min, input_max);
 
-  constexpr WeightT weight_min = std::numeric_limits<WeightT>::min();
-  constexpr WeightT weight_max = std::numeric_limits<WeightT>::max();
+  constexpr WeightT weight_min = constexpr(std::is_same_v<WeightT, int8_t>) ? std::numeric_limits<int8_t>::min() / 2 : std::numeric_limits<WeightT>::min();
+  constexpr WeightT weight_max = std::numeric_limits<WeightT>::max() / 2;
   constexpr int32_t weight_range = weight_max - weight_min;
 
   std::vector<WeightT> weight_zero_point(weight_scale_zp_size);
