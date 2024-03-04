@@ -185,13 +185,17 @@ Status SpaceToDepth<Layout>::ComputeInternal(OpKernelContext* context) const {
                        : *context->Output(0, {batch, output_height, output_width, output_depth});
 
   TensorShape virtual_input_shape = (Layout == LAYOUT_NCHW)
-    ? TensorShape{batch, input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_}
-    : TensorShape{batch, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_, input_depth};
+                                        ? TensorShape{batch, input_depth, input_height / blocksize_,
+                                                      blocksize_, input_width / blocksize_, blocksize_}
+                                        : TensorShape{batch, input_height / blocksize_, blocksize_,
+                                                      input_width / blocksize_, blocksize_, input_depth};
 
   // We will pass in the "virtual" output shape to be used by DoTranspose() in SpaceDepthOpCudaImpl(...)
   TensorShape virtual_output_shape = (Layout == LAYOUT_NCHW)
-    ? TensorShape{batch, blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_}
-    : TensorShape{batch, input_height / blocksize_, input_width / blocksize_, input_depth, blocksize_, blocksize_};
+                                         ? TensorShape{batch, blocksize_, blocksize_, input_depth,
+                                                       input_height / blocksize_, input_width / blocksize_}
+                                         : TensorShape{batch, input_height / blocksize_, input_width / blocksize_,
+                                                       input_depth, blocksize_, blocksize_};
 
   std::vector<size_t> permutation = (Layout == LAYOUT_NCHW)
                                         ? std::vector<size_t>{0, 3, 5, 1, 2, 4}
@@ -238,18 +242,24 @@ Status DepthToSpace<Layout>::ComputeInternal(OpKernelContext* context) const {
   // cdr only here!
   if (is_dcr_) {
     virtual_input_shape = (Layout == LAYOUT_NCHW)
-      ? TensorShape{batch, blocksize_, blocksize_, virtual_input_depth, input_height, input_width}
-      : TensorShape{batch, input_height, input_width, blocksize_, blocksize_, virtual_input_depth};
+                              ? TensorShape{batch, blocksize_, blocksize_,
+                                            virtual_input_depth, input_height, input_width}
+                              : TensorShape{batch, input_height, input_width,
+                                            blocksize_, blocksize_, virtual_input_depth};
   } else {
     virtual_input_shape = (Layout == LAYOUT_NCHW)
-      ? TensorShape{batch, virtual_input_depth, blocksize_, blocksize_, input_height, input_width}
-      : TensorShape{batch, input_height, input_width, virtual_input_depth, blocksize_, blocksize_};
+                              ? TensorShape{batch, virtual_input_depth, blocksize_,
+                                            blocksize_, input_height, input_width}
+                              : TensorShape{batch, input_height, input_width,
+                                            virtual_input_depth, blocksize_, blocksize_};
   }
 
   // We will pass in the "virtual" output shape to be used by DoTranspose() in SpaceDepthOpCudaImpl(...)
   TensorShape virtual_output_shape = (Layout == LAYOUT_NCHW)
-    ? TensorShape{batch, virtual_input_depth, input_height, blocksize_, input_width, blocksize_}
-    : TensorShape{batch, input_height, blocksize_, input_width, blocksize_, virtual_input_depth};
+                                         ? TensorShape{batch, virtual_input_depth, input_height,
+                                                       blocksize_, input_width, blocksize_}
+                                         : TensorShape{batch, input_height, blocksize_,
+                                                       input_width, blocksize_, virtual_input_depth};
 
   std::vector<size_t> permutation;
 
