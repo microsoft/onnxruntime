@@ -31,10 +31,10 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
       BatchNorm<T, NHWC>);                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
       BatchNormalization,                                          \
       DOMAIN,                                                      \
-      14,                                                          \
+      14, 14,                                                      \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
@@ -138,8 +138,10 @@ Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context)
     auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->MutableData<T>());
 
     auto stream = static_cast<cudaStream_t>(p_op_kernel_context->GetComputeStream()->GetHandle());
-    cudaMemcpyAsync(running_mean_data, mean_data, mean->SizeInBytes(), cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(running_var_data, var_data, var->SizeInBytes(), cudaMemcpyDeviceToDevice, stream);
+    CUDA_RETURN_IF_ERROR(
+      cudaMemcpyAsync(running_mean_data, mean_data, mean->SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
+    CUDA_RETURN_IF_ERROR(
+      cudaMemcpyAsync(running_var_data, var_data, var->SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
 
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
         GetCudnnHandle(p_op_kernel_context),
