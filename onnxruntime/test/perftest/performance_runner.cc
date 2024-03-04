@@ -256,7 +256,7 @@ Status PerformanceRunner::ForkJoinRepeat() {
 }
 
 static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
-    const auto& file_path = performance_test_config_.model_info.model_file_path;
+  const auto& file_path = performance_test_config_.model_info.model_file_path;
 #if !defined(ORT_MINIMAL_BUILD)
   if (HasExtensionOf(file_path, ORT_TSTR("onnx"))) {
     return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
