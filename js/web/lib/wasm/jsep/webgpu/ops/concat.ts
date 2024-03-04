@@ -13,26 +13,35 @@ export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
 }
 
-const validateInputs = (inputs: readonly TensorView[], referenceIndex: number): void => {
+const validateInputs = (inputs: readonly TensorView[], referenceIndex: number, axis: number): void => {
   if (!inputs || inputs.length < 1) {
     throw new Error('too few inputs');
   }
 
-  const inputType = inputs[referenceIndex].dataType;
-  const inputDimensionality = inputs[referenceIndex].dims.length;
   const referenceInput = inputs[referenceIndex];
-  for (const input of inputs) {
+  const inputType = referenceInput.dataType;
+  const inputRank = referenceInput.dims.length;
+  const referenceInputSize = ShapeUtil.size(referenceInput.dims);
+  inputs.forEach((input, i) => {
+    if (i === referenceIndex) {
+      return;
+    }
     // make sure types of all inputs match
     if (input.dataType !== inputType) {
       throw new Error('input tensors should be one type');
     }
-
-    // make sure the dimensionality of all inputs are the same
-    if (input.dims.length !== inputDimensionality && ShapeUtil.size(input.dims) > 0 &&
-        ShapeUtil.size(referenceInput.dims) > 0) {
-      throw new Error('input tensors should have the same shape');
+    if (referenceInputSize > 0 && ShapeUtil.size(input.dims) > 0) {
+      // make sure the dimensionality of all inputs are the same
+      if (input.dims.length !== inputRank) {
+        throw new Error('input tensors should have the same shape');
+      }
+      input.dims.forEach((dim, i) => {
+        if (i !== axis && dim !== referenceInput.dims[i]) {
+          throw new Error('non concat dimensions must match');
+        }
+      });
     }
-  }
+  });
 };
 
 const calculateInputIndexImpl = (numberOfTensors: number, sizeInConcatAxisStr: string): string => `
@@ -63,34 +72,6 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
     }
   }
   return codeLines.join('\n');
-};
-
-
-const computeOutputShape = (inputs: readonly TensorView[], axis: number, referenceIndex: number): number[] => {
-  const inputShape = inputs[referenceIndex].dims.slice();
-  if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
-    throw new Error('axis specified for concat doesn\'t match input dimensionality');
-  }
-  // ensure all of the non-concatenated axes match each other
-  // calculate the shape of the output tensor while we do that
-  const outputShape = inputShape.slice(0);
-  for (let i = 0; i < inputs.length; i++) {
-    if (i === referenceIndex) {
-      continue;
-    }
-    const dataNShape = inputs[i].dims.slice();
-    for (let axisIndex = 0; axisIndex < inputShape.length; axisIndex++) {
-      // add to the placeholder for computing output shape
-      if (axisIndex === axis) {
-        outputShape[axis] += dataNShape[axisIndex];
-      }
-      // ensure all non-cancatenated axes match each other
-      else if (inputShape[axisIndex] !== dataNShape[axisIndex] && ShapeUtil.size(dataNShape) > 0) {
-        throw new Error('non concat dimensions must match');
-      }
-    }
-  }
-  return outputShape;
 };
 
 const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number, outputShape: number[]): ProgramInfo => {
@@ -169,15 +150,16 @@ export const concat = (context: ComputeContext, attributes: ConcatAttributes): v
   // the inputs.
   let referenceIndex = context.inputs.findIndex(input => ShapeUtil.size(input.dims) > 0);
   if (referenceIndex === -1) {
-    referenceIndex =
-        context.inputs.map(input => input.dims.length)
-            .reduce((maxRankIndex, rank, index, array) => rank > array[maxRankIndex] ? index : maxRankIndex, 0);
+    referenceIndex = context.inputs.reduce(
+        (maxRankIndex, input, index, array) => input.dims > array[maxRankIndex].dims ? index : maxRankIndex, 0);
   }
 
-  validateInputs(context.inputs, referenceIndex);
+  validateInputs(context.inputs, referenceIndex, attributes.axis);
   const inputShape = context.inputs[referenceIndex].dims;
   const adjustedAxis = attributes.axis + (attributes.axis < 0 ? inputShape.length : 0);
-  const outputShape = computeOutputShape(context.inputs, adjustedAxis, referenceIndex);
+  const outputShape = inputShape.slice();
+  outputShape[adjustedAxis] =
+      context.inputs.reduce((sum, input) => sum + (input.dims.length > adjustedAxis ? input.dims[adjustedAxis] : 0), 0);
   // 0 length tensors are valid for concat, remove them
   const nonEmptyInputs = context.inputs.filter(input => ShapeUtil.size(input.dims) > 0);
   if (nonEmptyInputs.length > 0) {
