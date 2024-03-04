@@ -192,5 +192,25 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
 #endif
 }
 
+// Test that we fix invalid names in model inputs, initializers and outputs.
+// Names in CoreML cannot start with [0-9] or contain anything but "[a-z][A-Z][0-9]_"
+TEST(CoreMLExecutionProviderTest, TestNameSanitization) {
+  OpTester test("Clip", 11);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<float>("0", dims,
+                       {-1.0f, 0.0f, 1.0f,
+                        -6.0f, 0.0f, 6.0f,
+                        -5.4f, 2.0f, 6.0f});
+  test.AddInput<float>("1.min", {}, {-5}, true);  // add as initializers
+  test.AddInput<float>("2/max", {}, {5}, true);
+  test.AddOutput<float>("3", dims,
+                        {-1.0f, 0.0f, 1.0f,
+                         -5.0f, 0.0f, 5.0f,
+                         -5.0f, 2.0f, 5.0f});
+
+  // TensorRT does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
 }  // namespace test
 }  // namespace onnxruntime

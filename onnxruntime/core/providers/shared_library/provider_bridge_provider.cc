@@ -24,6 +24,7 @@
 #include "core/providers/cpu/tensor/size.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cpu/tensor/tile.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -572,6 +573,11 @@ std::unique_ptr<EinsumTypedComputeProcessor<double>> EinsumTypedComputeProcessor
 template <>
 std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProcessor<MLFloat16>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_MLFloat16__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
 
+void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                            InlinedVector<float>& scales) const {
+  g_host_cpu.UpsampleBase__AdjustOutputSizeAsPolicy(this, output_dims, input_dims, scales);
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
 Status embed_layer_norm::CheckInputs(const OpKernelContext* context, bool quantizedVersion) {
@@ -648,7 +654,6 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, c
                                             const SessionState& subgraph_session_state) {
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
-
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN
