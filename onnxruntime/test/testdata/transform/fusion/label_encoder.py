@@ -23,6 +23,7 @@ kwargs = {}
 kwargs["opset_imports"] = opsets
 
 
+# Important: A is assumed to be from ['a'-'z']
 def GenerateModel(model_name):  # noqa: N802
     # Create models with consecutive label encoders
     nodes = [  # subgraph
@@ -140,7 +141,7 @@ def GenerateModel(model_name):  # noqa: N802
     ]
 
     inputs = [  # inputs
-        helper.make_tensor_value_info("A", TensorProto.STRING, ["M", "K"]),
+        helper.make_tensor_value_info("A", TensorProto.STRING, ["N"]),
     ]
 
     graph = helper.make_graph(
@@ -148,12 +149,12 @@ def GenerateModel(model_name):  # noqa: N802
         "LabelEncoder",  # name
         inputs,
         [  # outputs
-            helper.make_tensor_value_info("le_1_string_2", TensorProto.STRING, ["M", "K"]),
-            helper.make_tensor_value_info("le_2_string_2", TensorProto.STRING, ["M", "K"]),
-            helper.make_tensor_value_info("le_3_string_3", TensorProto.STRING, ["M", "K"]),
-            helper.make_tensor_value_info("le_4_string_2", TensorProto.STRING, ["M", "K"]),
-            helper.make_tensor_value_info("Y", TensorProto.INT64, ["M", "K"]),
-            helper.make_tensor_value_info("mul_5", TensorProto.INT64, ["M", "K"]),
+            helper.make_tensor_value_info("le_1_string_2", TensorProto.STRING, ["N"]),
+            helper.make_tensor_value_info("le_2_string_2", TensorProto.STRING, ["N"]),
+            helper.make_tensor_value_info("le_3_string_3", TensorProto.STRING, ["N"]),
+            helper.make_tensor_value_info("le_4_string_2", TensorProto.STRING, ["N"]),
+            helper.make_tensor_value_info("Y", TensorProto.INT64, ["N"]),
+            helper.make_tensor_value_info("mul_5", TensorProto.INT64, ["N"]),
         ],
         [],
     )
