@@ -698,6 +698,13 @@ TEST(GradientCheckerTest, SplitGrad) {
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def_13, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error,
                                                          {MakeAttribute("axis", int64_t(0))}));
   EXPECT_IS_TINY(max_error);
+
+  // opset18 test
+  OpDef op_def_18{"Split", kOnnxDomain, 18};
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def_18, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error,
+                                                         {MakeAttribute("axis", int64_t(0)),
+                                                         MakeAttribute("num_outputs", int64_t(3))}));
+  EXPECT_IS_TINY(max_error);
 }
 
 template <typename T>
@@ -2733,7 +2740,7 @@ TEST(GradientCheckerTest, TileGrad) {
 TEST(GradientCheckerTest, PadGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Pad", kOnnxDomain, 11};
+  OpDef op_def{"Pad", kOnnxDomain, 18};
 
   {
     TensorInfo x_info({2, 4}, true);
@@ -2803,7 +2810,7 @@ TEST(GradientCheckerTest, PadGrad) {
 TEST(GradientCheckerTest, ScatterNDGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"ScatterND", kOnnxDomain, 11};
+  OpDef op_def{"ScatterND", kOnnxDomain, 18};
 
   {
     TensorInfo data_info({8}, true);
@@ -2887,7 +2894,7 @@ TEST(GradientCheckerTest, ScatterNDGrad) {
 TEST(GradientCheckerTest, ScatterElementsGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"ScatterElements", kOnnxDomain, 13};
+  OpDef op_def{"ScatterElements", kOnnxDomain, 18};
 
   {  // without axis
     TensorInfo data_info({3, 3}, true);
