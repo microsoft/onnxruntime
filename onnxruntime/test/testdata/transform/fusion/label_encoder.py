@@ -2,6 +2,7 @@ from enum import Enum  # noqa: F401
 
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
+
 opsets = []
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 19
@@ -53,7 +54,8 @@ def GenerateModel(model_name):  # noqa: N802
             "le_2_string_1",
             domain="ai.onnx.ml",
             keys_strings=["a", "b", "c"],
-            values_strings=["3", "2", "1"],
+            values_strings=["C", "B", "A"],
+            default_string="D",
         ),
         helper.make_node(
             "LabelEncoder",
@@ -61,8 +63,8 @@ def GenerateModel(model_name):  # noqa: N802
             ["le_2_string_2"],
             "le_2_string_2",
             domain="ai.onnx.ml",
-            keys_strings=["2", "1", "0"],
-            values_strings=["a", "b", "c"],
+            keys_strings=["A", "B", "C", "D"],
+            values_strings=["a", "b", "c", "d"],
             default_string="default",
         ),
         # string -> string -> int -> string
@@ -73,7 +75,7 @@ def GenerateModel(model_name):  # noqa: N802
             "le_3_string_1",
             domain="ai.onnx.ml",
             keys_strings=["a", "b", "c"],
-            values_strings=["3", "2", "1"],
+            values_strings=["C", "B", "A"],
         ),
         helper.make_node(
             "LabelEncoder",
@@ -81,7 +83,7 @@ def GenerateModel(model_name):  # noqa: N802
             ["le_3_int_2"],
             "le_3_int_2",
             domain="ai.onnx.ml",
-            keys_strings=["2", "1", "0"],
+            keys_strings=["A", "B", "C"],
             values_int64s=[1, 2, 3],
             default_int64=-1,
         ),
@@ -92,8 +94,8 @@ def GenerateModel(model_name):  # noqa: N802
             "le_3_string_3",
             domain="ai.onnx.ml",
             keys_int64s=[1, 2, 3],
-            values_strings=["1", "2", "3"],
-            default_string="default",
+            values_strings=["a", "b", "c"],
+            default_string="d",
         ),
         # middle encoder is graph output
         helper.make_node(

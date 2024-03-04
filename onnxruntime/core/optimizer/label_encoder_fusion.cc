@@ -68,15 +68,14 @@ bool LabelEncoderFusion::SatisfyCondition(const Graph& graph, const Node& node, 
   }
 
   // Is one of the supported operations
-  return 
-		IsValidForFusion<std::string, std::string, std::string>(node, next_node) ||
-		IsValidForFusion<std::string, std::string, int64_t>(node, next_node) ||
-		IsValidForFusion<std::string, int64_t, std::string>(node, next_node) ||
-		IsValidForFusion<std::string, int64_t, int64_t>(node, next_node) ||
-		IsValidForFusion<int64_t, std::string, std::string>(node, next_node) ||
-		IsValidForFusion<int64_t, std::string, int64_t>(node, next_node) ||
-		IsValidForFusion<int64_t, int64_t, std::string>(node, next_node) ||
-		IsValidForFusion<int64_t, int64_t, int64_t>(node, next_node);
+  return IsValidForFusion<std::string, std::string, std::string>(node, next_node) ||
+         IsValidForFusion<std::string, std::string, int64_t>(node, next_node) ||
+         IsValidForFusion<std::string, int64_t, std::string>(node, next_node) ||
+         IsValidForFusion<std::string, int64_t, int64_t>(node, next_node) ||
+         IsValidForFusion<int64_t, std::string, std::string>(node, next_node) ||
+         IsValidForFusion<int64_t, std::string, int64_t>(node, next_node) ||
+         IsValidForFusion<int64_t, int64_t, std::string>(node, next_node) ||
+         IsValidForFusion<int64_t, int64_t, int64_t>(node, next_node);
 }
 
 /**
@@ -119,24 +118,19 @@ Status LabelEncoderFusion::ApplyHelper(
     mapping[next_node_keys[i]] = next_node_values[i];
   }
 
-  std::vector<T1> new_node_keys = {};
   std::vector<T3> new_node_values = {};
   const auto new_node_default = getFromMapDefault(mapping, node_default, next_node_default);
-
-  for (const T1& node_key : node_keys) {
-    new_node_keys.push_back(node_key);
-  }
 
   for (const T2& node_value : node_values) {
     new_node_values.push_back(getFromMapDefault(mapping, node_value, next_node_default));
   }
 
-  // Remove old attributes
-  node.ClearAttribute(KEYS_ATTR_NAME(T1));
+  // Remove old attributes:
+  // The keys attribute is correct, we just reroute
+  // the values
   node.ClearAttribute(VALUES_ATTR_NAME(T2));
   node.ClearAttribute(DEFAULT_VALUE_ATTR_NAME(T2));
 
-  node.AddAttribute(KEYS_ATTR_NAME(T1), new_node_keys);
   node.AddAttribute(VALUES_ATTR_NAME(T3), new_node_values);
   node.AddAttribute(DEFAULT_VALUE_ATTR_NAME(T3), new_node_default);
 
