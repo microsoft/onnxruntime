@@ -31,9 +31,7 @@ constexpr size_t kMaxExecutionProviderNameLen = 30;
 
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
-#ifdef ENABLE_CUDA_NHWC_OPS
 constexpr const char* kCudaNHWCExecutionProvider = "CUDANHWCExecutionProvider";
-#endif
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
