@@ -197,7 +197,7 @@ tensor([[49406,  1078,   320,  1674,   539,  1901,  2677,   593,  4023,  1630,
 
 ## Text embedding with the CLIP text encoder model
 
-The tokens are sent to the text encoder model and converted into a tensor of shape (1, 77, 768) where the first dimension is the batch size, the second dimension is the number of tokens and the third dimension is the embedding size.  The text encoder is a [OpenAI CLIP](https://openai.com/blog/clip/) model that connects text to images.
+The tokens are sent to the text encoder model and converted into a tensor of shape (1, 77, 768) where the first dimension is the batch size, the second dimension is the number of tokens and the third dimension is the embedding size.  The text encoder is a [OpenAI CLIP](https://openai.com/research/clip) model that connects text to images.
 
 The text encoder creates the text embedding which is trained to encode the text prompt into a vector that is used to guide the image generation. The text embedding is then concatenated with the uncond embedding to create the text embeddings that is sent to the unet model for inferencing.
 
