@@ -12,6 +12,7 @@
 	import Phi2Image from '../../routes/blogs/accelerating-phi-2/Phi2_Int4_TokenGenerationTP.png';
 	import { createEventDispatcher } from 'svelte';
 	import ORT117Thumbnail from '../../images/blogs/ort-1-17-thumbnail.png';
+	import WebGPUImage from '../../images/blogs/webgpu_blog_thumbnail.png';
 	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
 	onMount(() => {
 		anime({
@@ -41,6 +42,15 @@
 	}
 	let featuredblog = [
 		{
+			title: 'ONNX Runtime Web unleashes generative AI in the browser using WebGPU',
+			date: 'February 29th, 2024',
+			blurb:
+				'We are thrilled to announce the official launch of ONNX Runtime Web featuring WebGPU, which is now available in the ONNX Runtime 1.17 release.',
+			link: 'https://cloudblogs.microsoft.com/opensource/2024/02/29/onnx-runtime-web-unleashes-generative-ai-in-the-browser-using-webgpu/',
+			image: WebGPUImage,
+			imgalt: 'Comparison of ONNX Runtime Web with WebGPU EP on GPU vs. WASM EP on CPU for segment anything example'
+		},
+		{
 			title: 'ONNX Runtime 1.17: CUDA 12 support, Phi-2 optimizations, WebGPU, and more!',
 			date: 'February 28th, 2024',
 			blurb:
@@ -57,7 +67,9 @@
 			link: 'blogs/accelerating-phi-2',
 			image: Phi2Image,
 			imgalt: 'Phi2 float16 token generation throughput comparison'
-		},
+		}
+	];
+	let blogs = [
 		{
 			title: 'On-Device Training: Training a model in browser',
 			date: 'February 6th, 2024',
@@ -66,9 +78,7 @@
 			link: 'https://cloudblogs.microsoft.com/opensource/2024/02/06/on-device-training-training-a-model-in-browser',
 			image: WebTrainingImage,
 			imgalt: 'Components of the onnxruntime-web JS package'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title: 'Accelerating SD Turbo and SDXL Turbo Inference with ONNX Runtime and Olive',
 			date: 'January 15th, 2024',
