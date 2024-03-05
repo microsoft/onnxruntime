@@ -969,7 +969,6 @@ Do not modify directly.*
 |||7+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Dropout|*in* data:**T**<br> *in* ratio:**T1**<br> *in* training_mode:**T2**<br> *out* output:**T**<br> *out* mask:**T2**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**<br> *out* mask:**T**<br><br>or<br><br>*in* data:**T**<br> *out* output:**T**<br> *out* mask:**T1**|7+|**T** = tensor(float), tensor(float16)|
 |DynamicQuantizeLinear|*in* x:**T1**<br> *out* y:**T2**<br> *out* y_scale:**tensor(float)**<br> *out* y_zero_point:**T2**|11+|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
-|DynamicQuantizeLinear|*in* x:**T1**<br> *out* y:**T2**<br> *out* y_scale:**tensor(float)**<br> *out* y_zero_point:**T2**|11+|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
 |Einsum|*in* Inputs:**T**<br> *out* Output:**T**|12+|**T** = tensor(float), tensor(float16)|
 |Elu|*in* X:**T**<br> *out* Y:**T**|6+|**T** = tensor(float), tensor(float16)|
 |Equal|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|19+|**T** = tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(bool)|
@@ -1264,6 +1263,7 @@ Do not modify directly.*
 |BiasSplitGelu|*in* X:**T**<br> *in* bias:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
 |ConvTransposeWithDynamicPads|*in* X:**T**<br> *in* W:**T**<br> *in* Pads:**tensor(int64)**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
 |DequantizeLinear|*in* x:**T1**<br> *in* x_scale:**T2**<br> *in* x_zero_point:**T1**<br> *out* y:**T2**|1+|**T1** = tensor(int32), tensor(int8), tensor(uint8)<br/> **T2** = tensor(float), tensor(float16)|
+|DynamicQuantizeMatMul|*in* A:**T1**<br> *in* B:**T2**<br> *in* b_scale:**T1**<br> *in* b_zero_point:**T2**<br> *in* bias:**T1**<br> *out* Y:**T1**|1+|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
 |EmbedLayerNormalization|*in* input_ids:**T1**<br> *in* segment_ids:**T1**<br> *in* word_embedding:**T**<br> *in* position_embedding:**T**<br> *in* segment_embedding:**T**<br> *in* gamma:**T**<br> *in* beta:**T**<br> *in* mask:**T1**<br> *in* position_ids:**T1**<br> *out* output:**T**<br> *out* mask_index:**T1**<br> *out* embedding_sum:**T**|1+|**T** = tensor(float), tensor(float16)|
 |FusedMatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
 |FusedMatMulActivation|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
