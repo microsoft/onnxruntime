@@ -401,7 +401,9 @@ def main():
     # connect to database
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(args.kusto_conn)
     ingest_client = QueuedIngestClient(kcsb_ingest)
-    identifier = get_identifier(args.commit_datetime, args.commit_hash, args.trt_version, args.branch, args.use_tensorrt_oss_parser)
+    identifier = get_identifier(
+        args.commit_datetime, args.commit_hash, args.trt_version, args.branch, args.use_tensorrt_oss_parser
+    )
     upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
 
     try:
