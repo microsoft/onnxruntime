@@ -2,9 +2,11 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
 index 3987eac9..5e5462f1 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -281,3 +281,3 @@
-  if(DEFINED FLATBUFFERS_CXX_FLAGS)
-    message(STATUS "extend CXX_FLAGS with ${FLATBUFFERS_CXX_FLAGS}")
--   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLATBUFFERS_CXX_FLAGS}")
-+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLATBUFFERS_CXX_FLAGS}" -Wno-error="stringop-overflow")
-  endif()
+@@ -279,5 +279,5 @@
+ # Append FLATBUFFERS_CXX_FLAGS to CMAKE_CXX_FLAGS.
+ if(DEFINED FLATBUFFERS_CXX_FLAGS)
+   message(STATUS "extend CXX_FLAGS with ${FLATBUFFERS_CXX_FLAGS}")
+-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLATBUFFERS_CXX_FLAGS}")
++  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLATBUFFERS_CXX_FLAGS} -Wno-error=stringop-overflow")
+ endif()
+ message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
