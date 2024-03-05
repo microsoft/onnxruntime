@@ -370,7 +370,7 @@ Status ROCMExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunO
       GetPerThreadContext().CaptureEnd();
       // HIP work issued to a capturing stream doesn’t actually run on the GPU,
       // so run the captured graph here to actually execute the work.
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph());
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(0));
     } else {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
     }
@@ -406,7 +406,7 @@ bool ROCMExecutionProvider::IsGraphCaptured(int) const {
 }
 
 Status ROCMExecutionProvider::ReplayGraph(int /*graph_annotation_id*/) {
-  return GetPerThreadContext().ReplayGraph();
+  return GetPerThreadContext().ReplayGraph(0);
 }
 
 namespace rocm {
