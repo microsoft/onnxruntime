@@ -172,23 +172,37 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
   // layers.
   //
-  // Note 2: Use default order which tries to BFS from the outputs, so the nearest node to graph output will be visited first.
+  // Note 2: Here we use default typo order (which tries to BFS from the outputs,
+  // so the nearest node to graph output will be visited last). So in reversed default typo order,
+  // the neareast node to graph output will be visited first.
   // Imagine there is a such subgraph
-  // labels-------------
-  //    \              |
-  //    node1          |
-  //      \            |
-  //      node2        |
-  //        \          |
+  //         input1 input2 input3
+  //             \    |     /
+  //         multiple layers
+  //             |
+  //            node M
+  // labels-------|-----
+  //    \         |     |
+  //    node1     |     |
+  //      \       |     |
+  //      node2  /      |
+  //        \   /       |
+  //      node loss     /
+  //          |        /
   //       YieldOp  node1_recompute
   //         |      /
-  //       node2_grad
+  //         \   node2 recompute
+  //          \ /
+  //     node loss_grad
   //           |
-  // In PriorityBased order, node1_recompute will be visited first, recompute node will be added at last because we
-  // do this following reversed topological order. Then node1_recompute node will have lowest priority to execute.
-  // If at this time, the queue to visit contains only recompute nodes, then node1_recompute will be run at last,
-  // affecting the backward critical path, which is not what we want.
-  // Current workaround is to use default order, which will execute node1 right before node2 in this case.
+  //     critical grad path
+  //
+  // In PriorityBased order, node1 will be visited first, so it's recompute node node1_recompute will be added
+  // at last because we do this following reversed topological order. Then node1_recompute node will have lowest
+  // priority to execute, as a result, if at this time, the queue to visit contains only recompute nodes, then
+  // node1_recompute will be run at last, affecting the backward critical path, which is not what we want.
+  // Current workaround is to use default order, which will execute node1_recompute earlier than other recompute nodes
+  // in this case.
 
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
