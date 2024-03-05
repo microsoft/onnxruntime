@@ -316,7 +316,7 @@ void Explicit_Impl_IsInf(cudaStream_t stream, int op_set,
     dispatcher.Invoke<isinf_details::IsInf_DispFunc>(stream, input_raw, output_data,
                                                  detect_positive, detect_negative, count);
   } else {
-    utils::MLTypeCallDispatcher<ISINF_OPSET20_CONSTRAINTS> dispatcher{input_data_type};
+    utils::MLTypeCallDispatcher<ISINF_OPSET20_ALL_FLOATS> dispatcher{input_data_type};
     dispatcher.Invoke<isinf_details::IsInf_DispFunc>(stream, input_raw, output_data,
                                                  detect_positive, detect_negative, count);
   }

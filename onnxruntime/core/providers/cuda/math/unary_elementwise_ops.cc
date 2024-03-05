@@ -88,19 +88,13 @@ ONNX_OPERATOR_KERNEL_EX(
     20,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", BuildKernelDefConstraints<ISINF_OPSET20_CONSTRAINTS>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<ISINF_OPSET20_ALL_FLOATS>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
 
 IsInf::IsInf(const OpKernelInfo& info) : UnaryElementwise(info) {
-  int64_t detect_positive = 0, detect_negative = 0;
-  Status status = info.GetAttr("detect_positive", &detect_positive);
-  ORT_ENFORCE(status.IsOK(), "Failed to obtain detect_positive");
-  status = info.GetAttr("detect_negative", &detect_negative);
-  ORT_ENFORCE(status.IsOK(), "Failed to obtain detect_negative");
-
-  detect_positive_ = static_cast<bool>(detect_positive);
-  detect_negative_ = static_cast<bool>(detect_negative);
+  detect_positive_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("detect_positive", 1));
+  detect_negative_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("detect_negative", 1));
   opset_ = info.node().SinceVersion();
 }
 

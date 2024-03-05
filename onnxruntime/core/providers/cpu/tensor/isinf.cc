@@ -78,10 +78,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     IsInf);
 
 IsInf::IsInf(const OpKernelInfo& info) : OpKernel(info) {
-  Status status = info.GetAttr("detect_positive", &detect_positive_);
-  ORT_ENFORCE(status.IsOK(), "Failed to obtain detect_positive");
-  status = info.GetAttr("detect_negative", &detect_negative_);
-  ORT_ENFORCE(status.IsOK(), "Failed to obtain detect_negative");
+  detect_positive_ = info.GetAttrOrDefault<int64_t>("detect_positive", 1);
+  detect_negative_ = info.GetAttrOrDefault<int64_t>("detect_negative", 1);
   opset_ = info.node().SinceVersion();
 }
 
