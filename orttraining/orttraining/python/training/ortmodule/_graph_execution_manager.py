@@ -681,11 +681,15 @@ class GraphExecutionManager(GraphExecutionInterface):
                     )
 
                 if self._runtime_options.enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
-                    graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
-                    self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
-                    self._runtime_options.embed_sparsity_ratio = ",".join(
-                        [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
-                    )
+                    if detected_device.type == "cuda":
+                        # Embedding sparsity optimization is only supported on CUDA devices.
+                        graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
+                        self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
+                        self._runtime_options.embed_sparsity_ratio = ",".join(
+                            [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
+                        )
+                    else:
+                        self._logger.info("Embedding sparsity-based optimization is not supported on non-CUDA devices.")
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.

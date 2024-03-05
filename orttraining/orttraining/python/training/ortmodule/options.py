@@ -277,7 +277,7 @@ class _RuntimeOptions:
         self.enable_sparse_optimizer = True
         self.label_sparsity_ratio = ""
         self.embed_sparsity_ratio = ""
-        self.enable_embedding_sparse_optimizer = False  # TODO(pengwa): remove once validation on more models are done.
+        self.enable_embedding_sparse_optimizer = True
 
         # Configuration for memory optimization.
         self.memory_optimization_level = (
