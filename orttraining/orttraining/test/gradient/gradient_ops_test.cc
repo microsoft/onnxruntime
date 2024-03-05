@@ -645,6 +645,11 @@ TEST(GradientCheckerTest, ReduceL2Grad) {
                                                            {MakeAttribute("axes", axes)}));
     EXPECT_IS_TINY(max_error);
   }
+
+  // axes is input from opset 18
+  OpDef op_def_18{"ReduceL2", kOnnxDomain, 18};
+
+  RunReductionTests(op_def_18, true, true);
 }
 
 TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
