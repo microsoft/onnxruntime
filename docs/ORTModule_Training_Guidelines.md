@@ -246,7 +246,7 @@ to standard outputs.
 #### ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER
 
 - **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, this is disabled. This env var can be used for enabling or disabling the embedding input
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the embedding input
 data sparsity based performance optimizations.
 
 	```bash
