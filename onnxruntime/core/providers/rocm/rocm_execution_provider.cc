@@ -193,14 +193,14 @@ void ROCMExecutionProvider::PerThreadContext::CaptureEnd() {
   is_graph_captured_ = true;
 }
 
-bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptured() const {
+bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptured(int) const {
   return is_graph_captured_;
 }
 
-Status ROCMExecutionProvider::PerThreadContext::ReplayGraph() {
-  ORT_ENFORCE(IsGraphCaptured());
+Status ROCMExecutionProvider::PerThreadContext::ReplayGraph(int graph_annotation_id) {
+  ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
 
-  return hip_graph_.Replay();
+  return hip_graph_.Replay(graph_annotation_id);
 }
 
 void ROCMExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {

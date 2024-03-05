@@ -92,8 +92,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
   bool IsGraphCaptureEnabled() const override;
-  bool IsGraphCaptured(int graph_annotation_id) const override;
-  Status ReplayGraph(int graph_annotation_id) override;
+  bool IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const override;
+  Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id) override;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
@@ -180,10 +180,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     bool IsGraphCaptureAllowedOnRun() const;
     void CaptureBegin();
     void CaptureEnd();
-    bool IsGraphCaptured() const;
-    Status SetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options);
-    Status SetCudaGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id);
-    Status ReplayGraph();
+    bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
+    void SetCudaGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:
@@ -204,7 +204,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
     // is put under PerThreadContext.
     CUDAGraph cuda_graph_;
     int regular_run_count_before_graph_capture_ = 0;
-    CudaGraphAnnotation_t cuda_graph_annotation_id_ = 0;
 
     // There is chance that the second regular run allocates GPU memory for causes like:
     // (1) memory pattern is enabled. (2) arena allocation for stream.

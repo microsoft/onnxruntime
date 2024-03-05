@@ -61,8 +61,6 @@ void CUDAGraphManager::CaptureBegin() {
 }
 
 void CUDAGraphManager::CaptureEnd() {
-  ORT_ENFORCE(IsGraphCaptureAllowedOnRun());
-
   cudaGraph_t graph = NULL;
   CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));
   if (graph == NULL) {
@@ -76,13 +74,14 @@ void CUDAGraphManager::CaptureEnd() {
   cuda_graph_set_.Put(cuda_graph_annotation_id_, graph_exec);
 }
 
-Status CUDAGraphManager::Replay() {
+Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) {
   ORT_ENFORCE(IsGraphCaptureAllowedOnRun());
+
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
-  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id " << cuda_graph_annotation_id_;
+  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id " << cuda_graph_annotation_id;
 
-  cudaGraphExec_t graph_exec = cuda_graph_set_.Get(cuda_graph_annotation_id_);
+  cudaGraphExec_t graph_exec = cuda_graph_set_.Get(cuda_graph_annotation_id);
   CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec, stream_));
 
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
@@ -94,6 +93,7 @@ bool CUDAGraphManager::IsGraphCaptureAllowedOnRun() const {
 }
 
 bool CUDAGraphManager::IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  ;
   return cuda_graph_set_.Contains(cuda_graph_annotation_id);
 }
 

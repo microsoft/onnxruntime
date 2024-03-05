@@ -2388,7 +2388,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "");
   if (!graph_annotation_str.empty()) {
     if (!TryParseStringWithClassicLocale<int>(graph_annotation_str, graph_annotation_id)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse the cuda graph annotation id: ", 
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse the cuda graph annotation id: ",
                              graph_annotation_str);
     }
   }

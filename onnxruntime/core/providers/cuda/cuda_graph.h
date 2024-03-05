@@ -40,7 +40,7 @@ struct CUDAGraphManager {
 
   void CaptureBegin();
   void CaptureEnd();
-  Status Replay();
+  Status Replay(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
   void Reset();
 
