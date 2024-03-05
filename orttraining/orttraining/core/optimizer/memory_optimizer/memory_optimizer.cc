@@ -28,6 +28,29 @@ constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort,
   return op_order_in_topological_sort <= boundary_op_order_in_topological_sort;
 }
 
+// Reset seed attribute for all dropout nodes in the graph if the seed is not set.
+bool SetSeedForDropoutNode(Graph& graph, Node& node) {
+  // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
+  // TODO(pengwa): add the opset check in GetAllowedRecomputeOps.
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {12, 13}, kOnnxDomain) ||
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "BitmaskDropout", {1}, kMSDomain) ||
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasDropout", {1}, kMSDomain) ||
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "BitmaskBiasDropout", {1}, kMSDomain) ||
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasSoftmaxDropout", {1}, kMSDomain)) {
+    auto& attrs = node.GetAttributes();
+    if (attrs.count("seed")) {
+      return false;
+    }
+
+    int64_t seed = static_cast<int64_t>(utils::GetHashFromString(node.OutputDefs()[0]->Name())) +
+                   utils::GetRandomSeed();
+    node.AddAttribute("seed", seed);
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace
 
 Status MemoryOptimizer::ParseOptimizationConfigFromString(const std::string& memory_optimizer_config,
@@ -137,9 +160,6 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     return Status::OK();
   }
 
-  // Reset seed attribute for all dropout nodes in the graph if the seed is not set.
-  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::SetSeedForDropoutNodes(graph, modified));
-
   size_t recomputed_node_count = 0;
 
   ptrdiff_t yield_op_order_in_topological_sort;
@@ -238,6 +258,11 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
     if (graph.GetNodeArg(graph_utils::RecomputeName(node_to_duplicate->MutableOutputDefs()[0]->Name())) != nullptr) {
       continue;
     }
+
+    bool seed_reset = SetSeedForDropoutNode(graph, *node_to_duplicate);
+    if (seed_reset)
+      LOGS(logger, VERBOSE) << "Set seed for Node " << node_to_duplicate->Name() << "("
+                            << node_to_duplicate->OpType() << ").";
 
     InlinedVector<NodeArg*> new_input_args;
     new_input_args.reserve(node_to_duplicate->MutableInputDefs().size());

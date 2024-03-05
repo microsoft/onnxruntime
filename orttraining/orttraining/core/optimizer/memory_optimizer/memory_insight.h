@@ -68,13 +68,6 @@ class MemoryRecord {
 Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified);
 
 /**
- * @brief Reset seed attribute for all dropout nodes in the graph if the seed is not set.
- *
- * This is to make sure the dropout nodes have the same seed for forward run and recompute run in the backward.
- */
-Status SetSeedForDropoutNodes(Graph& graph, bool& modified);
-
-/**
  * @brief Iterate the graph and find all possible memory optimization opportunities for related nodes.
  *
  * @param graph_viewer  The graph to iterate.

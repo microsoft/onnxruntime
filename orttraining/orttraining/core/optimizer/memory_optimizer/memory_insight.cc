@@ -217,30 +217,6 @@ Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified) {
   return Status::OK();
 }
 
-Status SetSeedForDropoutNodes(Graph& graph, bool& modified) {
-  for (auto& node : graph.Nodes()) {
-    // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
-    // TODO(pengwa): add the opset check in GetAllowedRecomputeOps.
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {12, 13}, kOnnxDomain) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "BitmaskDropout", {1}, kMSDomain) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasDropout", {1}, kMSDomain) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "BitmaskBiasDropout", {1}, kMSDomain) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasSoftmaxDropout", {1}, kMSDomain)) {
-      auto& attrs = node.GetAttributes();
-      if (attrs.count("seed")) {
-        continue;
-      }
-
-      int64_t seed = static_cast<int64_t>(utils::GetHashFromString(node.OutputDefs()[0]->Name())) +
-                     utils::GetRandomSeed();
-      node.AddAttribute("seed", seed);
-      modified = true;
-    }
-  }
-
-  return Status::OK();
-}
-
 Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       const ProbeConfig& probe_config,
                                       const logging::Logger& logger,
