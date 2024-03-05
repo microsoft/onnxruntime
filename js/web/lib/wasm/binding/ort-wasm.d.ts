@@ -125,14 +125,17 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   // #region JSEP
   /**
-   * This is the entry of JSEP initialization. This function is called once when initializing ONNX Runtime.
-   * This function initializes WebGPU backend and registers a few callbacks that will be called in C++ code.
+   * This is the entry of JSEP initialization. This function is called once when initializing ONNX Runtime per backend.
+   * This function initializes Asyncify support.
+   * If name is 'webgpu', also initializes WebGPU backend and registers a few callbacks that will be called in C++ code.
    */
-  jsepInit?
-      (backend: JSEP.BackendType, alloc: JSEP.AllocFunction, free: JSEP.FreeFunction, upload: JSEP.UploadFunction,
-       download: JSEP.DownloadFunction, createKernel: JSEP.CreateKernelFunction,
-       releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction, captureBegin: JSEP.CaptureBeginFunction,
-       captureEnd: JSEP.CaptureEndFunction, replay: JSEP.ReplayFunction): void;
+  jsepInit?(name: 'webgpu', initParams: [
+    backend: JSEP.BackendType, alloc: JSEP.AllocFunction, free: JSEP.FreeFunction, upload: JSEP.UploadFunction,
+    download: JSEP.DownloadFunction, createKernel: JSEP.CreateKernelFunction, releaseKernel: JSEP.ReleaseKernelFunction,
+    run: JSEP.RunFunction, captureBegin: JSEP.CaptureBeginFunction, captureEnd: JSEP.CaptureEndFunction,
+    replay: JSEP.ReplayFunction
+  ]): void;
+  jsepInit?(name: 'webnn', initParams?: never): void;
 
   /**
    * [exported from wasm] Specify a kernel's output when running OpKernel::Compute().

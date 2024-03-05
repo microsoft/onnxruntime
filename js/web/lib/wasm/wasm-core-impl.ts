@@ -84,27 +84,36 @@ export const initRuntime = async(env: Env): Promise<void> => {
  * @param epName
  */
 export const initEp = async(env: Env, epName: string): Promise<void> => {
-  if (!BUILD_DEFS.DISABLE_WEBGPU && (epName === 'webgpu' || epName === 'webnn')) {
-    // perform WebGPU availability check
-    if (typeof navigator === 'undefined' || !navigator.gpu) {
-      throw new Error('WebGPU is not supported in current environment');
-    }
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-      throw new Error(
-          'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
-    }
-
-    if (!env.wasm.simd) {
-      throw new Error(
-          'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using `webgpu` EP');
-    }
-
-    // init JSEP if available
-
+  if (!BUILD_DEFS.DISABLE_WEBGPU) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
-    await initJsep(getInstance(), env, adapter);
+
+    if (epName === 'webgpu') {
+      // perform WebGPU availability check
+      if (typeof navigator === 'undefined' || !navigator.gpu) {
+        throw new Error('WebGPU is not supported in current environment');
+      }
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        throw new Error(
+            'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+      }
+
+      if (!env.wasm.simd) {
+        throw new Error(
+            'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using `webgpu` EP');
+      }
+
+      await initJsep('webgpu', getInstance(), env, adapter);
+    }
+    if (epName === 'webnn') {
+      // perform WebNN availability check
+      if (typeof navigator === 'undefined' || !(navigator as unknown as {ml: unknown}).ml) {
+        throw new Error('WebNN is not supported in current environment');
+      }
+
+      await initJsep('webnn', getInstance(), env);
+    }
   }
 };
 
