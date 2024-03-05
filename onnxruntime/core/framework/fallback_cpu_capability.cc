@@ -152,6 +152,23 @@ std::unordered_set<NodeIndex> GetShapeRelatedNodes(const onnxruntime::GraphViewe
   return shape_related_node_indices;
 }
 
+bool IsAggressiveCpuFallbackEnabled() {
+#if !defined(_WIN32) && ENABLE_TRAINING
+  // std::getenv is not available on each platform.
+  // Since ORT_AGGRESSIVE_CPU_FALLBACK is experimental,
+  // we only allow it for training to avoid build issues on
+  // custom platform such as XBox.
+  const char* p_env_var = std::getenv("ORT_AGGRESSIVE_CPU_FALLBACK");
+  if (!p_env_var) {
+    // No such an environment variable.
+    return false;
+  }
+  return std::strcmp(p_env_var, "1") == 0;
+#else
+  return false;
+#endif
+}
+
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
@@ -284,7 +301,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     }
   }
 
-  if (std::strcmp(std::getenv("ORT_AGGRESSIVE_CPU_FALLBACK"), "1") == 0) {
+  if (IsAggressiveCpuFallbackEnabled()) {
     auto shape_related_node_indices = GetShapeRelatedNodes(graph);
     cpu_nodes.insert(shape_related_node_indices.begin(), shape_related_node_indices.end());
   }
