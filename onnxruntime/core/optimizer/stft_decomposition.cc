@@ -163,7 +163,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     CONTINUE_IF_NO_DIM_VALUE(signal_length_dim);
     CONTINUE_IF_NO_DIM_VALUE(signal_components_dim);
 
-    auto batch_size = batch_size_dim.has_dim_value() ? batch_size_dim.dim_value() : -1i64;
+    auto batch_size = batch_size_dim.has_dim_value() ? batch_size_dim.dim_value() : static_cast<int64_t>(-1);
     auto signal_length = signal_length_dim.dim_value();
     auto is_real = signal_components_dim.dim_value() == 1;
     auto data_type = signal->TypeAsProto()->tensor_type().elem_type();
