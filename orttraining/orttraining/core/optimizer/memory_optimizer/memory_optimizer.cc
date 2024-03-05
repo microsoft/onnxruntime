@@ -28,8 +28,8 @@ constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort,
   return op_order_in_topological_sort <= boundary_op_order_in_topological_sort;
 }
 
-// Reset seed attribute for all dropout nodes in the graph if the seed is not set.
-bool SetSeedForDropoutNode(Graph& graph, Node& node) {
+// Reset seed attribute for the dropout node if the seed is not set.
+bool SetSeedForDropoutNode(Node& node) {
   // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
   // TODO(pengwa): add the opset check in GetAllowedRecomputeOps.
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {12, 13}, kOnnxDomain) ||
@@ -97,7 +97,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
       optimizer::memory_optimizer::NodeRecomputePlan* recompute_plan =
           dynamic_cast<optimizer::memory_optimizer::NodeRecomputePlan*>(node_plan.get());
       ORT_ENFORCE(recompute_plan != nullptr);
-      ORT_ENFORCE(CreateRecomputeGraph(graph, recompute_plan->GetNodesInTopoOrder(), replacement_node_ptr).IsOK());
+      ORT_ENFORCE(CreateRecomputeGraph(graph, recompute_plan->GetNodesInTopoOrder(), logger, replacement_node_ptr).IsOK());
     } else {
       ORT_THROW("unsupported optimization type found.");
     }
@@ -246,6 +246,7 @@ void MemoryOptimizer::PrintSummary(const optimizer::memory_optimizer::MemoryOpti
 
 Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
                                              const InlinedVector<const Node*>& nodes_in_topological_order,
+                                             const logging::Logger& logger,
                                              Node*& new_output_node_ptr) const {
   InlinedHashMap<NodeArg*, NodeArg*> self_contained_outputs_map;
   for (size_t i = 0; i < nodes_in_topological_order.size(); ++i) {
@@ -259,10 +260,11 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
       continue;
     }
 
-    bool seed_reset = SetSeedForDropoutNode(graph, *node_to_duplicate);
-    if (seed_reset)
-      LOGS(logger, VERBOSE) << "Set seed for Node " << node_to_duplicate->Name() << "("
-                            << node_to_duplicate->OpType() << ").";
+    bool seed_reset = SetSeedForDropoutNode(*node_to_duplicate);
+    if (seed_reset) {
+      LOGS(logger, VERBOSE) << "Set seed for Node " << node_to_duplicate->Name() << "(" << node_to_duplicate->OpType()
+                            << ").";
+    }
 
     InlinedVector<NodeArg*> new_input_args;
     new_input_args.reserve(node_to_duplicate->MutableInputDefs().size());
