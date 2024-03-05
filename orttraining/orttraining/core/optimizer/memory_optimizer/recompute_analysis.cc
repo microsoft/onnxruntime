@@ -49,17 +49,29 @@ float InputOutputSizeRatio(const Node* node) {
 }
 
 using IgnorableInputIndices = InlinedVector<int>;
-using OpsetToIndicesMap = InlinedHashMap<int, IgnorableInputIndices>;
+using OpsetToIgnorableIndicesMap = InlinedHashMap<int, IgnorableInputIndices>;
 
-// The supported op types are predefined.
-// Most recent revisited for ONNX v1.15.0 release - https://github.com/onnx/onnx/blob/b86cc54efce19530fb953e4b21f57e6b3888534c/docs/Operators.md
-const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int probe_op_level) {
-  static InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIndicesMap>> recomputable_op_table_map;
+/**
+ * @brief Get the Allowed Recompute Ops object
+ *
+ * The supported op types are predefined.
+ * Most recent revisited for ONNX v1.15.0 release - https://github.com/onnx/onnx/blob/b86cc54efce19530fb953e4b21f57e6b3888534c/docs/Operators.md
+ *
+ * We defined supported list explicitly instead of using a excluding list for the following reasons:
+ * 1. Some ops generate indeterministic results (for example using random number generator). We need evaluate whether
+ *   this is a problem for recompute before adding the support, instead of fixing this after we find and try to
+ *   fix convergence issues (which will be very hard if we have multiple indeterministic operators by default supported.)
+ * 2. Some ops schema will be changed in new opsets, we need also check manually whether it is applicable to recompute
+ *   or not.
+ * 3. Some ops are not supported in older opsets, we need to check whether it is applicable to recompute or not.
+ */
+const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecomputeOps(int probe_op_level) {
+  static InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>> recomputable_op_table_map;
   if (recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end()) {
     return recomputable_op_table_map.at(probe_op_level);
   }
 
-  recomputable_op_table_map.insert({probe_op_level, InlinedHashMap<std::string, OpsetToIndicesMap>()});
+  recomputable_op_table_map.insert({probe_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
   auto& recomputable_op_table = recomputable_op_table_map.at(probe_op_level);
   if (probe_op_level >= static_cast<int>(ProbeLevel::Basic)) {
     recomputable_op_table.insert({
@@ -94,12 +106,6 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
             utils::GetFullQualifiedOpName("BiasDropout", kMSDomain),
             {
                 {1, {3, 4}},  // ignore ratio (optional) and training mode (optional)
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("BiasSoftmaxDropout", kMSDomain),
-            {
-                {1, {2}},  // ignore ratio (optional)
             },
         },
         {
@@ -164,11 +170,23 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
             },
         },
         {
+            utils::GetFullQualifiedOpName("Cos", kOnnxDomain),
+            {
+                {7, {}},
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("CumSum", kOnnxDomain),
             {
                 // The axis input is trivial
                 {11, {1}},
                 {14, {1}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("Einsum", kOnnxDomain),
+            {
+                {12, {}},
             },
         },
         {
@@ -243,6 +261,12 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
             },
         },
         {
+            utils::GetFullQualifiedOpName("Sin", kOnnxDomain),
+            {
+                {7, {}},
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("Slice", kOnnxDomain),
             {
                 {1, {}},
@@ -295,6 +319,12 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
             },
         },
         {
+            utils::GetFullQualifiedOpName("Trilu", kOnnxDomain),
+            {
+                {14, {1}},  // ignore k (optional)
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("QuickGelu", kMSDomain),
             {
                 {1, {}},
@@ -330,7 +360,7 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
         {
             utils::GetFullQualifiedOpName("BiasSoftmaxDropout", kMSDomain),
             {
-                {1, {}},
+                {1, {2}},  // ignore ratio (optional)
             },
         },
         {
@@ -374,7 +404,7 @@ const InlinedHashMap<std::string, OpsetToIndicesMap>& GetAllowedRecomputeOps(int
  * @brief Check whether a node is a recomputable node at given probe level.
  */
 bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
-  const InlinedHashMap<std::string, OpsetToIndicesMap>& op_table = GetAllowedRecomputeOps(static_cast<int>(probe_level));
+  const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& op_table = GetAllowedRecomputeOps(static_cast<int>(probe_level));
   auto it = op_table.find(utils::GetFullQualifiedOpName(node.OpType(), node.Domain()));
   if (it == op_table.end()) {
     return false;
@@ -383,7 +413,7 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
 }
 
 const InlinedVector<int>& GetIgnorableInputIndices(const Node& node, ProbeLevel probe_level) {
-  const InlinedHashMap<std::string, OpsetToIndicesMap>& op_table = GetAllowedRecomputeOps(static_cast<int>(probe_level));
+  const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& op_table = GetAllowedRecomputeOps(static_cast<int>(probe_level));
   auto it = op_table.find(utils::GetFullQualifiedOpName(node.OpType(), node.Domain()));
   ORT_ENFORCE(it != op_table.end(), "Cannot get ignorable indices since the node type is supported in the list.");
   ORT_ENFORCE(it->second.count(node.SinceVersion()) > 0, "Cannot get ignorable indices since the opset is supported");
