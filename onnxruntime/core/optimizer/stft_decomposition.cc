@@ -209,14 +209,14 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     if (is_real) {
       auto output_num_frames = stft.MutableOutputDefs()[0]->Shape()->dim(1).dim_value();
       auto output_frame_length = stft.MutableOutputDefs()[0]->Shape()->dim(2).dim_value();
-      auto weight_size = dft_unique_bins * dft_size;
+      auto weight_size = static_cast<size_t>(dft_unique_bins * dft_size);
       auto real_weights_data = std::vector<float>(weight_size);
       auto imag_weights_data = std::vector<float>(weight_size);
 
       // Populate weights
       for (size_t k = 0; k < static_cast<size_t>(dft_unique_bins); k++) {
         for (size_t n = 0; n < static_cast<size_t>(dft_size); n++) {
-          auto index = k * dft_size + n;
+          auto index = static_cast<size_t>(k * dft_size + n);
           auto theta = -2 * 3.14159 * k * n / static_cast<float>(dft_size);
           real_weights_data[index] = static_cast<float>(cos(theta));
           imag_weights_data[index] = static_cast<float>(sin(theta));
