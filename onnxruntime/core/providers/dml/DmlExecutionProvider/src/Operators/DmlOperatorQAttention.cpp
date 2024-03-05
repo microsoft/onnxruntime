@@ -57,7 +57,6 @@ public:
     DmlOperatorQAttention(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-
         enum InputIndex : uint32_t
         {
             inputIndex,
@@ -115,7 +114,7 @@ public:
 
         const bool unidirectional = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::Unidirectional));
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
-        ML_CHECK_VALID_ARGUMENT(numHeads > 0); // to avoid process crash because of division by zero.
+        ML_CHECK_VALID_ARGUMENT(numHeads > 0); //  to avoid process crash because of division by zero.
 
         auto inputTensorShape = m_inputTensorDescs[inputIndex].GetSizes();
         ML_CHECK_VALID_ARGUMENT(inputTensorShape.size() == 3);
@@ -327,7 +326,7 @@ public:
         std::array<uint32_t, 5> pastKeyOffsets = {0, 0, 0, 0, 0};
         TensorDesc pastKeyOutputTensorDesc;
         DML_TENSOR_DESC namedPastKeyOutputTensorDesc;
-        
+
         std::array<uint32_t, 5> pastValueOutputShape = {1, batchSize, numHeads, pastSequenceLength, headSize};
         std::array<int32_t, 5> pastValueStrides = {1, 1, 1, 1, 1};
         std::array<uint32_t, 5> pastValueOffsets = {1, 0, 0, 0, 0};
@@ -495,7 +494,7 @@ public:
             opDescs.push_back(&causalMaskDesc);
             causalMaskNodeIndex = currentNodeIndex++;
         }
-        
+
         DML_INPUT_GRAPH_EDGE_DESC inputToMatMulIntToFloatEdge = {};
         inputToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::inputIndex;
         inputToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
@@ -581,7 +580,7 @@ public:
             causalMaskToMhaEdge.FromNodeIndex = causalMaskNodeIndex;
             causalMaskToMhaEdge.FromNodeOutputIndex = 0;
             causalMaskToMhaEdge.ToNodeIndex = mhaNodeIndex;
-            causalMaskToMhaEdge.ToNodeInputIndex = mhaMaskIndex ;
+            causalMaskToMhaEdge.ToNodeInputIndex = mhaMaskIndex;
             intermediateEdges.push_back(causalMaskToMhaEdge);
         }
 
@@ -699,4 +698,4 @@ void CALLBACK QueryQAttention(IMLOperatorSupportQueryContextPrivate* context, /*
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(QAttention, DmlOperatorQAttention);
-} // namespace Dml
+}  // namespace Dml
