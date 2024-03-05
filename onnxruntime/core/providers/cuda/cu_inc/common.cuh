@@ -446,7 +446,7 @@ struct IsInfTyped {
     // because there isinf() returns int
     // and we want to avoid stupid warnings
     return static_cast<bool>(isinf(a));
-  };
+  }
   static __device__ __inline__ bool IsInfPos(T a) {
     return a == std::numeric_limits<T>::infinity();
   }
@@ -460,7 +460,7 @@ struct IsInfTyped<half> {
   static __device__ __inline__ bool IsInf(half a) {
     return MLFloat16::kPositiveInfinityBits ==
            static_cast<uint16_t>(*reinterpret_cast<uint16_t*>(&a) & ~MLFloat16::kSignMask);
-  };
+  }
   static __device__ __inline__ bool IsInfPos(half a) {
     return MLFloat16::kPositiveInfinityBits == *reinterpret_cast<uint16_t*>(&a);
   }
@@ -474,7 +474,7 @@ struct IsInfTyped<BFloat16> {
   static __device__ __inline__ bool IsInf(BFloat16 a) {
     return BFloat16::kPositiveInfinityBits ==
            static_cast<uint16_t>(*reinterpret_cast<uint16_t*>(&a) & ~BFloat16::kSignMask);
-  };
+  }
   static __device__ __inline__ bool IsInfPos(BFloat16 a) {
     return BFloat16::kPositiveInfinityBits == *reinterpret_cast<uint16_t*>(&a);
   }

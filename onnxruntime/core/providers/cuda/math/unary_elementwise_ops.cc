@@ -70,12 +70,6 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
                                                                                                   \
     return Status::OK();                                                                          \
   }
-#if !defined(DISABLE_FLOAT8_TYPES)
-#define OPSET20_CONSTRAINTS float, double, MLFloat16, BFloat16, Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, \
-                            Float8E5M2FNUZ
-#else
-#define OPSET20_CONSTRAINTS float, double, MLFloat16, BFloat16
-#endif
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     IsInf,
@@ -94,7 +88,7 @@ ONNX_OPERATOR_KERNEL_EX(
     20,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", BuildKernelDefConstraints<OPSET20_CONSTRAINTS>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<ISINF_OPSET20_CONSTRAINTS>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
 

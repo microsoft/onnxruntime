@@ -138,6 +138,14 @@ void Impl_CastSat(
 #endif
 
 // IsInf
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+#define ISINF_OPSET20_CONSTRAINTS float, double, MLFloat16, BFloat16, Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, \
+                                  Float8E5M2FNUZ
+#else
+#define ISINF_OPSET20_CONSTRAINTS float, double, MLFloat16, BFloat16
+#endif
+
 void Explicit_Impl_IsInf(cudaStream_t stream, int op_set,
                          bool detect_positive, bool detect_negative,
                          int32_t input_data_type,
