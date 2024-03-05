@@ -46,10 +46,11 @@
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/platform/Barrier.h"
-#include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #ifdef _WIN32
 #include "core/platform/tracing.h"
+#include <Windows.h>
+#include "core/platform/windows/telemetry.h"
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -239,6 +240,10 @@ Status GetMinimalBuildOptimizationHandling(
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
+std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
+#ifdef _WIN32
+OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+#endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -349,10 +354,40 @@ void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
-  // a monotonically increasing session id for use in telemetry
-  session_id_ = global_session_id_.fetch_add(1);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
+
+  // a monotonically increasing session id for use in telemetry
+  session_id_ = global_session_id_.fetch_add(1);
+
+#ifdef _WIN32
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  active_sessions_[global_session_id_++] = this;
+
+  // Register callback for ETW capture state (rundown)
+  WindowsTelemetry::RegisterInternalCallback(
+      [this](
+          LPCGUID SourceId,
+          ULONG IsEnabled,
+          UCHAR Level,
+          ULONGLONG MatchAnyKeyword,
+          ULONGLONG MatchAllKeyword,
+          PEVENT_FILTER_DESCRIPTOR FilterData,
+          PVOID CallbackContext) {
+        (void)SourceId;
+        (void)Level;
+        (void)MatchAnyKeyword;
+        (void)MatchAllKeyword;
+        (void)FilterData;
+        (void)CallbackContext;
+
+        // Check if this callback is for capturing state
+        if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
+            ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
+          LogAllSessions();
+        }
+      });
+#endif
 
   SetLoggingManager(session_options, session_env);
 
@@ -362,7 +397,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   // TraceSessionOptions logging is disabled as it causes a crash in SecureKernel
   // Disabling the logging temporarily until the logging crash is resolved.
-  //TraceSessionOptions(session_options);
+  // TraceSessionOptions(session_options, false);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
@@ -476,7 +511,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 }
 
-void InferenceSession::TraceSessionOptions(const SessionOptions& session_options) {
+void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState) {
+  (void)captureState;  // Otherwise Linux build error
+
   LOGS(*session_logger_, INFO) << session_options;
 
 #ifdef _WIN32
@@ -499,7 +536,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.graph_optimization_level), "graph_optimization_level"),
                     TraceLoggingBoolean(session_options.use_per_session_threads, "use_per_session_threads"),
                     TraceLoggingBoolean(session_options.thread_pool_allow_spinning, "thread_pool_allow_spinning"),
-                    TraceLoggingBoolean(session_options.use_deterministic_compute, "use_deterministic_compute"));
+                    TraceLoggingBoolean(session_options.use_deterministic_compute, "use_deterministic_compute"),
+                    TraceLoggingBoolean(captureState, "isCaptureState"));
 
   TraceLoggingWrite(
       telemetry_provider_handle,
@@ -512,7 +550,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
       TraceLoggingInt32(session_options.intra_op_param.dynamic_block_base_, "dynamic_block_base_"),
       TraceLoggingUInt32(session_options.intra_op_param.stack_size, "stack_size"),
       TraceLoggingString(!session_options.intra_op_param.affinity_str.empty() ? session_options.intra_op_param.affinity_str.c_str() : "", "affinity_str"),
-      TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"));
+      TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"),
+      TraceLoggingBoolean(captureState, "isCaptureState"));
 
   for (const auto& config_pair : session_options.config_options.configurations) {
     TraceLoggingWrite(
@@ -521,7 +560,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
         TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
         TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
-        TraceLoggingString(config_pair.second.c_str(), "Value"));
+        TraceLoggingString(config_pair.second.c_str(), "Value"),
+        TraceLoggingBoolean(captureState, "isCaptureState"));
   }
 #endif
 }
@@ -616,6 +656,12 @@ InferenceSession::~InferenceSession() {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
   }
+
+  // Unregister the session
+#ifdef _WIN32
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+#endif
+  active_sessions_.erase(global_session_id_);
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1167,6 +1213,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
+                                                       session_options_.config_options, *session_logger_,
                                                        mode, debug_graph_fn));
 
   // apply Level2 and higher transformers.
@@ -1461,7 +1508,9 @@ namespace {
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
-                               SessionState& session_state) {
+                               SessionState& session_state,
+                               const ConfigOptions& config_options,
+                               const logging::Logger& logger) {
   layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1482,6 +1531,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
+                                            config_options,
+                                            logger,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
   return Status::OK();
@@ -1836,7 +1887,7 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD)
     } else {
       ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                             *session_state_));
+                                                             *session_state_, session_options_.config_options, *session_logger_));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
@@ -3040,5 +3091,15 @@ const IOBinding* SessionIOBinding::Get() const {
 IOBinding* SessionIOBinding::Get() {
   return binding_.get();
 }
+
+#ifdef _WIN32
+void InferenceSession::LogAllSessions() {
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  for (const auto& session_pair : active_sessions_) {
+    InferenceSession* session = session_pair.second;
+    TraceSessionOptions(session->session_options_, true);
+  }
+}
+#endif
 
 }  // namespace onnxruntime
