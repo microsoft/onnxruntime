@@ -750,6 +750,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
+        elif (
+            self._runtime_options.memory_optimization_level
+            == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED
+        ):
+            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER_WITH_COMPROMISED"
         else:
             opt_config_to_display = self._runtime_options.memory_optimizer_config
 

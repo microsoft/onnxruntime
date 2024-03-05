@@ -286,7 +286,9 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
       memory_opt_planner.AddNodeOptimizationPlan(p_node, std::move(recompute_plan));
     }
 
-    if (can_compromise_stashed_activation) {
+    // Only detect compromise recompute when recompute is not found, in case there are multiple recompute plans
+    // for the same named activations, then user might enable those conflicting recompute plans by mistakes.
+    if (recompute_plan == nullptr && can_compromise_stashed_activation) {
       MO_LOG_DEBUG_INFO(logger, "Searching Node " + p_node->Name() + "(" + p_node->OpType() +
                                     ") for compromised recompute");
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist

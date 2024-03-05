@@ -116,7 +116,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
         auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
         // It is possible the consumer node is newly added as the recompute node, so we need a check here.
-        // For those kind of ops, we can treat them as backward ops.
+        // For those kinds of ops, we can treat them as backward ops.
         if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
             !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
                                    boundary_op_order_in_topological_sort)) {
