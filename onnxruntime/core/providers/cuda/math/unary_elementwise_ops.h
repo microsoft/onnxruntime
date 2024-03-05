@@ -120,7 +120,7 @@ class Sign final : public UnaryElementwise {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-class IsInf final :public UnaryElementwise {
+class IsInf final : public UnaryElementwise {
  public:
   explicit IsInf(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -130,7 +130,6 @@ class IsInf final :public UnaryElementwise {
   bool detect_negative_{true};
   int opset_;
 };
-
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -46,7 +46,6 @@ namespace cuda {
 UNARY_OPS()
 #undef UNARY_OP_NAME_EXPR
 
-
 // Cast
 
 #define DECL_IMPL_CAST(InT, OutT) \

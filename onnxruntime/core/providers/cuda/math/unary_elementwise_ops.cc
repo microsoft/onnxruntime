@@ -70,16 +70,12 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
                                                                                                   \
     return Status::OK();                                                                          \
   }
-
-namespace op_kernel_type_control {
-using IsInfTypesOpset10 = TypeList<float, double>;
-using IsInfTypesOpset20 = TypeList<float, double, MLFloat16, BFloat16
 #if !defined(DISABLE_FLOAT8_TYPES)
-                                   ,
-                                   Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+#define OPSET20_CONSTRAINTS float, double, MLFloat16, BFloat16, Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, \
+                            Float8E5M2FNUZ
+#else
+#define OPSET20_CONSTRAINTS float, double, MLFloat16, BFloat16
 #endif
-                                   >;
-}  // namespace op_kernel_type_control
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     IsInf,
@@ -88,8 +84,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     19,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraints<float, double>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+        .TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -98,8 +94,8 @@ ONNX_OPERATOR_KERNEL_EX(
     20,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<op_kernel_type_control::IsInfTypesOpset20>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+        .TypeConstraint("T1", BuildKernelDefConstraints<OPSET20_CONSTRAINTS>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
 
 IsInf::IsInf(const OpKernelInfo& info) : UnaryElementwise(info) {
@@ -124,7 +120,6 @@ Status IsInf::ComputeInternal(OpKernelContext* context) const {
                       p.input_tensor->Shape().Size());
   return Status::OK();
 }
-
 
 #define UNARY_OP_VERSIONED_TYPED(name, startver, endver, T) \
   UNARY_ELEMENTWISE_REGISTER_VERSIONED_KERNEL(name, startver, endver, T)
