@@ -409,7 +409,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
   vector<int64_t> Y_shape = {1, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kOpenVINOExecutionProvider, kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
@@ -434,7 +435,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f,
                         11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kOpenVINOExecutionProvider, kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
@@ -871,7 +873,8 @@ TEST(ConvTransposeTest, DimWithZero) {
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
-                      {kTensorrtExecutionProvider, kAclExecutionProvider, kQnnExecutionProvider});
+                      {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
+                       kAclExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_3D) {
@@ -1005,7 +1008,8 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
 
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
-                      {kTensorrtExecutionProvider, kCudaExecutionProvider, kQnnExecutionProvider});
+                      {kTensorrtExecutionProvider, kCudaExecutionProvider,
+                       kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {

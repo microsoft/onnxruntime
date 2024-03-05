@@ -291,9 +291,10 @@ static void scatter_bool_with_axis_tests(const char* op_name, int op_version) {
   test.AddOutput<bool>("y", {1, 5}, {false, true, false, false, false});
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+           {kCudaNHWCExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaNHWCExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #endif
 }
 

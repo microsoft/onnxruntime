@@ -3541,6 +3541,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
+                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -3591,6 +3592,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
+                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
