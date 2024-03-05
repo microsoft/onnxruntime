@@ -132,7 +132,7 @@ def docker_build_trt_bin(args: argparse.Namespace):
 
     if not is_valid_ver_str(args.trt_version, 4, 4):
         print(
-            "[ERROR]: Must specify a valid TensorRT version for binary TensorRT installs (e.g., 10.0.0.2)",
+            "[ERROR]: Must specify a valid TensorRT version for binary TensorRT installs (e.g., 8.x.x.x)",
             file=sys.stderr,
         )
         sys.exit(1)
