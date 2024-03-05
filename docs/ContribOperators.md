@@ -2808,22 +2808,23 @@ This version of the operator has been available since version 1 of the 'com.micr
        And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
     3. Input B's scale and zero point are specified by input scales and zero_points.
   
-  Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
-  - n_blocks_per_col = (K + block_size - 1) / block_size
-  - blob_size = block_size / 8 * bits
+    Input is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+    - n_blocks_per_col = (K + block_size - 1) / block_size
+    - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
+    For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
+      - for 2,4,8 bits, 4x2bit,2x4bit,1x8bit are stored in one uint8_t.
+          4bit example:
+          |.|.|.|.| .|.|.|.| =uint8_t (2x4bit)
+      - for 3,5,6,7 bits, 32x3bit,32x5bit,16x6bit,32x7bit are stored in 12xuint8_t,20xuint8_t,12xuint8_t,28xuint8_t separately. no bits are wasted.
+          3bit example:
+          |.|.|. |.|.|. |.|.|. = 9bit, which across 2 uint8_t, the highest bit for the second uint8_t is used.
+    The last uint_8 may have some bits unused.
   
-    For a block blob. It is stored in format:
-    struct Blob {
-      uint8 one_bits[(bits & 0x1) * 1 * block_size / 8];  // highest 1 bit for 3, 5, 7 bits quantization
-      uint8 two_bits[(bits & 0x2) * 2 * block_size / 8];  // high 2 bits for 2, 6, 7 bits quantization
-      uint8 four_bits[(bits & 0x4) * 4 * block_size / 8]; // low 4 bits for 4, 5, 6 bits quantization
-    }
   
   Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
-  Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored as one unit8_t. If bits > 4, one zero point is stored with one unit8_t. Thus, its shape is:
-    - [(N * n_blocks_per_col + 1) / 2] if bits <=4
-    - [N * n_blocks_per_col] if bits > 4
-  
+  Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
+    - [CeilDiv((N * n_blocks_per_col + 1) *bits, 8)]
+    If zero_points has same type as A, it's not packed and has the same shape as Scales.
 
 #### Version
 
@@ -2844,17 +2845,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.</dd>
 </dl>
 
-#### Inputs (3 - 4)
+#### Inputs (3 - 5)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
 <dd>The input tensor, not quantized</dd>
 <dt><tt>B</tt> : T2</dt>
-<dd>1-dimensional data blob</dd>
+<dd>1 or 2 dimensional data blob</dd>
 <dt><tt>scales</tt> : T1</dt>
 <dd>quantization scale</dd>
-<dt><tt>zero_points</tt> (optional) : T2</dt>
+<dt><tt>zero_points</tt> (optional) : T3</dt>
 <dd>quantization zero points</dd>
+<dt><tt>g_idx</tt> (optional) : T4</dt>
+<dd>group_idx</dd>
 </dl>
 
 #### Outputs
@@ -2869,8 +2872,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float/half_float tensors.</dd>
-<dt><tt>T2</tt> : tensor(uint8)</dt>
-<dd>Constrain quantized weight types to uint8.</dd>
+<dt><tt>T2</tt> : tensor(uint8), tensor(int32)</dt>
+<dd>Constrain quantized weight types to uint8/int32.</dd>
+<dt><tt>T3</tt> : tensor(uint8), tensor(int32), tensor(float16), tensor(float)</dt>
+<dd>Constrain quantized zero point types to uint8/int32/float16/float.</dd>
+<dt><tt>T4</tt> : tensor(int32)</dt>
+<dd>the index tensor.</dd>
 </dl>
 
 
