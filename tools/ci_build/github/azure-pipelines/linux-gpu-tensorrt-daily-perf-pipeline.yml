@@ -8,15 +8,16 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 8.6.1.6
+  default: 8.6.cuda_11_8_cudnn_8
   values:
-  - 8.4.1.5
-  - 8.5.1.1
-  - 8.6.1.6
+  - 8.4.cuda_11_6_cudnn_8
+  - 8.5.cuda_11_8_cudnn_8
+  - 8.6.cuda_11_8_cudnn_8
+  - 8.6.cuda_12_3_cudnn_9
   - BIN
 
 - name: UseTensorrtOssParser
-  displayName: Use TensorRT-OSS Parser
+  displayName: Use TensorRT-OSS Parser (not compatible with BIN)
   type: boolean
   default: false
 
@@ -82,17 +83,17 @@ jobs:
       - script: 'ls -al $(trtBinsDir)'
         displayName: 'Show available TensorRT .tar.gz packages'
 
-      - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion).Linux.x86_64-gnu.cuda-$(tarCudaVersion).cudnn$(tarCudnnVersion).tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
+      - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion).Linux.x86_64-gnu.cuda-$(tarCudaVersion).tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
         displayName: 'Copy TensorRT .tar.gz package into Docker build directory'
 
-      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
-        displayName: 'Install TensorRT from binaries and build latest ORT Image'
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --trt_bins_dir=.'
+        displayName: 'Install TensorRT $(tarTrtVersion) from binaries and build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
     # Build ORT with TensorRT built-in parser 
     - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:
       - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75'
-        displayName: 'Build latest ORT Image with TensorRT built-in parser'
+        displayName: 'Build latest ORT Image with TensorRT $(tarTrtVersion) built-in parser'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
     # Build ORT with TensorRT OSS parser 
