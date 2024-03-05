@@ -19,7 +19,7 @@ namespace onnxruntime::optimizer::memory_optimizer {
 
 namespace {
 
-constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 15;
+constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 50;
 
 static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
   const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
