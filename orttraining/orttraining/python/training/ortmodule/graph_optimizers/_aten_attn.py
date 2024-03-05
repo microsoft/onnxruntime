@@ -120,9 +120,7 @@ def _make_efficient_attention_nodes(
         operator="_efficient_attention_backward",
         cpu_input_args=[6, 7, 12, 13],
     )
-    nodes_to_add.extend(
-        [scale_node, dropout_ratio_node, causal_node, one_node, zero_node, fwd_node, bwd_node]
-    )
+    nodes_to_add.extend([scale_node, dropout_ratio_node, causal_node, one_node, zero_node, fwd_node, bwd_node])
     return nodes_to_add, new_value_infos
 
 
