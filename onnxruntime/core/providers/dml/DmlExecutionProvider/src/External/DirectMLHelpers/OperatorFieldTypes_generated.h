@@ -654,7 +654,7 @@ struct AttributeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
-           VerifyField<uint8_t>(verifier, VT_VAL_TYPE) &&
+           VerifyField<uint8_t>(verifier, VT_VAL_TYPE, 1) &&
            VerifyOffset(verifier, VT_VAL) &&
            VerifyAttributeFieldVariant(verifier, val(), val_type()) &&
            verifier.EndTable();
@@ -1108,7 +1108,7 @@ struct ScalarUnionData FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_DATA_TYPE) &&
+           VerifyField<uint8_t>(verifier, VT_DATA_TYPE, 1) &&
            VerifyOffset(verifier, VT_DATA) &&
            VerifyScalarVariant(verifier, data(), data_type()) &&
            verifier.EndTable();

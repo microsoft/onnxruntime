@@ -253,7 +253,7 @@ struct ConstantNodeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_DATA_TYPE) &&
+           VerifyField<uint8_t>(verifier, VT_DATA_TYPE, 1) &&
            VerifyOffset(verifier, VT_DATA) &&
            VerifyConstantNodeDescDetail(verifier, data(), data_type()) &&
            verifier.EndTable();
@@ -328,7 +328,7 @@ struct DmlBufferTensorDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table 
            verifier.VerifyVector(sizes()) &&
            VerifyOffset(verifier, VT_STRIDES) &&
            verifier.VerifyVector(strides()) &&
-           VerifyField<uint64_t>(verifier, VT_TOTALTENSORSIZEINBYTES) &&
+           VerifyField<uint64_t>(verifier, VT_TOTALTENSORSIZEINBYTES, 8) &&
            verifier.EndTable();
   }
 };
@@ -522,7 +522,7 @@ struct DmlGraphNode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_DESC_TYPE) &&
+           VerifyField<uint8_t>(verifier, VT_DESC_TYPE, 1) &&
            VerifyOffset(verifier, VT_DESC) &&
            VerifyNodeDesc(verifier, desc(), desc_type()) &&
            VerifyOffset(verifier, VT_NAME) &&
