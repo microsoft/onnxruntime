@@ -105,6 +105,8 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
   std::unordered_map<NodeIndex, size_t> in_degree{};
   // nodes that are ready to process
   std::deque<const Node*> nodes_to_process{};
+  // keep track of the initial nodes_to_process
+  std::list<const Node*> initial_nodes_to_process{};
   // nodes that will be processed when considering the next partition node group
   std::deque<const Node*> nodes_to_process_with_next_group{};
 
@@ -115,6 +117,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     in_degree.insert({node.Index(), node_input_edge_count});
     if (node_input_edge_count == 0) {
       nodes_to_process.push_back(&node);
+      initial_nodes_to_process.push_back(&node);
     }
   }
 
@@ -153,6 +156,30 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
   while (!nodes_to_process.empty() || !nodes_to_process_with_next_group.empty()) {
     if (nodes_to_process.empty()) {
+      auto node = initial_nodes_to_process.begin();
+      while (node != initial_nodes_to_process.end()) {
+        bool node_is_counsumed = false;
+        
+        for (auto output = (*node)->OutputNodesBegin(); output != (*node)->OutputNodesEnd(); ++output) {
+          if (std::find(supported_group.begin(), supported_group.end(), &(*output)) != supported_group.end()) {
+            node_is_counsumed = true;
+            break;
+          }
+        }
+        // The node output is consumed by nodes in supported_group, remove it from initial_nodes_to_process
+        if (node_is_counsumed) {
+          node = initial_nodes_to_process.erase(node);
+        } else {
+          ++node;
+        }
+      }
+
+      // nodes left in initial_nodes_to_process are nodes not consumed by current group
+      // try them with next group
+      for (const auto* node_not_consumed : initial_nodes_to_process) {
+        supported_group.erase(std::find(supported_group.begin(), supported_group.end(), node_not_consumed));
+        nodes_to_process_with_next_group.push_back(node_not_consumed);
+      }
       // we have processed all the nodes that we can while building this partition node group, start a new one
       close_group();
       nodes_to_process.swap(nodes_to_process_with_next_group);
@@ -252,23 +279,8 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
   const auto& graph_output_list = graph_viewer.GetOutputs();
   std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
 
+  // Process output first in case nodes not in topological order
   for (const Node* node : group) {
-    sub_graph->nodes.push_back(node->Index());
-
-    for (const auto* input : node->InputDefs()) {
-      if (!input->Exists()) {
-        // skip the placeholder inputs
-        continue;
-      }
-      // if the node input was not produced by this subgraph, add it to the subgraph inputs.
-      if (!Contains(node_outputs, input)) {
-        if (!Contains(subgraph_inputs, input)) {
-          subgraph_inputs.insert(input);
-          ordered_subgraph_inputs.push_back(input);
-        }
-      }
-    }
-
     const auto& output_defs = node->OutputDefs();
     for (const auto* output_def : output_defs) {
       node_outputs.insert(output_def);
@@ -286,6 +298,24 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
         if (!Contains(subgraph_outputs, output_def) && !Contains(graph_outputs, output_def)) {
           subgraph_outputs.insert(output_def);
           ordered_subgraph_outputs.push_back(output_def);
+        }
+      }
+    }
+  }
+
+  for (const Node* node : group) {
+    sub_graph->nodes.push_back(node->Index());
+
+    for (const auto* input : node->InputDefs()) {
+      if (!input->Exists()) {
+        // skip the placeholder inputs
+        continue;
+      }
+      // if the node input was not produced by this subgraph, add it to the subgraph inputs.
+      if (!Contains(node_outputs, input)) {
+        if (!Contains(subgraph_inputs, input)) {
+          subgraph_inputs.insert(input);
+          ordered_subgraph_inputs.push_back(input);
         }
       }
     }
