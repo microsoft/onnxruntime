@@ -7,8 +7,8 @@ soundfile
 librosa
 optimum
 onnxruntime-extensions>=0.9.0
+onnx>=1.15.0
 protobuf==3.20.2
 numpy==1.23.3
-onnx>=1.15.0
 psutil
 py3nvml
