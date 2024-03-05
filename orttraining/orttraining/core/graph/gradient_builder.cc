@@ -1112,9 +1112,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
 
   ArgDef grad = GO(0);
   if (!keepdims) {
+    size_t numInputs = GetSrcNodeInputSize();
+    grad = IA("Unqueezed_Grad");
     if (attributes.find("axes") != attributes.end()) {
       std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-      grad = IA("Unqueezed_Grad");
       if (SrcNodeOpsetVersion() < 13) {  // axes is attribute for unsqueeze
         result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
       } else {
@@ -1122,6 +1123,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
         result.push_back(axes_values_node);
         result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), axes_values_node.output_args[0]}, {grad}));
       }
+    } else if (numInputs == 2) {  // optional input 'axes' is available as input I(1)
+      result.push_back(NodeDef("Unsqueeze", {GO(0), I(1)}, {grad}));
     }
   }
 
@@ -1152,12 +1155,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceLogSumExpGradient) {
   }
 
   ArgDef grad = GO(0);
-  if (!keepdims && attributes.find("axes") != attributes.end()) {
-    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+  if (!keepdims) {
+    size_t numInputs = GetSrcNodeInputSize();
     grad = IA("Unsqueezed_Grad");
-    result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+    if (attributes.find("axes") != attributes.end()) {
+      std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      
+      result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
 
-    result.push_back(NodeDef("Unsqueeze", {O(0)}, {IA("Unsqueezed_Output")}, {MakeAttribute("axes", axes_values)}));
+      result.push_back(NodeDef("Unsqueeze", {O(0)}, {IA("Unsqueezed_Output")}, {MakeAttribute("axes", axes_values)}));
+    } else if (numInputs == 2) {  // optional input 'axes' is available as input I(1)
+      result.push_back(NodeDef("Unsqueeze", {GO(0), I(1)}, {grad}));
+
+      result.push_back(NodeDef("Unsqueeze", {O(0), I(1)}, {IA("Unsqueezed_Output")}));
+    }
     result.push_back(NodeDef("Sub", {I(0), IA("Unsqueezed_Output")}, {IA("Self_Sub_Result")}));
   } else {
     result.push_back(NodeDef("Sub", {I(0), O(0)}, {IA("Self_Sub_Result")}));

@@ -607,6 +607,10 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
 
   OpDef op_def_opset13{"ReduceMean", kOnnxDomain, 13};
   RunReductionTests(op_def_opset13);
+
+  // axes is input from opset 18.
+  OpDef op_def_opset18{"ReduceMean", kOnnxDomain, 18};
+  RunReductionTests(op_def_opset18, true, true);
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
@@ -657,6 +661,10 @@ TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
   OpDef op_def{"ReduceLogSumExp", kOnnxDomain, 11};
 
   RunReductionTests(op_def);
+
+  OpDef op_def_opset18{"ReduceLogSumExp", kOnnxDomain, 18};
+
+  RunReductionTests(op_def_opset18, true, true);
 }
 
 TEST(GradientCheckerTest, ReluGrad) {
