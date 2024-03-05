@@ -374,8 +374,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     bool IsGraphCaptureAllowed() const;
     void CaptureBegin();
     void CaptureEnd();
-    bool IsGraphCaptured() const;
-    Status ReplayGraph();
+    bool IsGraphCaptured(int graph_annotation_id) const;
+    Status ReplayGraph(int graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:

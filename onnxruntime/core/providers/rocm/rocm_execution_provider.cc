@@ -357,7 +357,7 @@ Status ROCMExecutionProvider::Sync() const {
 Status ROCMExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   // always set ROCM device when session::Run() in case it runs in a worker thread
   HIP_RETURN_IF_ERROR(hipSetDevice(GetDeviceId()));
-  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
+  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured(0)) {
     LOGS_DEFAULT(INFO) << "Capturing the hip graph for this model";
     GetPerThreadContext().CaptureBegin();
   }
@@ -365,7 +365,7 @@ Status ROCMExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_op
 }
 
 Status ROCMExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
-  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured()) {
+  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(0)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed()) {
       GetPerThreadContext().CaptureEnd();
       // HIP work issued to a capturing stream doesn’t actually run on the GPU,
@@ -402,7 +402,7 @@ bool ROCMExecutionProvider::IsGraphCaptureEnabled() const {
 }
 
 bool ROCMExecutionProvider::IsGraphCaptured(int) const {
-  return GetPerThreadContext().IsGraphCaptured();
+  return GetPerThreadContext().IsGraphCaptured(0);
 }
 
 Status ROCMExecutionProvider::ReplayGraph(int /*graph_annotation_id*/) {
