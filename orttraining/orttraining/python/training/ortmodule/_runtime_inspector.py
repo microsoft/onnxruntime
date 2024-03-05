@@ -584,21 +584,27 @@ class MemoryObserver:
             self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
 
         # For aggressive memory optimization, we update the memory_optimizer_config using all.
-        if runtime_options.memory_optimization_level in [
-            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
-            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED,
-        ]:
+        if runtime_options.memory_optimization_level > 0:
             recompute_configs = []
             for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
                 config_values = cluster_id.split(":")
                 opt_type = int(config_values[1])
-                if opt_type not in [
-                    _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
-                    _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED,
-                ]:
-                    continue
-
-                recompute_configs.append(cluster_id)
+                if (
+                    runtime_options.memory_optimization_level
+                    == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+                    and opt_type == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+                ):
+                    recompute_configs.append(cluster_id)
+                elif (
+                    runtime_options.memory_optimization_level
+                    == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED
+                    and opt_type
+                    in [
+                        _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
+                        _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED,
+                    ]
+                ):
+                    recompute_configs.append(cluster_id)
 
             runtime_options.memory_optimizer_config = ",".join(recompute_configs)
 
