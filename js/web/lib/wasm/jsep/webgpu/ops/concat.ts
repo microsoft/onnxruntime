@@ -155,9 +155,9 @@ export const concat = (context: ComputeContext, attributes: ConcatAttributes): v
         (maxRankIndex, input, index, array) => input.dims > array[maxRankIndex].dims ? index : maxRankIndex, 0);
   }
 
-  validateInputs(inputs, referenceIndex, attributes.axis);
   const inputShape = inputs[referenceIndex].dims;
   const adjustedAxis = attributes.axis + (attributes.axis < 0 ? inputShape.length : 0);
+  validateInputs(inputs, referenceIndex, adjustedAxis);
   const outputShape = inputShape.slice();
   outputShape[adjustedAxis] =
       inputs.reduce((sum, input) => sum + (input.dims.length > adjustedAxis ? input.dims[adjustedAxis] : 0), 0);
