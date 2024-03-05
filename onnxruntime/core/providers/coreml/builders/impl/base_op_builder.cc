@@ -83,9 +83,14 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputPar
 }
 
 /* static */
-bool BaseOpBuilder::IsInput0Supported(const Node& node, const OpBuilderInputParams& /*input_params*/,
-                                      const logging::Logger& logger) {
-  const auto& input = *node.InputDefs()[0];
+bool BaseOpBuilder::IsInputFloat(const Node& node, size_t idx, const OpBuilderInputParams& /*input_params*/,
+                                 const logging::Logger& logger) {
+  if (idx >= node.InputDefs().size()) {
+    LOGS(logger, VERBOSE) << "Input index [" << idx << "] is out of range";
+    return false;
+  }
+
+  const auto& input = *node.InputDefs()[idx];
 
   int32_t input_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
 
@@ -102,7 +107,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInpu
                                            const logging::Logger& logger) const {
   // We only check the type of input 0 by default
   // specific op builder can override this
-  return IsInput0Supported(node, input_params, logger);
+  return IsInputFloat(node, 0, input_params, logger);
 }
 
 bool BaseOpBuilder::HasSupportedOpSet(const Node& node, const logging::Logger& logger) const {
