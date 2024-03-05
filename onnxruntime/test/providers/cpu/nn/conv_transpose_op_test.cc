@@ -75,7 +75,8 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
                          const vector<int64_t>& expected_output_shape,
                          OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                          const std::string& err_str = "",
-                         const std::unordered_set<std::string>& excluded_provider_types = {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kQnnExecutionProvider}) {
+                         const std::unordered_set<std::string>& excluded_provider_types =
+                             {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kQnnExecutionProvider}) {
   std::unordered_set<std::string> extra_exclude_openvino_for_initializer_filter = excluded_provider_types;
   extra_exclude_openvino_for_initializer_filter.insert(kOpenVINOExecutionProvider);
   TestConvTransposeOpInitializer(attributes, inputs, input_shapes, expected_output, expected_output_shape,

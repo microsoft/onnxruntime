@@ -268,7 +268,7 @@ static void scatter_invalid_index(const char* op_name, int op_version) {
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "indices element out of data bounds, idx=4 must be within the inclusive range [-4,3]",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Scatter, InvalidIndex) {

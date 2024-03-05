@@ -5781,6 +5781,7 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       {
           kCoreMLExecutionProvider,
           kCudaExecutionProvider,
+          kCudaNHWCExecutionProvider,
           kDmlExecutionProvider,
           kDnnlExecutionProvider,
           kMIGraphXExecutionProvider,

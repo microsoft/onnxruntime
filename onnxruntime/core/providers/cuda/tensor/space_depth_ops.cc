@@ -195,7 +195,7 @@ Status SpaceToDepth<Layout>::ComputeInternal(OpKernelContext* context) const {
                                          ? TensorShape{batch, blocksize_, blocksize_, input_depth,
                                                        input_height / blocksize_, input_width / blocksize_}
                                          : TensorShape{batch, input_height / blocksize_, input_width / blocksize_,
-                                                       input_depth, blocksize_, blocksize_};
+                                                       blocksize_, blocksize_, input_depth};
 
   std::vector<size_t> permutation = (Layout == LAYOUT_NCHW)
                                         ? std::vector<size_t>{0, 3, 5, 1, 2, 4}
