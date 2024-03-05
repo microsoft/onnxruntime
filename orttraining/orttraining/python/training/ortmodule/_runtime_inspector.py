@@ -547,7 +547,7 @@ class MemoryObserver:
         # recompute subgraph by passing empty memory_optimizer_config to get_serialized_ortmodule_memory_stat.
         if runtime_options.memory_optimization_level in [
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
-            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED,
+            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
         ]:
             memory_optimizer_config = ""
 
@@ -597,11 +597,11 @@ class MemoryObserver:
                     recompute_configs.append(cluster_id)
                 elif (
                     runtime_options.memory_optimization_level
-                    == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED
+                    == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE
                     and opt_type
                     in [
                         _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
-                        _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED,
+                        _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
                     ]
                 ):
                     recompute_configs.append(cluster_id)

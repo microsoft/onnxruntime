@@ -199,7 +199,7 @@ class _MemoryOptimizationLevel(IntFlag):
     TRANSFORMER_LAYERWISE_RECOMPUTE = (
         1  # Enable all recomputable subgraphs (excluding compromised recomptable graphs) per layer
     )
-    TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED = 2  # Enable all recomputable subgraphs per layer
+    TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE = 2  # Enable all recomputable subgraphs per layer
 
     @staticmethod
     def to_string(memory_optimization_level):
@@ -208,6 +208,9 @@ class _MemoryOptimizationLevel(IntFlag):
 
         if memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             return "TRANSFORMER_LAYERWISE_RECOMPUTE"
+
+        if memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE:
+            return "TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE"
 
         return ""
 
@@ -349,7 +352,7 @@ class _RuntimeOptions:
         self.memory_optimizer_config = ",".join([c for c in user_given_memory_optimizer_config.split(",") if c])
         if self.memory_optimization_level in [
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
-            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED,
+            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
         ]:
             # For transformer layer-wise recompute, we enable layer boundary when detecting subgraphs.
             # Then all detected subgraphs will not cross different layers.
@@ -427,7 +430,7 @@ class _RuntimeOptions:
             return len(self.memory_optimizer_config) > 0
         elif self.memory_optimization_level in [
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
-            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISED,
+            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
         ]:
             return True
 
