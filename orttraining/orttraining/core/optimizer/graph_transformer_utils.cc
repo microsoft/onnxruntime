@@ -68,6 +68,7 @@
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
+#include "orttraining/core/optimizer/compute_optimizer/upstream_pad.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/optimizer/pythonop_rewriter.h"
@@ -186,10 +187,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
 
       if (config.enable_compute_optimizer) {
-        transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
-        transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
-        transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
-                                                                              config.sparse_label_input_names));
+        // transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
+        // transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
+        // transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
+        //                                                                       config.sparse_label_input_names));
 #if defined(USE_CUDA) || defined(USE_ROCM)
         // Put this under CUDA/ROCM guard as it depends on PadAndUnflatten CUDA/ROCM kernel.
         // Once we have a CPU kernel for PadAndUnflatten, we can remove the guard.
@@ -197,6 +198,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                        config.sparse_embedding_input_names,
                                                                        config.enable_padding_removal));
         transformers.emplace_back(std::make_unique<Conv1dReplacement>(compatible_eps));
+        transformers.emplace_back(std::make_unique<UpstreamPad>(compatible_eps));
 #endif
       }
 

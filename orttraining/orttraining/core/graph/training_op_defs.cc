@@ -4786,7 +4786,37 @@ Return true if all elements are true and false otherwise.
       .TypeConstraint(
           "T",
           {"tensor(int32)", "tensor(int64)", "tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.");
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        // input: [M1, M2, d2, ..., dN]
+        // indices: [d1]
+        // output: [d1, d2, ..., dN]
+        // unflatten_dims: [M1, M2]
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 2)) {
+          return;
+        }
+
+        const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        const auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        if (input_shape.dim_size() < 2) {
+          fail_shape_inference("Input tensor must have at least 2 dimensions.");
+        }
+
+        if (indices_shape.dim_size() != 1) {
+          fail_shape_inference("Indices tensor must have 1 dimension.");
+        }
+
+        auto* output_shape = getOutputShape(ctx, 0);
+        auto* unflatten_dims_shape = getOutputShape(ctx, 1);
+        if (nullptr != output_shape && nullptr != unflatten_dims_shape) {
+          output_shape->add_dim()->CopyFrom(indices_shape.dim(0));
+          for (int i = 2; i < input_shape.dim_size(); ++i) {
+            output_shape->add_dim()->CopyFrom(input_shape.dim(i));
+          }
+          unflatten_dims_shape->add_dim()->set_dim_value(2);
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GRUTraining)
       .SetDomain(kMSDomain)
