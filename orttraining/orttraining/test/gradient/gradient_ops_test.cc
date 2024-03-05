@@ -720,7 +720,7 @@ TEST(GradientCheckerTest, SplitGrad) {
   OpDef op_def_18{"Split", kOnnxDomain, 18};
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def_18, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error,
                                                          {MakeAttribute("axis", int64_t(0)),
-                                                         MakeAttribute("num_outputs", int64_t(3))}));
+                                                          MakeAttribute("num_outputs", int64_t(3))}));
   EXPECT_IS_TINY(max_error);
 }
 
