@@ -29,7 +29,7 @@ TEST(TestDeferredRelease, WithArena) {
   AllocatorPtr cpu_pinned_alloc = ep.CreatePreferredAllocators()[1];
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
-  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);
+  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr, info);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;
@@ -71,7 +71,7 @@ TEST(TestDeferredRelease, WithoutArena) {
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
-  CudaStream stream(nullptr, gpu_alloctor->Info().device, cuda_pinned_alloc, false, true, nullptr, nullptr);
+  CudaStream stream(nullptr, gpu_alloctor->Info().device, cuda_pinned_alloc, false, true, nullptr, nullptr, info);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;
