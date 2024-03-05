@@ -233,7 +233,6 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured(CudaGraphAnnotatio
 }
 
 Status CUDAExecutionProvider::PerThreadContext::ReplayGraph(CudaGraphAnnotation_t graph_annotation_id) {
-  ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
   return cuda_graph_.Replay(graph_annotation_id);
 }
 

@@ -75,6 +75,7 @@ void CUDAGraphManager::CaptureEnd() {
 }
 
 Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  SetGraphAnnotationId(cuda_graph_annotation_id);
   ORT_ENFORCE(IsGraphCaptureAllowedOnRun());
 
   // Although this function is not thread safe, the lock is not needed here because
@@ -93,7 +94,6 @@ bool CUDAGraphManager::IsGraphCaptureAllowedOnRun() const {
 }
 
 bool CUDAGraphManager::IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
-  ;
   return cuda_graph_set_.Contains(cuda_graph_annotation_id);
 }
 
