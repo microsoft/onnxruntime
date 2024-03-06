@@ -3,6 +3,8 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
@@ -21,17 +23,55 @@ MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 
 def get_qnn_qdq_config(
     model_input: Path,
     calibration_data_reader: CalibrationDataReader,
-    calibrate_method=CalibrationMethod.MinMax,
-    activation_type=QuantType.QUInt8,
-    weight_type=QuantType.QUInt8,
-    per_channel=False,
-):
+    calibrate_method: CalibrationMethod = CalibrationMethod.MinMax,
+    activation_type: QuantType = QuantType.QUInt8,
+    weight_type: QuantType = QuantType.QUInt8,
+    per_channel: bool = False,
+    op_types_to_exclude: list[str] | None = None,
+) -> StaticQuantConfig:
+    """
+    Returns a quantization configuration for creating QDQ models that are compatible with the ONNX Runtime
+    QNN execution provider (ORT QNN EP). The returned StaticQuantConfig can be further customized by the caller
+    via direct access to member fields. Please refer to the documentation for the StaticQuantConfig class for
+    details on available class members.
+
+    Please refer to the ORT QNN EP documentation for an example of how to use this function:
+    https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html#running-a-model-with-qnn-eps-htp-backend-python
+
+    This function performs the following operations:
+      - Generates tensor quantization overrides to ensure QDQ model compatibility with QNN EP.
+      - Automatically builds a list of operator types to quantize.
+      - Detects if the final quantized model needs to use external data.
+      - Sets the correct domain for Q/DQ operators if 16-bit integer quantization is used.
+      - Sets the minimum tensor real range (i.e., rmax - rmin) to the correct value for QNN.
+
+    Args:
+        model_input:
+            Path to the input float model file.
+        calibration_data_reader:
+            A calibration data reader that enumerates calibration data and generates inputs for the original model.
+        calibrate_method:
+            The calibration method to use. Supported methods include MinMax, Entropy, and Percentile.
+            Defaults to MinMax.
+        activation_type:
+            The quantization data type for activations. Defaults to QUInt8.
+        weight_type:
+            The quantization data type for weights. Defaults to QUInt8.
+        per_channel:
+            Set to true to quantize weights per channel. Defaults to false. Not currently supported for QNN EP.
+        op_types_to_exclude:
+            List of operator types to exclude from quantization. For example, can exclude custom operator types.
+            Defaults to None.
+    """
+
     if per_channel:
         raise ValueError("QNN EP does not yet support per-channel quantization.")
 
     model = onnx.load_model(model_input, load_external_data=False)
 
     op_types = set()
+    op_types_to_exclude = set(op_types_to_exclude or [])
+    op_types_to_exclude.update(OP_TYPES_TO_EXCLUDE)
     tensor_quant_overrides = {}
     model_has_external_data = False
     name_to_initializer = {}
@@ -45,6 +85,9 @@ def get_qnn_qdq_config(
 
     # Setup quantization overrides for specific operator types
     for node in model.graph.node:
+        if node.op_type in op_types_to_exclude:
+            continue
+
         op_types.add(node.op_type)
 
         if node.op_type == "MatMul" and activation_type in Q16_TYPES and weight_type in Q8_TYPES:
@@ -96,7 +139,7 @@ def get_qnn_qdq_config(
         calibrate_method=calibrate_method,
         activation_type=activation_type,
         weight_type=weight_type,
-        op_types_to_quantize=list(op_types.difference(OP_TYPES_TO_EXCLUDE)),
+        op_types_to_quantize=list(op_types),
         use_external_data_format=(model_has_external_data or model.ByteSize() >= MODEL_SIZE_THRESHOLD),
         extra_options=extra_options,
     )

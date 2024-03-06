@@ -109,6 +109,14 @@ Essentially this tool performs the following three (skippable) steps:
         type=int,
         default=1024,
     )
+    parser.add_argument(
+        "--custom_op_library",
+        action="append",
+        required=False,
+        help="Path to a shared library that registers ORT custom operators."
+        " May be specified multiple times if multiple libraries are required."
+        " Ex: --custom_op_library my_lib1.dll --custom_op_library my_lib2.dll",
+    )
     return parser.parse_args()
 
 
@@ -138,4 +146,5 @@ if __name__ == "__main__":
         args.all_tensors_to_one_file,
         args.external_data_location,
         args.external_data_size_threshold,
+        custom_op_libraries=args.custom_op_library,
     )

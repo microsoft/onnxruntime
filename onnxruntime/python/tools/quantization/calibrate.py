@@ -164,6 +164,7 @@ class CalibraterBase:
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
+        custom_op_libraries: Optional[Sequence[str]] = None,
     ):
         """
         :param model_path: ONNX model to calibrate. It should be a model file path
@@ -171,6 +172,7 @@ class CalibraterBase:
         :param augmented_model_path: save augmented model to this path.
         :param symmetric: make range of tensor symmetric (central point is 0).
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param custom_op_libraries: List of paths to ORT custom operator shared libraries. Only applies to models that use custom ops.
         """
         if isinstance(model_path, str):
             self.model = load_model_with_shape_infer(Path(model_path))
@@ -183,6 +185,7 @@ class CalibraterBase:
         self.augmented_model_path = augmented_model_path
         self.symmetric = symmetric
         self.use_external_data_format = use_external_data_format
+        self.custom_op_libraries = custom_op_libraries
 
         self.augment_model = None
         self.infer_session = None
@@ -201,6 +204,11 @@ class CalibraterBase:
         """
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+
+        if self.custom_op_libraries:
+            for custom_op_lib in self.custom_op_libraries:
+                sess_options.register_custom_ops_library(custom_op_lib)
+
         self.infer_session = onnxruntime.InferenceSession(
             self.augmented_model_path,
             sess_options=sess_options,
@@ -274,6 +282,7 @@ class MinMaxCalibrater(CalibraterBase):
         moving_average=False,
         averaging_constant=0.01,
         max_intermediate_outputs=None,
+        custom_op_libraries: Optional[Sequence[str]] = None,
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path
@@ -284,6 +293,7 @@ class MinMaxCalibrater(CalibraterBase):
         :param moving_average: compute the moving average of the minimum and maximum values instead of the global minimum and maximum.
         :param averaging_constant: constant smoothing factor to use when computing the moving average.
         :param max_intermediate_outputs: maximum number of intermediate outputs before an intermediate range is computed.
+        :param custom_op_libraries: List of paths to ORT custom operator shared libraries. Only applies to models that use custom ops.
         """
         super().__init__(
             model_path,
@@ -291,6 +301,7 @@ class MinMaxCalibrater(CalibraterBase):
             augmented_model_path=augmented_model_path,
             symmetric=symmetric,
             use_external_data_format=use_external_data_format,
+            custom_op_libraries=custom_op_libraries,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -458,6 +469,7 @@ class HistogramCalibrater(CalibraterBase):
         num_quantized_bins=2048,
         percentile=99.999,
         scenario="same",
+        custom_op_libraries: Optional[Sequence[str]] = None,
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path.
@@ -470,6 +482,7 @@ class HistogramCalibrater(CalibraterBase):
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
         :param scenario: see :class:`DistributionCalibrater`
+        :param custom_op_libraries: List of paths to ORT custom operator shared libraries. Only applies to models that use custom ops.
         """
         super().__init__(
             model_path,
@@ -477,6 +490,7 @@ class HistogramCalibrater(CalibraterBase):
             augmented_model_path=augmented_model_path,
             symmetric=symmetric,
             use_external_data_format=use_external_data_format,
+            custom_op_libraries=custom_op_libraries,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -577,6 +591,7 @@ class EntropyCalibrater(HistogramCalibrater):
         symmetric=False,
         num_bins=128,
         num_quantized_bins=128,
+        custom_op_libraries: Optional[Sequence[str]] = None,
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path
@@ -587,6 +602,7 @@ class EntropyCalibrater(HistogramCalibrater):
         :param symmetric: make range of tensor symmetric (central point is 0).
         :param num_bins: number of bins to create a new histogram for collecting tensor values.
         :param num_quantized_bins: number of quantized bins. Default 128.
+        :param custom_op_libraries: List of paths to ORT custom operator shared libraries. Only applies to models that use custom ops.
         """
         super().__init__(
             model_path,
@@ -597,6 +613,7 @@ class EntropyCalibrater(HistogramCalibrater):
             symmetric=symmetric,
             num_bins=num_bins,
             num_quantized_bins=num_quantized_bins,
+            custom_op_libraries=custom_op_libraries,
         )
 
 
@@ -611,6 +628,7 @@ class PercentileCalibrater(HistogramCalibrater):
         symmetric=False,
         num_bins=2048,
         percentile=99.999,
+        custom_op_libraries: Optional[Sequence[str]] = None,
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path
@@ -621,6 +639,7 @@ class PercentileCalibrater(HistogramCalibrater):
         :param symmetric: make range of tensor symmetric (central point is 0).
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
+        :param custom_op_libraries: List of paths to ORT custom operator shared libraries. Only applies to models that use custom ops.
         """
         super().__init__(
             model_path,
@@ -631,6 +650,7 @@ class PercentileCalibrater(HistogramCalibrater):
             symmetric=symmetric,
             num_bins=num_bins,
             percentile=percentile,
+            custom_op_libraries=custom_op_libraries,
         )
 
 
@@ -644,6 +664,7 @@ class DistributionCalibrater(HistogramCalibrater):
         method="distribution",
         num_bins=128,
         scenario="same",
+        custom_op_libraries: Optional[Sequence[str]] = None,
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path
@@ -657,6 +678,7 @@ class DistributionCalibrater(HistogramCalibrater):
             the algorithm weights and float 8 follow the same distribution,
             if `scenario="p3"`, it assumes the weights follow
             a gaussian law and float 8 ~ X^3 where X is a gaussian law
+        :param custom_op_libraries: List of paths to ORT custom operator shared libraries. Only applies to models that use custom ops.
         """
         super().__init__(
             model_path,
@@ -666,6 +688,7 @@ class DistributionCalibrater(HistogramCalibrater):
             method=method,
             num_bins=num_bins,
             scenario=scenario,
+            custom_op_libraries=custom_op_libraries,
         )
 
 
@@ -1098,6 +1121,8 @@ def create_calibrator(
     extra_options={},  # noqa: B006
 ):
     calibrator = None
+    custom_op_libraries = extra_options.get("custom_op_libraries", None)
+
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
         symmetric = extra_options.get("symmetric", False)
@@ -1113,6 +1138,7 @@ def create_calibrator(
             moving_average=moving_average,
             averaging_constant=averaging_constant,
             max_intermediate_outputs=max_intermediate_outputs,
+            custom_op_libraries=custom_op_libraries,
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
@@ -1127,6 +1153,7 @@ def create_calibrator(
             symmetric=symmetric,
             num_bins=num_bins,
             num_quantized_bins=num_quantized_bins,
+            custom_op_libraries=custom_op_libraries,
         )
     elif calibrate_method == CalibrationMethod.Percentile:
         # default settings for percentile algorithm
@@ -1141,6 +1168,7 @@ def create_calibrator(
             symmetric=symmetric,
             num_bins=num_bins,
             percentile=percentile,
+            custom_op_libraries=custom_op_libraries,
         )
 
     elif calibrate_method == CalibrationMethod.Distribution:
@@ -1155,6 +1183,7 @@ def create_calibrator(
             use_external_data_format=use_external_data_format,
             num_bins=num_bins,
             scenario=scenario,
+            custom_op_libraries=custom_op_libraries,
         )
 
     if calibrator:

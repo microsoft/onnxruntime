@@ -9,7 +9,7 @@ import logging
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import onnx
 
@@ -35,6 +35,7 @@ def quant_pre_process(
     all_tensors_to_one_file: bool = False,
     external_data_location: Optional[str] = None,
     external_data_size_threshold: int = 1024,
+    custom_op_libraries: Optional[Sequence[str]] = None,
 ) -> None:
     """Shape inference and model optimization, in preparation for quantization.
 
@@ -61,6 +62,8 @@ def quant_pre_process(
         all_tensors_to_one_file: Saving all the external data to one file
         external_data_location: The file location to save the external file
         external_data_size_threshold: The size threshold for external data
+        custom_op_libraries: List of paths to ORT custom operator shared libraries.
+            Necessary if the model will be optimized and contains custom ops.
     """
     with tempfile.TemporaryDirectory(prefix="pre.quant.") as quant_tmp_dir:
         temp_path = Path(quant_tmp_dir)
@@ -99,6 +102,11 @@ def quant_pre_process(
                 sess_option = onnxruntime.SessionOptions()
                 sess_option.optimized_model_filepath = opt_model_path
                 sess_option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+
+                if custom_op_libraries:
+                    for custom_op_lib in custom_op_libraries:
+                        sess_option.register_custom_ops_library(custom_op_lib)
+
                 sess = onnxruntime.InferenceSession(input_model_path, sess_option, providers=["CPUExecutionProvider"])
                 # Close the session to avoid the cleanup error on Windows for temp folders
                 # https://github.com/microsoft/onnxruntime/issues/17627
