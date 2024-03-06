@@ -1771,13 +1771,13 @@ bool TensorrtExecutionProvider::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
 
-void TensorrtExecutionProvider::CaptureBegin() {
+void TensorrtExecutionProvider::CaptureBegin(int) {
   cuda_graph_.Reset();
-  cuda_graph_.CaptureBegin();
+  cuda_graph_.CaptureBegin(0);
 }
 
-void TensorrtExecutionProvider::CaptureEnd() {
-  cuda_graph_.CaptureEnd();
+void TensorrtExecutionProvider::CaptureEnd(int) {
+  cuda_graph_.CaptureEnd(0);
   is_graph_captured_ = true;
 }
 
@@ -3552,7 +3552,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
       LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
       cuda_graph_.SetStream(stream);
-      CaptureBegin();
+      CaptureBegin(0);
     }
 
     // Run TRT inference
@@ -3622,7 +3622,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
     if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
       if (IsGraphCaptureAllowed()) {
-        CaptureEnd();
+        CaptureEnd(0);
         // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
         // so run the captured graph here to actually execute the work.
         ORT_RETURN_IF_ERROR(ReplayGraph(0));
@@ -3845,7 +3845,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
       LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
       cuda_graph_.SetStream(stream);
-      CaptureBegin();
+      CaptureBegin(0);
     }
 
     // Run TRT inference
@@ -3915,7 +3915,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
     if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
       if (IsGraphCaptureAllowed()) {
-        CaptureEnd();
+        CaptureEnd(0);
         // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
         // so run the captured graph here to actually execute the work.
         ORT_RETURN_IF_ERROR(ReplayGraph(0));

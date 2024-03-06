@@ -176,13 +176,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
       }
     }
 
-    bool IsGraphCaptureAllowed() const;
-    bool IsGraphCaptureAllowedOnRun() const;
-    void CaptureBegin();
-    void CaptureEnd();
+    bool IsGraphCaptureAllowed(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    bool IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
-    void SetCudaGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id);
     Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
 

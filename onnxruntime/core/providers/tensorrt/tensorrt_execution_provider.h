@@ -372,8 +372,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
     bool IsGraphCaptureAllowed() const;
-    void CaptureBegin();
-    void CaptureEnd();
+    void CaptureBegin(int graph_annotation_id);
+    void CaptureEnd(int graph_annotation_id);
     bool IsGraphCaptured(int graph_annotation_id) const;
     Status ReplayGraph(int graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
@@ -539,8 +539,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                         std::vector<NodeComputeInfo>& node_compute_funcs);
 
   bool IsGraphCaptureAllowed() const;
-  void CaptureBegin();
-  void CaptureEnd();
+  void CaptureBegin(int graph_annotation_id);
+  void CaptureEnd(int graph_annotation_id);
   void IncrementRegularRunCountBeforeGraphCapture();
 
   /**

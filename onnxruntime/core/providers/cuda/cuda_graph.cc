@@ -45,8 +45,10 @@ void CUDAGraphManager::SetGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_ann
   cuda_graph_annotation_id_ = cuda_graph_annotation_id;
 }
 
-void CUDAGraphManager::CaptureBegin() {
-  ORT_ENFORCE(IsGraphCaptureAllowedOnRun());
+void CUDAGraphManager::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  SetGraphAnnotationId(cuda_graph_annotation_id);
+
+  ORT_ENFORCE(IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id));
 
   ORT_ENFORCE(!cuda_graph_set_.Contains(cuda_graph_annotation_id_),
               "This cuda graph has already captured a graph. "
@@ -60,7 +62,10 @@ void CUDAGraphManager::CaptureBegin() {
   CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal));
 }
 
-void CUDAGraphManager::CaptureEnd() {
+void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  ORT_ENFORCE(cuda_graph_annotation_id == cuda_graph_annotation_id_,
+              "The cuda graph annotation id does not match the one used in CaptureBegin");
+
   cudaGraph_t graph = NULL;
   CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));
   if (graph == NULL) {
@@ -76,7 +81,8 @@ void CUDAGraphManager::CaptureEnd() {
 
 Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) {
   SetGraphAnnotationId(cuda_graph_annotation_id);
-  ORT_ENFORCE(IsGraphCaptureAllowedOnRun());
+
+  ORT_ENFORCE(IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id));
 
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
@@ -89,8 +95,8 @@ Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) 
   return Status::OK();
 }
 
-bool CUDAGraphManager::IsGraphCaptureAllowedOnRun() const {
-  return cuda_graph_annotation_id_ != kCudaGraphAnnotationSkip;
+bool CUDAGraphManager::IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  return cuda_graph_annotation_id != kCudaGraphAnnotationSkip;
 }
 
 bool CUDAGraphManager::IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const {

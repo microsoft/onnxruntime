@@ -139,8 +139,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
     }
 
     bool IsGraphCaptureAllowed() const;
-    void CaptureBegin();
-    void CaptureEnd();
+    void CaptureBegin(int graph_annotation_id);
+    void CaptureEnd(int graph_annotation_id);
     bool IsGraphCaptured(int graph_annotation_id) const;
     Status ReplayGraph(int graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();

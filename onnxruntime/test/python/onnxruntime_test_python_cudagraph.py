@@ -130,14 +130,14 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
     def run_model_with_cuda_graph_annotation(self, providers):
         INPUT_SIZE = 1280  # noqa: N806
 
-        x_base = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
-        y_base = [[0.0], [0.0], [0.0]]
-        expected_y_base = [[5.0], [11.0], [17.0]]
+        x_base = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]
+        y_base = [[0.0], [0.0], [0.0], [0.0]]
+        expected_y_base = [[5.0], [11.0], [17.0], [23.0]]
 
-        x_base_mul_10 = [[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]]
-        expected_y_base_mul_10 = [[50.0], [110.0], [170.0]]
+        x_base_mul_10 = [[10.0, 20.0], [30.0, 40.0], [50.0, 60.0], [70.0, 80.0]]
+        expected_y_base_mul_10 = [[50.0], [110.0], [170.0], [230.0]]
 
-        test_num = 3
+        test_num = 4
 
         x_ortvalues = []
         y_ortvalues = []
@@ -156,16 +156,21 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
         for i in range(test_num):
             io_bindings[i].bind_ortvalue_input("X", x_ortvalues[i])
             io_bindings[i].bind_ortvalue_output("Y", y_ortvalues[i])
-            ro.add_run_config_entry("gpu_graph_id", str(i + 1))
+            if i > 0:
+                ro.add_run_config_entry("gpu_graph_id", str(i))
             session.run_with_iobinding(io_bindings[i], ro)
             expected_y = np.array(expected_y_base[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
             np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
+
+        del ro
+        ro = onnxrt.RunOptions()
 
         # After capturing, CUDA graph replay happens from this Run onwards
         for i in range(test_num):
             # Update input and then replay CUDA graph
             x_ortvalues[i].update_inplace(np.array(x_base_mul_10[: i + 1][:] * INPUT_SIZE, dtype=np.float32))
-            ro.add_run_config_entry("gpu_graph_id", str(i + 1))
+            if i > 0:
+                ro.add_run_config_entry("gpu_graph_id", str(i))
             session.run_with_iobinding(io_bindings[i], ro)
             expected_y = np.array(expected_y_base_mul_10[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
             np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)

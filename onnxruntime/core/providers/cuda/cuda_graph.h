@@ -36,18 +36,18 @@ struct CUDAGraphManager {
   ~CUDAGraphManager();
 
   void SetStream(cudaStream_t stream);
-  void SetGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id);
-
-  void CaptureBegin();
-  void CaptureEnd();
+  void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
+  void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
   Status Replay(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
   void Reset();
 
-  bool IsGraphCaptureAllowedOnRun() const;
+  bool IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
   bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
 
  private:
+  void SetGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id);
+
   CudaGraphSet cuda_graph_set_;
   CudaGraphAnnotation_t cuda_graph_annotation_id_ = kCudaGraphAnnotationDefault;
 
