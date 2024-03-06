@@ -64,8 +64,9 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
   return codeLines.join('\n');
 };
 
-const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): ProgramInfo => {
-  const inputShape = inputs[0].dims.slice();
+const createConcatProgramInfo = (allInputs: readonly TensorView[], axis: number): ProgramInfo => {
+  const inputShape = allInputs[0].dims.slice();
+  const dataType = allInputs[0].dataType;
   if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
     throw new Error('axis specified for concat doesn\'t match input dimensionality');
   }
@@ -73,8 +74,8 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
   // ensure all of the non-concatenated axes match each other
   // calculate the shape of the output tensor while we do that
   const outputShape = inputShape.slice(0);
-  for (let i = 1; i < inputs.length; i++) {
-    const dataNShape = inputs[i].dims.slice();
+  for (let i = 1; i < allInputs.length; i++) {
+    const dataNShape = allInputs[i].dims.slice();
     for (let axisIndex = 0; axisIndex < inputShape.length; axisIndex++) {
       // add to the placeholder for computing output shape
       if (axisIndex === adjustedAxis) {
@@ -89,9 +90,11 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 
   const outputSize = ShapeUtil.size(outputShape);
 
+  // 0 length tensors do not have GPU buffers, filter them out
+  const inputs = allInputs.filter(input => ShapeUtil.size(input.dims) > 0);
+
   const sizeInConcatAxis = new Array<number>(inputs.length);
   const inputVars = new Array<IndicesHelper>(inputs.length);
-  const dataType = inputs[0].dataType;
 
   let previousSum = 0;
   const inputDependencies: ProgramInputTensorInfoDependency[] = [];
@@ -144,7 +147,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
     name: 'Concat',
     shaderCache: {hint: `${axis}`, inputDependencies},
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      outputs: [{dims: outputShape, dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
       programUniforms,
     }),
@@ -154,9 +157,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
   validateInputs(context.inputs);
-  // 0 length tensors are valid for concat, remove them
-  const nonEmptyInputs = context.inputs.filter(input => ShapeUtil.size(input.dims) > 0);
-  context.compute(createConcatProgramInfo(nonEmptyInputs, attributes.axis), {inputs: nonEmptyInputs});
+  context.compute(createConcatProgramInfo(context.inputs, attributes.axis));
 };
 
 export const parseConcatAttributes = (attributes: Record<string, unknown>): ConcatAttributes =>
