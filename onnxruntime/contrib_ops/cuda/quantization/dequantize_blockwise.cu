@@ -83,8 +83,9 @@ __global__ void Dequantize4BitsKernelReOrder(
   int element_offset = group_id * block_size + ((threadIdx.x * 8) & (block_size - 1));
   T* output_i = output + element_offset;
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
+  const int32_t* reorder_idx_with_off = reorder_idx + kb_idx * block_size + ((threadIdx.x * 8) & (block_size - 1));
   for (int i = 0; i < 8; i++) {
-    int32_t rid = reorder_idx[kb_idx * block_size + i];
+    int32_t rid = reorder_idx_with_off[i];
     T scale = *(scale_data + n_idx * scales_shape_x + rid);
     uint8_t zp = 8;
     if (zero_points) {
