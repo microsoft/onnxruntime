@@ -32,7 +32,7 @@ parameters:
   default: true
 
 - name: ConcurrencyTest
-  displayName: Run Concurrency Test
+  displayName: Specifies the number of concurrency model test to invoke simultaneously
   type: string
   default: 2
 
