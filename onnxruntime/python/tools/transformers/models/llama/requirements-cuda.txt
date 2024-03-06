@@ -2,3 +2,4 @@
 # Please manually install torch>=2.2.0 with CUDA enabled for the CUDA version installed in your system.
 # Instructions can be found here: https://pytorch.org/get-started/locally/
 onnxruntime-gpu>=1.16.2
+py3nvml

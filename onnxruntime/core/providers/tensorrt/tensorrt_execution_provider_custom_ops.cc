@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unordered_set>
+
 #include "core/framework/provider_options.h"
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "tensorrt_execution_provider.h"
-#include <NvInferRuntime.h>
-#include <NvInferPlugin.h>
-#include <unordered_set>
 
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger();

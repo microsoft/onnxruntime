@@ -5,8 +5,9 @@
 #include <ctime>
 #include <cudnn.h>
 #include <cublas_v2.h>
-#include "NvInfer.h"
-#include "NvOnnxParser.h"
+
+#include "core/providers/tensorrt/nv_includes.h"
+
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"

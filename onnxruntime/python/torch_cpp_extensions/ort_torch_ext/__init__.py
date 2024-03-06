@@ -5,7 +5,7 @@ import torch  # noqa: F401
 
 from onnxruntime.capi import _pybind_state as _C
 
-from .aten_op_executor import execute_aten_operator_address, is_cpu_argument_address
+from .aten_op_executor import execute_aten_operator_address, is_tensor_argument_address
 
 
 def run_once_aten_op_executor(f):
@@ -30,7 +30,7 @@ def run_once_aten_op_executor(f):
 
 @run_once_aten_op_executor
 def load_aten_op_executor_cpp_extension():
-    _C.register_aten_op_executor(str(is_cpu_argument_address()), str(execute_aten_operator_address()))
+    _C.register_aten_op_executor(str(is_tensor_argument_address()), str(execute_aten_operator_address()))
 
 
 def init_aten_op_executor():

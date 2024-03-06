@@ -916,7 +916,8 @@ TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider,
+           // TODO(mtavenrath) flakiness of running_mean for CUDA has been fixed, the delta of running_var is still ~0.1
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider,
             kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
@@ -944,7 +945,7 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider,
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider,
             kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
@@ -971,7 +972,7 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
 
   // Same exclusions as the opset 14 test
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider,
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider,
             kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 #endif  // BATCHNORM_INCLUDE_TRAINING_SUPPORT

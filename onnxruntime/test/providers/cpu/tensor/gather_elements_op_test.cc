@@ -383,7 +383,7 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   // skip TensorRT because it doesn't support out of bounds indices
   test.Run(OpTester::ExpectResult::kExpectFailure, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
             kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 

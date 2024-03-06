@@ -136,10 +136,10 @@ struct GroupNormNHWCParams {
                       bool use_silu,
                       bool broadcast_skip,
                       int channels_per_block) {
-    int32_t channels_per_group = num_channels / num_groups;
+    int32_t channels_per_group_in = num_channels / num_groups;
     // channels_per_block is computed in PrePack.
     // If the gamma is not initializer, channels_per_block might be zero after PrePack. In that happens, compute it here.
-    if (channels_per_block < channels_per_group) {
+    if (channels_per_block < channels_per_group_in) {
       channels_per_block = GetChannelsPerBlock(num_channels, num_groups);
     }
 
@@ -167,7 +167,7 @@ struct GroupNormNHWCParams {
     this->hw_per_block = DivUp(this->hw, blocks_per_hw);
 
     this->channels_per_block = channels_per_block;
-    this->channels_per_group = channels_per_group;
+    this->channels_per_group = channels_per_group_in;
     this->hwc = this->hw * this->c;
     this->inv_hw_channels_per_group = 1.F / (float)(this->hw * this->channels_per_group);
     this->groups_per_block = channels_per_block / this->channels_per_group;

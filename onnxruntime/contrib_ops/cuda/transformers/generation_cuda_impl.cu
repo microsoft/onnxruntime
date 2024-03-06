@@ -1,11 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+
+// cub.cuh includes device/dispatch_radix_sort.cuh which has assignment in conditional expressions
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4706)  
+#endif
+#include <cub/cub.cuh>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+#include <cub/util_type.cuh>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "cub/util_type.cuh"
-#include <cub/cub.cuh>
-#include <cub/device/device_segmented_radix_sort.cuh>
+
 #include "contrib_ops/cuda/bert/utils.cuh"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 

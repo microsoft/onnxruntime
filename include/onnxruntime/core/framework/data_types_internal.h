@@ -305,7 +305,7 @@ class CallableDispatchableHelper {
     return 0;
   }
 
-  void CheckCalledOnce() {
+  void CheckCalledOnce() const {
     ORT_ENFORCE(called_ == 1, "Unsupported data type: ", dt_type_);
   }
 };

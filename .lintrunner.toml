@@ -132,6 +132,7 @@ exclude_patterns = [
     'onnxruntime/core/flatbuffers/schema/*.fbs.h', # Generated code
     'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',
     'onnxruntime/core/mlas/**', # Contains assembly code
+    'onnxruntime/core/mickey/cutlass_ext/**', # CUTLASS lib recommends NO automatic code formatting
     'winml/lib/Api.Image/shaders/**',  # Contains data chunks
 ]
 command = [
