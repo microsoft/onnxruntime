@@ -222,8 +222,11 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     //   1: add the downstream node to the border if the current node is supported
     //   2: adjust in-degrees of the nodes consuming the current node's outputs, and add any new nodes to process
     if (node_unit_map) {
-      // if node unit is a single node, output_idx 0 gives the edges from that node.
-      size_t num_output_nodes = is_qdq_node_unit ? node_unit->GetQNodes().size() : 1;
+      // if Q nodes is empty (single node or QDQ node unit for logical operator that has DQ input but no Q on output)
+      // the output edges come from the target node and are accessed via index 0.
+      // for a QDQ node group use the actual number of Q nodes
+      auto num_q_nodes = node_unit->GetQNodes().size();
+      size_t num_output_nodes = std::max(num_q_nodes, size_t(1));
       for (size_t output_idx = 0; output_idx < num_output_nodes; ++output_idx) {
         std::for_each(
             node_unit->OutputEdgesBegin(output_idx), node_unit->OutputEdgesEnd(output_idx),
@@ -414,6 +417,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
+                          const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
                           bool debug_output) {
   const auto excluded_nodes = CreateExcludedNodeSet(graph_viewer, stop_ops);
   const bool check_excluded_nodes = !excluded_nodes.empty();
@@ -428,7 +432,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
       generate_metadef_name_fn,
       execution_provider_name,
       execution_provider_type,
-      nullptr,
+      node_unit_map,
       debug_output);
 }
 

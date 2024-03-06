@@ -254,7 +254,8 @@ void NodeUnit::InitForSingleNode() {
 }
 
 Node::EdgeConstIterator NodeUnit::OutputEdgesBegin(size_t index) const {
-  if (type_ == Type::SingleNode) {
+  // q_nodes_ can be empty for logical operators with DQ inputs. as they produce bool output no Q is possible
+  if (type_ == Type::SingleNode || q_nodes_.empty()) {
     ORT_ENFORCE(index == 0, "invalid output node index");
     return target_node_.OutputEdgesBegin();
   } else {
@@ -264,7 +265,7 @@ Node::EdgeConstIterator NodeUnit::OutputEdgesBegin(size_t index) const {
 }
 
 Node::EdgeConstIterator NodeUnit::OutputEdgesEnd(size_t index) const {
-  if (type_ == Type::SingleNode) {
+  if (type_ == Type::SingleNode || q_nodes_.empty()) {
     ORT_ENFORCE(index == 0, "invalid output node index");
     return target_node_.OutputEdgesEnd();
   } else {
