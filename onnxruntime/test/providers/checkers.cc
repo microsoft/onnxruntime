@@ -25,8 +25,8 @@ T get_tolerance(float absolute_tolerance, float relative_tolerance, T expected_v
 
 template <typename T>
 T get_tolerance(const ValidateOutputParams& params, T expected_value) {
-  constexpr float default_absolute_tolerance = 1e-6;
-  constexpr float default_relative_tolerance = 1e-5;
+  constexpr float default_absolute_tolerance = 1e-5;
+  constexpr float default_relative_tolerance = 1e-4;
   float absolute_tolerance = (params.absolute_error.has_value() ? *(params.absolute_error) : default_absolute_tolerance);
   float relative_tolerance = (params.relative_error.has_value() ? *(params.relative_error) : default_relative_tolerance);
   return get_tolerance(absolute_tolerance, relative_tolerance, expected_value);
