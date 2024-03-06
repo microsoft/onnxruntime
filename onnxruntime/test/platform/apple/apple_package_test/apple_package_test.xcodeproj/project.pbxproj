@@ -49,14 +49,6 @@
 		229E595826586B4A006E41AE /* sigmoid.ort */ = {isa = PBXFileReference; lastKnownFileType = file; path = sigmoid.ort; sourceTree = "<group>"; };
 		22C1D8DE271A79AF002CEE67 /* ios_package_testUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ios_package_testUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		22C1D8E9271A79FD002CEE67 /* ios_package_uitest_cpp_api.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ios_package_uitest_cpp_api.mm; sourceTree = "<group>"; };
-		513C65792B85789400E4EDFD /* ios_package_test.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ios_package_test.entitlements; sourceTree = "<group>"; };
-		5166697F2B96968E00C90928 /* onnxruntime.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = onnxruntime.xcframework; path = "../../../../../onnxruntime-ios-xcframework-1.18.0/onnxruntime.xcframework"; sourceTree = "<group>"; };
-		51A034022B92C4FF009ADFA2 /* onnxruntime.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = onnxruntime.xcframework; sourceTree = "<group>"; };
-		51A034032B92C4FF009ADFA2 /* xcframework_info.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = xcframework_info.json; sourceTree = "<group>"; };
-		51A034052B92C685009ADFA2 /* onnxruntime.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = onnxruntime.xcframework; sourceTree = "<group>"; };
-		51A034062B92C685009ADFA2 /* xcframework_info.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = xcframework_info.json; sourceTree = "<group>"; };
-		51A034082B92C68E009ADFA2 /* onnxruntime.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = onnxruntime.xcframework; sourceTree = "<group>"; };
-		51A034092B92C68E009ADFA2 /* xcframework_info.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = xcframework_info.json; sourceTree = "<group>"; };
 		51C316B92B0881450033C70B /* macos_package_test.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = macos_package_test.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		51C316BB2B0881450033C70B /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		51C316BC2B0881450033C70B /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -108,7 +100,6 @@
 				51C316DA2B0881490033C70B /* macos_package_testUITests */,
 				229E591D265869BF006E41AE /* Products */,
 				B49FE29C3625E88EDCCDD4BC /* Pods */,
-				51A034002B92C4FF009ADFA2 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -126,7 +117,6 @@
 		229E591E265869BF006E41AE /* ios_package_test */ = {
 			isa = PBXGroup;
 			children = (
-				513C65792B85789400E4EDFD /* ios_package_test.entitlements */,
 				229E591F265869BF006E41AE /* AppDelegate.h */,
 				229E5920265869BF006E41AE /* AppDelegate.m */,
 				229E5928265869BF006E41AE /* Main.storyboard */,
@@ -151,47 +141,6 @@
 				22C1D8E9271A79FD002CEE67 /* ios_package_uitest_cpp_api.mm */,
 			);
 			path = ios_package_testUITests;
-			sourceTree = "<group>";
-		};
-		51A034002B92C4FF009ADFA2 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				5166697F2B96968E00C90928 /* onnxruntime.xcframework */,
-				51A034072B92C68E009ADFA2 /* onnxruntime-ios-xcframework-1.18.0_3 */,
-				51A034042B92C685009ADFA2 /* onnxruntime-ios-xcframework-1.18.0_3 */,
-				51A034012B92C4FF009ADFA2 /* onnxruntime-ios-xcframework-1.18.0_3 */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		51A034012B92C4FF009ADFA2 /* onnxruntime-ios-xcframework-1.18.0_3 */ = {
-			isa = PBXGroup;
-			children = (
-				51A034022B92C4FF009ADFA2 /* onnxruntime.xcframework */,
-				51A034032B92C4FF009ADFA2 /* xcframework_info.json */,
-			);
-			name = "onnxruntime-ios-xcframework-1.18.0_3";
-			path = "../../../../../../../../Downloads/onnxruntime-ios-xcframework-1.18.0_3";
-			sourceTree = "<group>";
-		};
-		51A034042B92C685009ADFA2 /* onnxruntime-ios-xcframework-1.18.0_3 */ = {
-			isa = PBXGroup;
-			children = (
-				51A034052B92C685009ADFA2 /* onnxruntime.xcframework */,
-				51A034062B92C685009ADFA2 /* xcframework_info.json */,
-			);
-			name = "onnxruntime-ios-xcframework-1.18.0_3";
-			path = "../../../../../../../../Downloads/onnxruntime-ios-xcframework-1.18.0_3";
-			sourceTree = "<group>";
-		};
-		51A034072B92C68E009ADFA2 /* onnxruntime-ios-xcframework-1.18.0_3 */ = {
-			isa = PBXGroup;
-			children = (
-				51A034082B92C68E009ADFA2 /* onnxruntime.xcframework */,
-				51A034092B92C68E009ADFA2 /* xcframework_info.json */,
-			);
-			name = "onnxruntime-ios-xcframework-1.18.0_3";
-			path = "../../../../../../../../Downloads/onnxruntime-ios-xcframework-1.18.0_3";
 			sourceTree = "<group>";
 		};
 		51C316BA2B0881450033C70B /* macos_package_test */ = {
