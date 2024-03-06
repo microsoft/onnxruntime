@@ -10,9 +10,9 @@
 
 #include "core/framework/compute_capability.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -199,17 +199,19 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     }
 
     if (is_node_supported) {
-      // add node to the partition node group
-      supported_group.push_back(&node);
-
       if (is_qdq_node_unit) {
-        // add the other nodes in the QDQ node unit
+        // add DQ -> node -> Q for the node unit. must be in topological order
         for (const auto& dq : node_unit->GetDQNodes()) {
           supported_group.push_back(dq);
         }
+
+        supported_group.push_back(&node);
+
         for (const auto& q : node_unit->GetQNodes()) {
           supported_group.push_back(q);
         }
+      } else {
+        supported_group.push_back(&node);
       }
 
       // remove node from the border

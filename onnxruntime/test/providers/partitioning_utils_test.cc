@@ -9,7 +9,7 @@
 #include "core/graph/model.h"
 #include "core/framework/compute_capability.h"
 #include "core/providers/partitioning_utils.h"
-#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/framework/node_unit.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test/test_environment.h"
 
@@ -52,9 +52,9 @@ TEST(PartitioningUtilsTest, TestQDQHandling) {
 
   // we should have 2 supported partitions, split by the Cast node.
   // the first should have the Mul and NOT the DQ for the initializer if everything worked correctly.
-  ASSERT_EQ(result.size(), 2) << "Expected 2 partitions";
-  ASSERT_EQ(result[0]->sub_graph->nodes.size(), 1) << "First partition should only have the Mul and not a DQ";
-  ASSERT_EQ(result[1]->sub_graph->nodes.size(), 5);  // everything else except the unsupported Cast
+  ASSERT_EQ(result.size(), size_t(2)) << "Expected 2 partitions";
+  ASSERT_EQ(result[0]->sub_graph->nodes.size(), size_t(1)) << "First partition should only have the Mul and not a DQ";
+  ASSERT_EQ(result[1]->sub_graph->nodes.size(), size_t(5));  // everything else except the unsupported Cast
 }
 }  // namespace test
 }  // namespace onnxruntime

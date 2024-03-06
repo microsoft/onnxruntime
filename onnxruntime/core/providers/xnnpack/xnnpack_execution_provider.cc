@@ -13,7 +13,7 @@
 
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
-#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/framework/node_unit.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "xnnpack_init.h"

@@ -31,7 +31,7 @@
 #endif  // #if defined(_MSC_VER)
 
 #ifdef USE_NNAPI
-#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/framework/node_unit.h"
 #endif  // #ifdef USE_NNAPI
 
 struct QDQOpKeys {

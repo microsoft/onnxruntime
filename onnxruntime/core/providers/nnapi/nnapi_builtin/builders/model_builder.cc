@@ -11,17 +11,17 @@
 #include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/node_unit.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
-#include "core/providers/shared/node_unit/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
-#include "core/optimizer/initializer.h"
+#include "core/providers/shared/utils/utils.h"
 
 using namespace android::nn::wrapper;
 
