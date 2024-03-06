@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensorprotoutils.h"
-#include "utils.h"
+#include "core_utils.h"
 
 namespace onnxruntime {
 namespace utils {
