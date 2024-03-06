@@ -639,6 +639,11 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
       };
+
+      // need to special case any synthetic EP names in the exclude list
+      if (ctx_.excluded_provider_types.count(kCoreMLExecutionProvider) > 0) {
+        ctx_.excluded_provider_types.insert(kCoreMLExecutionProviderMLProgram);
+      }
 #endif
 
       bool has_run = false;
