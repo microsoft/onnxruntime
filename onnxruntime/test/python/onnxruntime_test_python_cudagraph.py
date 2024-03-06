@@ -127,6 +127,8 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             atol=1e-05,
         )
 
+        del session
+
     def run_model_with_cuda_graph_annotation(self, providers):
         INPUT_SIZE = 1280  # noqa: N806
 
@@ -178,6 +180,8 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             io_bindings[i].synchronize_outputs()
             expected_y = np.array(expected_y_base_mul_10[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
             np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
+
+        del session
 
     def test_arena_with_cuda_graph(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
