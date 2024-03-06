@@ -376,6 +376,7 @@ public:
         {
             causalMaskTensorDesc = TensorDesc::ConstructDefaultTensorDesc(MLOperatorTensorDataType::Int32, causalMaskOutputShape);
             namedcausalMaskTensorDesc = causalMaskTensorDesc.GetDmlDesc();
+            causalMaskOperatorDesc.InputTensor = nullptr;
             causalMaskOperatorDesc.ValueDataType = DML_TENSOR_DATA_TYPE_INT32;
             causalMaskOperatorDesc.DiagonalFillBegin = INT32_MIN;
             causalMaskOperatorDesc.DiagonalFillEnd = pastSequenceLength + 1;
