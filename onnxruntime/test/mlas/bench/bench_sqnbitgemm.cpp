@@ -99,7 +99,7 @@ static void SQ4BitGemmArgs(benchmark::internal::Benchmark* b) {
                          {1, 1024, 2048},                          // M
                          {4096, 11008},                            // N
                          {4096, 11008},                            // K
-                         {1, 8},                                   // Threads
+                         {1, 4, 8},                                // Threads
                          {int64_t{false}, int64_t{true}},          // Symmetric
                          {int64_t{CompFp32}, int64_t{CompInt8}}},  // ComputeType
 
