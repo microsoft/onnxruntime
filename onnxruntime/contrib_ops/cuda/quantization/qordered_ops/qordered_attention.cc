@@ -142,7 +142,7 @@ inline void debug_print([[maybe_unused]] const T* arr,
   std::cout << "========" << name << std::endl;
   for (size_t i = 0; i < sz; i++) {
     if (i % w == 0) std::cout << std::endl;
-    if (std::is_same<T, int8_t>().value) {
+    if constepxr (std::is_same<T, int8_t>::value) {
       std::cout << (int)buf[i] << ", ";
     } else {
       std::cout << buf[i] << ", ";
