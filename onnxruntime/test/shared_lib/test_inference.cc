@@ -3858,3 +3858,34 @@ TEST(CApiTest, RunAsyncFail) {
   Ort::RunOptions run_options;
   EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
 }
+
+struct MockGQA : public OrtCustomOp {
+  MockGQA() {
+    OrtCustomOp::GetMayInplace = [](int** input_index, int** output_index) {
+      size_t ret = 2;
+      *input_index = static_cast<int*>(malloc(ret));
+      (*input_index)[0] = 3;
+      (*input_index)[1] = 4;
+      *output_index = static_cast<int*>(malloc(ret));
+      (*output_index)[0] = 1;
+      (*output_index)[1] = 2;
+      return ret;
+    };
+  }
+};
+
+TEST(CApiTest, OrtCustomOp_GetInPlace) {
+  MockGQA mock_gqa;
+  int* input_index = nullptr;
+  int* output_index = nullptr;
+  size_t len = mock_gqa.GetMayInplace(&input_index, &output_index);
+  ASSERT_NE(input_index, nullptr);
+  ASSERT_NE(output_index, nullptr);
+  ASSERT_EQ(input_index[0], 3);
+  ASSERT_EQ(input_index[1], 4);
+  ASSERT_EQ(output_index[0], 1);
+  ASSERT_EQ(output_index[1], 2);
+  ASSERT_EQ(len, 2);
+  free(input_index);
+  free(output_index);
+}
