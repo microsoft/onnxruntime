@@ -28,6 +28,29 @@ constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort,
   return op_order_in_topological_sort <= boundary_op_order_in_topological_sort;
 }
 
+// Reset seed attribute for the dropout node if the seed is not set.
+bool SetSeedForDropoutNode(Node& node) {
+  // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
+  // TODO(pengwa): add the opset check in GetAllowedRecomputeOps.
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {12, 13}, kOnnxDomain) ||
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "BitmaskDropout", {1}, kMSDomain) ||
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasDropout", {1}, kMSDomain) ||
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "BitmaskBiasDropout", {1}, kMSDomain) ||
+      graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasSoftmaxDropout", {1}, kMSDomain)) {
+    auto& attrs = node.GetAttributes();
+    if (attrs.count("seed")) {
+      return false;
+    }
+
+    int64_t seed = static_cast<int64_t>(utils::GetHashFromString(node.OutputDefs()[0]->Name())) +
+                   utils::GetRandomSeed();
+    node.AddAttribute("seed", seed);
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace
 
 Status MemoryOptimizer::ParseOptimizationConfigFromString(const std::string& memory_optimizer_config,
@@ -74,7 +97,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
       optimizer::memory_optimizer::NodeRecomputePlan* recompute_plan =
           dynamic_cast<optimizer::memory_optimizer::NodeRecomputePlan*>(node_plan.get());
       ORT_ENFORCE(recompute_plan != nullptr);
-      ORT_ENFORCE(CreateRecomputeGraph(graph, recompute_plan->GetNodesInTopoOrder(), replacement_node_ptr).IsOK());
+      ORT_ENFORCE(CreateRecomputeGraph(graph, recompute_plan->GetNodesInTopoOrder(), logger, replacement_node_ptr).IsOK());
     } else {
       ORT_THROW("unsupported optimization type found.");
     }
@@ -93,7 +116,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
         auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
         // It is possible the consumer node is newly added as the recompute node, so we need a check here.
-        // For those kind of ops, we can treat them as backward ops.
+        // For those kinds of ops, we can treat them as backward ops.
         if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
             !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
                                    boundary_op_order_in_topological_sort)) {
@@ -223,6 +246,7 @@ void MemoryOptimizer::PrintSummary(const optimizer::memory_optimizer::MemoryOpti
 
 Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
                                              const InlinedVector<const Node*>& nodes_in_topological_order,
+                                             const logging::Logger& logger,
                                              Node*& new_output_node_ptr) const {
   InlinedHashMap<NodeArg*, NodeArg*> self_contained_outputs_map;
   for (size_t i = 0; i < nodes_in_topological_order.size(); ++i) {
@@ -234,6 +258,12 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
     // whether the outputs already be offloaded or not.
     if (graph.GetNodeArg(graph_utils::RecomputeName(node_to_duplicate->MutableOutputDefs()[0]->Name())) != nullptr) {
       continue;
+    }
+
+    bool seed_reset = SetSeedForDropoutNode(*node_to_duplicate);
+    if (seed_reset) {
+      LOGS(logger, VERBOSE) << "Set seed for Node " << node_to_duplicate->Name() << "(" << node_to_duplicate->OpType()
+                            << ").";
     }
 
     InlinedVector<NodeArg*> new_input_args;
