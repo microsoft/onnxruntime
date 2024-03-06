@@ -7,6 +7,8 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
+#include "core/framework/compute_capability.h"
+#include "core/providers/partitioning_utils.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -73,6 +75,52 @@ static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
       AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add4_output, q_parameter.scale, q_parameter.zero_point);
     }
   };
+}
+
+// This test doesn't run the model through optimization, the ini->Q->DQ on the 2nd Add is placed to the 1st partition
+// Still need to be improved.
+TEST(GraphPartitionTest, DISABLED_Partition2EachHas6Nodes) {
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  bool single_ep_node = false;
+  BuildGraphWithQAndNonQ(single_ep_node)(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  auto status = Model::Save(model, "test.onnx");
+  (status);
+
+  std::unordered_set<const Node*> supported_nodes{};
+  for (const auto& node : model.MainGraph().Nodes()) {
+    if ("FusedMatMul" != node.OpType()) {
+      supported_nodes.insert(&node);
+    }
+  }
+
+  int metadef_id = 0;
+  const auto gen_metadef_name = [&]() {
+    return MakeString("QNN_0971957_", metadef_id++);
+  };
+  GraphViewer viewer(graph);
+  auto partitions = utils::CreateSupportedPartitions(viewer,
+                                                     supported_nodes, {},
+                                                     gen_metadef_name,
+                                                     "QNN",
+                                                     kQnnExecutionProvider,
+                                                     true);
+  ASSERT_EQ(partitions.size(), 2);
+  for (auto& partition : partitions) {
+    ASSERT_EQ(partition->sub_graph->nodes.size(), 7);
+    auto input_count = partition->sub_graph->GetMetaDef()->inputs.size();
+    ASSERT_EQ(input_count, 8);
+  }
 }
 
 void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
