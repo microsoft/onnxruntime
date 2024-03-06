@@ -41,16 +41,10 @@ void CUDAGraphManager::SetStream(cudaStream_t stream) {
   stream_ = stream;
 }
 
-void CUDAGraphManager::SetGraphAnnotationId(CudaGraphAnnotation_t cuda_graph_annotation_id) {
-  cuda_graph_annotation_id_ = cuda_graph_annotation_id;
-}
-
 void CUDAGraphManager::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id) {
-  SetGraphAnnotationId(cuda_graph_annotation_id);
-
   ORT_ENFORCE(IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id));
 
-  ORT_ENFORCE(!cuda_graph_set_.Contains(cuda_graph_annotation_id_),
+  ORT_ENFORCE(!cuda_graph_set_.Contains(cuda_graph_annotation_id),
               "This cuda graph has already captured a graph. "
               "Create a new instance to capture a new graph.");
 
@@ -63,9 +57,6 @@ void CUDAGraphManager::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_
 }
 
 void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id) {
-  ORT_ENFORCE(cuda_graph_annotation_id == cuda_graph_annotation_id_,
-              "The cuda graph annotation id does not match the one used in CaptureBegin");
-
   cudaGraph_t graph = NULL;
   CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));
   if (graph == NULL) {
@@ -76,12 +67,10 @@ void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id
   CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0));
   CUDA_CALL_THROW(cudaGraphDestroy(graph));
 
-  cuda_graph_set_.Put(cuda_graph_annotation_id_, graph_exec);
+  cuda_graph_set_.Put(cuda_graph_annotation_id, graph_exec);
 }
 
 Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) {
-  SetGraphAnnotationId(cuda_graph_annotation_id);
-
   ORT_ENFORCE(IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id));
 
   // Although this function is not thread safe, the lock is not needed here because
