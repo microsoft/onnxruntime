@@ -916,6 +916,7 @@ TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           // TODO(mtavenrath) flakiness of running_mean for CUDA has been fixed, the delta of running_var is still ~0.1
            {kCudaExecutionProvider, kRocmExecutionProvider,
             kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
