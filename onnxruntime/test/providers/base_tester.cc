@@ -619,6 +619,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kTensorrtExecutionProvider,
       };
 #else
+      // synthetic EP name for testing CoreML EP with ML Program
+      constexpr const char* kCoreMLExecutionProviderMLProgram = "CoreMLExecutionProvider_MLProgram";
+
       static const std::string all_provider_types[] = {
           kCpuExecutionProvider,
           kCudaExecutionProvider,
@@ -631,6 +634,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kNnapiExecutionProvider,
           kRocmExecutionProvider,
           kCoreMLExecutionProvider,
+          kCoreMLExecutionProviderMLProgram,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
@@ -668,6 +672,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
+        else if (provider_type == kCoreMLExecutionProviderMLProgram)
+          execution_provider = DefaultCoreMLExecutionProvider(/*use_mlprogram*/ true);
         else if (provider_type == onnxruntime::kSnpeExecutionProvider)
           execution_provider = DefaultSnpeExecutionProvider();
         else if (provider_type == onnxruntime::kQnnExecutionProvider)
