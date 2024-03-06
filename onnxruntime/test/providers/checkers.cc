@@ -25,11 +25,11 @@ T get_tolerance(float absolute_tolerance, float relative_tolerance, T expected_v
 
 template <typename T>
 T get_tolerance(const ValidateOutputParams& params, T expected_value) {
-  constexpr float default_absolute_tolerance = 1e-5;
-  constexpr float default_relative_tolerance = 1e-4;
+  constexpr float default_absolute_tolerance = 1e-5f;
+  constexpr float default_relative_tolerance = 1e-4f;
   float absolute_tolerance = (params.absolute_error.has_value() ? *(params.absolute_error) : default_absolute_tolerance);
   float relative_tolerance = (params.relative_error.has_value() ? *(params.relative_error) : default_relative_tolerance);
-  return get_tolerance(absolute_tolerance, relative_tolerance, expected_value);
+  return get_tolerance<T>(absolute_tolerance, relative_tolerance, expected_value);
 }
 
 template <typename T>
@@ -85,7 +85,7 @@ struct TensorCheck {
       cur_actual = actual.Data<T>();
     }
 
-    for (int i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
     }
   }
@@ -129,7 +129,7 @@ struct TensorCheck<uint8_t> {
       double threshold = has_abs_err ? *(params.absolute_error)
                                      : 0.0;
 
-      for (int i = 0; i < size; ++i) {
+      for (int64_t i = 0; i < size; ++i) {
         if (has_rel_err) {
           EXPECT_NEAR(cur_expected[i], cur_actual[i],
                       *(params.relative_error) * cur_expected[i])  // expected[i] is unsigned, can't be negative
@@ -139,7 +139,7 @@ struct TensorCheck<uint8_t> {
         }
       }
     } else {
-      for (int i = 0; i < size; ++i) {
+      for (int64_t i = 0; i < size; ++i) {
         EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
       }
     }
@@ -175,11 +175,11 @@ struct TensorCheck<int8_t> {
     if (has_abs_err) {
       double threshold = *(params.absolute_error);
 
-      for (int i = 0; i < size; ++i) {
+      for (int64_t i = 0; i < size; ++i) {
         EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
       }
     } else {
-      for (int i = 0; i < size; ++i) {
+      for (int64_t i = 0; i < size; ++i) {
         EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
       }
     }
@@ -215,7 +215,7 @@ struct TensorCheck<double> {
     threshold = 0.005;
 #endif
 
-    for (int i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
       // If the isinf check is first the isnan check and branch gets omitted
       if (std::isnan(cur_expected[i])) {
@@ -258,7 +258,7 @@ void InternalNumericalCheck(const Tensor& expected,
   constexpr float threshold = 0.0001f;
 #endif
 
-  for (int i = 0; i < size; ++i) {
+  for (int64_t i = 0; i < size; ++i) {
     // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
     // If the isinf check is first the isnan check and branch gets omitted
     if (std::isnan(cur_expected[i])) {
@@ -311,7 +311,7 @@ struct TensorCheck<MLFloat16> {
 #elif defined(USE_DML)
     threshold = 0.02f;
 #endif
-    for (int i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
@@ -353,7 +353,7 @@ struct TensorCheck<BFloat16> {
     rel_threshold = 0.05f;  // expect at least 95% close
 #endif
 
-    for (int i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
