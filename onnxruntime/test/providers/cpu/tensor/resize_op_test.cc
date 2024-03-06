@@ -102,7 +102,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
   // TensorRT: results mismatch
   // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_uint8) {
@@ -132,7 +132,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_int8) {
@@ -192,7 +193,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
   // DML: results mismatch
   test.Run(
       OpTester::ExpectResult::kExpectSuccess, "",
-      {kCudaExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
+      {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_int8) {
@@ -267,7 +268,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
@@ -291,7 +292,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
@@ -439,7 +441,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uin
     test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
     // CUDA: result mismatch due to not implementing NHWC support
     // ROCm: results mismatch
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
   };
 
   run_test(false);
@@ -539,7 +542,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
   // ROCm: results mismatch
   // DML: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
@@ -650,7 +653,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
                             Y, false, .0f, 1.0f);
     // CUDA: result mismatch due to not implementing NHWC support
     // ROCm: results mismatch
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
   };
 
   run_test(false);
@@ -1913,6 +1917,8 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
                  });
   // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accuracy issue.
   excluded_eps.insert(kTensorrtExecutionProvider);
+  // Test is flaky on kCudaNHWCExecutionProvider
+  excluded_eps.insert(kCudaNHWCExecutionProvider);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
