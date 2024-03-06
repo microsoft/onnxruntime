@@ -65,21 +65,6 @@ stages:
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: Training_CPU_arm_${{ parameters.BuildVariant }}
-    artifact_name_suffix: -training
-    buildArch: x64
-    msbuildPlatform: arm
-    packageName: arm
-    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-    runTests: false
-    buildJava: false
-    buildNodejs: false
-    ort_build_pool_name: onnxruntime-Win-CPU-2022
-
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_arm64_${{ parameters.BuildVariant }}
     artifact_name_suffix: -training
     buildArch: x64
@@ -127,7 +112,6 @@ stages:
   - Linux_C_API_Packaging_Training_CPU
   - Windows_Packaging_Training_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_Training_CPU_x64_${{ parameters.BuildVariant }}
-  - Windows_Packaging_Training_CPU_arm_${{ parameters.BuildVariant }}
   - Windows_Packaging_Training_CPU_arm64_${{ parameters.BuildVariant }}
   - Android_Java_API_AAR_Packaging_Training_Full
   condition: succeeded()
