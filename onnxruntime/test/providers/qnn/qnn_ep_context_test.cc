@@ -79,7 +79,7 @@ static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
 
 // This test doesn't run the model through optimization, the ini->Q->DQ on the 2nd Add is placed to the 1st partition
 // Still need to be improved.
-TEST(GraphPartitionTest, DISABLED_Partition2EachHas6Nodes) {
+TEST(GraphPartitionTest, DISABLED_2PartitionWithEqualNodes) {
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
 
   auto& logging_manager = DefaultLoggingManager();
