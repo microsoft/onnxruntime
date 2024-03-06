@@ -712,10 +712,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
           continue;
         }
         const std::filesystem::path& path = dir_entry.path();
-        if (!path.filename().has_extension()) {
-          continue;
-        }
-        if (path.filename().native().empty() || path.filename().native().compare(0, 1, ORT_TSTR(".")) == 0) {
+        if (!path.has_filename() || path.filename().native().compare(0, 1, ORT_TSTR(".")) == 0) {
           // Ignore hidden files.
           continue;
         }
