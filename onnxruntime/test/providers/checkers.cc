@@ -14,6 +14,24 @@
 namespace onnxruntime {
 namespace test {
 namespace {
+
+template <typename T>
+T get_tolerance(T absolute_tolerance, T relative_tolerance, T expected_value) {
+  static_assert(std::is_floating_point<T>::value, "T must be a floating point type");
+
+  // The formula is similar to numpy.isclose: https://numpy.org/doc/stable/reference/generated/numpy.isclose.html
+  return absolute_tolerance + relative_tolerance * std::abs(expected_value);
+}
+
+template <typename T>
+T get_tolerance(const ValidateOutputParams& params, T expected_value) {
+  constexpr T default_absolute_tolerance = 1e-6;
+  constexpr T default_relative_tolerance = 1e-5;
+  T absolute_tolerance = (params.absolute_error.has_value() ? *(params.absolute_error) : default_absolute_tolerance);
+  T relative_tolerance = (params.relative_error.has_value() ? *(params.relative_error) : default_relative_tolerance);
+  return get_tolerance(absolute_tolerance, relative_tolerance, expected_value);
+}
+
 template <typename T>
 Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
   Tensor result(src.DataType(), src.Shape(), allocator);
@@ -176,8 +194,7 @@ struct TensorCheck<double> {
                   const std::string& /*provider_type*/) const {
     auto size = actual.Shape().Size();
 
-    bool has_abs_err = params.absolute_error.has_value();
-    bool has_rel_err = params.relative_error.has_value();
+    const bool has_tolerance = params.absolute_error.has_value() || params.relative_error.has_value();
 
     // deal with rare cases in which order of output data from a kernel MAY be
     // undefined
@@ -206,18 +223,8 @@ struct TensorCheck<double> {
       } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
       } else {
-        if (!has_abs_err && !has_rel_err) {
-          // the default for existing tests
-          EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
-        } else {
-          if (has_abs_err) {
-            EXPECT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error)) << "i:" << i;
-          }
-          if (has_rel_err) {
-            EXPECT_NEAR(cur_expected[i], cur_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
-                << "i:" << i;
-          }
-        }
+        double tolerance = has_tolerance ? get_tolerance<double>(params, cur_expected[i]) : threshold;
+        EXPECT_NEAR(cur_expected[i], cur_actual[i], tolerance) << "i:" << i;
       }
     }
   }
@@ -228,8 +235,7 @@ void InternalNumericalCheck(const Tensor& expected,
                             const Tensor& actual,
                             const ValidateOutputParams& params,
                             const std::string& /*provider_type*/) {
-  const bool has_abs_err = params.absolute_error.has_value();
-  const bool has_rel_err = params.relative_error.has_value();
+  const bool has_tolerance = params.absolute_error.has_value() || params.relative_error.has_value();
 
   // deal with rare cases in which order of output data from a kernel MAY be
   // undefined
@@ -260,19 +266,8 @@ void InternalNumericalCheck(const Tensor& expected,
     } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
       EXPECT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
     } else {
-      if (!has_abs_err && !has_rel_err) {
-        // the default for existing tests
-        EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
-      } else {
-        if (has_abs_err) {
-          EXPECT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error))
-              << "i:" << i;
-        }
-        if (has_rel_err) {
-          EXPECT_NEAR(cur_expected[i], cur_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
-              << "i:" << i;
-        }
-      }
+      TypeToCheck tolerance = has_tolerance ? get_tolerance<TypeToCheck>(params, cur_expected[i]) : threshold;
+      EXPECT_NEAR(cur_expected[i], cur_actual[i], tolerance) << "i:" << i;
     }
   }
 }
@@ -308,8 +303,7 @@ struct TensorCheck<MLFloat16> {
       sort_expected_and_actual_buffers<float>(f_expected, f_actual);
     }
 
-    const bool has_abs_err = params.absolute_error.has_value();
-    const bool has_rel_err = params.relative_error.has_value();
+    const bool has_tolerance = params.absolute_error.has_value() || params.relative_error.has_value();
 
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM)
@@ -323,19 +317,8 @@ struct TensorCheck<MLFloat16> {
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i;
       } else {
-        if (!has_abs_err && !has_rel_err) {
-          // the default for existing tests
-          EXPECT_NEAR(f_expected[i], f_actual[i], threshold) << "i:" << i;
-        } else {
-          if (has_abs_err) {
-            EXPECT_NEAR(f_expected[i], f_actual[i], *(params.absolute_error))
-                << "i:" << i;
-          }
-          if (has_rel_err) {
-            EXPECT_NEAR(f_expected[i], f_actual[i], *(params.relative_error) * std::abs(static_cast<float>(cur_expected[i])))
-                << "i:" << i;
-          }
-        }
+        float tolerance = has_tolerance ? get_tolerance<float>(params, f_expected[i]) : threshold;
+        EXPECT_NEAR(f_expected[i], f_actual[i], tolerance) << "i:" << i;
       }
     }
   }
@@ -362,11 +345,12 @@ struct TensorCheck<BFloat16> {
       sort_expected_and_actual_buffers<float>(f_expected, f_actual);
     }
 
-    /// XXX: May need to adjust threshold as BFloat is coarse
+    const bool has_tolerance = params.absolute_error.has_value() || params.relative_error.has_value();
+
     float abs_threshold = 0.0001f;
-    float threshold = 0.001f;
+    float rel_threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
-    threshold = 0.05f;  // expect at least 95% close
+    rel_threshold = 0.05f;  // expect at least 95% close
 #endif
 
     for (int i = 0; i < size; ++i) {
@@ -375,19 +359,10 @@ struct TensorCheck<BFloat16> {
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i;
       } else {
-        // the default for existing tests
-        const float max_value = fmax(fabs(f_expected[i]), fabs(f_actual[i]));
-        if (max_value != 0) {  // max_value = 0 means output and expected are 0s.
-          const float abs_error = fabs(f_expected[i] - f_actual[i]);
-          if (abs_error <= abs_threshold) {
-            // if the absolute error is small enough, then no need to calculate realative error
-            EXPECT_NEAR(0, abs_error, abs_threshold);
-          } else {
-            // default for existing tests.
-            const float rel_error = abs_error / max_value;
-            EXPECT_NEAR(0, rel_error, threshold);
-          }
-        }
+        float tolerance = has_tolerance
+                              ? get_tolerance<float>(params, f_expected[i])
+                              : get_tolerance<float>(abs_threshold, rel_threshold, f_expected[i]);
+        EXPECT_NEAR(f_expected[i], f_actual[i], tolerance) << "i:" << i;
       }
     }
   }
