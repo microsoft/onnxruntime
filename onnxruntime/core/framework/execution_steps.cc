@@ -49,8 +49,13 @@ std::string WaitOnEPStep::ToString() const {
   return MakeString("WaitOnEP - NotificationId: ", notification_idx_);
 }
 
+#if defined(ORT_MINIMAL_BUILD)
+LaunchKernelStep::LaunchKernelStep(NodeIndex index)
+    : SequentialExecutionPlan::ExecutionStep(index) {}
+#else
 LaunchKernelStep::LaunchKernelStep(NodeIndex index, std::string_view node_name)
     : SequentialExecutionPlan::ExecutionStep(index), node_name_(node_name) {}
+#endif
 
 Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
                                  size_t stream_idx,
@@ -71,7 +76,11 @@ Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
 }
 
 std::string LaunchKernelStep::ToString() const {
+#if defined(ORT_MINIMAL_BUILD)
+  return MakeString("LaunchKernel - ", "NodeIndex: ", node_index_);
+#else
   return MakeString("LaunchKernel - ", "NodeIndex: ", node_index_, ", Name: ", node_name_);
+#endif
 }
 
 ActivateNotificationStep::ActivateNotificationStep(
