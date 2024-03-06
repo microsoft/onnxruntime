@@ -822,7 +822,9 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc")
 endif()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
+   # Because we do not run these model tests in our web or iOS CI build pipelines, and some test code uses C++17
+   # filesystem functions that are not available in the iOS version we target.
    message("Disable model tests in onnxruntime_test_all")
    list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/providers/cpu/model_tests.cc"
@@ -884,7 +886,7 @@ endif()
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if (IOS)
   target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
 endif()
 if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
@@ -1304,7 +1306,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
     endif()
 
-    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if (IOS)
       add_custom_command(
         TARGET onnxruntime_shared_lib_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -1592,7 +1594,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             DEPENDS ${all_dependencies}
     )
 
-    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if (IOS)
       add_custom_command(
         TARGET onnxruntime_customopregistration_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
