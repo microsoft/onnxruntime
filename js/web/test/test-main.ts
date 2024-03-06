@@ -18,6 +18,17 @@ if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => tes
   require('../../node');
 }
 
+if (typeof navigator !== 'undefined' && navigator.gpu) {
+  void navigator.gpu.requestAdapter().then(async adapter => {
+    const info = await adapter!.requestAdapterInfo();
+    console.log('GPU Info:');
+    // eslint-disable-next-line guard-for-in
+    for (const key in info) {
+      console.log(`${key}: ${(info as any)[key]}`);
+    }
+  });
+}
+
 // set flags
 const options = ORT_WEB_TEST_CONFIG.options;
 if (options.debug !== undefined) {
