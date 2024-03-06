@@ -72,7 +72,7 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
 };
 
 const createConcatProgramInfo =
-    (inputs: readonly TensorView[], axis: number, outputShape: number[], dataType: DataType): ProgramInfo => {
+    (inputs: readonly TensorView[], adjustedAxis: number, outputShape: number[], dataType: DataType): ProgramInfo => {
       const outputSize = ShapeUtil.size(outputShape);
 
       const sizeInConcatAxis = new Array<number>(inputs.length);
@@ -83,7 +83,7 @@ const createConcatProgramInfo =
       const inputRanks = [];
       const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: outputSize}];
       for (let i = 0; i < inputs.length; ++i) {
-        previousSum += inputs[i].dims[axis];
+        previousSum += inputs[i].dims[adjustedAxis];
         sizeInConcatAxis[i] = previousSum;
         inputRanks.push(inputs[i].dims.length);
         inputVars[i] = inputVariable(`input${i}`, dataType, inputRanks[i]);
@@ -96,7 +96,7 @@ const createConcatProgramInfo =
       programUniforms.push(...createTensorShapeVariables(outputShape));
 
       const output = outputVariable('output', dataType, outputShape.length);
-      const indicesAxis = output.indicesGet('indices', axis);
+      const indicesAxis = output.indicesGet('indices', adjustedAxis);
       const sizeInConcatAxisStr =
           Array.from(Array(sizeInConcatAxis.length).keys()).map(i => `uniforms.sizeInConcatAxis${i}`).join(',');
       const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -127,7 +127,7 @@ const createConcatProgramInfo =
 
       return {
         name: 'Concat',
-        shaderCache: {hint: `${axis}`, inputDependencies},
+        shaderCache: {hint: `${adjustedAxis}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
