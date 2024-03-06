@@ -1,9 +1,14 @@
-import onnx
 import time
+
 import numpy as np
+import onnx
+
 import onnxruntime
 from onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
+
 load_aten_op_executor_cpp_extension()
+
+from typing import List
 
 import onnxscript
 import torch
@@ -12,20 +17,20 @@ from torch import optim
 from torch.onnx import ExportOptions
 from torch.onnx import _OrtBackend as OrtBackend
 from torch.onnx import _OrtBackendOptions as OrtBackendOptions
-from typing import List
 
-from onnxruntime.training.ortmodule.experimental._modeling_llama import (
+from onnxruntime.training.experimental._modeling_llama import (
     scaled_dot_product_efficient_attention,
     scaled_dot_product_efficient_attention_backward,
 )
 
-from onnxscript import opset18 as op
 custom_opset = onnxscript.values.Opset(domain="com.microsoft", version=1)
 aten_opset = onnxscript.values.Opset(domain="org.pytorch.aten", version=1)
+
 
 def apply_onnx_rewritter(onnx_model):
     from onnxrewriter.optimizer import optimize
     from onnxrewriter.rewriter.transformers import rewrite
+
     onnx_model = optimize(
         onnx_model,
         num_iterations=2,
@@ -35,7 +40,8 @@ def apply_onnx_rewritter(onnx_model):
     onnx_model = rewrite(onnx_model)
     return onnx_model
 
-def make_transformer_backend(dynamic: bool = False):
+
+def make_onnxrt_transformer_backend(dynamic: bool = False):
     onnx_registry = torch.onnx.OnnxRegistry()
     onnx_registry.register_op(
         function=scaled_dot_product_efficient_attention,
@@ -57,12 +63,14 @@ def make_transformer_backend(dynamic: bool = False):
                 onnx_registry=onnx_registry,
             ),
             use_aot_autograd=True,
-            pre_ort_model_transforms = [
+            pre_ort_model_transforms=[
                 apply_onnx_rewritter,
-            ]
+            ],
         )
     )
 
     custom_backend._supported_ops._support_dict["torch.ops.aten._scaled_dot_product_efficient_attention.default"] = None
-    custom_backend._supported_ops._support_dict["torch.ops.aten._scaled_dot_product_efficient_attention_backward.default"] = None
+    custom_backend._supported_ops._support_dict[
+        "torch.ops.aten._scaled_dot_product_efficient_attention_backward.default"
+    ] = None
     return custom_backend
