@@ -1375,6 +1375,7 @@ def generate_build_tree(
         if args.macos == "Catalyst":
             macabi_target = f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi"
             cmake_args += [
+                "-DCMAKE_SYSTEM_NAME=Darwin",
                 "-DCMAKE_CXX_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_C_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_CC_COMPILER_TARGET=" + macabi_target,

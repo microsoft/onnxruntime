@@ -1,0 +1,1 @@
+python3 tools/ci_build/github/apple/test_apple_packages.py --fail_if_cocoapods_missing --framework_info_file /Users/rachguo/Downloads/onnxruntime-ios-xcframework-1.18.0_3/xcframework_info.json --c_framework_dir /Users/rachguo/Downloads/onnxruntime-ios-xcframework-1.18.0_3/onnxruntime.xcframework/ios-arm64_x86_64-maccatalyst --variant Full --skip_macos_test --mac_catalyst_enabled

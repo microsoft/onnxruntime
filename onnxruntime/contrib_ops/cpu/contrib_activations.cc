@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/activation/activations.h"
-#include "activations.h"
+#include "contrib_activations.h"
 
 namespace onnxruntime {
 namespace contrib {

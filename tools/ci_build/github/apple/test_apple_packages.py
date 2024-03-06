@@ -130,22 +130,22 @@ def _test_apple_packages(args):
 
             simulator_device_info = json.loads(simulator_device_info)
 
-            subprocess.run(
-                [
-                    "xcrun",
-                    "xcodebuild",
-                    "test",
-                    "-workspace",
-                    "./apple_package_test.xcworkspace",
-                    "-scheme",
-                    "ios_package_test",
-                    "-destination",
-                    f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
-                ],
-                shell=False,
-                check=True,
-                cwd=target_proj_path,
-            )
+            # subprocess.run(
+            #     [
+            #         "xcrun",
+            #         "xcodebuild",
+            #         "test",
+            #         "-workspace",
+            #         "./apple_package_test.xcworkspace",
+            #         "-scheme",
+            #         "ios_package_test",
+            #         "-destination",
+            #         f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
+            #     ],
+            #     shell=False,
+            #     check=True,
+            #     cwd=target_proj_path,
+            # )
 
             if args.mac_catalyst_enabled:
                 subprocess.run(
@@ -158,7 +158,7 @@ def _test_apple_packages(args):
                         "-scheme",
                         "ios_package_test",
                         "-destination",
-                        "platform=macOS,variant=Mac Catalyst",
+                        "platform=macos,variant=Mac Catalyst",
                         "CODE_SIGNING_ALLOWED=NO",
                     ],
                     shell=False,

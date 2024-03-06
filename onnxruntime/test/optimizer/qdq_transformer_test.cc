@@ -8,7 +8,7 @@
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/shared_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"

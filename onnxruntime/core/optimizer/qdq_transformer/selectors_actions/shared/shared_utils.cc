@@ -3,7 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-#include "utils.h"
+#include "shared_utils.h"
 
 #include <iostream>
 #include <string>

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // LayerNorm was a contrib op but is now part of the ONNX spec
-#include "layer_norm.h"
+#include "contrib_layer_norm.h"
 
 #include "core/providers/common.h"
 

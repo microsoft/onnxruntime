@@ -8,7 +8,7 @@
 #include "core/graph/graph.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/shared_utils.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {

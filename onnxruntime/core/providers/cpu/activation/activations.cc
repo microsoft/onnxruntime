@@ -6,7 +6,7 @@
 #include "core/providers/cpu/fp16/fp16_activations.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/cpu/activations.h"
+#include "contrib_ops/cpu/contrib_activations.h"
 #endif
 
 using namespace onnxruntime::common;
