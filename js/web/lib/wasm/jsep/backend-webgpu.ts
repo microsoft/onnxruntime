@@ -94,11 +94,27 @@ const getProgramInfoUniqueKey =
       return key;
     };
 
+export class AdapterInfo {
+  private vendor: string;
+
+  constructor(adapterInfo: GPUAdapterInfo) {
+    if (adapterInfo) {
+      this.vendor = adapterInfo.vendor;
+    }
+  }
+
+  // vendor could be intel, nvidia, amd, etc.
+  isVendor(vendor: string): boolean {
+    return this.vendor === vendor;
+  }
+}
+
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
  * the first parameter so that it is stored for future use.
  */
 export class WebGpuBackend {
+  adapterInfo: AdapterInfo;
   device: GPUDevice;
   /**
    * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
@@ -212,6 +228,8 @@ export class WebGpuBackend {
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
+    const adapterInfo = await adapter.requestAdapterInfo();
+    this.adapterInfo = new AdapterInfo(adapterInfo);
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();

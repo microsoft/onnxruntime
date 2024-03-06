@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../wasm-common';
+import {AdapterInfo} from '../backend-webgpu'
 import {TensorView} from '../tensor-view';
 
 import {ShaderHelper} from './ops/common';
@@ -146,6 +147,11 @@ export interface ComputeContextInputsOutputsMapping {
  * A ComputeContext instance carries the states that representing the current running of a kernel.
  */
 export interface ComputeContext {
+  /**
+   * gpu adapter info
+   */
+  readonly adapterInfo: AdapterInfo;
+
   /**
    * stores the pointer to OpKernelContext
    */
