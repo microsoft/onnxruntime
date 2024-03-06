@@ -93,7 +93,7 @@ jobs:
     # Build ORT with TensorRT built-in parser 
     - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:
       - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75'
-        displayName: 'Build latest ORT Image with TensorRT $(tarTrtVersion) built-in parser'
+        displayName: 'Build latest ORT Image with TensorRT built-in parser'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
     # Build ORT with TensorRT OSS parser 
