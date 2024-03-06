@@ -238,6 +238,7 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlpr
 
   return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;
 #endif
 }
