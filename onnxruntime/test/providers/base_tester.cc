@@ -613,15 +613,15 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
                          number_of_pre_packed_weights_counter,
                          number_of_shared_pre_packed_weights_counter);
     } else {
+      // synthetic EP name for testing CoreML EP with ML Program
+      constexpr const char* kCoreMLExecutionProviderMLProgram = "CoreMLExecutionProvider_MLProgram";
+
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
       static const std::string all_provider_types[] = {
           kTensorrtExecutionProvider,
       };
 #else
-      // synthetic EP name for testing CoreML EP with ML Program
-      constexpr const char* kCoreMLExecutionProviderMLProgram = "CoreMLExecutionProvider_MLProgram";
-
       static const std::string all_provider_types[] = {
           kCpuExecutionProvider,
           kCudaExecutionProvider,
