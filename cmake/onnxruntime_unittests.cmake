@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+if (IOS)
   find_package(XCTest REQUIRED)
 endif()
 
@@ -18,7 +18,7 @@ function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   list(REMOVE_DUPLICATES _UT_SOURCES)
 
-  if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  if (IOS)
     onnxruntime_add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
   else()
     onnxruntime_add_executable(${_UT_TARGET} ${_UT_SOURCES})
@@ -129,7 +129,7 @@ function(AddTest)
     endif()
   endif(onnxruntime_GENERATE_TEST_REPORTS)
 
-  if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  if (IOS)
     # target_sources(${_UT_TARGET} PRIVATE ${TEST_SRC_DIR}/xctest/orttestmain.m)
     set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest"
       MACOSX_BUNDLE_BUNDLE_NAME ${_UT_TARGET}
@@ -1064,7 +1064,7 @@ if (NOT IOS)
       target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
-    if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    if(IOS)
       set_target_properties(onnx_test_runner PROPERTIES
         XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
       )
@@ -1179,7 +1179,7 @@ endif()
 
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  if(NOT ${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  if(NOT IOS)
     #perf test runner
     set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
     set(onnxruntime_perf_test_src_patterns
@@ -1394,7 +1394,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26426>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
     endif()
-    if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    if(IOS)
       set_target_properties(onnxruntime_mlas_test PROPERTIES
         XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
       )
