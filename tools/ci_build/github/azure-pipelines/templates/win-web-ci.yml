@@ -173,11 +173,11 @@ jobs:
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl -e=chrome --karma-debug
+     npm test -- --webgl.pack -b=webgl -e=chrome --karma-debug
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm -e=chrome --karma-debug
+     npm test -- --wasm.proxy -b=wasm -e=chrome --karma-debug
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
