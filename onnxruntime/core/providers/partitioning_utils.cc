@@ -159,7 +159,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       auto node = initial_nodes_to_process.begin();
       while (node != initial_nodes_to_process.end()) {
         bool node_is_counsumed = false;
-        
+
         for (auto output = (*node)->OutputNodesBegin(); output != (*node)->OutputNodesEnd(); ++output) {
           if (std::find(supported_group.begin(), supported_group.end(), &(*output)) != supported_group.end()) {
             node_is_counsumed = true;
