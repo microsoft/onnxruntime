@@ -21,7 +21,6 @@ const validateInputs = (inputs: readonly TensorView[], referenceIndex: number, a
   const referenceInput = inputs[referenceIndex];
   const inputType = referenceInput.dataType;
   const inputRank = referenceInput.dims.length;
-  const referenceInputSize = ShapeUtil.size(referenceInput.dims);
   inputs.forEach((input, i) => {
     if (i === referenceIndex) {
       return;
@@ -30,17 +29,15 @@ const validateInputs = (inputs: readonly TensorView[], referenceIndex: number, a
     if (input.dataType !== inputType) {
       throw new Error('input tensors should be one type');
     }
-    if (referenceInputSize > 0 && ShapeUtil.size(input.dims) > 0) {
-      // make sure the dimensionality of all inputs are the same
-      if (input.dims.length !== inputRank) {
-        throw new Error('input tensors should have the same shape');
-      }
-      input.dims.forEach((dim, i) => {
-        if (i !== axis && dim !== referenceInput.dims[i]) {
-          throw new Error('non concat dimensions must match');
-        }
-      });
+    // make sure the dimensionality of all inputs are the same
+    if (input.dims.length !== inputRank) {
+      throw new Error('input tensors should have the same shape');
     }
+    input.dims.forEach((dim, i) => {
+      if (i !== axis && dim !== referenceInput.dims[i]) {
+        throw new Error('non concat dimensions must match');
+      }
+    });
   });
 };
 
@@ -120,16 +117,12 @@ const createConcatProgramInfo =
     var indices = ${output.offsetToIndices('global_idx')};
 
     let inputIndex = calculateInputIndex(${indicesAxis});
-    if (inputIndex < ${inputs.length}u) {
-      if (inputIndex != 0u) {
-        let sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}u>(${sizeInConcatAxisStr});
-        ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
-      }
-
-      ${assignOutputData(inputVars, output)}
-    } else {
-      ${output.setByOffset('global_idx', '0')}
+    if (inputIndex != 0u) {
+      let sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}u>(${sizeInConcatAxisStr});
+      ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
     }
+
+    ${assignOutputData(inputVars, output)}
   }`;
 
       return {
@@ -145,14 +138,15 @@ const createConcatProgramInfo =
     };
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
-  // find a none zero tensor to determine the output shape
-  // Choose input with max rank if  all input tensors are zero size to make the output shape independent of the order of
-  // the inputs.
+  // find a none zero tensor as reference to determine the output shape
+  // choose input 0 as reference if  all input tensors are zero-sized.
   const inputs = context.inputs;
-  let referenceIndex = inputs.findIndex(input => ShapeUtil.size(input.dims) > 0);
-  if (referenceIndex === -1) {
-    referenceIndex = inputs.reduce(
-        (maxRankIndex, input, index, array) => input.dims > array[maxRankIndex].dims ? index : maxRankIndex, 0);
+  let referenceIndex = 0;
+  for (let i = 0; i < inputs.length; i++) {
+    if (ShapeUtil.size(inputs[i].dims) > 0) {
+      referenceIndex = i;
+      break;
+    }
   }
 
   const inputShape = inputs[referenceIndex].dims;
