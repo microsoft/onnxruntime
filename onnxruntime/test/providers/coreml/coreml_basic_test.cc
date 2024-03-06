@@ -192,8 +192,10 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
 #endif
 }
 
+#if defined(COREML_ENABLE_MLPROGRAM)
 // Test that we fix invalid names in model inputs, initializers and outputs.
 // Names in CoreML cannot start with [0-9] or contain anything but "[a-z][A-Z][0-9]_"
+// This is enforced if ML Program is enabled, so we do name sanitization when creating an ML Program format model.
 TEST(CoreMLExecutionProviderTest, TestNameSanitization) {
   OpTester test("Clip", 11);
 
@@ -212,5 +214,7 @@ TEST(CoreMLExecutionProviderTest, TestNameSanitization) {
   // TensorRT does not support Clip opset 11 yet.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
