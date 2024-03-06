@@ -10,7 +10,7 @@
 #include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
-#include "core/providers/utils.h"
+#include "core/providers/core_utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 
 namespace onnxruntime {

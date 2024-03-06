@@ -8,7 +8,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/transpose_helper.h"
-#include "core/providers/utils.h"
+#include "core/providers/core_utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/xnnpack/xnnpack_kernel.h"

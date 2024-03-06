@@ -16,7 +16,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/utils.h"
+#include "core/providers/core_utils.h"
 
 namespace onnxruntime {
 

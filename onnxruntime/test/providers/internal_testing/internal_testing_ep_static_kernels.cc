@@ -6,7 +6,7 @@
 
 #include "core/framework/utils.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
-#include "core/providers/utils.h"
+#include "core/providers/core_utils.h"
 
 namespace onnxruntime {
 namespace internal_testing_ep {

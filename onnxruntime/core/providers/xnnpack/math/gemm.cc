@@ -3,7 +3,7 @@
 
 #include "gemm.h"
 #include "core/framework/transpose_helper.h"
-#include "core/providers/utils.h"
+#include "core/providers/core_utils.h"
 
 namespace onnxruntime {
 namespace xnnpack {
