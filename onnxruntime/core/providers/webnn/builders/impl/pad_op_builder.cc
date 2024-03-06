@@ -89,14 +89,14 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(pads_tensor, pads, logger), "Error while read pads tensor");
 
     // Constant value and axes are optional. Make sure they are not empty.
-    if (input_defs.size() >= 3 && !GetTensorName(input_defs, 2).empty()) {
+    if (!GetTensorName(input_defs, 2).empty()) {
       const auto value_tensor = *initializers.at(input_defs[2]->Name());
       emscripten::val value = emscripten::val::object();
       ORT_RETURN_IF_NOT(ReadScalarTensorData(value_tensor, value, logger), "Cannot read constant value");
       options.set("value", value);
     }
 
-    if (input_defs.size() == 4 && !GetTensorName(input_defs, 3).empty()) {
+    if (!GetTensorName(input_defs, 3).empty()) {
       const auto input_rank = input_shape.size();
       std::vector<int64_t> axes;
       const auto& axes_tensor = *initializers.at(input_defs[3]->Name());
