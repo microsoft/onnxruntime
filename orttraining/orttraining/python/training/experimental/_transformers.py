@@ -50,7 +50,7 @@ def make_onnxrt_transformer_backend(dynamic: bool = False):
         overload="default",
     )
     onnx_registry.register_op(
-        function=scaled_dot_product_attention_backward,
+        function=scaled_dot_product_efficient_attention_backward,
         namespace="aten",
         op_name="_scaled_dot_product_efficient_attention_backward",
         overload="default",
