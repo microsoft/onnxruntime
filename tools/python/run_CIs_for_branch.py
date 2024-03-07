@@ -64,7 +64,7 @@ def _parse_args():
         type=str,
         nargs="?",
         default=current_branch,
-        help="Specify the branch to run. Default is current branch is available.",
+        help="Specify the branch to run. Default is current branch if available.",
     )
 
     args = parser.parse_args()
