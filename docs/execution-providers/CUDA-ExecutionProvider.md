@@ -338,8 +338,11 @@ shown below) if [N, C, 1, D] is preferred.
 
 While using the CUDA EP, ORT supports the usage
 of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with
-launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples
-below.
+launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider options as shown in the samples
+below. ORT supports multi-graph capture capability by passing the cuda graph annotation id to the run options. If the 
+cuda graph annotation id value is set to -1, cuda graph capture/replay is disabled in that run. User are not expected to 
+set the value to 0 as it is reserved for internal use.
+
 Currently, there are some constraints with regards to using the CUDA Graphs feature:
 
 * Models with control-flow ops (i.e. `If`, `Loop` and `Scan` ops) are not supported.
@@ -348,8 +351,7 @@ Currently, there are some constraints with regards to using the CUDA Graphs feat
 
 * The input/output types of models need to be tensors.
 
-* Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only
-  constraint is that the input/output shapes should be the same across all inference calls.
+* Shapes of inputs/outputs cannot change across inference calls for the same graph annotation id.
 
 * By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write
   to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step.
@@ -385,22 +387,26 @@ captured and cached in the first `Run()`.
     session = onnxrt.InferenceSession("matmul_2.onnx", providers=providers)
     io_binding = session.io_binding()
 
+    # Pass gpu_graph_id to RunOptions through RunConfigs
+    ro = onnxrt.RunOptions()
+    ro.add_run_config_entry("gpu_graph_id", "1")
+
     # Bind the input and output
     io_binding.bind_ortvalue_input('X', x_ortvalue)
     io_binding.bind_ortvalue_output('Y', y_ortvalue)
 
     # One regular run for the necessary memory allocation and cuda graph capturing
-    session.run_with_iobinding(io_binding)
+    session.run_with_iobinding(io_binding, ro)
     expected_y = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
     np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
     # After capturing, CUDA graph replay happens from this Run onwards
-    session.run_with_iobinding(io_binding)
+    session.run_with_iobinding(io_binding, ro)
     np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
     # Update input and then replay CUDA graph with the updated input
     x_ortvalue.update_inplace(np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32))
-    session.run_with_iobinding(io_binding)
+    session.run_with_iobinding(io_binding, ro)
     ```
 * C/C++
     ```c++
@@ -429,6 +435,9 @@ captured and cached in the first `Run()`.
     Ort::SessionOptions session_options;
     api.SessionOptionsAppendExecutionProvider_CUDA_V2(static_cast<OrtSessionOptions*>(session_options), rel_cuda_options.get();
 
+    // Pass gpu_graph_id to RunOptions through RunConfigs
+    Ort::RunOptions run_option;
+    run_option.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "1");
 
     // Create IO bound inputs and outputs.
     Ort::Session session(*ort_env, ORT_TSTR("matmul_2.onnx"), session_options);
@@ -459,15 +468,15 @@ captured and cached in the first `Run()`.
     binding.BindOutput("Y", bound_y);
 
     // One regular run for necessary memory allocation and graph capturing
-    session.Run(Ort::RunOptions(), binding);
+    session.Run(run_option, binding);
 
     // After capturing, CUDA graph replay happens from this Run onwards
-    session.Run(Ort::RunOptions(), binding);
+    session.Run(run_option, binding);
 
     // Update input and then replay CUDA graph with the updated input
     x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
     cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
-    session.Run(Ort::RunOptions(), binding);
+    session.Run(run_option, binding);
     ```
 
 * C# (future)
