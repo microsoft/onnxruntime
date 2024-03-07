@@ -222,46 +222,37 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     //   1: add the downstream node to the border if the current node is supported
     //   2: adjust in-degrees of the nodes consuming the current node's outputs, and add any new nodes to process
     if (node_unit_map) {
-      // if Q nodes is empty (single node or QDQ node unit for logical operator that has DQ input but no Q on output)
-      // the output edges come from the target node and are accessed via index 0.
-      // for a QDQ node group use the actual number of Q nodes
-      auto num_q_nodes = node_unit->GetQNodes().size();
-      size_t num_output_nodes = std::max(num_q_nodes, size_t(1));
-      for (size_t output_idx = 0; output_idx < num_output_nodes; ++output_idx) {
-        std::for_each(
-            node_unit->OutputEdgesBegin(output_idx), node_unit->OutputEdgesEnd(output_idx),
-            [&](const Node::EdgeEnd& edge_end) {
-              const Node& n = edge_end.GetNode();
-              const NodeUnit& downstream_node_unit = *node_unit_map->at(&n);
-              const Node& output = downstream_node_unit.GetNode();
+      std::for_each(node_unit->OutputEdgesBegin(), node_unit->OutputEdgesEnd(),
+                    [&](const Node::EdgeEnd& edge_end) {
+                      const Node& n = edge_end.GetNode();
+                      const NodeUnit& downstream_node_unit = *node_unit_map->at(&n);
+                      const Node& output = downstream_node_unit.GetNode();
 
-              if (is_node_supported) {
-                supported_group_border.insert(&output);
-              }
+                      if (is_node_supported) {
+                        supported_group_border.insert(&output);
+                      }
 
-              auto& output_node_in_degree = in_degree[output.Index()];
-              --output_node_in_degree;
+                      auto& output_node_in_degree = in_degree[output.Index()];
+                      --output_node_in_degree;
 
-              if (output_node_in_degree == 0) {
-                nodes_to_process.push_back(&output);
-              }
-            });
-      }
+                      if (output_node_in_degree == 0) {
+                        nodes_to_process.push_back(&output);
+                      }
+                    });
     } else {
-      std::for_each(
-          node.OutputNodesBegin(), node.OutputNodesEnd(),
-          [&](const Node& output) {
-            if (is_node_supported) {
-              supported_group_border.insert(&output);
-            }
+      std::for_each(node.OutputNodesBegin(), node.OutputNodesEnd(),
+                    [&](const Node& output) {
+                      if (is_node_supported) {
+                        supported_group_border.insert(&output);
+                      }
 
-            auto& output_node_in_degree = in_degree[output.Index()];
-            --output_node_in_degree;
+                      auto& output_node_in_degree = in_degree[output.Index()];
+                      --output_node_in_degree;
 
-            if (output_node_in_degree == 0) {
-              nodes_to_process.push_back(&output);
-            }
-          });
+                      if (output_node_in_degree == 0) {
+                        nodes_to_process.push_back(&output);
+                      }
+                    });
     }
   }
 

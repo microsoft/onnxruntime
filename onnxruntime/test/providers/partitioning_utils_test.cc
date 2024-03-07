@@ -61,31 +61,8 @@ TEST(PartitioningUtilsTest, TestQDQHandling) {
   ASSERT_EQ(result[1]->sub_graph->nodes.size(), size_t(5));  // everything else except the unsupported Cast
 }
 
-TEST(PartitioningUtilsTest, TestHandlingQDQNodeUnitWithNoQNodes) {
-  // build graph with QDQ node unit for Equal that has no Q node.
-  auto build_qdq_equal_to_cast = [](ModelTestBuilder& builder) {
-    constexpr uint8_t zero_point = 0;
-    constexpr float qdq_scale = 0.0038f;
-    const std::vector<int64_t> input_shape = {1, 3, 8, 8};
-
-    auto* input0 = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
-    auto* input1 = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
-    auto* output = builder.MakeOutput();
-
-    // input -> Q -> DQ -> Op
-    auto* qdq0_output = AddQDQNodePair<uint8_t>(builder, input0, qdq_scale, zero_point);
-    auto* qdq1_output = AddQDQNodePair<uint8_t>(builder, input1, qdq_scale, zero_point);
-
-    // Equal ->
-    auto* equal_output = builder.MakeIntermediate();
-    builder.AddNode("Equal", {qdq0_output, qdq1_output}, {equal_output});
-
-    // -> Cast -> output
-    Node& cast_node = builder.AddNode("Cast", {equal_output}, {output});
-    cast_node.AddAttribute("to",
-                           static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
-  };
-
+/// Check that CreateSupportedPartitions processes all nodes without error.
+static void CheckAllNodesProcessed(const std::function<void(ModelTestBuilder&)>& build_model) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   const std::unordered_map<std::string, int> domain_to_version = {{"", 15}};
 
@@ -94,7 +71,7 @@ TEST(PartitioningUtilsTest, TestHandlingQDQNodeUnitWithNoQNodes) {
 
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
-  build_qdq_equal_to_cast(helper);
+  build_model(helper);
   helper.SetGraphOutputs();
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
@@ -121,9 +98,74 @@ TEST(PartitioningUtilsTest, TestHandlingQDQNodeUnitWithNoQNodes) {
                                                  gen_metadef_name, "TEST", kCpuExecutionProvider, &node_unit_map,
                                                  true);
 
-  // the 'real' test is that CreateSupportedPartitions doesn't throw with the check that the number of nodes
-  // processed is correct.
+  // the 'real' test is that CreateSupportedPartitions doesn't throw due to a mismatch with expected vs processed nodes
+  // as all ops are supported there should only ever be 1 partition
   ASSERT_EQ(result.size(), size_t(1)) << "Expected 1 partition";
+}
+
+TEST(PartitioningUtilsTest, TestHandlingQDQNodeUnitWithNoQNodes) {
+  // build graph with QDQ node unit for logical operator (Equal) that has no Q node and a downstream node (Cast).
+  auto build_model = [](ModelTestBuilder& builder) {
+    constexpr uint8_t zero_point = 0;
+    constexpr float qdq_scale = 0.0038f;
+    const std::vector<int64_t> input_shape = {1, 3, 8, 8};
+
+    auto* input0 = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* input1 = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* output = builder.MakeOutput();
+
+    // input -> Q -> DQ -> Op
+    auto* qdq0_output = AddQDQNodePair<uint8_t>(builder, input0, qdq_scale, zero_point);
+    auto* qdq1_output = AddQDQNodePair<uint8_t>(builder, input1, qdq_scale, zero_point);
+
+    // Equal ->
+    auto* equal_output = builder.MakeIntermediate();
+    builder.AddNode("Equal", {qdq0_output, qdq1_output}, {equal_output});
+
+    // -> Cast -> output
+    Node& cast_node = builder.AddNode("Cast", {equal_output}, {output});
+    cast_node.AddAttribute("to",
+                           static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+  };
+
+  CheckAllNodesProcessed(build_model);
+}
+
+// TopK produces 2 outputs, one of which is used in a QDQ node group (Q of values output)
+// and the other (indices output) is not. A downstream node consumuing the indices output has an edge from the target
+// node and not a Q node.
+// To process this correctly, the QDQ NodeUnit must return output edges for both the Q node/s of the values output,
+// and the downstream node (Cast in this case) of the indices output.
+TEST(PartitioningUtilsTest, TestQDQNodeGroupWithOutputFromTargetNode) {
+  const auto build_model = [](ModelTestBuilder& builder) {
+    constexpr uint8_t zero_point = 0;
+    constexpr float qdq_scale = 0.0038f;
+    const std::vector<int64_t> input_shape = {1, 3, 8, 8};
+
+    auto* input0 = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+
+    // input -> Q -> DQ ->
+    auto* qdq0_output = AddQDQNodePair<uint8_t>(builder, input0, qdq_scale, zero_point);
+
+    // K input
+    NodeArg* k_input = builder.MakeInput<int64_t>({1}, {10});
+
+    // TopK op
+    NodeArg* values_output = builder.MakeIntermediate();
+    NodeArg* indices_output = builder.MakeIntermediate();
+    builder.AddNode("TopK", {qdq0_output, k_input}, {values_output, indices_output});
+
+    // values -> Q -> DQ -> graph output
+    AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, values_output, qdq_scale, zero_point);
+
+    // indices -> Cast -> graph output
+    auto* i_output = builder.MakeOutput();
+    Node& cast_node = builder.AddNode("Cast", {indices_output}, {i_output});
+    const auto dst_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32;
+    cast_node.AddAttribute("to", static_cast<int64_t>(dst_type));
+  };
+
+  CheckAllNodesProcessed(build_model);
 }
 }  // namespace test
 }  // namespace onnxruntime

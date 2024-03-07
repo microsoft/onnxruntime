@@ -72,13 +72,19 @@ class NodeUnit {
   /// Number of input edges to the logical node. For a QDQ node this is the count of input edges to the DQ nodes
   /// plus any other edges to the target node for inputs that are not via a DQ node.
   size_t InputEdgeCount() const { return input_edge_count_; }
-  Node::EdgeConstIterator OutputEdgesBegin(size_t index) const;
-  Node::EdgeConstIterator OutputEdgesEnd(size_t index) const;
+
+  // output edges. src index is for outputs of the target node. dest index and node is for consumer of node unit
+  // output. any Q nodes are hidden.
+  Node::EdgeConstIterator OutputEdgesBegin() const;
+  Node::EdgeConstIterator OutputEdgesEnd() const;
 
  private:
-  const std::vector<const Node*> q_nodes_;   // q-nodes for this NodeUnit
-  const std::vector<const Node*> dq_nodes_;  // dq nodes for this NodeUnit, not all inputs
+  // Initialization for a NodeUnit that contains a single node
+  void InitForSingleNode();
+
+  const std::vector<const Node*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
   const Node& target_node_;
+  const std::vector<const Node*> q_nodes_;  // q-nodes for this NodeUnit. not necessarily all outputs
   const Type type_;
 
   std::vector<NodeUnitIODef> inputs_;
@@ -86,8 +92,8 @@ class NodeUnit {
 
   size_t input_edge_count_;  // total number of input edges
 
-  // Initializing for a single Node
-  void InitForSingleNode();
+  // output edges, hiding any Q nodes involved. src_idx will be value from target node. only used for QDQ node group.
+  Node::EdgeSet output_edges_;
 };
 
 // Get all the nodes in the given graph_viewer as NodeUnits (SingleNode or QDQGroup)

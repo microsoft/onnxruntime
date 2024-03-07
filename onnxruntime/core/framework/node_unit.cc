@@ -86,32 +86,32 @@ const std::vector<const Node*> GetQDQIONodes(const GraphViewer& graph_viewer,
   for (const auto& node_idx : src_nodes) {
     io_nodes.push_back(graph_viewer.GetNode(node_idx));
   }
+
   return io_nodes;
 }
 
 // Get the input or output NodeUnitIODef(s) for the given QDQ NodeGroup
-std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
-                                        bool is_input) {
+std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group, bool is_input) {
   const auto& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
   const auto target_node_io_defs = is_input ? target_node.InputDefs() : target_node.OutputDefs();
   const size_t target_node_io_defs_size = target_node_io_defs.size();
 
-  // Find all the quantized IO defs and indices (for the input to the target node)
+  // Find all the quantized IO defs and indices (for the input/output of the target node)
   std::unordered_map<size_t, NodeUnitIODef> quantized_io_defs;
   quantized_io_defs.reserve(target_node_io_defs_size);
 
   auto cur = is_input ? target_node.InputEdgesBegin() : target_node.OutputEdgesBegin();
   auto end = is_input ? target_node.InputEdgesEnd() : target_node.OutputEdgesEnd();
+
   for (; cur != end; ++cur) {
     const Node& node = cur->GetNode();
 
-    // If we can find the node index in the dq or q nodes, then this is a quantize node (can be DQ or Q depends on is_input)
+    // If we can find the node index in the dq or q nodes this is a quantized input/output
     if (std::find(dq_or_q_nodes.cbegin(), dq_or_q_nodes.cend(), node.Index()) != dq_or_q_nodes.cend()) {
       const auto node_inputs = node.InputDefs();
       // quantization scale and zp are always the input[1, 2]
-      NodeUnitIODef::QuantParam quant_param{
-          *node_inputs[1],
-          node_inputs.size() == 3 ? node_inputs[2] : nullptr};
+      NodeUnitIODef::QuantParam quant_param{*node_inputs[1], node_inputs.size() == 3 ? node_inputs[2] : nullptr};
+
       if (is_input) {
         // DQ is input to the target node, use the DstArgIndex
         auto idx = cur->GetDstArgIndex();
@@ -131,7 +131,7 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
   std::vector<NodeUnitIODef> io_defs;
   io_defs.reserve(target_node_io_defs_size);
   for (size_t i = 0; i < target_node_io_defs_size; i++) {
-    // If we can find the NodeUnitIODef for this index, this is a quantized input
+    // If we can find the NodeUnitIODef for this index, this is a quantized input/output
     if (quantized_io_defs.find(i) != quantized_io_defs.cend()) {
       io_defs.push_back(std::move(quantized_io_defs.at(i)));
     } else {
@@ -153,13 +153,13 @@ NodeUnit::NodeUnit(const Node& node)
 }
 
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
-    : q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
-      dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
+    : dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
+      q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
       outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)} {
-  ORT_THROW_IF_ERROR(QDQ::ValidateNodeGroupDQNodes(graph_viewer, target_node_, dq_nodes_));
+  ORT_THROW_IF_ERROR(QDQ::ValidateNodeGroupQDQNodes(graph_viewer, target_node_, dq_nodes_, q_nodes_));
 
   input_edge_count_ = std::accumulate(dq_nodes_.cbegin(), dq_nodes_.cend(), size_t(0),
                                       [](size_t acc, const Node* node) { return acc + node->GetInputEdgesCount(); });
@@ -167,6 +167,27 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
   // add edges for inputs that are not from DQ nodes. there is one edge to each DQ node.
   // other inputs could come from initializers or graph inputs (no edges) or other nodes (edge).
   input_edge_count_ += target_node_.GetInputEdgesCount() - dq_nodes_.size();
+
+  // create output edges. each target node output either goes to Q node/s or non-Q node/s.
+  // ValidateNodeGroupQDQNodes ensures this.
+  auto cur_edge = target_node_.OutputEdgesBegin();
+  auto end_edge = target_node_.OutputEdgesEnd();
+  for (; cur_edge != end_edge; ++cur_edge) {
+    const Node& node = cur_edge->GetNode();
+
+    // if node is in q_nodes we hide the Q node.
+    if (std::find(q_nodes_.cbegin(), q_nodes_.cend(), &node) != q_nodes_.cend()) {
+      auto src_idx = cur_edge->GetSrcArgIndex();
+      auto q_cur_edge = node.OutputEdgesBegin();
+      auto q_end_edge = node.OutputEdgesEnd();
+      for (; q_cur_edge != q_end_edge; ++q_cur_edge) {
+        output_edges_.insert(Node::EdgeEnd{q_cur_edge->GetNode(), src_idx, q_cur_edge->GetDstArgIndex()});
+      }
+    } else {
+      // non-Q node, or Q node that isn't in the QDQ node group (unexpected but may be possible). add as-is.
+      output_edges_.insert(*cur_edge);
+    }
+  }
 }
 
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }
@@ -181,8 +202,7 @@ void NodeUnit::InitForSingleNode() {
   const auto& input_defs = target_node_.InputDefs();
   const auto& output_defs = target_node_.OutputDefs();
   auto qlinear_type = GetQLinearOpType(target_node_);
-  if (qlinear_type == QLinearOpType::Unknown ||
-      IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
+  if (qlinear_type == QLinearOpType::Unknown || IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
     // Not a Qlinear op, add all inputs / outputs
     auto add_all_io = [](std::vector<NodeUnitIODef>& defs,
                          const ConstPointerContainer<std::vector<NodeArg*>>& node_defs) {
@@ -192,86 +212,57 @@ void NodeUnit::InitForSingleNode() {
         defs.push_back(NodeUnitIODef{*def, std::nullopt});
       }
     };
+
     add_all_io(inputs_, input_defs);
     add_all_io(outputs_, output_defs);
   } else if (IsUnaryQLinearOp(qlinear_type)) {
     // Unary QLinear Op has 5 inputs
     // x, x_scale, x_zp, y_scale, y_zp (optional)
-    inputs_.push_back(NodeUnitIODef{
-        *input_defs[0],
-        NodeUnitIODef::QuantParam{*input_defs[1], input_defs[2]}});
+    inputs_.push_back(NodeUnitIODef{*input_defs[0], NodeUnitIODef::QuantParam{*input_defs[1], input_defs[2]}});
+    outputs_.push_back(NodeUnitIODef{*output_defs[0],
+                                     NodeUnitIODef::QuantParam{*input_defs[3],
+                                                               input_defs.size() > 4 ? input_defs[4] : nullptr}});
 
-    outputs_.push_back(NodeUnitIODef{
-        *output_defs[0],
-        NodeUnitIODef::QuantParam{*input_defs[3],
-                                  input_defs.size() > 4
-                                      ? input_defs[4]
-                                      : nullptr}});
   } else if (IsBinaryQLinearOp(qlinear_type)) {
     // Binary QLinear Op has 9 inputs
     // x1, x1_scale, x1_zp, x2/w, x2_scale, x2_zp, y_scale , y_zp, B
-    inputs_.push_back(NodeUnitIODef{
-        *input_defs[0],
-        NodeUnitIODef::QuantParam{*input_defs[1], input_defs[2]}});
-    inputs_.push_back(NodeUnitIODef{
-        *input_defs[3],
-        NodeUnitIODef::QuantParam{*input_defs[4], input_defs[5]}});
+    inputs_.push_back(NodeUnitIODef{*input_defs[0], NodeUnitIODef::QuantParam{*input_defs[1], input_defs[2]}});
+    inputs_.push_back(NodeUnitIODef{*input_defs[3], NodeUnitIODef::QuantParam{*input_defs[4], input_defs[5]}});
 
-    if (input_defs.size() == 9) {  // has Bias
-      inputs_.push_back(NodeUnitIODef{
-          *input_defs[8],
-          std::nullopt});  // for Bias the scale and zp are optional
+    if (input_defs.size() == 9) {                                      // has Bias
+      inputs_.push_back(NodeUnitIODef{*input_defs[8], std::nullopt});  // for Bias the scale and zp are optional
     }
 
-    outputs_.push_back(NodeUnitIODef{
-        *output_defs[0],
-        NodeUnitIODef::QuantParam{*input_defs[6], input_defs[7]}});
+    outputs_.push_back(NodeUnitIODef{*output_defs[0], NodeUnitIODef::QuantParam{*input_defs[6], input_defs[7]}});
+
   } else if (qlinear_type == QLinearOpType::DequantizeLinear) {
     // DequantizeLinear has 3 inputs
     // x, x_scale, x_zp
     // output is not quantized
-    inputs_.push_back(NodeUnitIODef{
-        *input_defs[0],
-        NodeUnitIODef::QuantParam{*input_defs[1],
-                                  input_defs.size() == 3
-                                      ? input_defs[2]
-                                      : nullptr}});
+    inputs_.push_back(NodeUnitIODef{*input_defs[0], NodeUnitIODef::QuantParam{*input_defs[1], input_defs.size() == 3
+                                                                                                  ? input_defs[2]
+                                                                                                  : nullptr}});
     outputs_.push_back(NodeUnitIODef{*output_defs[0], std::nullopt});
+
   } else if (qlinear_type == QLinearOpType::QuantizeLinear) {
     // QuantizeLinear the input is not quantized and has 3 inputs
     // x, y_scale, y_zp (optional)
     // The output is quantized
     inputs_.push_back(NodeUnitIODef{*input_defs[0], std::nullopt});
-    outputs_.push_back(NodeUnitIODef{
-        *output_defs[0],
-        NodeUnitIODef::QuantParam{*input_defs[1],
-                                  input_defs.size() == 3
-                                      ? input_defs[2]
-                                      : nullptr}});
+    outputs_.push_back(NodeUnitIODef{*output_defs[0], NodeUnitIODef::QuantParam{*input_defs[1], input_defs.size() == 3
+                                                                                                    ? input_defs[2]
+                                                                                                    : nullptr}});
   } else {
     ORT_THROW("The QLinear op [", static_cast<uint8_t>(qlinear_type), "] is not supported");
   }
 }
 
-Node::EdgeConstIterator NodeUnit::OutputEdgesBegin(size_t index) const {
-  // q_nodes_ can be empty for logical operators with DQ inputs. as they produce bool output no Q is possible
-  if (type_ == Type::SingleNode || q_nodes_.empty()) {
-    ORT_ENFORCE(index == 0, "invalid output node index");
-    return target_node_.OutputEdgesBegin();
-  } else {
-    ORT_ENFORCE(index < q_nodes_.size(), "invalid output node index");
-    return q_nodes_[index]->OutputEdgesBegin();
-  }
+Node::EdgeConstIterator NodeUnit::OutputEdgesBegin() const {
+  return (type_ == Type::SingleNode) ? target_node_.OutputEdgesBegin() : output_edges_.begin();
 }
 
-Node::EdgeConstIterator NodeUnit::OutputEdgesEnd(size_t index) const {
-  if (type_ == Type::SingleNode || q_nodes_.empty()) {
-    ORT_ENFORCE(index == 0, "invalid output node index");
-    return target_node_.OutputEdgesEnd();
-  } else {
-    ORT_ENFORCE(index < q_nodes_.size(), "invalid output node index");
-    return q_nodes_[index]->OutputEdgesEnd();
-  }
+Node::EdgeConstIterator NodeUnit::OutputEdgesEnd() const {
+  return (type_ == Type::SingleNode) ? target_node_.OutputEdgesEnd() : output_edges_.end();
 }
 
 std::vector<const Node*> NodeUnit::GetAllNodesInGroup() const noexcept {
