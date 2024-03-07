@@ -1,0 +1,7 @@
+SECTIONS {
+ .hipFatBinSegment : { *(.hipFatBinSegment) }
+} INSERT AFTER .bss
+
+SECTIONS {
+  .hip_fatbin : { *(.hip_fatbin) }
+} INSERT AFTER .hipFatBinSegment
