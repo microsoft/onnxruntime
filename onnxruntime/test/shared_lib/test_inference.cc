@@ -3863,10 +3863,10 @@ struct MockGQA : public OrtCustomOp {
   MockGQA() {
     OrtCustomOp::GetMayInplace = [](int** input_index, int** output_index) {
       size_t ret = 2;
-      *input_index = static_cast<int*>(malloc(ret));
+      *input_index = static_cast<int*>(malloc(ret * sizeof(int)));
       (*input_index)[0] = 3;
       (*input_index)[1] = 4;
-      *output_index = static_cast<int*>(malloc(ret));
+      *output_index = static_cast<int*>(malloc(ret * sizeof(int)));
       (*output_index)[0] = 1;
       (*output_index)[1] = 2;
       return ret;
