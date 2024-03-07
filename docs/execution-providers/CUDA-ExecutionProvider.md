@@ -339,9 +339,9 @@ shown below) if [N, C, 1, D] is preferred.
 While using the CUDA EP, ORT supports the usage
 of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with
 launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider options as shown in the samples
-below. ORT supports multi-graph capture capability by passing the cuda graph annotation id to the run options. If the 
-cuda graph annotation id value is set to -1, cuda graph capture/replay is disabled in that run. User are not expected to 
-set the value to 0 as it is reserved for internal use.
+below. ORT supports multi-graph capture capability by passing the user specified gpu_graph_id to the run options. 
+gpu_graph_id is optional when the session uses one cuda graph. If not set, the default value is 0. If the gpu_graph_id is 
+set to -1, cuda graph capture/replay is disabled in that run.
 
 Currently, there are some constraints with regards to using the CUDA Graphs feature:
 
@@ -351,7 +351,11 @@ Currently, there are some constraints with regards to using the CUDA Graphs feat
 
 * The input/output types of models need to be tensors.
 
-* Shapes of inputs/outputs cannot change across inference calls for the same graph annotation id.
+* Shapes and addresses of inputs/outputs cannot change across inference calls for the same graph annotation id. Input
+  tensors for replay shall be copied to the address of input tensors used in graph capture.
+
+* In multi-graph capture mode, the captured graphs will remain in the session's lifetime and the captured graph deletion
+  feature is not supported at the moment.
 
 * By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write
   to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step.
@@ -389,6 +393,7 @@ captured and cached in the first `Run()`.
 
     # Pass gpu_graph_id to RunOptions through RunConfigs
     ro = onnxrt.RunOptions()
+    # gpu_graph_id is optional if the session uses only one cuda graph
     ro.add_run_config_entry("gpu_graph_id", "1")
 
     # Bind the input and output
@@ -437,7 +442,8 @@ captured and cached in the first `Run()`.
 
     // Pass gpu_graph_id to RunOptions through RunConfigs
     Ort::RunOptions run_option;
-    run_option.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "1");
+    // gpu_graph_id is optional if the session uses only one cuda graph
+    run_option.AddConfigEntry("gpu_graph_id", "1");
 
     // Create IO bound inputs and outputs.
     Ort::Session session(*ort_env, ORT_TSTR("matmul_2.onnx"), session_options);
