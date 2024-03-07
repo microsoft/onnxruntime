@@ -10,7 +10,7 @@ import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
 from hashlib import md5 as hash_fn
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import onnx
 import torch
@@ -47,6 +47,30 @@ class _RunStateInfo:
         """
         self.state = state
         self.output_info = output_info
+
+
+class _FlagPaddingElimination(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return input
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        return grad_output
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
+
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        fw_alias_map = [0]
+        bw_alias_map = [0]
+        return fw_alias_map, bw_alias_map
 
 
 class GraphExecutionManager(GraphExecutionInterface):
@@ -97,6 +121,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._execution_agent = None
 
         self._first_skip_check_warning = True
+
+        self._embedding_module_to_padding_density_map = {}
 
         # Tracker for ORTModule model export, session creation overhead.
         self.time_tracker = _logger.TimeTracker()
@@ -633,6 +659,43 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         _utils.reinitialize_graph_execution_manager(self)
 
+    def _check_embedding_sparsity(self):
+        if not self._runtime_options.enable_embedding_sparse_optimizer or self._device.type != "cuda":
+            return
+
+        def embedding_hook(module, args, output):
+            ebd_input = args[0]
+            if ebd_input is None or not isinstance(ebd_input, torch.Tensor):
+                self._logger.warning("Embedding input is not a tensor.")
+                return None
+
+            valid_token = torch.count_nonzero(ebd_input - module.padding_idx)
+            total_token = ebd_input.numel()
+            embed_density = float(valid_token) / float(total_token) * 100
+            if embed_density < 90:
+                self._logger.info("Embedding sparsity-based optimization is ON for density: %.0f%%", embed_density)
+                if module not in self._embedding_module_to_padding_density_map:
+                    self._logger.warning("Found Embedding module not in the map. %s", module)
+                    return None
+                if (
+                    module in self._embedding_module_to_padding_density_map
+                    and self._embedding_module_to_padding_density_map[module][1] != -1
+                ):
+                    self._logger.warning(
+                        "Found duplicate Embedding module. %s", self._embedding_module_to_padding_density_map[module][0]
+                    )
+                self._embedding_module_to_padding_density_map[module][1] = embed_density
+                return _FlagPaddingElimination.apply(output)
+            else:
+                self._logger.info("Embedding sparsity-based optimization is OFF for density: %.0f%%", embed_density)
+                return None
+
+        for name, sub_module in self._flattened_module.named_modules():
+            if isinstance(sub_module, torch.nn.modules.sparse.Embedding):
+                if sub_module.padding_idx is not None and sub_module.padding_idx >= 0:
+                    self._embedding_module_to_padding_density_map[sub_module] = [name, -1]
+                    sub_module.register_forward_hook(embedding_hook)
+
     @_logger.TrackTime(_logger.ORTModuleInitPhase.DETECTION)
     def _enable_conditional_optimizations(
         self, graph_transformer_config: C.TrainingGraphTransformerConfiguration, inputs: Tuple, kwargs: Dict
@@ -671,7 +734,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 else:
                     param_to_append_as_onnx_graph_inputs = self._graph_initializers
 
-                _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
+                _, _, label_sparsity_results = _io._combine_input_buffers_initializers(
                     param_to_append_as_onnx_graph_inputs,
                     self._graph_builder.get_graph_info().user_input_names,
                     self._input_info,
@@ -691,16 +754,10 @@ class GraphExecutionManager(GraphExecutionInterface):
                         [f"{k}:{v:.0f}%" for k, v in label_sparsity_results.items()]
                     )
 
-                if self._runtime_options.enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
-                    if detected_device.type == "cuda":
-                        # Embedding sparsity optimization is only supported on CUDA devices.
-                        graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
-                        self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
-                        self._runtime_options.embed_sparsity_ratio = ",".join(
-                            [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
-                        )
-                    else:
-                        self._logger.info("Embedding sparsity-based optimization is not supported on non-CUDA devices.")
+                if self._embedding_module_to_padding_density_map:
+                    self._runtime_options.embed_sparsity_ratio = ",".join(
+                        [f"{v[0]}:{v[1]:.0f}%" for v in self._embedding_module_to_padding_density_map.values()]
+                    )
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
