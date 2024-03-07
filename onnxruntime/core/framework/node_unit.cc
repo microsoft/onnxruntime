@@ -3,8 +3,6 @@
 
 #include "node_unit.h"
 #include "core/graph/graph_viewer.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 
 namespace onnxruntime {
 
@@ -145,6 +143,80 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
 
 }  // namespace
 
+Status QDQ::NodeGroup::CanCreateNodeGroup(const GraphViewer& graph_viewer,
+                                          const Node& target_node,
+                                          gsl::span<const Node* const> dq_nodes,
+                                          gsl::span<const Node* const> q_nodes) {
+  // Within a QDQ node group, a target node input is the only consumer of each DQ.
+  // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
+  // may have happened since. Verify that this is still true.
+  for (const auto* dq_node : dq_nodes) {
+    const bool dq_produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node);
+    ORT_RETURN_IF(dq_produces_graph_output,
+                  "QDQ node group cannot have DQ node that produces a graph output. DQ node: ", dq_node->Name(),
+                  ", target node: ", target_node.Name());
+
+    const bool dq_has_single_output_edge_to_target =
+        dq_node->GetOutputEdgesCount() == 1 &&
+        dq_node->OutputEdgesBegin()->GetNode().Index() == target_node.Index();
+    ORT_RETURN_IF_NOT(dq_has_single_output_edge_to_target,
+                      "QDQ node group cannot have DQ that doesn't have a single output edge to the target node. "
+                      "DQ node: ",
+                      dq_node->Name(), ", target node: ", target_node.Name());
+  }
+
+  // an output from the target node can have either Q consumers or direct consumers. it cannot have both.
+  // this must be checked on a per output basis.
+  // e.g. TopK produces values and indices. The indices output won't be quantized, so even if we replace the TopK QDQ
+  // node group with a quantized TopK, an int64_t indices value will be produced and can provide a graph output.
+  if (!q_nodes.empty()) {
+    auto cur_edge = target_node.OutputEdgesBegin();
+    auto end_edge = target_node.OutputEdgesEnd();
+    std::vector<const Node*> output_consumers(target_node.OutputDefs().size(), nullptr);
+
+    for (; cur_edge != end_edge; ++cur_edge) {
+      auto output_idx = cur_edge->GetSrcArgIndex();
+      const Node& this_consumer = cur_edge->GetNode();
+      const Node* existing_consumer = output_consumers[output_idx];
+
+      if (existing_consumer != nullptr) {
+        // another edge for this output. either both are Q or both are not.
+        bool valid = true;
+        if (existing_consumer->OpType() == "QuantizeLinear") {
+          valid = this_consumer.OpType() == "QuantizeLinear";
+        } else {
+          valid = this_consumer.OpType() != "QuantizeLinear";
+        }
+
+        ORT_RETURN_IF_NOT(valid,
+                          "QDQ node group cannot have an output from the target node being consumed by a Q node and "
+                          "a non-Q node. target node: ",
+                          target_node.Name());
+      } else {
+        output_consumers[output_idx] = &this_consumer;
+      }
+    }
+
+    const auto& graph_outputs = graph_viewer.GetOutputs();
+    for (size_t idx = 0, end = output_consumers.size(); idx < end; ++idx) {
+      // any output with a Q cannot be a graph output as it will disappear if the QDQ node unit is converted to
+      // a quantized op.
+      if (output_consumers[idx] != nullptr && output_consumers[idx]->OpType() == "QuantizeLinear") {
+        const auto& output_name = target_node.OutputDefs()[idx]->Name();
+        bool is_graph_output = std::any_of(graph_outputs.begin(), graph_outputs.end(),
+                                           [&output_name](const NodeArg* node_arg) {
+                                             return node_arg->Name() == output_name;
+                                           });
+        ORT_RETURN_IF(is_graph_output,
+                      "QDQ node group cannot have an output from the target node that is consumed by a Q node and "
+                      "a graph output. target node: ",
+                      target_node.Name(), " output idx:", idx);
+      }
+    }
+  }
+
+  return Status::OK();
+}
 NodeUnit::NodeUnit(const Node& node)
     : target_node_(node),
       type_(Type::SingleNode),
@@ -159,7 +231,7 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
       outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)} {
-  ORT_THROW_IF_ERROR(QDQ::ValidateNodeGroupQDQNodes(graph_viewer, target_node_, dq_nodes_, q_nodes_));
+  ORT_THROW_IF_ERROR(QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, target_node_, dq_nodes_, q_nodes_));
 
   input_edge_count_ = std::accumulate(dq_nodes_.cbegin(), dq_nodes_.cend(), size_t(0),
                                       [](size_t acc, const Node* node) { return acc + node->GetInputEdgesCount(); });
@@ -270,50 +342,6 @@ std::vector<const Node*> NodeUnit::GetAllNodesInGroup() const noexcept {
   all_nodes.push_back(&target_node_);
   all_nodes.insert(all_nodes.end(), q_nodes_.begin(), q_nodes_.end());
   return all_nodes;
-}
-
-std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer& graph_viewer) {
-  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
-  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-
-  const auto add_node_unit_to_map = [&](const std::vector<NodeIndex>& node_indices, const NodeUnit* node_unit) {
-    for (const auto& node_idx : node_indices) {
-      const auto* node = graph_viewer.GetNode(node_idx);
-      node_unit_map.insert({node, node_unit});
-    }
-  };
-
-  // Get QDQ NodeUnits first
-  QDQ::SelectorManager selector_mgr;
-  const auto qdq_selections = selector_mgr.GetQDQSelections(graph_viewer);
-
-  for (const auto& qdq_selection : qdq_selections) {
-    auto qdq_unit = std::make_unique<NodeUnit>(graph_viewer, qdq_selection);
-
-    // Fill the node to node_unit map for all nodes in the QDQ Group
-    add_node_unit_to_map(qdq_selection.dq_nodes, qdq_unit.get());
-    add_node_unit_to_map(qdq_selection.q_nodes, qdq_unit.get());
-    add_node_unit_to_map({qdq_selection.target_node}, qdq_unit.get());
-
-    node_unit_holder.push_back(std::move(qdq_unit));
-  }
-
-  // Get the left over SingleNode NodeUnits
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (const auto node_idx : node_indices) {
-    const auto* node(graph_viewer.GetNode(node_idx));
-
-    // This is already part of a QDQ NodeUnit
-    if (node_unit_map.find(node) != node_unit_map.cend())
-      continue;
-
-    auto node_unit = std::make_unique<NodeUnit>(*node);
-    node_unit_map[node] = node_unit.get();
-    node_unit_holder.push_back(std::move(node_unit));
-  }
-
-  return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
 }
 
 }  // namespace onnxruntime

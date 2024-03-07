@@ -58,7 +58,7 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  if (const auto qdq_validation_status = QDQ::ValidateNodeGroupQDQNodes(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }
@@ -153,7 +153,7 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  if (const auto qdq_validation_status = QDQ::ValidateNodeGroupQDQNodes(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }
@@ -544,7 +544,7 @@ bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  if (const auto qdq_validation_status = QDQ::ValidateNodeGroupQDQNodes(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status = QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }
