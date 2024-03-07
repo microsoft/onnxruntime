@@ -1,0 +1,74 @@
+---
+title: 'Accelerating Mistral inference with ONNX Runtime and Olive'
+date: '11th March, 2024'
+description: 'Learn how to use ONNX Runtime and Olive to 9X your Mistral model inference!'
+keywords: 'ORT, ONNX Runtime, ONNX, machine learning, deep learning, model optimization, Mistral, Mixtral, MistralAI, Mistral AI'
+authors:
+  [
+    'Sophie Schoenmeyer',
+    'Peter Mcaughan'
+  ]
+authorsLink:
+  [
+    'https://www.linkedin.com/in/sophieschoenmeyer/',
+    'https://www.linkedin.com/in/peter-mcaughan/'
+  ]
+image: ''
+url: 'https://onnxruntime.ai/blogs/accelerating-mistral'
+---
+
+# Introduction
+
+[Mistral](https://huggingface.co/mistralai/Mistral-7B-v0.1) is a decoder-only LLM with 7B parameters that is accessible to open-source developers and reported to outperform ([Llama2-13B](https://huggingface.co/meta-llama/Llama-2-7b), [Vicuna-13B](https://huggingface.co/lmsys/vicuna-13b-v1.5)) or closely match ([WizardLM-13B](https://huggingface.co/WizardLM/WizardLM-13B-V1.2)) models twice its size. With [ONNX Runtime](https://github.com/microsoft/onnxruntime), users can speed up Mistral inference significantly, and [Olive](https://github.com/microsoft/Olive) makes the model optimization process easier than ever.
+
+# Usage instructions
+
+You can try out these optimizations yourself in Olive for FP16 models running on GPU using only one line of code:
+
+```
+python mistral.py --optimize --config mistral_fp16_optimize.json
+```
+
+To test inference, run the script with `--inference` as follows:
+
+```
+CUDA_VISIBLE_DEVICES=6 python mistral.py --inference
+```
+
+For a complete list of instructions, check out the Mistral example in the Olive GitHub repository [here](https://github.com/microsoft/Olive/tree/main/examples/mistral).
+
+Our optimized version of Mistral is also directly available on Hugging Face under the Microsoft username [here](https://huggingface.co/microsoft/Mistral-7B-v0.1-onnx).
+
+# Benchmark results
+
+We benchmarked Mistral with Standard ND96amsr A100 v4 VM using NVidia A100 GPU and FP16 precision. The results are measured using these specifications:
+
+- **torch:** 2.2.0
+- **triton:** 2.2.0
+- **onnxruntime-gpu:** 1.17.0
+- **llama.cpp:** commit 594fca3fefe27b8e95cfb1656eb0e160ad15a793
+
+To reproduce these results, we recommend using Olive, as outlined in the “Usage instructions” section above.
+
+The graphs below illustrate the speedup ratios of throughput for ONNX Runtime FP16 vs. torch.compile and llama.cpp for different (batch size, sequence length) combinations. These results were measured for both prompt and token generation.
+
+<img class="m-auto w50" src="./mistral_prompt_throughput.png" alt="Mistral prompt throughput comparisons for ONNX Runtime FP16 vs. torch.compile and llama.cpp">
+
+With FP16, ONNX Runtime prompt throughput is up to **9.46x faster** than llama.cpp prompt throughput and up to **4.81x faster** than torch.compile prompt throughput.
+
+<img class="m-auto w50" src="./mistral_token_throughput.png" alt="Mistral token generation throughput comparisons for ONNX Runtime FP16 vs. torch.compile and llama.cpp">
+
+With FP16, ONNX Runtime token generation throughput is up to **5.79x faster** than llama.cpp token generation throughput and up to **4.95x faster** than torch.compile token generation throughput.
+
+# Key features
+
+The following features were optimized in the ONNX Runtime library and applied with Olive to yield the Mistral results outlined in this post:
+
+- **Grouped Query Attention** – This feature is supported in the Flash Attention implementation of ONNX Runtime from our previous Llama2 optimization.
+- **Sliding Window Attention** – The ONNX Runtime implementation of Flash Attention was modified to include the window_size parameter, which provided support for this feature.
+
+Since the Mistral model architecture is so similar to that of Llama2, we recommend reading our recent [Accelerating LLaMA-2 Inference with ONNX Runtime](https://onnxruntime.ai/blogs/accelerating-llama-2) blog post to learn more about these optimizations.
+
+# Coming soon
+
+ONNX Runtime optimizations for Mistral AI’s recent [Mixtral](https://huggingface.co/mistralai/Mixtral-8x7B-v0.1) model are currently in progress. We are planning to publish another blog post with more information about these optimizations, along with the corresponding performance improvements, soon.
