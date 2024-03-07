@@ -34,9 +34,8 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
   const outputSize = Math.ceil(ShapeUtil.size(outputShape) / components);
 
   const programUniforms: ProgramUniform[] = [
-    {type: 'uint32', data: outputSize}, {type: 'int32', data: axisDimLimit}, {type: 'uint32', data: axis},
-    ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims),
-    ...createTensorShapeVariables(outputShape)
+    {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: axisDimLimit},
+    {type: DataType.uint32, data: axis}, ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims, outputShape)
   ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -56,7 +55,7 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
           if (idx${x} < 0) {
             idx${x} = idx${x} + uniforms.axisDimLimit;
           }
-          var dataIndices${x} = ${data.type.indices}(0);
+          var dataIndices${x} : ${data.type.indices};
         `;
       for (let i = 0, j = 0; i < inputRank; i++) {
         if (i === axis) {

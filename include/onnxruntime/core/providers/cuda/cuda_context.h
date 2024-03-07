@@ -37,6 +37,7 @@ struct CudaContext : public CustomOpContext {
   bool cudnn_conv1d_pad_to_nc1d = false;
   bool enable_skip_layer_norm_strict_mode = false;
   bool prefer_nhwc = false;
+  bool use_tf32 = true;
 
   void Init(const OrtKernelContext& kernel_ctx) {
     cuda_stream = FetchResource<cudaStream_t>(kernel_ctx, CudaResource::cuda_stream_t);
@@ -52,11 +53,12 @@ struct CudaContext : public CustomOpContext {
     cudnn_conv1d_pad_to_nc1d = FetchResource<bool>(kernel_ctx, CudaResource::cudnn_conv1d_pad_to_nc1d_t);
     enable_skip_layer_norm_strict_mode = FetchResource<bool>(kernel_ctx, CudaResource::enable_skip_layer_norm_strict_mode_t);
     prefer_nhwc = FetchResource<bool>(kernel_ctx, CudaResource::prefer_nhwc_t);
+    use_tf32 = FetchResource<bool>(kernel_ctx, CudaResource::use_tf32_t);
   }
 
   template <typename T>
   T FetchResource(const OrtKernelContext& kernel_ctx, CudaResource resource_type) {
-    if (sizeof(T) > sizeof(void*)) {
+    if constexpr (sizeof(T) > sizeof(void*)) {
       ORT_CXX_API_THROW("void* is not large enough to hold resource type: " + std::to_string(resource_type), OrtErrorCode::ORT_INVALID_ARGUMENT);
     }
     const auto& ort_api = Ort::GetApi();

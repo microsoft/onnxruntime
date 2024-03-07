@@ -392,6 +392,14 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   ort_tensor = onnxruntime::Tensor(
       tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
 
+  if (fbs_tensor.raw_data()->size() == 0U) {
+    // Empty tensor. Nothing to unpack.
+    // This check is necessary because an empty ort tensor will return a size of 1.
+    // As a result, the following call to UnpackTensor will fail since the src and
+    // dst sizes do not match (0 and 1 elements).
+    return Status::OK();
+  }
+
   // The tensor proto is used as a dummy here. The actual data is stored in the raw_data field of the flatbuffer.
   // The data is copied from the raw_data field to the ort_tensor.
   ONNX_NAMESPACE::TensorProto unused_tensor_proto;

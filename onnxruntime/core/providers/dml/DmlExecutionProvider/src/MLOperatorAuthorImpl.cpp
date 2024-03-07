@@ -1123,7 +1123,7 @@ namespace Windows::AI::MachineLearning::Adapter
         }
         ORT_CATCH_RETURN
     }
-    
+
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetConstantInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept
     {
@@ -1168,7 +1168,7 @@ namespace Windows::AI::MachineLearning::Adapter
                                                  m_requiredConstantCpuInputs.begin(),
                                                  m_requiredConstantCpuInputs.end(),
                                                  inputIndex) != m_requiredConstantCpuInputs.end();
-                
+
                 // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
                 ORT_THROW_HR_IF(E_UNEXPECTED, inputRequiredAsConstant);
             }
@@ -1508,31 +1508,17 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_TRY
         {
             assert(operatorGraphDesc != nullptr);
-            // Either nodesAsOpDesc or nodesIDMLOperator can be present.
-            assert(operatorGraphDesc->nodeCount == 0 || (!operatorGraphDesc->nodesAsOpDesc ^ !operatorGraphDesc->nodesAsIDMLOperator));
+            assert(operatorGraphDesc->nodeCount == 0 || operatorGraphDesc->nodes);
 
-            if (operatorGraphDesc->nodesAsOpDesc)
+            m_graphNodeCreateInfo->nodes = std::vector<std::unique_ptr<AbstractOperatorDesc>>();
+            for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
             {
-                m_graphNodeCreateInfo->nodesAsOperatorDesc = std::vector<std::unique_ptr<AbstractOperatorDesc>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
-                {
-                    auto* node = operatorGraphDesc->nodesAsOpDesc[nodeIndex];
-                    assert(node != nullptr);
-                    AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
-                    m_graphNodeCreateInfo->nodesAsOperatorDesc.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
-                }
+                auto* node = operatorGraphDesc->nodes[nodeIndex];
+                assert(node != nullptr);
+                AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
+                m_graphNodeCreateInfo->nodes.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
             }
-            else
-            {
-                m_graphNodeCreateInfo->nodesAsIDMLOperator = std::vector<Microsoft::WRL::ComPtr<IDMLOperator>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
-                {
-                    auto* node = operatorGraphDesc->nodesAsIDMLOperator[nodeIndex];
-                    assert(node != nullptr);
-                    m_graphNodeCreateInfo->nodesAsIDMLOperator.push_back(node);
-                }
-            }
-
+            
             // There can be operators (or kernels) which don't require any input.
             assert(operatorGraphDesc->inputEdgeCount == 0 || operatorGraphDesc->inputEdges != nullptr);
             m_graphNodeCreateInfo->inputEdges.insert(
@@ -1562,7 +1548,13 @@ namespace Windows::AI::MachineLearning::Adapter
     OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::Path& modelPath) : m_impl(impl)
     {
         // The tensor may be stored as raw data or in typed fields.
-        if (impl->has_raw_data())
+        if (impl->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
+        {
+            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*impl, modelPath, m_unpackedExternalTensor));
+            m_dataPtr = reinterpret_cast<std::byte*>(m_unpackedExternalTensor.data());
+            m_tensorByteSize = m_unpackedExternalTensor.size();
+        }
+        else if (impl->has_raw_data())
         {
             m_dataPtr = reinterpret_cast<std::byte*>(impl->mutable_raw_data()->data());
             m_tensorByteSize = impl->raw_data().size();

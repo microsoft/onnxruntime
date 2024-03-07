@@ -361,7 +361,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
     model_proto.SerializeToString(&qnn_ctx_model_data);
     // Run QNN context cache model on QNN EP and collect outputs.
     InferenceModel(qnn_ctx_model_data, "qnn_ctx_model_logger", qnn_options,
-                   expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep);
+                   expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep, session_option_pairs);
   } else {
     // Run QDQ model on QNN EP and collect outputs.
     // Only need to apply the extra session options to this QDQ model inference on QNN EP

@@ -414,6 +414,8 @@ class TestInferenceSession(unittest.TestCase):
                             str(option_value),
                         )
 
+                test_get_and_set_option_with_values("enable_cuda_graph", ["1", "0"])
+
                 test_get_and_set_option_with_values("arena_extend_strategy", ["kNextPowerOfTwo", "kSameAsRequested"])
 
                 test_get_and_set_option_with_values("cudnn_conv_algo_search", ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
@@ -425,6 +427,8 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
                 test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
+
+                test_get_and_set_option_with_values("use_tf32", ["1", "0"])
 
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
@@ -552,6 +556,18 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
                 test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
+
+                test_get_and_set_option_with_values("enable_hip_graph", ["1", "0"])
+
+                # test for user_compute_stream
+                option = options["ROCMExecutionProvider"]
+                option["user_compute_stream"] = "1"
+                sess.set_providers(["ROCMExecutionProvider"], [option])
+                new_options = sess.get_provider_options()
+                new_option = new_options["ROCMExecutionProvider"]
+                self.assertEqual(new_option["user_compute_stream"], "1")
+                # set user_compute_stream will set has_user_compute_stream to 1 too
+                self.assertEqual(new_option["has_user_compute_stream"], "1")
 
             run_rocm_options_test()
 

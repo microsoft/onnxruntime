@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -64,11 +65,8 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
       return {
         outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
         dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-        programUniforms: [
-          {type: 'uint32', data: outputSize},
-          ...createTensorShapeVariables(inputs[0].dims),
-          ...createTensorShapeVariables(outputShape),
-        ],
+        programUniforms:
+            [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputs[0].dims, outputShape)],
       };
     },
     getShaderSource,

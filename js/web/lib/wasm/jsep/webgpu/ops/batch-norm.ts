@@ -3,6 +3,7 @@
 
 import {env} from 'onnxruntime-common';
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -123,11 +124,11 @@ const createBatchNormInferenceProgramInfo =
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
           programUniforms: useShapesUniforms ?
               [
-                {type: 'uint32', data: outputSize},
+                {type: DataType.uint32, data: outputSize},
                 ...createTensorShapeVariables(yShape),
               ] :
               [
-                {type: 'uint32', data: outputSize},
+                {type: DataType.uint32, data: outputSize},
               ],
         }),
       };

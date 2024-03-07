@@ -7,6 +7,7 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
 #include "core/session/inference_session.h"
 
@@ -332,19 +333,23 @@ static void CreateModelInMemory(std::unique_ptr<ModelAndBuilder>& result,
 static void RunSessionAndVerify(InferenceSession& session, const RunOptions& run_options, const NameMLValMap& feeds,
                                 const std::vector<std::string>& output_names,
                                 const std::vector<std::vector<int64_t>>& output_shapes,
-                                const std::vector<std::vector<float>>& expected_values) {
-  std::vector<OrtValue> fetches;
-  auto status = session.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
+                                const std::vector<std::vector<float>>& expected_values,
+                                int loop_count = 10) {
+  // Let it run for a while
+  for (int it = 0; it < loop_count; ++it) {
+    std::vector<OrtValue> fetches;
+    auto status = session.Run(run_options, feeds, output_names, &fetches);
+    ASSERT_TRUE(status.IsOK());
 
-  for (size_t i = 0; i < fetches.size(); i++) {
-    auto& tensor = fetches[i].Get<Tensor>();
-    TensorShape expected_shape(output_shapes[i]);
-    ASSERT_EQ(expected_shape, tensor.Shape());
+    for (size_t i = 0; i < fetches.size(); i++) {
+      auto& tensor = fetches[i].Get<Tensor>();
+      TensorShape expected_shape(output_shapes[i]);
+      ASSERT_EQ(expected_shape, tensor.Shape());
 
-    gsl::span<const float> actual = tensor.DataAsSpan<float>();
-    gsl::span<const float> expected(expected_values[i].data(), expected_values[i].size());
-    ASSERT_EQ(expected, actual);
+      gsl::span<const float> actual = tensor.DataAsSpan<float>();
+      gsl::span<const float> expected(expected_values[i].data(), expected_values[i].size());
+      ASSERT_EQ(expected, actual);
+    }
   }
 }
 
@@ -404,11 +409,11 @@ TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
 
   std::vector<std::thread> threads;
   constexpr int num_threads = 5;
-
+  constexpr int loop_count = 10;
   for (int i = 0; i < num_threads; i++) {
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
                                   model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values));
+                                  output_shapes, output_values, loop_count));
   }
 
   for (auto& th : threads) {
@@ -484,11 +489,191 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
 
   std::vector<std::thread> threads;
   constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
 
   for (int i = 0; i < num_threads; i++) {
     threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
                                   model->builder.feeds_, model->builder.output_names_,
-                                  output_shapes, output_values));
+                                  output_shapes, output_values, loop_count));
+  }
+
+  for (auto& th : threads) {
+    th.join();
+  }
+}
+
+// Tests running a single session in multiple threads on the HTP backend with run option to set power config
+TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
+  std::unique_ptr<ModelAndBuilder> model;
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> shape = {1, 3, 2};
+  std::vector<std::vector<int64_t>> output_shapes = {shape};
+  std::vector<std::vector<float>> output_values = {{3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f}};
+
+  CreateModelInMemory(model,
+                      QDQBuildAdd3Tensors<uint8_t>(TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data)),
+                      "add3.qdq");
+
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
+
+  std::vector<std::string> perf_modes{
+      "burst", "balanced", "default", "high_performance", "high_power_saver",
+      "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver"};
+
+  size_t post_i = perf_modes.size() - 1;
+  ASSERT_TRUE(post_i > num_threads);
+  for (int i = 0; i < num_threads; ++i, --post_i) {
+    RunOptions run_opts;
+    run_opts.run_tag = session_opts.session_logid;
+    auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
+    ASSERT_TRUE(rt.IsOK());
+    rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+    ASSERT_TRUE(rt.IsOK());
+
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values, loop_count));
+  }
+
+  for (auto& th : threads) {
+    th.join();
+  }
+}
+
+// Tests running a single session in multiple threads on the HTP backend with EP option to set default power config
+TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
+  std::unique_ptr<ModelAndBuilder> model;
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> shape = {1, 3, 2};
+  std::vector<std::vector<int64_t>> output_shapes = {shape};
+  std::vector<std::vector<float>> output_values = {{3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f}};
+
+  CreateModelInMemory(model,
+                      QDQBuildAdd3Tensors<uint8_t>(TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data)),
+                      "add3.qdq");
+
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  RunOptions run_opts;
+  run_opts.run_tag = session_opts.session_logid;
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+  options["htp_performance_mode"] = "burst";
+
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
+
+  for (int i = 0; i < num_threads; i++) {
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values, loop_count));
+  }
+
+  for (auto& th : threads) {
+    th.join();
+  }
+}
+
+// Tests running a single session in multiple threads on the HTP backend with
+// EP option to set default power config + run option to set power config for each run
+TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
+  std::unique_ptr<ModelAndBuilder> model;
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> shape = {1, 3, 2};
+  std::vector<std::vector<int64_t>> output_shapes = {shape};
+  std::vector<std::vector<float>> output_values = {{3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f}};
+
+  CreateModelInMemory(model,
+                      QDQBuildAdd3Tensors<uint8_t>(TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data),
+                                                   TestInputDef<float>(shape, false, input_data)),
+                      "add3.qdq");
+
+  SessionOptions session_opts;
+  session_opts.session_logid = "logger0";
+
+  InferenceSession session_obj{session_opts, GetEnvironment()};
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+  options["htp_performance_mode"] = "burst";
+
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
+  EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  auto status = session_obj.Load(model->model_data.data(), static_cast<int>(model->model_data.size()));
+  ASSERT_TRUE(status.IsOK());
+  status = session_obj.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<std::thread> threads;
+  constexpr int num_threads = 5;
+  constexpr int loop_count = 10;
+
+  std::vector<std::string> perf_modes{
+      "burst", "balanced", "default", "high_performance", "high_power_saver",
+      "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver"};
+
+  size_t post_i = perf_modes.size() - 1;
+  ASSERT_TRUE(post_i > num_threads);
+  for (int i = 0; i < num_threads; ++i, --post_i) {
+    RunOptions run_opts;
+    run_opts.run_tag = session_opts.session_logid;
+    auto rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfMode, perf_modes[i].c_str());
+    ASSERT_TRUE(rt.IsOK());
+    rt = run_opts.config_options.AddConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, perf_modes[post_i].c_str());
+    ASSERT_TRUE(rt.IsOK());
+
+    threads.push_back(std::thread(RunSessionAndVerify, std::ref(session_obj), run_opts,
+                                  model->builder.feeds_, model->builder.output_names_,
+                                  output_shapes, output_values, loop_count));
   }
 
   for (auto& th : threads) {
@@ -611,94 +796,6 @@ static GetTestModelFn BuildCastAddTestCase() {
     // add_output -> Q -> DQ -> output
     AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add_output, q_parameter.scale, q_parameter.zero_point);
   };
-}
-
-// Test that models with 2 inputs which has different data type can still generate the context binary
-TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  // Add kMSDomain to cover contrib op like Gelu
-  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
-
-  auto& logging_manager = DefaultLoggingManager();
-  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
-
-  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
-                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                           logging_manager.DefaultLogger());
-  Graph& graph = model.MainGraph();
-  ModelTestBuilder helper(graph);
-  BuildCastAddTestCase()(helper);
-  helper.SetGraphOutputs();
-  ASSERT_STATUS_OK(model.MainGraph().Resolve());
-
-  // Serialize the model to a string.
-  std::string model_data;
-  model.ToProto().SerializeToString(&model_data);
-
-  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
-
-  const std::string context_binary_file = "./qnn_context_binary_int32_fp32_inputs_test.onnx";
-  Ort::SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
-
-  so.AppendExecutionProvider("QNN", provider_options);
-
-  Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
-
-  // Make sure the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-
-  // clean up
-  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
-}
-
-// Generate context cache model from the ONNX models with 2 inputs.
-// The generated model should have same input order.
-// The input ONNX model is created in the way that the model inputs order
-// is different with the order in the graph (topological order).
-// It cause issue if the generated model doesn't set the inputs/outputs explicitly.
-TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  // Add kMSDomain to cover contrib op like Gelu
-  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
-
-  auto& logging_manager = DefaultLoggingManager();
-  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
-
-  const std::string context_binary_file = "./qnn_ctx_2_inputs_order_test_gen.onnx";
-  Ort::SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
-
-  so.AppendExecutionProvider("QNN", provider_options);
-
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx_2_inputs_order_test.onnx"), so);
-
-  // Make sure the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(ToPathString(context_binary_file), model, nullptr, DefaultLoggingManager().DefaultLogger()));
-  auto inputs = model->MainGraph().GetInputs();
-  EXPECT_TRUE(inputs.size() == 2);
-  EXPECT_TRUE(inputs[0]->Name() == "attention_mask");
-  EXPECT_TRUE(inputs[1]->Name() == "Add_input_0");
-
-  // clean up
-  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
 // A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)

@@ -197,6 +197,7 @@ class SymbolicShapeInference:
             "BiasGelu": self._infer_BiasGelu,
             "BiasSplitGelu": self._infer_BiasSplitGelu,
             "DecoderMaskedMultiHeadAttention": self._infer_DecoderMaskedMultiHeadAttention,
+            "DequantizeLinear": self._infer_DequantizeLinear,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "GatedRelativePositionBias": self._infer_GatedRelativePositionBias,
@@ -204,6 +205,7 @@ class SymbolicShapeInference:
             "GemmFastGelu": self._infer_GemmFastGelu,
             "GemmFloat8": self._infer_GemmFloat8,
             "GroupNorm": self._infer_GroupNorm,
+            "GroupQueryAttention": self._infer_GroupQueryAttention,
             "SkipGroupNorm": self._infer_SkipGroupNorm,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
@@ -211,7 +213,9 @@ class SymbolicShapeInference:
             "NhwcConv": self._infer_NhwcConv,
             "PackedAttention": self._infer_PackedAttention,
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
+            "PagedAttention": self._infer_PagedAttention,
             "PythonOp": self._infer_PythonOp,
+            "QuantizeLinear": self._infer_QuantizeLinear,
             "QuickGelu": self._infer_FastGelu,
             "RelativePositionBias": self._infer_RelativePositionBias,
             "RemovePadding": self._infer_RemovePadding,
@@ -238,6 +242,7 @@ class SymbolicShapeInference:
             "upsample_nearest1d": self._infer_aten_upsample,
             "upsample_nearest2d": self._infer_aten_upsample,
             "upsample_nearest3d": self._infer_aten_upsample,
+            "upsample_bicubic2d": self._infer_aten_upsample,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -345,7 +350,7 @@ class SymbolicShapeInference:
                 return None
         if all([d == dims[0] for d in dims]):
             return dims[0]
-        merged = [self.suggested_merge_[d] if d in self.suggested_merge_ else d for d in dims]
+        merged = [self.suggested_merge_.get(d, d) for d in dims]
         if all([d == merged[0] for d in merged]):
             assert merged[0] in self.symbolic_dims_
             return merged[0]
@@ -457,6 +462,8 @@ class SymbolicShapeInference:
             "GemmFastGelu",
             "LayerNormalization",
             "LongformerAttention",
+            "DequantizeLinear",
+            "QuantizeLinear",
             "RelativePositionBias",
             "RemovePadding",
             "RestorePadding",
@@ -464,9 +471,11 @@ class SymbolicShapeInference:
             "SkipLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "PackedAttention",
+            "PagedAttention",
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
+            "GroupQueryAttention",
             "SkipGroupNorm",
             "BiasSplitGelu",
             "BiasAdd",
@@ -815,17 +824,21 @@ class SymbolicShapeInference:
     def _infer_symbolic_compute_ops(self, node):
         funcs = {
             "Add": lambda l: l[0] + l[1],  # noqa: E741
-            "Div": lambda l: int(l[0] // l[1])  # noqa: E741
-            if isinstance(l[0] // l[1], float)
-            else l[0] // l[1],  # integer div in sympy
+            "Div": lambda l: (  # noqa: E741
+                int(l[0] // l[1]) if isinstance(l[0] // l[1], float) else l[0] // l[1]
+            ),  # integer div in sympy
             "Equal": lambda l: l[0] == l[1],  # noqa: E741
             "Floor": lambda l: sympy.floor(l[0]),  # noqa: E741
-            "Max": lambda l: l[1]  # noqa: E741
-            if is_literal(l[0]) and int(l[0]) < -self.int_max_
-            else (l[0] if is_literal(l[1]) and int(l[1]) < -self.int_max_ else sympy.Max(l[0], l[1])),
-            "Min": lambda l: l[1]  # noqa: E741
-            if is_literal(l[0]) and int(l[0]) > self.int_max_
-            else (l[0] if is_literal(l[1]) and int(l[1]) > self.int_max_ else sympy.Min(l[0], l[1])),
+            "Max": lambda l: (  # noqa: E741
+                l[1]
+                if is_literal(l[0]) and int(l[0]) < -self.int_max_
+                else (l[0] if is_literal(l[1]) and int(l[1]) < -self.int_max_ else sympy.Max(l[0], l[1]))
+            ),
+            "Min": lambda l: (  # noqa: E741
+                l[1]
+                if is_literal(l[0]) and int(l[0]) > self.int_max_
+                else (l[0] if is_literal(l[1]) and int(l[1]) > self.int_max_ else sympy.Min(l[0], l[1]))
+            ),
             "Mul": lambda l: int(l[0] * l[1]) if isinstance(l[0] * l[1], float) else l[0] * l[1],  # noqa: E741
             "Sub": lambda l: l[0] - l[1],  # noqa: E741
             "Where": lambda l: l[1] if l[0] else l[2],  # noqa: E741
@@ -978,6 +991,29 @@ class SymbolicShapeInference:
                 get_shape_from_sympy_shape(sympy_shape),
             )
         )
+
+    def _infer_DequantizeLinear(self, node):  # noqa: N802
+        # Get the output data type from the scale input (index 1, required).
+        output_dtype = self.known_vi_[node.input[1]].type.tensor_type.elem_type
+
+        # Get the output shape from the first input.
+        output_shape = self._get_shape(node, 0)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+    def _infer_QuantizeLinear(self, node):  # noqa: N802
+        # Get the output data type from the zero-point input (index 2, optional).
+        # Otherwise, default to uint8
+        output_dtype = onnx.TensorProto.UINT8
+        if len(node.input) > 2 and node.input[2]:
+            output_dtype = self.known_vi_[node.input[2]].type.tensor_type.elem_type
+
+        # Get the output shape from the first input.
+        output_shape = self._get_shape(node, 0)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_Einsum(self, node):  # noqa: N802
         # ref:https://github.com/onnx/onnx/blob/623dfaa0151b2e4ce49779c3ec31cbd78c592b80/onnx/defs/math/defs.cc#L3275
@@ -1444,9 +1480,11 @@ class SymbolicShapeInference:
                         output_dtype,
                         [
                             N if N is not None else str(self._new_symbolic_dim_from_output(node, i, 0)),
-                            as_scalar(group)
-                            if group is not None
-                            else str(self._new_symbolic_dim_from_output(node, i, 1)),
+                            (
+                                as_scalar(group)
+                                if group is not None
+                                else str(self._new_symbolic_dim_from_output(node, i, 1))
+                            ),
                         ],
                     )
                 )
@@ -1902,8 +1940,17 @@ class SymbolicShapeInference:
     def _infer_Split_Common(self, node, make_value_info_func):  # noqa: N802
         input_sympy_shape = self._get_sympy_shape(node, 0)
         axis = handle_negative_axis(get_attribute(node, "axis", 0), len(input_sympy_shape))
-        split = get_attribute(node, "split")
-        if not split:
+        op_set = get_opset(self.out_mp_)
+
+        # Depending on op-version 'split' are provided as attribute or via 2nd input
+        if op_set < 13:
+            split = get_attribute(node, "split")
+            assert self._try_get_value(node, 1) is None
+        else:
+            split = self._try_get_value(node, 1)
+            assert get_attribute(node, "split") is None
+
+        if split is None:
             num_outputs = len(node.output)
             split = [input_sympy_shape[axis] / sympy.Integer(num_outputs)] * num_outputs
             self._update_computed_dims(split)
@@ -2381,6 +2428,35 @@ class SymbolicShapeInference:
 
     def _infer_GroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
+
+    def _infer_PagedAttention(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_GroupQueryAttention(self, node):  # noqa: N802
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        past_shape = self._try_get_shape(node, 3)
+        if past_shape is not None:
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+            vi = self.known_vi_[node.output[2]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+        if node.input[1] != "" and node.input[2] != "":
+            self._propagate_shape_and_type(node, 0, 0)
+        else:
+            # combined qkv: (batch_size, sequence_length, num_heads * head_size + 2 * kv_num_heads * head_size)
+            assert node.input[1] == "" and node.input[2] == ""
+            num_heads = get_attribute(node, "num_heads")
+            kv_num_heads = get_attribute(node, "kv_num_heads")
+            query_shape = self._get_shape(node, 0)
+            if query_shape is not None:
+                hidden_size = query_shape[2]
+                if isinstance(hidden_size, int):
+                    head_size = int(hidden_size / (num_heads + 2 * kv_num_heads))
+                    query_shape[2] = num_heads * head_size
+                    vi = self.known_vi_[node.output[0]]
+                    vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)

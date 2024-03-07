@@ -226,8 +226,6 @@ FetchContent_Declare(
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_Install OFF CACHE INTERNAL "")
 
 FetchContent_Declare(
     nlohmann_json
@@ -258,14 +256,7 @@ if (onnxruntime_ENABLE_CPUINFO)
       set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
-      # Exclude Windows ARM build and Windows Store
-      if (${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
-        message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
-        set(CPUINFO_SUPPORTED FALSE)
-      elseif (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-        message(WARNING "Cpuinfo not included non-Desktop builds")
-        set(CPUINFO_SUPPORTED FALSE)
-      endif()
+      set(CPUINFO_SUPPORTED TRUE)
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       message(WARNING
         "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
@@ -541,22 +532,32 @@ if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxrunt
   onnxruntime_fetchcontent_makeavailable(cxxopts)
 endif()
 
+if (onnxruntime_USE_COREML)
+  FetchContent_Declare(
+    coremltools
+    URL ${DEP_URL_coremltools}
+    URL_HASH SHA1=${DEP_SHA1_coremltools}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/coremltools/crossplatformbuild.patch
+  )
+  # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
+  FetchContent_Populate(coremltools)
+endif()
+
 message("Finished fetching external dependencies")
 
 
 set(onnxruntime_LINK_DIRS )
 if (onnxruntime_USE_CUDA)
       #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
+      find_package(CUDAToolkit REQUIRED)
       if (WIN32)
         if(onnxruntime_CUDNN_HOME)
           list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib/x64)
         endif()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
       else()
         if(onnxruntime_CUDNN_HOME)
           list(APPEND onnxruntime_LINK_DIRS  ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib64)
         endif()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib64)
       endif()
 endif()
 

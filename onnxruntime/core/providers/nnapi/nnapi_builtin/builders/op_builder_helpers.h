@@ -118,7 +118,7 @@ Status HandleAutoPad(const Shape& input_shape,
 // Get scales and zero points for the qlinear binary ops (which has 2 input and 1 output)
 // QLinearConv, QLinearMatmul, QLinearAdd, QLinearMul
 // a, b are inputs, and y is output
-Status GetBinaryOpQuantizationScaleAndZeroPoint(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+Status GetBinaryOpQuantizationScaleAndZeroPoint(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                                 float& a_scale, float& b_scale, float& y_scale,
                                                 int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point);
 
@@ -181,9 +181,6 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
 Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                           const std::string& input, const std::vector<int32_t>& shape);
 
-bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
-                    size_t input_rank, size_t output_rank);
-
 Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                      std::vector<int32_t>& axes);
 
@@ -193,14 +190,14 @@ inline bool IsNodeLayoutNHWC(const NodeUnit& node_unit) {
   return node_unit.Domain() == kMSInternalNHWCDomain;
 }
 
-bool IsQuantizationScaleSupported(const InitializedTensorSet& initializers,
+bool IsQuantizationScaleSupported(const GraphViewer& graph_viewer,
                                   const NodeUnitIODef& io_def,
                                   const OpSupportCheckParams& params,
                                   const std::string& op_type,
                                   bool is_quant_matmul,
                                   bool is_conv_matmul_u8s8_weight);
 
-bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
+bool IsQuantizationZeroPointSupported(const GraphViewer& graph_viewer,
                                       const NodeUnitIODef& io_def,
                                       const std::string& op_type,
                                       const Path& model_path,
@@ -208,13 +205,13 @@ bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
                                       bool is_conv_matmul_u8s8_weight);
 
 // Check if the given quantized input(s) or output(s) is supported
-bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool IsQuantizedIOSupported(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                             const std::vector<size_t>& indices, const OpSupportCheckParams& params, ArgType arg_type);
 
 // Some Quantized NNAPI operations have required output scale and zero point
 // e.g. Softmax (uint8) requires output scale be 1.f/256 and zp be 0
 // This helper function checks if the given io_def has required scale and zp
-bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
+bool HasRequiredScaleAndZeroPoint(const GraphViewer& graph_viewer,
                                   const std::string& op_desc,
                                   const NodeUnitIODef& io_def,
                                   const Path& path,

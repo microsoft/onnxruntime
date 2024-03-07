@@ -309,6 +309,7 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
  private:
     size_t m_tensorByteSize = 0;
     std::unique_ptr<std::byte[]> m_unpackedTensor;
+    std::vector<uint8_t> m_unpackedExternalTensor;
     std::byte* m_dataPtr = nullptr;
 
     // Lifetime is managed by the caller and guaranteed to outlive this class

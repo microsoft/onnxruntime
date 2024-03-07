@@ -7,6 +7,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
 #include "core/platform/env.h"
@@ -18,10 +19,35 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+#include "core/framework/run_options.h"
 
 namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
+
+static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
+
+void RunOnUnload(std::function<void()> function) {
+  OrtMutex mutex;
+  std::lock_guard<OrtMutex> guard(mutex);
+  if (!s_run_on_unload_) {
+    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
+  }
+  s_run_on_unload_->push_back(std::move(function));
+}
+
+struct OnUnload {
+  ~OnUnload() {
+    if (!s_run_on_unload_)
+      return;
+
+    for (auto& function : *s_run_on_unload_)
+      function();
+
+    s_run_on_unload_.reset();
+  }
+
+} g_on_unload;
 
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
@@ -150,6 +176,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode_;
 
     context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_cfg_;
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -192,18 +219,18 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
-  uint32_t rpc_control_latency = 0;
   auto latency_pos = provider_options_map.find(RPC_CONTROL_LANTENCY);
   if (latency_pos != provider_options_map.end()) {
-    rpc_control_latency = static_cast<uint32_t>(std::stoul(latency_pos->second));
-    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+    default_rpc_control_latency_ = static_cast<uint32_t>(std::stoul(latency_pos->second));
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << default_rpc_control_latency_;
   }
 
-  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  // default_htp_performance_mode from QNN EP option.
+  // set it once only for each thread as default so user don't need to set it for every session run
   static const std::string HTP_PERFORMANCE_MODE = "htp_performance_mode";
   auto htp_performance_mode_pos = provider_options_map.find(HTP_PERFORMANCE_MODE);
   if (htp_performance_mode_pos != provider_options_map.end()) {
-    ParseHtpPerformanceMode(htp_performance_mode_pos->second, htp_performance_mode);
+    ParseHtpPerformanceMode(htp_performance_mode_pos->second, default_htp_performance_mode_);
   }
 
   htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -240,15 +267,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string QNN_DEVICE_ID = "device_id";
-  uint32_t device_id = 0;
   auto dev_id_pos = provider_options_map.find(QNN_DEVICE_ID);
   if (dev_id_pos != provider_options_map.end()) {
     int value = std::stoi(dev_id_pos->second);
     if (value < 0) {
       LOGS_DEFAULT(WARNING) << "Invalid device ID '" << value
-                            << "', only >= 0 allowed. Set to " << device_id << ".";
+                            << "', only >= 0 allowed. Set to " << device_id_ << ".";
     } else {
-      device_id = static_cast<uint32_t>(value);
+      device_id_ = static_cast<uint32_t>(value);
     }
   }
 
@@ -275,57 +301,69 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level,
-      rpc_control_latency,
-      htp_performance_mode,
       context_priority,
       std::move(qnn_saver_path),
-      device_id,
+      device_id_,
       htp_arch,
       soc_model);
 }
 
-bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                           std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
-                                           const logging::Logger& logger) const {
-  // If we have visited one of the nodes in the node_unit, use the result directly
-  const auto it = node_unit_supported_result.find(&node_unit);
-  if (it != node_unit_supported_result.cend()) {
-    return it->second;
-  } else {
-    const std::string& op_type = node_unit.OpType();
-
-    bool supported = false;
-    const auto* op_builder = qnn::GetOpBuilder(op_type);
-    if (op_builder == nullptr) {
-      LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
-                            << node_unit.OpType() << " node `" << node_unit.Name()
-                            << "` will not be assigned to QNN EP.";
-    } else {
-      auto status = op_builder->IsOpSupported(qnn_model_wrapper,
-                                              node_unit, logger);
-      if (Status::OK() != status) {
-        LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
-                              << "` is not supported: " << status.ErrorMessage();
-      }
-      supported = (Status::OK() == status);
-    }
-    node_unit_supported_result[&node_unit] = supported;
-    return supported;
+QNNExecutionProvider::~QNNExecutionProvider() {
+  // clean up thread local context caches
+  std::lock_guard<OrtMutex> lock(context_state_.mutex);
+  for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
+    const auto cache = cache_weak.lock();
+    if (!cache) continue;
+    ORT_IGNORE_RETURN_VALUE(cache->erase(this));
   }
+}
+
+bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
+                                           const logging::Logger& logger) const {
+  const std::string& op_type = node_unit.OpType();
+  bool supported = false;
+  const auto* op_builder = qnn::GetOpBuilder(op_type);
+  if (op_builder == nullptr) {
+    LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
+                          << node_unit.OpType() << " node `" << node_unit.Name()
+                          << "` will not be assigned to QNN EP.";
+  } else {
+    auto status = op_builder->IsOpSupported(qnn_model_wrapper,
+                                            node_unit, logger);
+    if (Status::OK() != status) {
+      LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
+                            << "` is not supported: " << status.ErrorMessage();
+    }
+    supported = (Status::OK() == status);
+  }
+  return supported;
 }
 
 std::unordered_set<const Node*>
 QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                         const size_t node_unit_size,
-                                        bool load_from_cached_context,
+                                        bool is_qnn_ctx_model,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
-  // Enable Qnn context cache requires the whole graph partitioned to Qnn EP
-  // Blindly filter in all nodes if context cache is enabled
-  if (load_from_cached_context) {
+  // Filter in the EPContext node for QNN
+  if (is_qnn_ctx_model) {
     for (const auto& node : graph_viewer.Nodes()) {
-      supported_nodes.insert(&node);
+      NodeAttrHelper node_helper(node);
+      std::string cache_source = node_helper.Get(qnn::SOURCE, "");
+
+      std::transform(cache_source.begin(),
+                     cache_source.end(),
+                     cache_source.begin(),
+                     [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+
+      if (qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+        LOGS(logger, VERBOSE) << "Node supported: [1] index: [" << node.Index()
+                              << "] name: [" << node.Name()
+                              << "] Operator type: [EPContext"
+                              << "] index: [" << node.Index() << "]";
+        supported_nodes.insert(&node);
+      }
     }
     return supported_nodes;
   }
@@ -377,24 +415,51 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     if (node != &node_unit->GetNode()) {
       continue;
     }
-    const bool supported = IsNodeSupported(qnn_model_wrapper,
-                                           *node_unit,
-                                           node_unit_supported_result,
-                                           logger);
-    LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                          << "] index: [" << node->Index()
-                          << "] name: [" << node->Name()
-                          << "] Operator type: [" << node->OpType()
-                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
-                          << "] index: [" << node_unit->Index()
-                          << "] name: [" << node_unit->Name()
-                          << "]";
+
+    if (node_unit_supported_result.count(node_unit) != 0) {
+      continue;  // Already handled this node unit
+    }
+
+    // Try to convert certain standalone DQ -> Q sequences into QNN Convert op
+    auto convert_result = TryHandleConvertSequence(qnn_model_wrapper,
+                                                   *node_unit,
+                                                   node_unit_map,
+                                                   logger,
+                                                   true /*do_op_validation*/);
+    if (!convert_result.status.IsOK()) {
+      LOGS(logger, WARNING) << "Failed to convert DQ -> Q sequence to QNN Convert. "
+                            << "Type: " << node_unit->OpType() << ", Node name: " << node_unit->Name() << ", "
+                            << "Message: " << convert_result.status.ErrorMessage();
+    }
+
+    bool supported = false;
+
+    if (convert_result.status.IsOK() && convert_result.q_node_unit) {  // Merged DQ -> Q sequence into QNN Convert op
+      supported = true;
+
+      // Mark the Q node unit as handled and supported here so that we don't try to process it again.
+      node_unit_supported_result.insert({convert_result.q_node_unit, true});
+      supported_nodes.insert(&convert_result.q_node_unit->GetNode());
+    } else {
+      supported = IsNodeSupported(qnn_model_wrapper, *node_unit, logger);
+      LOGS(logger, VERBOSE) << "Node supported: [" << supported
+                            << "] index: [" << node->Index()
+                            << "] name: [" << node->Name()
+                            << "] Operator type: [" << node->OpType()
+                            << "] as part of the NodeUnit type: [" << node_unit->OpType()
+                            << "] index: [" << node_unit->Index()
+                            << "] name: [" << node_unit->Name()
+                            << "]";
+    }
+
     if (supported) {
       // If the node_unit is supported, add all of its nodes to the supported list.
       for (const auto* node_in_group : node_unit->GetAllNodesInGroup()) {
         supported_nodes.insert(node_in_group);
       }
     }
+
+    node_unit_supported_result.insert({node_unit, supported});
   }
 
   return supported_nodes;
@@ -410,22 +475,11 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   const auto& logger = *GetLogger();
-  bool load_from_cached_context = false;
-  bool is_qnn_ctx_model = qnn::IsQnnCtxModel(graph_viewer);
-  if (is_qnn_ctx_model) {
-    load_from_cached_context = true;
-  }
+  bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
 
-  // This is for case: QDQ model + Onnx Qnn context cache model
-  if (context_cache_enabled_ && !is_qnn_ctx_model) {
-    onnxruntime::PathString context_cache_path;
-    load_from_cached_context = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
-                                                             graph_viewer.ModelPath().ToPathString(),
-                                                             context_cache_path);
-  }
-
-  // Load from cached context will load the QnnSystem lib and skip the Qnn context creation
-  auto rt = qnn_backend_manager_->SetupBackend(logger, load_from_cached_context);
+  // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
+  // delay the Qnn context creation to Compile() using the cached context binary
+  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;
@@ -443,7 +497,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
 
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(),
-                                                 load_from_cached_context, logger);
+                                                 is_qnn_ctx_model, logger);
 
   // Helper function that returns a string that lists all unsupported nodes.
   // Ex: { name: mul_123, type: Mul }, {}, ...
@@ -496,7 +550,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       if (partition && partition->sub_graph) {
         nodes_in_partition = partition->sub_graph->nodes.size();
 
-        if (nodes_in_partition == 1) {
+        if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
           const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
 
           if (!node) {
@@ -516,7 +570,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
         result.push_back(std::move(partition));
         num_of_supported_nodes += nodes_in_partition;
       }
-    }
+    }  // for
   }
 
   const size_t num_of_partitions = result.size();
@@ -527,7 +581,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // Print list of unsupported nodes to the ERROR logger if the CPU EP
   // has been disabled for this inference session.
-  if (disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
+  if (!is_qnn_ctx_model && disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
     LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
   }
 
@@ -618,64 +672,77 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
-  Node& fused_node = fused_nodes_and_graphs[0].fused_node;
-  const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
 
-  bool is_qnn_ctx_model = false;
-  ORT_RETURN_IF_ERROR(qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs, is_qnn_ctx_model));
+  bool is_qnn_ctx_model = qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs);
 
   onnxruntime::PathString context_cache_path;
-  bool is_ctx_file_exist = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
-                                                         graph_viewer.ModelPath().ToPathString(),
-                                                         context_cache_path);
-  const std::string& model_name = graph_viewer.GetGraph().Name();
-  const std::string& model_description = graph_viewer.GetGraph().Description();
-  const std::string& graph_meta_id = fused_node.Name();
-  if (fused_nodes_and_graphs.size() == 1 && !is_qnn_ctx_model && is_ctx_file_exist) {
-    ORT_RETURN_IF_ERROR(qnn::ValidateWithContextFile(context_cache_path,
-                                                     model_name,
-                                                     model_description,
-                                                     graph_meta_id,
-                                                     logger));
+  bool is_ctx_file_exist = false;
+  if (is_qnn_ctx_model || context_cache_enabled_) {
+    const onnxruntime::GraphViewer& graph_viewer_0(fused_nodes_and_graphs[0].filtered_graph);
+    is_ctx_file_exist = qnn::ValidateContextCacheFilePath(is_qnn_ctx_model,
+                                                          context_cache_path_cfg_,
+                                                          graph_viewer_0.ModelPath().ToPathString(),
+                                                          context_cache_path);
   }
 
-  if (is_qnn_ctx_model || (context_cache_enabled_ && is_ctx_file_exist)) {
-    ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
-    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
-    // Load and execute from cached context if exist
-    ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxModel(graph_viewer,
+  ORT_RETURN_IF(is_ctx_file_exist && !is_qnn_ctx_model && context_cache_enabled_,
+                "The inference session is created from normal ONNX model. And an EP context model file is provided and existed. ",
+                "Please remove the EP context model manually if you want to re-generate it.");
+
+  if (is_qnn_ctx_model) {
+    // Table<EPContext node name, QnnModel>, the node name is the graph_meta_id (old) created from user model which used to generate the EP context model
+    // for this session (created from an EP context model), the graph_meta_id is new
+    std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models;
+
+    int main_context_pos = -1;
+    ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs, qnn_backend_manager_.get(),
+                                                logger, main_context_pos, qnn_models));
+
+    const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
+    // Create QNN context from the cached binary, deserialize the QNN graph from the binary
+    ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
                                                      context_cache_path,
-                                                     is_qnn_ctx_model,
-                                                     is_ctx_file_exist,
                                                      qnn_backend_manager_.get(),
-                                                     *(qnn_model.get()),
+                                                     qnn_models,
                                                      logger));
-    ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
-    ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
-    // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
-    // the name here should be same with context->node_name in compute_info
-    qnn_models_.emplace(graph_meta_id, std::move(qnn_model));
+    for (auto fused_node_and_graph : fused_nodes_and_graphs) {
+      const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+      const auto& ep_context_node = graph_viewer.Nodes().begin();
+      const Node& fused_node = fused_node_and_graph.fused_node;
+      const std::string& graph_meta_id = fused_node.Name();
+      std::string key = ep_context_node->Name();
+      ORT_RETURN_IF(qnn_models.find(key) == qnn_models.end(), key + " key name not exist in table qnn_models.");
+      auto qnn_model = std::move(qnn_models[key]);
+      ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
+      ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
-    ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+      // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
+      // the name here must be same with context->node_name in compute_info
+      qnn_models_.emplace(graph_meta_id, std::move(qnn_model));
+
+      ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+    }
+
     return Status::OK();
   }
 
   ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
-  if (context_cache_enabled_ && !is_qnn_ctx_model) {
-    ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
+  // Generate QNN context model if it's QDQ model + context_cache_enabled=true + not exist already
+  if (!is_qnn_ctx_model && context_cache_enabled_ && !is_ctx_file_exist) {
+    // All partitioned graph share single QNN context, included in the same context binary
     uint64_t buffer_size(0);
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
     qnn_ep_context_model_ = std::make_unique<Model>("qnn_ep_context_model", false, logger);
-    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(qnn_ep_context_model_.get(),
-                                                       context_buffer.get(),
-                                                       buffer_size,
-                                                       qnn_backend_manager_->GetSdkVersion(),
-                                                       fused_nodes_and_graphs,
-                                                       qnn_models_,
-                                                       context_cache_path,
-                                                       qnn_context_embed_mode_,
-                                                       logger));
+    ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
+                                                  context_buffer.get(),
+                                                  buffer_size,
+                                                  qnn_backend_manager_->GetSdkVersion(),
+                                                  fused_nodes_and_graphs,
+                                                  qnn_models_,
+                                                  context_cache_path,
+                                                  qnn_context_embed_mode_,
+                                                  logger));
   }
   return Status::OK();
 }
@@ -690,5 +757,148 @@ const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const
   }
 
   return ep_context_nodes;
+}
+
+QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
+                                                         uint32_t device_id,
+                                                         uint32_t core_id,
+                                                         qnn::HtpPerformanceMode default_htp_performance_mode,
+                                                         uint32_t default_rpc_control_latency)
+    : qnn_backend_manager_(qnn_backend_manager) {
+  Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id, core_id, htp_power_config_id_);
+  is_htp_power_config_id_valid_ = rt.IsOK();
+  // default_htp_performance_mode and default_rpc_control_latency are from QNN EP option.
+  // set it once only for each thread as default so user don't need to set it for every session run
+  if (is_htp_power_config_id_valid_) {
+    if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
+                                                                      default_htp_performance_mode));
+    }
+    if (default_rpc_control_latency > 0) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_,
+                                                                         default_rpc_control_latency));
+    }
+  }
+}
+
+QNNExecutionProvider::PerThreadContext::~PerThreadContext() {
+  if (is_htp_power_config_id_valid_) {
+    ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
+  }
+}
+
+QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  // try to use cached context
+  auto cached_context_it = per_thread_context_cache->find(this);
+  if (cached_context_it != per_thread_context_cache->end()) {
+    auto cached_context = cached_context_it->second.lock();
+    ORT_ENFORCE(cached_context);
+    return *cached_context;
+  }
+
+  // get context and update cache
+  std::shared_ptr<PerThreadContext> context;
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+
+    // get or create a context
+    if (context_state_.retired_context_pool.empty()) {
+      uint32_t core_id = 0;
+      context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id,
+                                                   default_htp_performance_mode_, default_rpc_control_latency_);
+    } else {
+      context = context_state_.retired_context_pool.back();
+      context_state_.retired_context_pool.pop_back();
+    }
+
+    // insert into active_contexts, should not already be present
+    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
+    ORT_ENFORCE(active_contexts_insert_result.second);
+
+    // insert into caches_to_update_on_destruction, may already be present
+    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache));
+  }
+
+  per_thread_context_cache->insert(std::make_pair(this, context));
+
+  return *context;
+}
+
+void QNNExecutionProvider::ReleasePerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  auto cached_context_it = per_thread_context_cache->find(this);
+  ORT_ENFORCE(cached_context_it != per_thread_context_cache->end());
+  auto cached_context = cached_context_it->second.lock();
+  ORT_ENFORCE(cached_context);
+
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    context_state_.active_contexts.erase(cached_context);
+    context_state_.retired_context_pool.push_back(cached_context);
+  }
+
+  per_thread_context_cache->erase(cached_context_it);
+}
+
+Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+  if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+    return Status::OK();
+  }
+
+  std::string htp_perf_mode = "";
+  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPerfMode, htp_perf_mode)) {
+    // set power mode
+    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
+  }
+
+  std::string rpc_latency = "";
+  uint32_t rpc_control_latency = 0;
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnRpcControlLatency, rpc_latency)) {
+    rpc_control_latency = static_cast<uint32_t>(std::stoul(rpc_latency));
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+  }
+
+  if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+    if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                  htp_performance_mode));
+    }
+
+    if (rpc_control_latency > 0) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcControlLatency(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                     rpc_control_latency));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& run_options) {
+  auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+  if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+    return Status::OK();
+  }
+
+  std::string htp_perf_mode = "";
+  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, htp_perf_mode)) {
+    // set power mode
+    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
+  }
+
+  if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
+    if (!GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+      return Status::OK();
+    }
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                htp_performance_mode));
+  }
+
+  return Status::OK();
 }
 }  // namespace onnxruntime

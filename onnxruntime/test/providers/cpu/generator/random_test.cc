@@ -36,7 +36,8 @@ TEST(Random, RandomNormal2DDouble) {
 
   // The expected_output is generated using std lib, which is used by CPU kernel only.
   // So we need to exclude other EPs here. Ditto for other places.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
 }
 
 void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
@@ -72,7 +73,8 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
   test.AddOutput<float>("Y", dims, expected_output);
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomNormalLike3DDouble) {
@@ -109,7 +111,8 @@ TEST(Random, RandomUniform1DFloat) {
   test.AddOutput<float>("Y", dims, expected_output);
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 void RunRandomUniformLikeTest(bool infer_dtype = false) {
@@ -142,7 +145,8 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
   test.AddOutput<double>("Y", dims, expected_output);
 
   // TensorRT does not support seed parameter and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomUniformLike2DDouble) {
@@ -380,7 +384,7 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
     test.AddOutput("Y", dims, fp16_data);
   }
 
-  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& /*provider_type*/) {
     // Only one output, and mean of output values are near attribute mean.
     ASSERT_EQ(fetches.size(), 1u);
     const auto& output_tensor = fetches[0].Get<Tensor>();
@@ -472,7 +476,7 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
     test.AddOutput("Y", dims, fp16_data);
   }
 
-  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& /*provider_type*/) {
     // Only one output. Each value in output tensoer is between low and high.
     // Mean of output values are near attribute mean of low and high.
     ASSERT_EQ(fetches.size(), 1u);

@@ -36,6 +36,7 @@ export declare namespace Env {
     /**
      * set or get a boolean value indicating whether to enable trace.
      *
+     * @deprecated Use `env.trace` instead. If `env.trace` is set, this property will be ignored.
      * @defaultValue `false`
      */
     trace?: boolean;
@@ -167,12 +168,20 @@ export interface Env {
    * @defaultValue `'warning'`
    */
   logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
+
   /**
    * Indicate whether run in debug mode.
    *
    * @defaultValue `false`
    */
   debug?: boolean;
+
+  /**
+   * set or get a boolean value indicating whether to enable trace.
+   *
+   * @defaultValue `false`
+   */
+  trace?: boolean;
 
   /**
    * Get version of the current package.

@@ -17,6 +17,7 @@
 
 // sampled from [@tensorflow/tfjs] tfjs-backend-webgpu/src/conv_backprop_webgpu.ts
 
+import {DataType} from '../../../../wasm-common';
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
@@ -264,10 +265,11 @@ export const createConvTranspose2DProgramInfo =
       const outputChannelsPerGroup = wShape[1];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'int32', data: outputSize}, {type: 'uint32', data: strides}, {type: 'uint32', data: filterDims},
-        {type: 'uint32', data: dilations}, {type: 'uint32', data: effectiveFilterDims}, {type: 'int32', data: pads},
-        {type: 'uint32', data: inputChannelsPerGroup}, {type: 'uint32', data: outputChannelsPerGroup},
-        ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims)
+        {type: DataType.int32, data: outputSize}, {type: DataType.uint32, data: strides},
+        {type: DataType.uint32, data: filterDims}, {type: DataType.uint32, data: dilations},
+        {type: DataType.uint32, data: effectiveFilterDims}, {type: DataType.int32, data: pads},
+        {type: DataType.uint32, data: inputChannelsPerGroup}, {type: DataType.uint32, data: outputChannelsPerGroup},
+        ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims)
       ];
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));

@@ -67,7 +67,7 @@ function(AddTest)
     if(onnxruntime_USE_CUDA)
       #XXX: we should not need to do this. onnxruntime_test_all.exe should not have direct dependency on CUDA DLLs,
       # otherwise it will impact when CUDA DLLs can be unloaded.
-      target_link_libraries(${_UT_TARGET} PRIVATE cudart)
+      target_link_libraries(${_UT_TARGET} PRIVATE CUDA::cudart)
     endif()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
@@ -111,7 +111,9 @@ function(AddTest)
     target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-    target_compile_options(${_UT_TARGET} PRIVATE "-Wno-error=uninitialized")
+    if (${HAS_NOERROR})
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=uninitialized>")
+    endif()
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
@@ -565,11 +567,7 @@ if(onnxruntime_USE_ROCM)
 endif()
 
 if(onnxruntime_USE_COREML)
-  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml onnxruntime_coreml_proto)
-  else()
-    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml)
-  endif()
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml coreml_proto)
 endif()
 
 if(onnxruntime_USE_ACL)
@@ -591,7 +589,6 @@ set(ONNXRUNTIME_TEST_LIBS
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_JS}
-    ${PROVIDERS_VITISAI}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -675,15 +672,9 @@ endif()
 
 if(onnxruntime_USE_COREML)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/coreml/*)
-  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_coreml onnxruntime_coreml_proto)
-    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml onnxruntime_coreml_proto)
-    list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml onnxruntime_coreml_proto)
-  else()
-    list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_coreml)
-    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml)
-    list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml)
-  endif()
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_coreml coreml_proto)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml coreml_proto)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml coreml_proto)
 endif()
 
 if(onnxruntime_USE_XNNPACK)
@@ -783,6 +774,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
+  target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
   target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
@@ -825,8 +817,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     )
   endif()
   list(REMOVE_ITEM all_tests "${TEST_SRC_DIR}/providers/cpu/reduction/reduction_ops_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/math/einsum_test.cc")
+      "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc")
 endif()
 
 set(test_all_args)
@@ -1278,7 +1269,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       list(APPEND onnxruntime_shared_lib_test_LIBS cpuinfo)
     endif()
     if (onnxruntime_USE_CUDA)
-      list(APPEND onnxruntime_shared_lib_test_LIBS cudart)
+      list(APPEND onnxruntime_shared_lib_test_LIBS CUDA::cudart)
     endif()
     if (onnxruntime_USE_ROCM)
       list(APPEND onnxruntime_shared_lib_test_LIBS hip::host)

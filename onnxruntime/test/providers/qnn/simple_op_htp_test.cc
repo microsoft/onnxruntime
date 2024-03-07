@@ -723,381 +723,6 @@ TEST_F(QnnHTPBackendTests, SpaceToDepthOp_U16) {
                          true);        // Use com.microsoft domain for Q/DQ ops
 }
 
-// Run QDQ model on HTP 3 times
-// 1st run will generate the Qnn context cache onnx file
-// 2nd run will load and run from QDQ model + Qnn context cache model
-// 3rd run directly loads and run from Qnn context cache model
-TEST_F(QnnHTPBackendTests, ContextBinaryCacheEmbedModeTest) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  const std::string context_binary_file = "./qnn_context_binary_test.onnx";
-
-  std::unordered_map<std::string, std::string> session_option_pairs;
-  session_option_pairs.emplace(kOrtSessionOptionEpContextEnable, "1");
-  session_option_pairs.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
-
-  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
-  const std::string op_type = "Atan";
-
-  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
-  // 1st run will generate the Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
-
-  // Make sure the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-
-  // 2nd run loads and run from QDQ model + Qnn context cache model
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
-
-  // 3rd run directly loads and run from Qnn context cache model
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       context_binary_file);
-  // Clean up
-  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
-}
-
-// Run QDQ model on HTP 3 times
-// 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-// 2nd run will loads and run from QDQ model + Onnx skeleton file + Qnn context cache binary file
-// 3rd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
-TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
-  std::unordered_map<std::string, std::string> session_option_pairs;
-  session_option_pairs.emplace(kOrtSessionOptionEpContextEnable, "1");
-  session_option_pairs.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
-  session_option_pairs.emplace(kOrtSessionOptionEpContextEmbedMode, "0");
-
-  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
-  const std::string op_type = "Atan";
-
-  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
-  // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
-
-  // Check the Onnx skeleton file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-  // Check the Qnn context cache binary file is generated
-  std::string qnn_ctx_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
-  EXPECT_TRUE(std::filesystem::exists(qnn_ctx_bin));
-
-  // 2nd run loads and run from QDQ model + Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
-
-  // 3rd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       context_binary_file);
-
-  // Clean up
-  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
-  ASSERT_EQ(std::remove(qnn_ctx_bin.c_str()), 0);
-}
-
-// Run QDQ model on HTP 2 times
-// 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-// Then delete the context bin file to make the 2nd sesssion.Initialize() return the status with code INVALID_GRAPH
-TEST_F(QnnHTPBackendTests, ContextBinaryCache_InvalidGraph) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
-  std::unordered_map<std::string, std::string> session_option_pairs;
-  session_option_pairs.emplace(kOrtSessionOptionEpContextEnable, "1");
-  session_option_pairs.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
-  session_option_pairs.emplace(kOrtSessionOptionEpContextEmbedMode, "0");
-
-  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
-  const std::string op_type = "Atan";
-
-  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
-  // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
-
-  // Check the Onnx skeleton file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-  // Check the Qnn context cache binary file is generated
-  std::filesystem::path context_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
-  EXPECT_TRUE(std::filesystem::exists(context_bin));
-  // Delete the Qnn context cache binary file
-  EXPECT_TRUE(std::filesystem::remove(context_bin));
-
-  // loads and run from Onnx skeleton file + Qnn context cache binary file
-  onnx::ModelProto model_proto;
-  onnxruntime::Model qnn_ctx_model;
-  // Load the QNN context cache model from path specified
-  ASSERT_STATUS_OK(qnn_ctx_model.Load(ToPathString(context_binary_file), model_proto));
-  std::string qnn_ctx_model_data;
-  model_proto.SerializeToString(&qnn_ctx_model_data);
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-
-  std::string provider_type = kCpuExecutionProvider;
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
-  ASSERT_STATUS_OK(session_object.Load(qnn_ctx_model_data.data(), static_cast<int>(qnn_ctx_model_data.size())));
-  // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
-
-  // Clean up
-  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
-}
-
-std::string CreateQnnCtxModelWithNonEmbedMode(std::string external_bin_path) {
-  const std::unordered_map<std::string, int> domain_to_version = {{"", 11}, {kMSDomain, 1}};
-  auto& logging_manager = DefaultLoggingManager();
-  onnxruntime::Model model("QNN_ctx_model", false, ModelMetaData(), PathString(),
-                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                           logging_manager.DefaultLogger());
-  Graph& graph = model.MainGraph();
-  ModelTestBuilder helper(graph);
-  std::vector<int64_t> shape = {2, 3};
-  NodeArg* graph_input = MakeTestInput(helper, TestInputDef<float>(shape, true, {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f}));
-  auto* graph_output = helper.MakeOutput<float>(shape);
-  Node& ep_context_node = helper.AddNode("EPContext", {graph_input}, {graph_output}, kMSDomain);
-  ep_context_node.AddAttribute("embed_mode", static_cast<int64_t>(0));
-  // The .. in the path will cause INVALID_GRAPH
-  ep_context_node.AddAttribute("ep_cache_context", external_bin_path);
-  ep_context_node.AddAttribute("partition_name", "QNNExecutionProvider_QNN_1110111000111000111_1_0");
-  ep_context_node.AddAttribute("source", "QNN");
-  helper.SetGraphOutputs();
-  std::string model_data;
-  model.ToProto().SerializeToString(&model_data);
-
-  return model_data;
-}
-
-// Create a model with EPContext node. Set the node property ep_cache_context has ".."
-// Verify that it return INVALID_GRAPH status
-TEST_F(QnnHTPBackendTests, QnnContextBinaryRelativePathTest) {
-  std::string model_data = CreateQnnCtxModelWithNonEmbedMode("../qnn_context.bin");
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
-}
-
-// Create a model with EPContext node. Set the node property ep_cache_context has absolute path
-// Verify that it return INVALID_GRAPH status
-TEST_F(QnnHTPBackendTests, QnnContextBinaryAbsolutePathTest) {
-#if defined(_WIN32)
-  std::string external_ctx_bin_path = "D:/qnn_context.bin";
-#else
-  std::string external_ctx_bin_path = "/data/qnn_context.bin";
-#endif
-  std::string model_data = CreateQnnCtxModelWithNonEmbedMode(external_ctx_bin_path);
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
-}
-
-// Create a model with EPContext node. Set the node property ep_cache_context to a file not exist
-// Verify that it return INVALID_GRAPH status
-TEST_F(QnnHTPBackendTests, QnnContextBinaryFileNotExistTest) {
-  std::string model_data = CreateQnnCtxModelWithNonEmbedMode("qnn_context_not_exist.bin");
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
-}
-
-// Create a model with EPContext node. Set the node property ep_cache_context to empty string
-// Verify that it return INVALID_GRAPH status
-TEST_F(QnnHTPBackendTests, QnnContextBinaryFileEmptyStringTest) {
-  std::string model_data = CreateQnnCtxModelWithNonEmbedMode("");
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
-}
-
-// Run QDQ model on HTP with 2 inputs
-// 1st run will generate the Qnn context cache onnx file
-// 2nd run will load and run from QDQ model + Qnn context cache model
-// 3rd run directly loads and run from Qnn context cache model
-TEST_F(QnnHTPBackendTests, ContextBinary2InputsTest) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  const std::string context_binary_file = "./qnn_context_binary_2inputs_test.onnx";
-  std::unordered_map<std::string, std::string> session_option_pairs;
-  session_option_pairs.emplace(kOrtSessionOptionEpContextEnable, "1");
-  session_option_pairs.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
-
-  const TestInputDef<float> input_def1({1, 2, 3}, false, -10.0f, 10.0f);
-  const TestInputDef<float> input_def2({1, 2, 3}, false, -10.0f, 10.0f);
-  const std::string op_type = "Add";
-
-  // Runs model with DQ-> Add-> Q and compares the outputs of the CPU and QNN EPs.
-  // 1st run will generate the Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
-
-  // Make sure the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-
-  // 2nd run loads and run from QDQ model + Qnn context cache model
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
-
-  // 3rd run directly loads and run from Qnn context cache model
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       context_binary_file);
-  // Clean up
-  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
-}
-
 TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
   ProviderOptions provider_options;
 
@@ -1485,6 +1110,61 @@ TEST_F(QnnHTPBackendTests, LpNormalization_u16_rank4) {
                          kOnnxDomain,
                          true);
 }
+
+static GetTestQDQModelFn<uint16_t> BuildQDQConvertAddTestCase(const TestInputDef<float>& input0_def,
+                                                              const TestInputDef<float>& input1_def) {
+  return [input0_def, input1_def](ModelTestBuilder& builder, std::vector<QuantParams<uint16_t>>& output_qparams) {
+    constexpr bool use_contrib_qdq = true;
+
+    // Input0 -> Quantize(u8) -> Dequantize(u8 to float) -> input0_after_qdq
+    NodeArg* input0 = MakeTestInput<float>(builder, input0_def);
+    QuantParams<uint8_t> input0_u8_qparams = GetTestInputQuantParams<uint8_t>(input0_def);
+    NodeArg* input0_after_qdq = AddQDQNodePair<uint8_t>(builder, input0, input0_u8_qparams.scale,
+                                                        input0_u8_qparams.zero_point, use_contrib_qdq);
+
+    // input0_after_qdq -> Quantize(u16) -> Dequantize(u16 to float)
+    QuantParams<uint16_t> input0_u16_qparams = GetTestInputQuantParams<uint16_t>(input0_def);
+    NodeArg* input0_after_convert = AddQDQNodePair<uint16_t>(builder, input0_after_qdq, input0_u16_qparams.scale,
+                                                             input0_u16_qparams.zero_point, use_contrib_qdq);
+
+    // Input1 -> Quantize(u16) -> Dequantize(u16 to float) -> input1_after_qdq
+    NodeArg* input1 = MakeTestInput<float>(builder, input1_def);
+    QuantParams<uint16_t> input1_qparams = GetTestInputQuantParams<uint16_t>(input1_def);
+    NodeArg* input1_after_qdq = AddQDQNodePair<uint16_t>(builder, input1, input1_qparams.scale,
+                                                         input1_qparams.zero_point, use_contrib_qdq);
+
+    // Add op -> op_output
+    auto* op_output = builder.MakeIntermediate();
+    builder.AddNode("Add", {input0_after_convert, input1_after_qdq}, {op_output});
+
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<uint16_t>(builder, op_output, output_qparams[0].scale,
+                                                    output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
+
+// Test quantization type conversion (mixed precision) with Add.
+// First input is converted from uint8_t to uint16_t.
+TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
+  std::vector<float> input0_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  std::vector<float> input1_data = GetFloatDataInRange(-20.0f, 20.0f, 8);
+  TestInputDef<float> input0_def({1, 2, 2, 2}, false, input0_data);
+  TestInputDef<float> input1_def({1, 2, 2, 2}, false, input1_data);
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  TestQDQModelAccuracy(BuildOpTestCase<float>("Add", {input0_def, input1_def}, {}, {}, kOnnxDomain),
+                       BuildQDQConvertAddTestCase(input0_def, input1_def),
+                       provider_options,
+                       18,
+                       ExpectedEPNodeAssignment::All);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test

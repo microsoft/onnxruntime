@@ -94,6 +94,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
+  parameters.use_tf32 = UseTF32();
+
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,

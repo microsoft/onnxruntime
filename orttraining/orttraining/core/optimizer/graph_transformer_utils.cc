@@ -138,7 +138,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<GatherToSplitFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(compatible_eps));
       // If a model with Q, DQ nodes is being used for the purpose of training, it must be for
       // Quantization Aware Training. So, replace QDQ nodes with FakeQuant.

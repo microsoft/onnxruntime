@@ -84,10 +84,8 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
     ${assignment}`;
   };
 
-  const programUniforms: ProgramUniform[] = [
-    {type: 'uint32', data: outputSize}, ...createTensorShapeVariables(inputShape),
-    ...createTensorShapeVariables(outputShape)
-  ];
+  const programUniforms: ProgramUniform[] =
+      [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputShape, outputShape)];
   return {
     name: 'Expand',
     shaderCache: {hint: `${outputShape.length}`, inputDependencies: ['rank']},
