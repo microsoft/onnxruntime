@@ -314,9 +314,15 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
       add_custom_command(TARGET onnxruntime POST_BUILD
                          COMMAND ${CMAKE_COMMAND} -E make_directory ${CUR_STATIC_LIB_OBJ_DIR})
 
+      # Handle the case where extracting .o files with duplicate names under different subdirectories within
+      # each onnxruntime library. (e.g. onnxruntime/contrib_ops/cpu/element_wise_ops.o
+      # vs. onnxruntime/providers/core/cpu/math/element_wise_ops.o)
+      # Simply use 'ar ARGS -x' for extracting the .o files would possibly cause duplicate naming files being overwritten.
+      set(CUR_TARGET_CMAKE_SOURCE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
       add_custom_command(TARGET onnxruntime POST_BUILD
-                         COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
-                         WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+          COMMAND mkdir -p ${CUR_STATIC_LIB_OBJ_DIR}
+          COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/handle_duplicate_object_files.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR}
+          WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
     endif()
   endforeach()
 
