@@ -13,11 +13,11 @@ export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
 }
 
-const validateInputs = (inputs: readonly TensorView[], referenceIndex: number, axis: number): void => {
+const validateInputs = (inputs: readonly TensorView[], axis: number): void => {
   if (!inputs || inputs.length < 1) {
     throw new Error('too few inputs');
   }
-
+  const referenceIndex = 0;
   const referenceInput = inputs[referenceIndex];
   const inputType = referenceInput.dataType;
   const inputRank = referenceInput.dims.length;
@@ -141,17 +141,10 @@ export const concat = (context: ComputeContext, attributes: ConcatAttributes): v
   // find a none zero tensor as reference to determine the output shape
   // choose input 0 as reference if  all input tensors are zero-sized.
   const inputs = context.inputs;
-  let referenceIndex = 0;
-  for (let i = 0; i < inputs.length; i++) {
-    if (ShapeUtil.size(inputs[i].dims) > 0) {
-      referenceIndex = i;
-      break;
-    }
-  }
 
-  const inputShape = inputs[referenceIndex].dims;
+  const inputShape = inputs[0].dims;
   const adjustedAxis = attributes.axis + (attributes.axis < 0 ? inputShape.length : 0);
-  validateInputs(inputs, referenceIndex, adjustedAxis);
+  validateInputs(inputs, adjustedAxis);
   const outputShape = inputShape.slice();
   outputShape[adjustedAxis] =
       inputs.reduce((sum, input) => sum + (input.dims.length > adjustedAxis ? input.dims[adjustedAxis] : 0), 0);
