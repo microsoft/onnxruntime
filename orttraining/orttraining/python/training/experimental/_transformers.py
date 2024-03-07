@@ -1,19 +1,6 @@
-import time
-
-import numpy as np
-import onnx
-
-import onnxruntime
-from onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
-
-load_aten_op_executor_cpp_extension()
-
-from typing import List
-
 import onnxscript
 import torch
 import torch._dynamo.backends.registry
-from torch import optim
 from torch.onnx import ExportOptions
 from torch.onnx import _OrtBackend as OrtBackend
 from torch.onnx import _OrtBackendOptions as OrtBackendOptions
@@ -22,6 +9,9 @@ from onnxruntime.training.experimental._modeling_llama import (
     scaled_dot_product_efficient_attention,
     scaled_dot_product_efficient_attention_backward,
 )
+from onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
+
+load_aten_op_executor_cpp_extension()
 
 custom_opset = onnxscript.values.Opset(domain="com.microsoft", version=1)
 aten_opset = onnxscript.values.Opset(domain="org.pytorch.aten", version=1)
@@ -73,4 +63,5 @@ def make_onnxrt_transformer_backend(dynamic: bool = False):
     custom_backend._supported_ops._support_dict[
         "torch.ops.aten._scaled_dot_product_efficient_attention_backward.default"
     ] = None
+
     return custom_backend
