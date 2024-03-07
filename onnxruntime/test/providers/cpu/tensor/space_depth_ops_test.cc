@@ -108,6 +108,53 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
+TEST(TensorOpTest, SpaceToDepthTest_3) {
+  // Test swizzling with H_output > 1
+  OpTester test("SpaceToDepth");
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  constexpr int64_t N = 1, C = 2, H = 4, W = 8;
+
+  const std::vector<float> X = {
+      0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f,
+      1.0f, 1.1f, 1.2f, 1.3f, 1.4f, 1.5f, 1.6f, 1.7f,
+
+      2.0f, 2.1f, 2.2f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f,
+      3.0f, 3.1f, 3.2f, 3.3f, 3.4f, 3.5f, 3.6f, 3.7f,
+
+      4.0f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f, 4.7f,
+      5.0f, 5.1f, 5.2f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f,
+      6.0f, 6.1f, 6.2f, 6.3f, 6.4f, 6.5f, 6.6f, 6.7f,
+      7.0f, 7.1f, 7.2f, 7.3f, 7.4f, 7.5f, 7.6f, 7.7f};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  const std::vector<float> result = {
+      0.0f, 0.2f, 0.4f, 0.6f,
+      2.0f, 2.2f, 2.4f, 2.6f,
+      4.0f, 4.2f, 4.4f, 4.6f,
+      6.0f, 6.2f, 6.4f, 6.6f,
+
+      0.1f, 0.3f, 0.5f, 0.7f,
+      2.1f, 2.3f, 2.5f, 2.7f,
+      4.1f, 4.3f, 4.5f, 4.7f,
+      6.1f, 6.3f, 6.5f, 6.7f,
+
+      1.0f, 1.2f, 1.4f, 1.6f,
+      3.0f, 3.2f, 3.4f, 3.6f,
+      5.0f, 5.2f, 5.4f, 5.6f,
+      7.0f, 7.2f, 7.4f, 7.6f,
+
+      1.1f, 1.3f, 1.5f, 1.7f,
+      3.1f, 3.3f, 3.5f, 3.7f,
+      5.1f, 5.3f, 5.5f, 5.7f,
+      7.1f, 7.3f, 7.5f, 7.7f};
+
+  test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
+
+  test.Run();
+}
+
 TEST(TensorOpTest, DepthToSpaceTest_1) {
   OpTester test("DepthToSpace", 7);  // create an opset 7 model
   constexpr int64_t blocksize = 2;

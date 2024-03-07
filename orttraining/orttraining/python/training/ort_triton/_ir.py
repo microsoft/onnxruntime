@@ -392,5 +392,8 @@ class ModuleNode(IRNode):
             for ir_node in kernel.sub_nodes:
                 if isinstance(ir_node, DropoutNode):
                     ir_node.global_offset = running_offset
+                    kernel.offset_calc.symbolic_shape_variables.update(
+                        [symbol.name for symbol in running_offset.free_symbols]
+                    )
                     running_offset = running_offset + sympy.prod(ir_node.outputs[0].shape)
                     self.has_dropout = True

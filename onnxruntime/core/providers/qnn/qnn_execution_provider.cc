@@ -7,6 +7,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
 #include "core/platform/env.h"
@@ -18,10 +19,35 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+#include "core/framework/run_options.h"
 
 namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
+
+static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
+
+void RunOnUnload(std::function<void()> function) {
+  OrtMutex mutex;
+  std::lock_guard<OrtMutex> guard(mutex);
+  if (!s_run_on_unload_) {
+    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
+  }
+  s_run_on_unload_->push_back(std::move(function));
+}
+
+struct OnUnload {
+  ~OnUnload() {
+    if (!s_run_on_unload_)
+      return;
+
+    for (auto& function : *s_run_on_unload_)
+      function();
+
+    s_run_on_unload_.reset();
+  }
+
+} g_on_unload;
 
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
@@ -193,18 +219,18 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
-  uint32_t rpc_control_latency = 0;
   auto latency_pos = provider_options_map.find(RPC_CONTROL_LANTENCY);
   if (latency_pos != provider_options_map.end()) {
-    rpc_control_latency = static_cast<uint32_t>(std::stoul(latency_pos->second));
-    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+    default_rpc_control_latency_ = static_cast<uint32_t>(std::stoul(latency_pos->second));
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << default_rpc_control_latency_;
   }
 
-  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  // default_htp_performance_mode from QNN EP option.
+  // set it once only for each thread as default so user don't need to set it for every session run
   static const std::string HTP_PERFORMANCE_MODE = "htp_performance_mode";
   auto htp_performance_mode_pos = provider_options_map.find(HTP_PERFORMANCE_MODE);
   if (htp_performance_mode_pos != provider_options_map.end()) {
-    ParseHtpPerformanceMode(htp_performance_mode_pos->second, htp_performance_mode);
+    ParseHtpPerformanceMode(htp_performance_mode_pos->second, default_htp_performance_mode_);
   }
 
   htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -241,15 +267,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string QNN_DEVICE_ID = "device_id";
-  uint32_t device_id = 0;
   auto dev_id_pos = provider_options_map.find(QNN_DEVICE_ID);
   if (dev_id_pos != provider_options_map.end()) {
     int value = std::stoi(dev_id_pos->second);
     if (value < 0) {
       LOGS_DEFAULT(WARNING) << "Invalid device ID '" << value
-                            << "', only >= 0 allowed. Set to " << device_id << ".";
+                            << "', only >= 0 allowed. Set to " << device_id_ << ".";
     } else {
-      device_id = static_cast<uint32_t>(value);
+      device_id_ = static_cast<uint32_t>(value);
     }
   }
 
@@ -276,13 +301,21 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level,
-      rpc_control_latency,
-      htp_performance_mode,
       context_priority,
       std::move(qnn_saver_path),
-      device_id,
+      device_id_,
       htp_arch,
       soc_model);
+}
+
+QNNExecutionProvider::~QNNExecutionProvider() {
+  // clean up thread local context caches
+  std::lock_guard<OrtMutex> lock(context_state_.mutex);
+  for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
+    const auto cache = cache_weak.lock();
+    if (!cache) continue;
+    ORT_IGNORE_RETURN_VALUE(cache->erase(this));
+  }
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -670,7 +703,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
                                                      context_cache_path,
                                                      qnn_backend_manager_.get(),
-                                                     qnn_models));
+                                                     qnn_models,
+                                                     logger));
 
     for (auto fused_node_and_graph : fused_nodes_and_graphs) {
       const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
@@ -723,5 +757,148 @@ const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const
   }
 
   return ep_context_nodes;
+}
+
+QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
+                                                         uint32_t device_id,
+                                                         uint32_t core_id,
+                                                         qnn::HtpPerformanceMode default_htp_performance_mode,
+                                                         uint32_t default_rpc_control_latency)
+    : qnn_backend_manager_(qnn_backend_manager) {
+  Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id, core_id, htp_power_config_id_);
+  is_htp_power_config_id_valid_ = rt.IsOK();
+  // default_htp_performance_mode and default_rpc_control_latency are from QNN EP option.
+  // set it once only for each thread as default so user don't need to set it for every session run
+  if (is_htp_power_config_id_valid_) {
+    if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
+                                                                      default_htp_performance_mode));
+    }
+    if (default_rpc_control_latency > 0) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_,
+                                                                         default_rpc_control_latency));
+    }
+  }
+}
+
+QNNExecutionProvider::PerThreadContext::~PerThreadContext() {
+  if (is_htp_power_config_id_valid_) {
+    ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
+  }
+}
+
+QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  // try to use cached context
+  auto cached_context_it = per_thread_context_cache->find(this);
+  if (cached_context_it != per_thread_context_cache->end()) {
+    auto cached_context = cached_context_it->second.lock();
+    ORT_ENFORCE(cached_context);
+    return *cached_context;
+  }
+
+  // get context and update cache
+  std::shared_ptr<PerThreadContext> context;
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+
+    // get or create a context
+    if (context_state_.retired_context_pool.empty()) {
+      uint32_t core_id = 0;
+      context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id,
+                                                   default_htp_performance_mode_, default_rpc_control_latency_);
+    } else {
+      context = context_state_.retired_context_pool.back();
+      context_state_.retired_context_pool.pop_back();
+    }
+
+    // insert into active_contexts, should not already be present
+    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
+    ORT_ENFORCE(active_contexts_insert_result.second);
+
+    // insert into caches_to_update_on_destruction, may already be present
+    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache));
+  }
+
+  per_thread_context_cache->insert(std::make_pair(this, context));
+
+  return *context;
+}
+
+void QNNExecutionProvider::ReleasePerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  auto cached_context_it = per_thread_context_cache->find(this);
+  ORT_ENFORCE(cached_context_it != per_thread_context_cache->end());
+  auto cached_context = cached_context_it->second.lock();
+  ORT_ENFORCE(cached_context);
+
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    context_state_.active_contexts.erase(cached_context);
+    context_state_.retired_context_pool.push_back(cached_context);
+  }
+
+  per_thread_context_cache->erase(cached_context_it);
+}
+
+Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+  if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+    return Status::OK();
+  }
+
+  std::string htp_perf_mode = "";
+  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPerfMode, htp_perf_mode)) {
+    // set power mode
+    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
+  }
+
+  std::string rpc_latency = "";
+  uint32_t rpc_control_latency = 0;
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnRpcControlLatency, rpc_latency)) {
+    rpc_control_latency = static_cast<uint32_t>(std::stoul(rpc_latency));
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+  }
+
+  if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+    if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                  htp_performance_mode));
+    }
+
+    if (rpc_control_latency > 0) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcControlLatency(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                     rpc_control_latency));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& run_options) {
+  auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+  if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+    return Status::OK();
+  }
+
+  std::string htp_perf_mode = "";
+  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  if (run_options.config_options.TryGetConfigEntry(kOrtRunOptionsConfigQnnPerfModePostRun, htp_perf_mode)) {
+    // set power mode
+    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
+  }
+
+  if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
+    if (!GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+      return Status::OK();
+    }
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                htp_performance_mode));
+  }
+
+  return Status::OK();
 }
 }  // namespace onnxruntime

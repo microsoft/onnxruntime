@@ -451,7 +451,7 @@ __global__ void PastToTotalSeqlen(int32_t* seqlens_k,
 // Convert Past to Total sequence length tensor
 Status LaunchGetSeqlenBuff(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_k,
                            int32_t* seqlens_k_buff, bool is_total, cudaStream_t stream,
-                           const int threads_per_block) {
+                           const int /*threads_per_block*/) {
   if (parameters.is_prompt) {
     return Status::OK();
   }
@@ -655,7 +655,7 @@ Status EfficientAttention(
 template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
-    cublasHandle_t& cublas,
+    cublasHandle_t& /*cublas*/,
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data) {
