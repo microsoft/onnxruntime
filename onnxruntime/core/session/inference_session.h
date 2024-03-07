@@ -875,7 +875,6 @@ class InferenceSession {
     }
 
     Status ReplayGraph(int graph_annotation_id) {
-      ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
       if (cached_execution_provider_for_graph_replay_) {
         return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
       }

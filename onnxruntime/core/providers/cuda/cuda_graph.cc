@@ -73,8 +73,6 @@ void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id
 }
 
 Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) {
-  ORT_ENFORCE(IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id));
-
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
   LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id "
