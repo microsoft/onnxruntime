@@ -481,6 +481,9 @@ struct ProviderHost {
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
 
+  // OrtRunOptions
+  virtual const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) = 0;
+
   // ComputeCapability
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
   virtual void ComputeCapability__operator_delete(ComputeCapability* p) = 0;

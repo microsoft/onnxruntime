@@ -393,6 +393,14 @@ struct ConfigOptions final {
   PROVIDER_DISALLOW_ALL(ConfigOptions)
 };
 
+struct OrtRunOptions final {
+  const ConfigOptions& GetConfigOptions() const {
+    return g_host->RunOptions__GetConfigOptions(this);
+  }
+
+  PROVIDER_DISALLOW_ALL(OrtRunOptions)
+};
+
 struct ComputeCapability final {
   static std::unique_ptr<ComputeCapability> Create(std::unique_ptr<IndexedSubGraph> t_sub_graph) { return g_host->ComputeCapability__construct(std::move(t_sub_graph)); }
   static void operator delete(void* p) { g_host->ComputeCapability__operator_delete(reinterpret_cast<ComputeCapability*>(p)); }

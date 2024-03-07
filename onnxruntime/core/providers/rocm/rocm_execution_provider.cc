@@ -183,23 +183,24 @@ bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_hip_graph_capture_;
 }
 
-void ROCMExecutionProvider::PerThreadContext::CaptureBegin() {
+void ROCMExecutionProvider::PerThreadContext::CaptureBegin(int) {
   hip_graph_.Reset();
-  hip_graph_.CaptureBegin();
+  hip_graph_.CaptureBegin(0);
 }
 
-void ROCMExecutionProvider::PerThreadContext::CaptureEnd() {
-  hip_graph_.CaptureEnd();
+void ROCMExecutionProvider::PerThreadContext::CaptureEnd(int) {
+  hip_graph_.CaptureEnd(0);
   is_graph_captured_ = true;
 }
 
-bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptured() const {
+bool ROCMExecutionProvider::PerThreadContext::IsGraphCaptured(int) const {
   return is_graph_captured_;
 }
 
-Status ROCMExecutionProvider::PerThreadContext::ReplayGraph() {
-  ORT_ENFORCE(IsGraphCaptured());
-  return hip_graph_.Replay();
+Status ROCMExecutionProvider::PerThreadContext::ReplayGraph(int graph_annotation_id) {
+  ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
+
+  return hip_graph_.Replay(graph_annotation_id);
 }
 
 void ROCMExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
@@ -356,20 +357,20 @@ Status ROCMExecutionProvider::Sync() const {
 Status ROCMExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   // always set ROCM device when session::Run() in case it runs in a worker thread
   HIP_RETURN_IF_ERROR(hipSetDevice(GetDeviceId()));
-  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
+  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured(0)) {
     LOGS_DEFAULT(INFO) << "Capturing the hip graph for this model";
-    GetPerThreadContext().CaptureBegin();
+    GetPerThreadContext().CaptureBegin(0);
   }
   return Status::OK();
 }
 
 Status ROCMExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
-  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured()) {
+  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(0)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed()) {
-      GetPerThreadContext().CaptureEnd();
+      GetPerThreadContext().CaptureEnd(0);
       // HIP work issued to a capturing stream doesn’t actually run on the GPU,
       // so run the captured graph here to actually execute the work.
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph());
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(0));
     } else {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
     }
@@ -400,12 +401,12 @@ bool ROCMExecutionProvider::IsGraphCaptureEnabled() const {
   return info_.enable_hip_graph;
 }
 
-bool ROCMExecutionProvider::IsGraphCaptured() const {
-  return GetPerThreadContext().IsGraphCaptured();
+bool ROCMExecutionProvider::IsGraphCaptured(int) const {
+  return GetPerThreadContext().IsGraphCaptured(0);
 }
 
-Status ROCMExecutionProvider::ReplayGraph() {
-  return GetPerThreadContext().ReplayGraph();
+Status ROCMExecutionProvider::ReplayGraph(int /*graph_annotation_id*/) {
+  return GetPerThreadContext().ReplayGraph(0);
 }
 
 namespace rocm {
