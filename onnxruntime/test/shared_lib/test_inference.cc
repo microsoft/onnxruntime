@@ -180,7 +180,9 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
+#if defined(USE_CUDA)
 static constexpr PATH_TYPE CUDA_GRAPH_ANNOTATION_MODEL_URI = TSTR("testdata/mul_1_dynamic.onnx");
+#endif
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
 #ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
