@@ -4,13 +4,14 @@
 
 set -x
 
-while getopts p:o:l:s: parameter
+while getopts p:o:l:s:c: parameter
 do case "${parameter}"
 in
 p) WORKSPACE=${OPTARG};;
 o) ORT_BINARY_PATH=${OPTARG};;
 l) BUILD_ORT_LATEST=${OPTARG};;
 s) ORT_SOURCE=${OPTARG};;
+c) CONCURRENCY=${OPTARG};;
 esac
 done
 
@@ -105,14 +106,13 @@ fi
 mv valgrind.log result
 
 # Concurrency Test
-CONCURRENCY=2
 FRCNN_FOLDER="/data/ep-perf-models/onnx-zoo-models/FasterRCNN-10/"
 
 mkdir FasterRCNN-10/
 cp -r ${FRCNN_FOLDER}/test_data_set_0 ${FRCNN_FOLDER}/faster_rcnn_R_50_FPN_1x.onnx ./FasterRCNN-10/
 
 # replicate test inputs
-for (( i=1; i<CONCURRENCY; i++ )); do
+for (( i=1; i<${CONCURRENCY}; i++ )); do
     cp -r "./FasterRCNN-10/test_data_set_0/" "./FasterRCNN-10/test_data_set_$i/"
 done
 
@@ -122,7 +122,7 @@ python ${ORT_SOURCE}/onnxruntime/python/tools/symbolic_shape_infer.py \
     --output="./FasterRCNN-10/faster_rcnn_R_50_FPN_1x.onnx" \
     --auto_merge
 
-${ORT_SOURCE}/build/Linux/Release/onnx_test_runner -e tensorrt -c 2 ./FasterRCNN-10/ > concurrency_test.log 2>&1
+${ORT_SOURCE}/build/Linux/Release/onnx_test_runner -e tensorrt -c ${CONCURRENCY} -r 100 ./FasterRCNN-10/ > concurrency_test.log 2>&1
 mv concurrency_test.log result
 
 # Run AddressSanitizer 
