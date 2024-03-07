@@ -340,7 +340,8 @@ While using the CUDA EP, ORT supports the usage
 of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with
 launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider options as shown in the samples
 below. ORT supports multi-graph capture capability by passing the cuda graph annotation id to the run options(refer to the
-python example)
+python example).
+
 Currently, there are some constraints with regards to using the CUDA Graphs feature:
 
 * Models with control-flow ops (i.e. `If`, `Loop` and `Scan` ops) are not supported.
@@ -372,86 +373,56 @@ captured and cached in the first `Run()`.
 * Python
 
     ```python
-    providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
-    sess_options = ort.SessionOptions()
-    sess = ort.InferenceSession("my_model.onnx", sess_options=sess_options, providers=providers)
-
     providers = [("CUDAExecutionProvider", {'enable_cuda_graph': True})]
-    x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-    y = np.array([[0.0], [0.0], [0.0]], dtype=np.float32)
-    x_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(x, 'cuda', 0)
-    y_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(y, 'cuda', 0)
 
-    session = onnxrt.InferenceSession("matmul_2.onnx", providers=providers)
-    io_binding = session.io_binding()
+    x_base = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]
+    y_base = [[0.0], [0.0], [0.0], [0.0]]
+    expected_y_base = [[5.0], [11.0], [17.0], [23.0]]
 
-    # Bind the input and output
-    io_binding.bind_ortvalue_input('X', x_ortvalue)
-    io_binding.bind_ortvalue_output('Y', y_ortvalue)
+    x_base_mul_10 = [[10.0, 20.0], [30.0, 40.0], [50.0, 60.0], [70.0, 80.0]]
+    expected_y_base_mul_10 = [[50.0], [110.0], [170.0], [230.0]]
 
-    # One regular run for the necessary memory allocation and cuda graph capturing
-    session.run_with_iobinding(io_binding)
-    expected_y = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-    np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+    test_num = 4
+
+    x_ortvalues = []
+    y_ortvalues = []
+    for i in range(test_num):
+        x = np.array(x_base[: i + 1][:], dtype=np.float32)
+        y = np.array(y_base[: i + 1][:], dtype=np.float32)
+        x_ortvalues.append(onnxrt.OrtValue.ortvalue_from_numpy(x, "cuda", 0))
+        y_ortvalues.append(onnxrt.OrtValue.ortvalue_from_numpy(y, "cuda", 0))
+
+    onnxrt.set_default_logger_severity(0)
+    session = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=providers)
+    io_bindings = [session.io_binding()] * test_num
+    ro = onnxrt.RunOptions()
+
+    # Regular run to capture CUDA graph
+    for i in range(test_num):
+        io_bindings[i].bind_ortvalue_input("X", x_ortvalues[i])
+        io_bindings[i].bind_ortvalue_output("Y", y_ortvalues[i])
+        if i > 0:
+            ro.add_run_config_entry("gpu_graph_id", str(i))
+        io_bindings[i].synchronize_inputs()
+        session.run_with_iobinding(io_bindings[i], ro)
+        io_bindings[i].synchronize_outputs()
+        expected_y = np.array(expected_y_base[: i + 1][:], dtype=np.float32)
+        np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
+
+    del ro
+    ro = onnxrt.RunOptions()
 
     # After capturing, CUDA graph replay happens from this Run onwards
-    session.run_with_iobinding(io_binding)
-    np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
-
-    # Update input and then replay CUDA graph with the updated input
-    x_ortvalue.update_inplace(np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32))
-    session.run_with_iobinding(io_binding)
-
-        INPUT_SIZE = 1280  # noqa: N806
-
-        x_base = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]
-        y_base = [[0.0], [0.0], [0.0], [0.0]]
-        expected_y_base = [[5.0], [11.0], [17.0], [23.0]]
-
-        x_base_mul_10 = [[10.0, 20.0], [30.0, 40.0], [50.0, 60.0], [70.0, 80.0]]
-        expected_y_base_mul_10 = [[50.0], [110.0], [170.0], [230.0]]
-
-        test_num = 4
-
-        x_ortvalues = []
-        y_ortvalues = []
-        for i in range(test_num):
-            x = np.array(x_base[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
-            y = np.array(y_base[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
-            x_ortvalues.append(onnxrt.OrtValue.ortvalue_from_numpy(x, "cuda", 0))
-            y_ortvalues.append(onnxrt.OrtValue.ortvalue_from_numpy(y, "cuda", 0))
-
-        onnxrt.set_default_logger_severity(0)
-        session = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=providers)
-        io_bindings = [session.io_binding()] * test_num
-        ro = onnxrt.RunOptions()
-
-        # Regular run to capture CUDA graph
-        for i in range(test_num):
-            io_bindings[i].bind_ortvalue_input("X", x_ortvalues[i])
-            io_bindings[i].bind_ortvalue_output("Y", y_ortvalues[i])
-            # TODO: Temporarily remove the default cuda graph capture test for the first regular run
-            # because it fails on a training CI. Need to investigate the root cause.
-            ro.add_run_config_entry("gpu_graph_id", str(i + 1))
-            io_bindings[i].synchronize_inputs()
-            session.run_with_iobinding(io_bindings[i], ro)
-            io_bindings[i].synchronize_outputs()
-            expected_y = np.array(expected_y_base[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
-            np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
-
-        del ro
-        ro = onnxrt.RunOptions()
-
-        # After capturing, CUDA graph replay happens from this Run onwards
-        for i in range(test_num):
-            # Update input and then replay CUDA graph
-            x_ortvalues[i].update_inplace(np.array(x_base_mul_10[: i + 1][:] * INPUT_SIZE, dtype=np.float32))
-            ro.add_run_config_entry("gpu_graph_id", str(i + 1))
-            io_bindings[i].synchronize_inputs()
-            session.run_with_iobinding(io_bindings[i], ro)
-            io_bindings[i].synchronize_outputs()
-            expected_y = np.array(expected_y_base_mul_10[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
-            np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
+    for i in range(test_num):
+        # Update input and then replay CUDA graph
+        x_ortvalues[i].update_inplace(np.array(x_base_mul_10[: i + 1][:], dtype=np.float32))
+        if i > 0:
+            ro.add_run_config_entry("gpu_graph_id", str(i))
+        io_bindings[i].synchronize_inputs()
+        session.run_with_iobinding(io_bindings[i], ro)
+        io_bindings[i].synchronize_outputs()
+        expected_y = np.array(expected_y_base_mul_10[: i + 1][:], dtype=np.float32)
+        np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
     ```
 * C/C++
     ```c++
