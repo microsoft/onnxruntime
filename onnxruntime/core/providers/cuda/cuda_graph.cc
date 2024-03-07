@@ -68,7 +68,7 @@ void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id
   CUDA_CALL_THROW(cudaGraphDestroy(graph));
 
   // Currently all the captured graphs will be tied to the session's lifecycle
-  // TODO: Addd an interface to free captured graphs
+  // TODO(wy): Addd an interface to free captured graphs
   cuda_graph_set_.Put(cuda_graph_annotation_id, graph_exec);
 }
 
@@ -77,7 +77,8 @@ Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) 
 
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
-  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id " << cuda_graph_annotation_id;
+  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id "
+                     << cuda_graph_annotation_id;
 
   cudaGraphExec_t graph_exec = cuda_graph_set_.Get(cuda_graph_annotation_id);
   CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec, stream_));

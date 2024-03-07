@@ -887,7 +887,7 @@ class InferenceSession {
     }
 
     IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
-    // TODO: Same as kCudaGraphAnnotationSkip in cuda_graph.h. Move to a common place.
+    // TODO(wy): Same as kCudaGraphAnnotationSkip in cuda_graph.h. Move to a common place.
     constexpr static int kGraphAnnotationSkip = -1;
   };
 

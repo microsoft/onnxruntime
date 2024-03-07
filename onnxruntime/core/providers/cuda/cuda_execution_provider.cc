@@ -192,12 +192,14 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 #endif
 }
 
-bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed(
+    CudaGraphAnnotation_t cuda_graph_annotation_id) const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_ &&
          IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id);
 }
 
-bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowedOnRun(
+    CudaGraphAnnotation_t cuda_graph_annotation_id) const {
   return cuda_graph_.IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id);
 }
 
