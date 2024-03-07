@@ -211,6 +211,7 @@ stages:
         inputs:
           ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
 
+      # if the wheel size bigger than 200M, fail the UploadWheel step
       - task: CmdLine@2
         displayName: 'Upload wheel'
         condition: and(succeeded(), and(eq(variables['UploadWheel'], 'yes'), ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')))
@@ -219,6 +220,7 @@ stages:
             set -e -x
             files=($(Build.ArtifactStagingDirectory)/${{ variables['buildConfig'] }}/dist/*.whl) && \
             echo ${files[0]} && \
+            (( $(wc -c < "${files[0]}") -  100*2014*1024 < 0 )) ||  (exit 1) && \
             python3 tools/ci_build/upload_python_package_to_azure_storage.py \
                 --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
 
