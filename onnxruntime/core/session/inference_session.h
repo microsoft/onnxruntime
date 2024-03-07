@@ -871,7 +871,7 @@ class InferenceSession {
     }
 
     bool AllowGraphCaptureOnRun(int graph_annotation_id) const {
-      return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != -1;
+      return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
     }
 
     Status ReplayGraph(int graph_annotation_id) {
@@ -887,6 +887,8 @@ class InferenceSession {
     }
 
     IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
+    // TODO: Same as kCudaGraphAnnotationSkip in cuda_graph.h. Move to a common place.
+    constexpr static int kGraphAnnotationSkip = -1;
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;

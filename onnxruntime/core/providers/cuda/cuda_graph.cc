@@ -45,8 +45,8 @@ void CUDAGraphManager::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_
   ORT_ENFORCE(IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id));
 
   ORT_ENFORCE(!cuda_graph_set_.Contains(cuda_graph_annotation_id),
-              "This cuda graph has already captured a graph. "
-              "Create a new instance to capture a new graph.");
+              "Trying to capture a graph with annotation id ", cuda_graph_annotation_id,
+              " that already used. Please use a different annotation id.");
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
   // For now cuda graph can only work with a single thread. In the future, we
@@ -67,6 +67,8 @@ void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id
   CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0));
   CUDA_CALL_THROW(cudaGraphDestroy(graph));
 
+  // Currently all the captured graphs will be tied to the session's lifecycle
+  // TODO: Addd an interface to free captured graphs
   cuda_graph_set_.Put(cuda_graph_annotation_id, graph_exec);
 }
 
