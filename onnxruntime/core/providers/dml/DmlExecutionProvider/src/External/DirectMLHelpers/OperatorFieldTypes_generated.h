@@ -1205,16 +1205,16 @@ inline bool VerifyAttributeFieldVariant(flatbuffers::Verifier &verifier, const v
       return verifier.VerifyTable(ptr);
     }
     case AttributeFieldVariant_UInt32: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::UInt32>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::UInt32));
     }
     case AttributeFieldVariant_UInt64: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::UInt64>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::UInt64));
     }
     case AttributeFieldVariant_Int32: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Int32>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Int32));
     }
     case AttributeFieldVariant_Float32: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Float32>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Float32));
     }
     case AttributeFieldVariant_UIntArray: {
       auto ptr = reinterpret_cast<const dml::ir::operatorFieldTypes::UIntArray *>(obj);
@@ -1229,17 +1229,17 @@ inline bool VerifyAttributeFieldVariant(flatbuffers::Verifier &verifier, const v
       return verifier.VerifyTable(ptr);
     }
     case AttributeFieldVariant_ScaleBias: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::ScaleBias>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::ScaleBias));
     }
     case AttributeFieldVariant_Size2D: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Size2D>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Size2D));
     }
     case AttributeFieldVariant_ScalarUnionData: {
       auto ptr = reinterpret_cast<const dml::ir::operatorFieldTypes::ScalarUnionData *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case AttributeFieldVariant_Bool: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Bool>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Bool));
     }
     default: return true;
   }
@@ -1263,41 +1263,42 @@ inline bool VerifyScalarVariant(flatbuffers::Verifier &verifier, const void *obj
       return true;
     }
     case ScalarVariant_ByteArray: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::ByteArray>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::ByteArray));
     }
     case ScalarVariant_Int8: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Int8>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Int8));
     }
     case ScalarVariant_UInt8: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::UInt8>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::UInt8));
     }
     case ScalarVariant_Int16: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Int16>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Int16));
     }
     case ScalarVariant_UInt16: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::UInt16>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::UInt16));
     }
     case ScalarVariant_Int32: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Int32>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Int32));
     }
     case ScalarVariant_UInt32: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::UInt32>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::UInt32));
     }
     case ScalarVariant_Int64: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Int64>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Int64));
     }
     case ScalarVariant_UInt64: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::UInt64>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::UInt64));
     }
     case ScalarVariant_Float32: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Float32>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Float32));
     }
     case ScalarVariant_Float64: {
-      return verifier.Verify<dml::ir::operatorFieldTypes::Float64>(static_cast<const uint8_t *>(obj), 0);
+      return verifier.Verify(static_cast<const uint8_t *>(obj), sizeof(dml::ir::operatorFieldTypes::Float64));
     }
     default: return true;
   }
 }
+
 
 inline bool VerifyScalarVariantVector(flatbuffers::Verifier &verifier, const flatbuffers::Vector<flatbuffers::Offset<void>> *values, const flatbuffers::Vector<uint8_t> *types) {
   if (!values || !types) return !values && !types;
