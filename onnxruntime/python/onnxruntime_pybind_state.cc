@@ -937,6 +937,20 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid value passed for disable_dynamic_shapes: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
+        } else if (option.first == "enable_dynamic_shapes") {
+          LOGS_DEFAULT(WARNING) << " Deprecation notice - 'enable_dynamic_shapes' is Deprected. Upgrade the API to disable_dynamic_shapes parameter."
+                                   "Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met." ;
+          std::string value;
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
+            ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
+          }
+          if (option.second == "True" || option.second == "true"){
+            value = "false";
+          } else {
+            value = "true";
+          }
+          OV_provider_options_map["disable_dynamic_shapes"] = value;
         } else if (option.first == "device_id") {
           OV_provider_options_map[option.first] = option.second;
           continue;
@@ -967,7 +981,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       if (!Env::Default().GetEnvironmentVar("INTEL_OPENVINO_DIR").empty()) {
         ORT_THROW("INTEL_OPENVINO_DIR is set but OpenVINO library wasn't able to be loaded. Please install a supported version of OpenVINO as mentioned in the requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), ensure dependency libraries are in the PATH and your hardware is supported.");
       } else {
-        LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+        LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
       }
     }
 #endif
