@@ -195,6 +195,9 @@ Status PackMatMulNBitsFp16(Node& node, Graph& graph, bool& modified) {
   //
   auto& node_name = node.Name();
   auto& mutable_input_defs = node.MutableInputDefs();
+  if (mutable_input_defs.size() < 3 || mutable_input_defs.size() > 4) {
+    return Status::OK(); // not supported
+  }
 
   NodeArg* old_weights_arg = mutable_input_defs[1];
   NodeArg* old_scales_arg = mutable_input_defs[2];
@@ -222,7 +225,11 @@ Status PackMatMulNBitsFp16(Node& node, Graph& graph, bool& modified) {
       old_zp_arg = mutable_input_defs[3];
       if (old_zp_arg != nullptr && old_zp_arg->Exists()) {
         ORT_RETURN_IF_ERROR(GetOrtValue(old_zp_arg, graph, zp_val));
-        zp = zp_val.GetMutable<Tensor>()->DataAsSpan<uint8_t>();
+        Tensor* zp_tensor_ptr = zp_val.GetMutable<Tensor>();
+        if (!zp_tensor_ptr->IsDataType<uint8_t>()) {
+          return Status::OK(); // not supported
+        }
+        zp = zp_tensor_ptr->DataAsSpan<uint8_t>();
       }
     }
 

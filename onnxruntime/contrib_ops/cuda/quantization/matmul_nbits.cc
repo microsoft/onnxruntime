@@ -15,6 +15,31 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+template<>
+Status MatMulNBits<MLFloat16>::PrepackedGemm(
+  cudaStream_t stream,
+  const Tensor* a,
+  const Tensor* b,
+  const Tensor* scales,
+  const Tensor* zero_points,
+  Tensor* Y) const {
+  int64_t M = a->Shape()[0];
+  uint8_t const* zero_points_ptr = nullptr;
+  size_t zero_points_size = 0;
+  if (zero_points != nullptr) {
+    zero_points_ptr = zero_points->Data<uint8_t>();
+    zero_points_size = zero_points->Shape().Size();
+  }
+
+  return blkq4_fp16_gemm_sm80_dispatch<MLFloat16>(
+    int(block_size_), column_wise_quant_blk_, int(M), int(N_), int(K_), stream,
+    a->Data<MLFloat16>(), a->Shape().Size(),
+    b->Data<uint8_t>(), b->Shape().Size(),
+    scales->Data<MLFloat16>(), scales->Shape().Size(),
+    zero_points_ptr, zero_points_size,
+    Y->MutableData<MLFloat16>(), Y->Shape().Size());
+}
+
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
@@ -35,6 +60,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y->Shape().Size() == 0) return Status::OK();
 
   if (prepack_ > 0){
+    ORT_RETURN_IF(reorder_idx != nullptr,
+                  "Internal Error: Prepacked gemm does not support reorder index. Fix the prepacking logic!");
+    ORT_RETURN_IF(zero_points != nullptr && zero_points->IsDataType<T>(),
+                  "Internal Error: Prepacked gemm does not support zero points of type T. Fix the prepacking logic!");
     return PrepackedGemm(
       static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()),
       a, b, scales, zero_points, Y);

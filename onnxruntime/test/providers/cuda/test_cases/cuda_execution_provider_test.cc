@@ -6,6 +6,7 @@
 //  1. slow down performance critical applications and
 //  2. increase binary size of ORT.
 #include <iostream>
+#include "core/framework/framework_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
