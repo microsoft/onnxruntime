@@ -148,11 +148,11 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
   if (attributes.group !== 1) {
-    // One CI bot with NVIDIA GPU fails with below 2 cases, but we couldn't repro them with any other GPUs, including NVIDIA ones.
+    // One CI with NVIDIA GPU (ampere architecutre) fails with below 2 cases, but we couldn't repro them with any other GPUs, including NVIDIA ones.
     // [webgpu]Conv - conv - vectorize group - B
     // [webgpu]Conv - conv - vectorize group - D
-    // Disable vectorize on NVIDIA to make bots happy. BTW, no obvious perf gain with vectorize is seen on NVIDIA GPUs.
-    const enableGroupedConvVectorize = context.adapterInfo.isVendor('nvidia') ? false : true;
+    // Disable vectorize on NVIDIA ampere to make bots happy. BTW, no obvious perf gain with vectorize is seen on NVIDIA GPUs.
+    const enableGroupedConvVectorize = context.adapterInfo.isArchitecture('ampere') ? false : true;
     if (enableGroupedConvVectorize && isChannelsLast && inputs[1].dims[0] === attributes.group &&
         inputs[1].dims[1] === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1) {
       const outputShape = calculateOutputShape(

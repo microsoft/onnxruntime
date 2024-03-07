@@ -94,17 +94,34 @@ const getProgramInfoUniqueKey =
       return key;
     };
 
+
+/**
+ * this class is designed for info and related helper functions of the GPU adapter in use
+ */
 export class AdapterInfo {
+  private architecture: string;
   private vendor: string;
 
   constructor(adapterInfo: GPUAdapterInfo) {
     if (adapterInfo) {
+      this.architecture = adapterInfo.architecture;
       this.vendor = adapterInfo.vendor;
     }
   }
 
-  // vendor could be intel, nvidia, amd, etc.
+  // architecture could be ampere, gen12-lp, etc.
+  isArchitecture(architecture: string): boolean {
+    if (typeof this.architecture === 'undefined') {
+      return false;
+    }
+    return this.architecture === architecture;
+  }
+
+  // vendor could be amd, intel, nvidia, etc.
   isVendor(vendor: string): boolean {
+    if (typeof this.vendor === 'undefined') {
+      return false;
+    }
     return this.vendor === vendor;
   }
 }
