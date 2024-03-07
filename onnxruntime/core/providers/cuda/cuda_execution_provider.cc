@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
+#include "core/common/parse_string.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -11,6 +12,7 @@
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 
 #ifndef USE_CUDA_MINIMAL
 #ifndef DISABLE_CONTRIB_OPS
@@ -190,27 +192,46 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 #endif
 }
 
-bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
-  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed(
+    CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_ &&
+         IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id);
 }
 
-void CUDAExecutionProvider::PerThreadContext::CaptureBegin() {
-  cuda_graph_.Reset();
-  cuda_graph_.CaptureBegin();
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowedOnRun(
+    CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  return cuda_graph_.IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id);
 }
 
-void CUDAExecutionProvider::PerThreadContext::CaptureEnd() {
-  cuda_graph_.CaptureEnd();
-  is_graph_captured_ = true;
+CudaGraphAnnotation_t CUDAExecutionProvider::PerThreadContext::GetCudaGraphAnnotationId(
+    const onnxruntime::RunOptions& run_options) const {
+  auto graph_annotation_str =
+      run_options.GetConfigOptions().GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
+  // If graph annotation is not provided, fall back to the one cuda graph per session behavior
+  CudaGraphAnnotation_t cuda_graph_annotation_id = 0;
+  if (graph_annotation_str.has_value()) {
+    ORT_ENFORCE(TryParseStringWithClassicLocale<int>(*graph_annotation_str, cuda_graph_annotation_id),
+                "Failed to parse the cuda graph annotation id: ",
+                *graph_annotation_str);
+  }
+
+  return cuda_graph_annotation_id;
 }
 
-bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured() const {
-  return is_graph_captured_;
+void CUDAExecutionProvider::PerThreadContext::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  cuda_graph_.CaptureBegin(cuda_graph_annotation_id);
 }
 
-Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
-  ORT_ENFORCE(IsGraphCaptured());
-  return cuda_graph_.Replay();
+void CUDAExecutionProvider::PerThreadContext::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  cuda_graph_.CaptureEnd(cuda_graph_annotation_id);
+}
+
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const {
+  return cuda_graph_.IsGraphCaptured(graph_annotation_id);
+}
+
+Status CUDAExecutionProvider::PerThreadContext::ReplayGraph(CudaGraphAnnotation_t graph_annotation_id) {
+  return cuda_graph_.Replay(graph_annotation_id);
 }
 
 void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
@@ -386,23 +407,26 @@ Status CUDAExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   // always set CUDA device when session::Run() in case it runs in a worker thread
   CUDA_RETURN_IF_ERROR(cudaSetDevice(GetDeviceId()));
-  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
+  CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
+  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
+      GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
     LOGS(*GetLogger(), INFO) << "Capturing the cuda graph for this model";
-    GetPerThreadContext().CaptureBegin();
+    GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
   }
   return Status::OK();
 }
 
-Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
-  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured()) {
-    if (GetPerThreadContext().IsGraphCaptureAllowed()) {
-      GetPerThreadContext().CaptureEnd();
+Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
+  CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
+  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+    if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
+      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
       // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
       // so run the captured graph here to actually execute the work.
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph());
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
     } else {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
     }
@@ -433,12 +457,12 @@ bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
   return info_.enable_cuda_graph;
 }
 
-bool CUDAExecutionProvider::IsGraphCaptured() const {
-  return GetPerThreadContext().IsGraphCaptured();
+bool CUDAExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
+  return GetPerThreadContext().IsGraphCaptured(graph_annotation_id);
 }
 
-Status CUDAExecutionProvider::ReplayGraph() {
-  return GetPerThreadContext().ReplayGraph();
+Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id) {
+  return GetPerThreadContext().ReplayGraph(graph_annotation_id);
 }
 
 namespace cuda {
