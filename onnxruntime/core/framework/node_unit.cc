@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "node_unit.h"
 #include "core/graph/graph_viewer.h"
 
@@ -345,3 +347,5 @@ std::vector<const Node*> NodeUnit::GetAllNodesInGroup() const noexcept {
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -3,6 +3,9 @@
 
 #pragma once
 
+// QDQ models require graph modification at runtime, so we know this infrastructure is not used in a minimal build
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include <functional>
 #include <memory>
 #include <unordered_set>
@@ -132,3 +135,5 @@ InlinedHashSet<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewe
                                                   const std::unordered_set<std::string>& stop_ops);
 }  // namespace utils
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

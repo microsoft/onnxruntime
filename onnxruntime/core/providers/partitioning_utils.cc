@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// QDQ models require graph modification at runtime, so we know this infrastructure is not used in a minimal build
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "core/providers/partitioning_utils.h"
 
 #include <algorithm>
@@ -429,3 +432,5 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
 
 }  // namespace utils
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

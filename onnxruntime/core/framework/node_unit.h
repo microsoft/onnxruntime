@@ -3,6 +3,9 @@
 
 #pragma once
 
+// QDQ models require graph modification at runtime, so we know this infrastructure is not used in a minimal build
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include <string>
 #include <optional>
 #include <vector>
@@ -110,3 +113,5 @@ class NodeUnit {
 };
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
