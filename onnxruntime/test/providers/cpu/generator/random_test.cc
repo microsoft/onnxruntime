@@ -36,7 +36,8 @@ TEST(Random, RandomNormal2DDouble) {
 
   // The expected_output is generated using std lib, which is used by CPU kernel only.
   // So we need to exclude other EPs here. Ditto for other places.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
 }
 
 void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
@@ -72,7 +73,8 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
   test.AddOutput<float>("Y", dims, expected_output);
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomNormalLike3DDouble) {
@@ -109,7 +111,8 @@ TEST(Random, RandomUniform1DFloat) {
   test.AddOutput<float>("Y", dims, expected_output);
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 void RunRandomUniformLikeTest(bool infer_dtype = false) {
@@ -142,7 +145,8 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
   test.AddOutput<double>("Y", dims, expected_output);
 
   // TensorRT does not support seed parameter and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomUniformLike2DDouble) {
