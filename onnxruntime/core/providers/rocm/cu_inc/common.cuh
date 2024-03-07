@@ -429,6 +429,63 @@ struct _IsInf {
   }
 };
 
+// float and double
+template <typename T>
+struct _IsNan {
+  __device__ __inline__ bool operator()(T a) const {
+    return isnan(a);
+  }
+};
+
+template <>
+struct _IsNan<half> {
+  __device__ __inline__ bool operator()(half a) const {
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask) 
+                                > MLFloat16::kPositiveInfinityBits;
+  }
+};
+
+template <>
+struct _IsNan<BFloat16> {
+  __device__ __inline__ bool operator()(BFloat16 a) const {
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask) 
+                               > BFloat16::kPositiveInfinityBits;
+  }
+};
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <>
+struct _IsNan<Float8E4M3FN> {
+  __device__ __inline__ bool operator()(Float8E4M3FN a) const {
+    return (*reinterpret_cast<const uint8_t*>(&a) & 0x7f) == 0x7f;
+  }
+};
+
+template <>
+struct _IsNan<Float8E4M3FNUZ> {
+  __device__ __inline__ bool operator()(Float8E4M3FNUZ a) const {
+    return *reinterpret_cast<const uint8_t*>(&a) == 0x80;
+  }
+};
+
+template <>
+struct _IsNan<Float8E5M2> {
+  __device__ __inline__ bool operator()(Float8E5M2 a) const {
+    uint8_t c = *reinterpret_cast<const uint8_t*>(&a);
+    return ((c & 0x7c) == 0x7c) && ((c & 0x03) != 0x00);
+  }
+};
+
+template <>
+struct _IsNan<Float8E5M2FNUZ> {
+  __device__ __inline__ bool operator()(Float8E5M2FNUZ a) const {
+    return *reinterpret_cast<const uint8_t*>(&a) == 0x80;
+  }
+};
+
+#endif
+
 // We would like to use 64-bit integer to support large matrices. However, ROCM seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 #ifndef HIP_LONG
