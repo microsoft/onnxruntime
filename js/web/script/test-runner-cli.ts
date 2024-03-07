@@ -542,14 +542,13 @@ async function main() {
       npmlog.info('TestRunnerCli.Run', '(4/4) Running karma to start test runner...');
       const webgpu = args.backends.indexOf('webgpu') > -1;
       const webnn = args.backends.indexOf('webnn') > -1;
-      const browser = getBrowserNameFromEnv(
-          args.env,
-          args.bundleMode === 'perf' ? 'perf' :
-              args.debug             ? 'debug' :
-                                       'test',
-          webgpu);
+      const browser = getBrowserNameFromEnv(args.env);
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
       const chromiumFlags = ['--enable-features=SharedArrayBuffer', ...args.chromiumFlags];
+      if (args.bundleMode === 'dev' && !args.debug) {
+        // use headless for 'test' mode (when 'perf' and 'debug' are OFF)
+        chromiumFlags.push('--headless=new');
+      }
       if (args.debug) {
         karmaArgs.push('--log-level info --timeout-mocha 9999999');
         chromiumFlags.push('--remote-debugging-port=9333');
@@ -569,6 +568,9 @@ async function main() {
       }
       if (webnn) {
         chromiumFlags.push('--enable-experimental-web-platform-features');
+      }
+      if (process.argv.includes('--karma-debug')) {
+        karmaArgs.push('--log-level debug');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
       karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
@@ -662,10 +664,10 @@ async function main() {
     fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
   }
 
-  function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean) {
+  function getBrowserNameFromEnv(env: TestRunnerCliArgs['env']) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode, webgpu);
+        return 'ChromeTest';
       case 'edge':
         return 'EdgeTest';
       case 'firefox':
@@ -678,20 +680,6 @@ async function main() {
         return process.env.ORT_WEB_TEST_BS_BROWSERS!;
       default:
         throw new Error(`env "${env}" not supported.`);
-    }
-  }
-
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean) {
-    if (webgpu) {
-      return 'ChromeTest';
-    } else {
-      switch (mode) {
-        case 'debug':
-        case 'perf':
-          return 'ChromeTest';
-        default:
-          return 'ChromeTestHeadless';
-      }
     }
   }
 }

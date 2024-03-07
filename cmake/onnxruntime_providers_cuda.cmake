@@ -141,18 +141,22 @@
     if (HAS_GUARD_CF)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")
     endif()
+
     if (HAS_QSPECTRE)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
     endif()
+
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
     endforeach()
+
     # CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
       option(onnxruntime_NVCC_THREADS "Number of threads that NVCC can use for compilation." 1)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
+
     if (UNIX)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
@@ -162,6 +166,13 @@
       #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
+      if (MSVC)
+        # the VS warnings for 'Conditional Expression is Constant' are spurious as they don't handle multiple conditions
+        # e.g. `if (std::is_same_v<T, float> && not_a_const)` will generate the warning even though constexpr cannot
+        # be used due to `&& not_a_const`. This affects too many places for it to be reasonable to disable at a finer
+        # granularity.
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
+      endif()
     endif()
 
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
@@ -178,9 +189,10 @@
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
     if(onnxruntime_CUDA_MINIMAL)
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
-      target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+      target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
     else()
-      target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn CUDA::curand CUDA::cufft CUDA::cudart
+              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
       if(onnxruntime_CUDNN_HOME)
           target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
           target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
@@ -196,25 +208,24 @@
       target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
       target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
       # lib cuda needed by cuLaunchKernel
-      target_link_libraries(${target} PRIVATE cuda)
+      target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
     endif()
 
     include(cutlass)
-    target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
+    target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
 
-    target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES}
+     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
     # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
     set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)
     set_target_properties(${target} PROPERTIES FOLDER "ONNXRuntime")
 
     if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
-      target_include_directories(${target} PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-      target_link_directories(${target} PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-      target_link_libraries(${target} PRIVATE cupti)
+      target_link_libraries(${target} PRIVATE CUDA::cupti)
     endif()
 
-    if (onnxruntime_ENABLE_NVTX_PROFILE AND NOT WIN32)
-      target_link_libraries(${target} PRIVATE nvToolsExt)
+    if (onnxruntime_ENABLE_NVTX_PROFILE)
+      target_link_libraries(${target} PRIVATE CUDA::nvtx3)
     endif()
 
     if (onnxruntime_ENABLE_TRAINING_OPS)

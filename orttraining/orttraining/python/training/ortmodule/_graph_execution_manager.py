@@ -381,11 +381,15 @@ class GraphExecutionManager(GraphExecutionInterface):
                     )
 
                 if self._runtime_options.enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
-                    graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
-                    self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
-                    self._runtime_options.embed_sparsity_ratio = ",".join(
-                        [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
-                    )
+                    if detected_device.type == "cuda":
+                        # Embedding sparsity optimization is only supported on CUDA devices.
+                        graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
+                        self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
+                        self._runtime_options.embed_sparsity_ratio = ",".join(
+                            [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
+                        )
+                    else:
+                        self._logger.info("Embedding sparsity-based optimization is not supported on non-CUDA devices.")
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
@@ -437,6 +441,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
+        elif (
+            self._runtime_options.memory_optimization_level
+            == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE
+        ):
+            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER_WITH_COMPROMISE"
         else:
             opt_config_to_display = self._runtime_options.memory_optimizer_config
 
@@ -449,7 +458,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
                     f"Optimization Config: [{opt_config_to_display}]"
                     if len(self._runtime_options.memory_optimizer_config) > 0
-                    else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+                    else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
                 ),
             ],
         )
