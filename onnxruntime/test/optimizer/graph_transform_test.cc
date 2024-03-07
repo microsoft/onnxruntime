@@ -823,7 +823,7 @@ static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<s
   std::shared_ptr<CPUExecutionProvider> e =
       std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ExecutionProviders execution_providers;
-  execution_providers.Add(kCpuExecutionProvider, std::move(e));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(e)));
 
   bool has_constant_folding = false;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -4570,7 +4570,7 @@ static void VerifyGeluApproximation(bool is_enabled, SessionOptions& session_opt
   std::shared_ptr<IExecutionProvider> e =
       std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ExecutionProviders execution_providers;
-  execution_providers.Add(kCpuExecutionProvider, std::move(e));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(e)));
 
   bool has_gelu_approximation = false;
   auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options,
@@ -4589,7 +4589,7 @@ TEST_F(GraphTransformationTests, DoubleQDQRemover_SessionOptionConfig) {
   auto verify_session_config = [&](bool is_enabled, SessionOptions& session_option) {
     std::shared_ptr<CPUExecutionProvider> cpu_ep = std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo());
     ExecutionProviders execution_providers;
-    execution_providers.Add(kCpuExecutionProvider, std::move(cpu_ep));
+    ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_ep)));
 
     bool has_double_qdq_remover = false;
     auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_option,

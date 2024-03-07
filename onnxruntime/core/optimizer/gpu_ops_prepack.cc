@@ -24,7 +24,6 @@
 //   3. The logic of prepacking depends on underlying GPU
 //      hardware.  Currently this part is hard-coded for SM80.
 
-
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/gpu_ops_prepack.h"
@@ -43,17 +42,17 @@ extern ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 /**
  * @brief Read initialized tensor from protobuf, and store it in ort_value.
  * Keep in mind that ort_value is the owner of the tensor memory after calling this function.
-*/
+ */
 inline Status GetOrtValue(const NodeArg* arg, const Graph& graph, OrtValue& ort_value) {
   const ONNX_NAMESPACE::TensorProto* tensor_proto;
   ORT_RETURN_IF_NOT(graph.GetInitializedTensor(arg->Name(), tensor_proto),
                     "Missing initializer for ", arg->Name());
 
-  const auto* path_c_str = graph.ModelPath().ToPathString().c_str();
+  const auto path_str = graph.ModelPath().ToPathString();
 
   return utils::TensorProtoToOrtValue(
-    Env::Default(), path_c_str, *tensor_proto,
-    std::make_shared<CPUAllocator>(), ort_value);
+      Env::Default(), path_str.c_str(), *tensor_proto,
+      std::make_shared<CPUAllocator>(), ort_value);
 }
 
 template <typename T>
@@ -65,7 +64,7 @@ inline gsl::span<T> make_span(std::string& str) {
 // Prepacking logic specific to MatMulNBits<float16> on sm80
 //
 
-static inline bool IsNodeMatMulNbitsFp16(const Node& node){
+static inline bool IsNodeMatMulNbitsFp16(const Node& node) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMulNBits", {1}, kMSDomain)) {
     return false;
   }
@@ -78,13 +77,13 @@ static inline bool IsNodeMatMulNbitsFp16(const Node& node){
 
 template <int block_size, bool column_quant_blk>
 void Sm80BlkQ4PrepackT(
-  int rows, int columns,
-  gsl::span<const uint8_t> weights,
-  gsl::span<const MLFloat16> scales,
-  gsl::span<const uint8_t> zp,
-  std::string& packed_w,
-  std::string& packed_scales,
-  std::string& packed_zp) {
+    int rows, int columns,
+    gsl::span<const uint8_t> weights,
+    gsl::span<const MLFloat16> scales,
+    gsl::span<const uint8_t> zp,
+    std::string& packed_w,
+    std::string& packed_scales,
+    std::string& packed_zp) {
   using Base = onnxruntime::cuda::BlockwiseQuantization<
       MLFloat16,
       block_size,
@@ -93,33 +92,33 @@ void Sm80BlkQ4PrepackT(
   const auto q_weight_shape = Base::get_quant_weights_shape(rows, columns);
   const auto meta_shape = Base::get_quant_meta_shape(rows, columns);
 
-  packed_w.resize(q_weight_shape.product() * sizeof(uint8_t));
+  packed_w.resize(SafeInt<size_t>(q_weight_shape.product() * sizeof(uint8_t)));
   Base::prepack_weights(
-    rows, columns, weights,
-    make_span<uint8_t>(packed_w));
+      rows, columns, weights,
+      make_span<uint8_t>(packed_w));
 
-  packed_scales.resize(meta_shape.product() * sizeof(MLFloat16));
+  packed_scales.resize(SafeInt<size_t>(meta_shape.product() * sizeof(MLFloat16)));
   Base::prepack_quant_scales(
-    rows, columns, scales,
-    make_span<MLFloat16>(packed_scales));
+      rows, columns, scales,
+      make_span<MLFloat16>(packed_scales));
 
   if (!zp.empty()) {
-    packed_zp.resize(meta_shape.product() * sizeof(uint8_t));
+    packed_zp.resize(SafeInt<size_t>(meta_shape.product() * sizeof(uint8_t)));
     Base::prepack_quant_offsets(
-      rows, columns, zp,
-      make_span<uint8_t>(packed_zp));
+        rows, columns, zp,
+        make_span<uint8_t>(packed_zp));
   }
 }
 
 void Sm80BlkQ4Prepack(
-  int block_size, bool column_quant_blk,
-  int rows,  int columns,
-  gsl::span<const uint8_t> weights,
-  gsl::span<const MLFloat16> scales,
-  gsl::span<const uint8_t> zp,
-  std::string& packed_w,
-  std::string& packed_scales,
-  std::string& packed_zp) {
+    int block_size, bool column_quant_blk,
+    int rows, int columns,
+    gsl::span<const uint8_t> weights,
+    gsl::span<const MLFloat16> scales,
+    gsl::span<const uint8_t> zp,
+    std::string& packed_w,
+    std::string& packed_scales,
+    std::string& packed_zp) {
   switch (block_size) {
     case 16:
       if (column_quant_blk) {
@@ -161,21 +160,23 @@ Status PackMatMulNBitsFp16(Node& node, Graph& graph, bool& modified) {
   Status status = graph_utils::TryGetNodeAttribute(node, "prepacked", att_i);
   bool prepacked = status.IsOK() ? att_i != 0 : false;
   if (prepacked) {
-    return Status::OK(); // already prepacked, nothing to do
+    return Status::OK();  // already prepacked, nothing to do
   }
 
   ORT_RETURN_IF_ERROR(graph_utils::TryGetNodeAttribute<int64_t>(node, "bits", att_i));
-  int nbits = static_cast<int>(att_i);
+  int nbits = SafeInt<int>(att_i);
   if (nbits != 4) {
-    return Status::OK(); // only support 4 bits for now
+    return Status::OK();  // only support 4 bits for now
   }
 
+  // A single dimension can not exceed 2G yet.
   ORT_RETURN_IF_ERROR(graph_utils::TryGetNodeAttribute<int64_t>(node, "K", att_i));
-  int k = static_cast<int>(att_i);
+  int k = SafeInt<int>(att_i);
   ORT_RETURN_IF_ERROR(graph_utils::TryGetNodeAttribute<int64_t>(node, "N", att_i));
-  int n = static_cast<int>(att_i);
+  int n = SafeInt<int>(att_i);
+
   ORT_RETURN_IF_ERROR(graph_utils::TryGetNodeAttribute<int64_t>(node, "block_size", att_i));
-  int block_size = static_cast<int>(att_i);
+  int block_size = SafeInt<int>(att_i);
 
   status = graph_utils::TryGetNodeAttribute(node, "column_wise_blocking", att_i);
   bool column_wise_quant_blk = status.IsOK() ? att_i != 0 : true;
@@ -184,10 +185,10 @@ Status PackMatMulNBitsFp16(Node& node, Graph& graph, bool& modified) {
   ORT_ENFORCE(provider_info != nullptr, "Failed to query CUDA provider info while prepacking cuda operators.");
   int major, minor;
   ORT_ENFORCE(provider_info->GetCurrentGpuDeviceVersion(&major, &minor) == nullptr,
-             "Failed to query CUDA device version while prepacking cuda operators.");
+              "Failed to query CUDA device version while prepacking cuda operators.");
 
   if (!onnxruntime::cuda::BlkQuantGemmSm80Supported(block_size, column_wise_quant_blk, k, n, major, minor)) {
-    return Status::OK(); // not supported
+    return Status::OK();  // not supported
   }
 
   //
@@ -196,7 +197,7 @@ Status PackMatMulNBitsFp16(Node& node, Graph& graph, bool& modified) {
   auto& node_name = node.Name();
   auto& mutable_input_defs = node.MutableInputDefs();
   if (mutable_input_defs.size() < 3 || mutable_input_defs.size() > 4) {
-    return Status::OK(); // not supported
+    return Status::OK();  // not supported
   }
 
   NodeArg* old_weights_arg = mutable_input_defs[1];
@@ -227,7 +228,7 @@ Status PackMatMulNBitsFp16(Node& node, Graph& graph, bool& modified) {
         ORT_RETURN_IF_ERROR(GetOrtValue(old_zp_arg, graph, zp_val));
         Tensor* zp_tensor_ptr = zp_val.GetMutable<Tensor>();
         if (!zp_tensor_ptr->IsDataType<uint8_t>()) {
-          return Status::OK(); // not supported
+          return Status::OK();  // not supported
         }
         zp = zp_tensor_ptr->DataAsSpan<uint8_t>();
       }
@@ -289,7 +290,6 @@ Status PackMatMulNBitsFp16(Node& node, Graph& graph, bool& modified) {
   return Status::OK();
 }
 
-
 Status GpuOpsPrepack::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -304,7 +304,7 @@ Status GpuOpsPrepack::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (node.GetExecutionProviderType() != onnxruntime::kCudaExecutionProvider) {
-      continue; // only interested in CUDA nodes
+      continue;  // only interested in CUDA nodes
     }
 
     // Run prepack if the node is MatMulNBits<float16>.

@@ -34,7 +34,7 @@ void testPrepack(int rows, int columns) {
       col_blocking>;
 
   EXPECT_TRUE(Base::weight_dimension_supported(rows, columns))
-    << "Test setup problem, unsupported weight dimension: [" << rows << ", " << columns << "]";
+      << "Test setup problem, unsupported weight dimension: [" << rows << ", " << columns << "]";
 
   using QuantBlocking = typename Base::QuantBlocking;
   using ElementW = typename Base::ElementW;

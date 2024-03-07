@@ -34,8 +34,13 @@ class MatMulNBits final : public CudaKernel {
     info.GetAttrOrDefault<int64_t>("prepacked", &prepack_, int64_t(0));
   }
 
-  Status PrepackedGemm(cudaStream_t stream, const Tensor* a, const Tensor* b,
-                       const Tensor* scales, const Tensor* zero_points, Tensor* Y) const {
+  Status PrepackedGemm([[maybe_unused]] cudaStream_t stream,
+                       [[maybe_unused]] int M,
+                       [[maybe_unused]] const Tensor* a,
+                       [[maybe_unused]] const Tensor* b,
+                       [[maybe_unused]] const Tensor* scales,
+                       [[maybe_unused]] const Tensor* zero_points,
+                       [[maybe_unused]] Tensor* Y) const {
     ORT_THROW("Prepacked gemm is not supported for MatMulNBits op.");
   }
 

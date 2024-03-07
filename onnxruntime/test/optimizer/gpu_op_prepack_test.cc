@@ -13,6 +13,8 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/mickey/blk_q4/f16_prepack_sm80.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 
 #include "test/cuda_host/blkq4_fp16_quant_sm80.h"
 #include "test/compare_ortvalue.h"
@@ -21,16 +23,24 @@
 #include "test/util/include/inference_session_wrapper.h"
 
 namespace onnxruntime {
+
+extern ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+
 namespace test {
 #ifndef DISABLE_CONTRIB_OPS
 
 std::shared_ptr<IExecutionProvider> LoadCudaEp() {
-  OrtCUDAProviderOptions cuda_options;
-  auto factory = onnxruntime::CudaProviderFactoryCreator::Create(&cuda_options);
-  if (!factory) {
+  try {
+    OrtCUDAProviderOptions cuda_options;
+    auto factory = onnxruntime::CudaProviderFactoryCreator::Create(&cuda_options);
+    if (!factory) {
+      return nullptr;
+    }
+    return factory->CreateProvider();
+  } catch (const ::onnxruntime::OnnxRuntimeException& e) {
+    std::cerr << "LoadCudaEp: " << e.what() << std::endl;
     return nullptr;
   }
-  return std::move(factory->CreateProvider());
 }
 
 /**
@@ -41,18 +51,18 @@ std::shared_ptr<IExecutionProvider> LoadCudaEp() {
  *  - the addition of cuda execution provider in the session.
  *  - a different location for the model checker, right after session initialization
  *    as the initializers will be deleted during session run.
-*/
+ */
 void GpuPrepackTester(
-  const std::shared_ptr<IExecutionProvider>& cuda_ep,
-  const std::function<void(ModelTestBuilder& helper)>& build_test_case,
-  const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
-  TransformerLevel baseline_level,
-  TransformerLevel target_level,
-  int opset_version = 12,
-  double per_sample_tolerance = 0.001,
-  double relative_per_sample_tolerance = 0.001,
-  const std::function<void(SessionOptions&)>& add_session_options = {},
-  const InlinedHashSet<std::string>& disabled_optimizers = {}) {
+    const std::shared_ptr<IExecutionProvider>& cuda_ep,
+    const std::function<void(ModelTestBuilder& helper)>& build_test_case,
+    const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
+    TransformerLevel baseline_level,
+    TransformerLevel target_level,
+    int opset_version = 12,
+    double per_sample_tolerance = 0.001,
+    double relative_per_sample_tolerance = 0.001,
+    const std::function<void(SessionOptions&)>& add_session_options = {},
+    const InlinedHashSet<std::string>& disabled_optimizers = {}) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -130,15 +140,15 @@ inline Status GetOrtValue(const NodeArg* arg, const Graph& graph, OrtValue& ort_
   ORT_RETURN_IF_NOT(graph.GetInitializedTensor(arg->Name(), tensor_proto),
                     "Missing initializer for ", arg->Name());
 
-  const auto* path_c_str = graph.ModelPath().ToPathString().c_str();
+  const auto path_str = graph.ModelPath().ToPathString();
 
   return utils::TensorProtoToOrtValue(
-    Env::Default(), path_c_str, *tensor_proto,
-    std::make_shared<CPUAllocator>(), ort_value);
+      Env::Default(), path_str.c_str(), *tensor_proto,
+      std::make_shared<CPUAllocator>(), ort_value);
 }
 
 template <int block_size, bool columnwise_blocking, bool has_offsets>
-void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>& cuda_ep){
+void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>& cuda_ep) {
   //
   // Type definitions
   //
@@ -160,7 +170,6 @@ void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>
   //
   const auto q_weight_shape = Base::get_quant_weights_shape(K, N);
   const auto meta_shape = Base::get_quant_meta_shape(K, N);
-  const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
 
   std::vector<ElementW> q_weights;
   std::vector<ElementT> q_scales;
@@ -176,6 +185,7 @@ void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>
       q_scales, meta_shape);
   MatrixRef<ElementQOffset, ColumnMajorLayout, true> tensor_offset;
   if constexpr (has_offsets) {
+    const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
     tensor_offset = MatrixRef<ElementQOffset, ColumnMajorLayout, true>(q_zp, zp_shape);
   }
 
@@ -260,7 +270,7 @@ void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>
           for (size_t i = 0; i < packed_w_ref.size(); ++i) {
             int expected = packed_w_ref[i];
             int found = weights_data[i];
-            ASSERT_EQ(expected, found) << "prepacked weight mismatch index i = " << i << " shape[" << K << "," << N/2 << "]";
+            ASSERT_EQ(expected, found) << "prepacked weight mismatch index i = " << i << " shape[" << K << "," << N / 2 << "]";
           }
         }
         {
@@ -287,7 +297,7 @@ void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>
             ASSERT_EQ(expected, found) << "prepacked zero-point mismatch index i = " << i << " shape[" << meta_shape[0] << "," << meta_shape[1] << "]";
           }
         } else {
-          ASSERT_LE(node.InputDefs().size(), 3);
+          ASSERT_LE(node.InputDefs().size(), static_cast<size_t>(3));
         }
       }
     }
@@ -298,13 +308,25 @@ void MatMulQ4Test(int M, int N, int K, const std::shared_ptr<IExecutionProvider>
                    check_graph,
                    TransformerLevel::Level2,
                    TransformerLevel::Level3);
-
 }
 
 TEST(GpuOpPrepackTests, MatmulNBits) {
   std::shared_ptr<onnxruntime::IExecutionProvider> provider = LoadCudaEp();
   if (!provider) {
     GTEST_SKIP() << "Skipping tests when CUDA EP is not available";
+  }
+
+  //
+  // Currently these tests only work on sm_80. Going forward, however,
+  // we need a better solution when we may have different tests for different
+  // hardware.
+  //
+  auto* provider_info = TryGetProviderInfo_CUDA();
+  int major, minor;
+  ORT_ENFORCE(provider_info->GetCurrentGpuDeviceVersion(&major, &minor) == nullptr,
+              "Failed to query CUDA device version while prepacking cuda operators.");
+  if (major < 8) {
+    GTEST_SKIP() << "Skipping tests when CUDA EP is not sm_80";
   }
 
   //

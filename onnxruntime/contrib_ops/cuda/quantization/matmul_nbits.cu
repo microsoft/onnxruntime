@@ -12,6 +12,9 @@
 
 #include "blk_q4/f16_gemm_sm80.h"
 
+using namespace onnxruntime::cuda;
+using namespace cub;
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -390,7 +393,7 @@ Status blkq4_gemm_sm80(int m, int n, int k, cudaStream_t stream,
 
   const cutlass::gemm::GemmCoord problem_size = {m, n, k};
 
-  ORT_RETURN_IF_NOT(a.size_bytes() == m * k * sizeof(ElementDequant), "Activation tensor size is not correct");
+  ORT_RETURN_IF_NOT(a.size_bytes() == m * k * sizeof(ElementDequant), "Activation tensor size is not correct: ", a.size_bytes(), " vs m: ", m, "k: ", k , " size: ", m * k * sizeof(ElementDequant));
   cutlass::TensorRef<ElementDequant const, LayoutInputA> ref_a(
     reinterpret_cast<ElementDequant const *>(a.data()),
     LayoutInputA::packed({m, k}));

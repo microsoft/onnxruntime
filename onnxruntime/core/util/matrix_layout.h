@@ -378,7 +378,7 @@ class MatrixRef {
   MatrixRef(
       NonConstMatrixRef const& ref,  ///< MatrixRef to non-const data
       /// SFINAE trick to avoid creating a copy-constructor when Element_ is already non-const
-      _Magic magic = (typename std::enable_if<!IsNonConstRef, _Magic>::type)0
+      [[maybe_unused]] _Magic magic = (typename std::enable_if<!IsNonConstRef, _Magic>::type)0
       ) : data_(ref.data()), shape_(ref.shape()), layout_(Layout::packed(ref.shape())) {}
 
   ORT_FORCEINLINE
@@ -428,18 +428,18 @@ class MatrixRef {
   /// Returns a reference to the element at a given Coord
   ORT_FORCEINLINE
   Reference at(MatCoord const& coord) const {
-    return data_[offset(coord)];
+    return data_[static_cast<size_t>(offset(coord))];
   }
 
   ORT_FORCEINLINE
   Reference at(int row, int col) const {
-    return data_[offset(make_Position(row, col))];
+    return data_[static_cast<size_t>(offset(make_Position(row, col)))];
   }
 
   /// Returns a reference to the element at a given Coord
   ORT_FORCEINLINE
   Reference operator[](MatCoord const& coord) const {
-    return data_[offset(coord)];
+    return data_[static_cast<size_t>(offset(coord))];
   }
 };
 

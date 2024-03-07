@@ -132,7 +132,7 @@ struct DummyType{
   }
 
   CUTLASS_HOST_DEVICE
-  std::monostate& operator[](int idx) {
+  std::monostate& operator[]([[maybe_unused]] int idx) {
     return dummy_;
   }
 };

@@ -187,8 +187,8 @@ struct BlockwiseQuantization {
   static constexpr bool ShouldRearrangeMeta = sizeof(ElementT) == 2 && QuantBlocking::kRow == 1;
 
   static void prepack_quant_scales(
-      size_t rows,
-      size_t columns,
+      int rows,
+      int columns,
       const gsl::span<ElementT const>& scales,     // <- quant scales, column major layout
       const gsl::span<ElementT>& scales_prepacked  // <- quant scales prepacked, same size buffer
   ) {
@@ -261,8 +261,8 @@ struct BlockwiseQuantization {
   }
 
   static void prepack_quant_offsets(
-      size_t rows,
-      size_t columns,
+      int rows,
+      int columns,
       const gsl::span<uint8_t const>& offsets,     // <- quant offsets, int4, column major layout
       const gsl::span<uint8_t>& offsets_prepacked  // <- quant offsets prepacked, double size buffer
   ) {
@@ -345,8 +345,8 @@ struct BlockwiseQuantization {
 };
 
 static inline bool IsSm80WithWholeBlocks(
-  int weight_rows, [[maybe_unused]] int weight_cols,
-  int major, [[maybe_unused]] int minor) {
+    int weight_rows, [[maybe_unused]] int weight_cols,
+    int major, [[maybe_unused]] int minor) {
   if (major < 8) {
     return false;
   }
@@ -364,9 +364,8 @@ static inline bool IsSm80WithWholeBlocks(
   return (weight_rows % 64 == 0);
 }
 
-template<typename ElementT, int block_size, bool col_blocking>
-inline
-bool BlkQuantGemmSm80Supported(int weight_rows, int weight_cols, int major, int minor) {
+template <typename ElementT, int block_size, bool col_blocking>
+inline bool BlkQuantGemmSm80Supported(int weight_rows, int weight_cols, int major, int minor) {
   using Base = BlockwiseQuantization<ElementT, block_size, 4, col_blocking>;
   if (!Base::weight_dimension_supported(weight_rows, weight_cols)) {
     return false;
@@ -375,26 +374,25 @@ bool BlkQuantGemmSm80Supported(int weight_rows, int weight_cols, int major, int 
 }
 
 static inline bool BlkQuantGemmSm80Supported(int block_size, bool col_blocking, int weight_rows, int weight_cols, int major, int minor) {
-  switch (block_size)
-  {
-  case 16:
-    if (col_blocking) {
-      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 16, true>(weight_rows, weight_cols, major, minor);
-    } else {
-      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 16, false>(weight_rows, weight_cols, major, minor);
-    }
-  case 32:
-    if (col_blocking) {
-      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 32, true>(weight_rows, weight_cols, major, minor);
-    } else {
-      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 32, false>(weight_rows, weight_cols, major, minor);
-    }
-  case 64:
-    if (col_blocking) {
-      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 64, true>(weight_rows, weight_cols, major, minor);
-    } else {
-      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 64, false>(weight_rows, weight_cols, major, minor);
-    }
+  switch (block_size) {
+    case 16:
+      if (col_blocking) {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 16, true>(weight_rows, weight_cols, major, minor);
+      } else {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 16, false>(weight_rows, weight_cols, major, minor);
+      }
+    case 32:
+      if (col_blocking) {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 32, true>(weight_rows, weight_cols, major, minor);
+      } else {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 32, false>(weight_rows, weight_cols, major, minor);
+      }
+    case 64:
+      if (col_blocking) {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 64, true>(weight_rows, weight_cols, major, minor);
+      } else {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 64, false>(weight_rows, weight_cols, major, minor);
+      }
   }
   return false;
 }

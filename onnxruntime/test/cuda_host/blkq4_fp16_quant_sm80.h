@@ -68,7 +68,6 @@ inline void blkq4_weights_gen(
 
   const auto q_weight_shape = Base::get_quant_weights_shape(rows, columns);
   const auto meta_shape = Base::get_quant_meta_shape(rows, columns);
-  const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
 
   //
   // For testing quantization and dequantization, it is not straight
@@ -114,9 +113,9 @@ inline void blkq4_weights_gen(
 
   q_scales.resize(meta_shape.product());
   for (size_t i = 0; i < q_scales.size(); i++) {
-    uint32_t v = dis(gen);
-    uint32_t m = (v % 63) + 1;
-    uint32_t e = (v >> 6) % 4;
+    uint32_t vscale = dis(gen);
+    uint32_t m = (vscale % 63) + 1;
+    uint32_t e = (vscale >> 6) % 4;
     q_scales[i] = ElementT(m / static_cast<float>(1 << (2 + e)));
   }
   MatrixRef<ElementT, ColumnMajorLayout, true> tensor_scale(
@@ -124,6 +123,7 @@ inline void blkq4_weights_gen(
 
   MatrixRef<ElementQOffset, ColumnMajorLayout, true> tensor_offset;
   if constexpr (has_offsets) {
+    const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
     q_zp.resize(zp_shape.product());
     tensor_offset = MatrixRef<ElementQOffset, ColumnMajorLayout, true>(
         q_zp, zp_shape);

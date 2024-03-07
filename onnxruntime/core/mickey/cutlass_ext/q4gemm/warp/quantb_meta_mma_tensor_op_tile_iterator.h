@@ -453,7 +453,7 @@ public:
 
       uint32_t* dest_pair = reinterpret_cast<uint32_t*>(dest.data());
       const b64* scales_ptr = reinterpret_cast<const b64*>(scales.data());
-      const ElementOffset* offsets_ptr = nullptr;
+      [[maybe_unused]] const ElementOffset* offsets_ptr = nullptr;
       if constexpr(kHasOffset) { offsets_ptr = offsets.data(); }
 
       CUTLASS_PRAGMA_UNROLL
@@ -461,11 +461,11 @@ public:
         // dequantize: d = scale * (weight - offset)
         // to use FMA, d = scale * weight + (scale * (-offset))
 
-        b64 offsets;
+        [[maybe_unused]] b64 offsets;
         if constexpr(kHasOffset){
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
           const uint32_t* p = reinterpret_cast<const uint32_t*>(offsets_ptr);
 
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
           asm volatile(
               "{\n\t"
               "  .reg  .b32    rb0, rb1;\n"      // b32 regs for fp16x2 mul operands
@@ -796,12 +796,12 @@ public:
       }
     } else if constexpr (kMmaIterationsB % 2 == 0) {
       const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(scales.data());
-      uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
-
       if constexpr (kHasOffset){
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
         // possible buffer over read 2 bytes here.
         const uint32_t* p = reinterpret_cast<const uint32_t*>(offsets.data());
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+        uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
+
         asm volatile(
           "{\n\t"
           "  .reg  .b32    rb0, rb1, rb2;\n"
@@ -823,6 +823,8 @@ public:
 #endif
       } else {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+        uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
+
         asm volatile(
           "{\n\t"
           "  .reg  .b32    rb0;\n"
