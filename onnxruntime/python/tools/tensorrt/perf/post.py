@@ -385,7 +385,19 @@ def get_identifier(commit_datetime, commit_hash, trt_version, branch, use_tensor
 
     date = str(commit_datetime.date())  # extract date only
     if use_tensorrt_oss_parser:
-        parser = "oss"
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.abspath(os.path.join(current_dir, '../../../../..'))
+        deps_txt_path = os.path.join(root_dir, 'cmake', 'deps.txt')
+        commit_head = ""
+        with open(deps_txt_path, "r") as file:
+            for line in file:
+                parts = line.split(";")
+                if parts[0] == "onnx_tensorrt":
+                    url = parts[1]
+                    commit = url.split("/")[-1]
+                    commit_head = commit[:6]
+                    break
+        parser = f"oss_{commit_head}"
     else:
         parser = "builtin"
     return "_".join([date, commit_hash, trt_version, parser, branch])
