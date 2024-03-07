@@ -386,8 +386,8 @@ def get_identifier(commit_datetime, commit_hash, trt_version, branch, use_tensor
     date = str(commit_datetime.date())  # extract date only
     if use_tensorrt_oss_parser:
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        root_dir = os.path.abspath(os.path.join(current_dir, '../../../../..'))
-        deps_txt_path = os.path.join(root_dir, 'cmake', 'deps.txt')
+        root_dir = os.path.abspath(os.path.join(current_dir, "../../../../.."))
+        deps_txt_path = os.path.join(root_dir, "cmake", "deps.txt")
         commit_head = ""
         with open(deps_txt_path) as file:
             for line in file:
