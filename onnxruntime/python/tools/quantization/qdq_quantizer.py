@@ -52,8 +52,6 @@ class QDQQuantizer(BaseQuantizer):
         model,
         per_channel,
         reduce_range,
-        mode,
-        static,
         weight_qType,
         activation_qType,
         tensors_range,

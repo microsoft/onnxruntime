@@ -523,8 +523,6 @@ def quantize_static(
             model,
             per_channel,
             reduce_range,
-            mode,
-            True,  # static
             weight_type,
             activation_type,
             tensors_range,
