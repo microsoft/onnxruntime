@@ -138,10 +138,7 @@ const createConcatProgramInfo =
     };
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
-  // find a none zero tensor as reference to determine the output shape
-  // choose input 0 as reference if  all input tensors are zero-sized.
   const inputs = context.inputs;
-
   const inputShape = inputs[0].dims;
   const adjustedAxis = attributes.axis + (attributes.axis < 0 ? inputShape.length : 0);
   validateInputs(inputs, adjustedAxis);
