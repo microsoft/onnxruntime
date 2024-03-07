@@ -219,7 +219,7 @@ stages:
           script: |
             set -e -x
             files=($(Build.ArtifactStagingDirectory)/${{ variables['buildConfig'] }}/dist/*.whl) && \
-            echo ${files[0]} && \
+            echo ${files[0]} && du -sh "${files[0]}" &&\
             (( $(wc -c < "${files[0]}") -  100*2014*1024 < 0 )) ||  (exit 1) && \
             python3 tools/ci_build/upload_python_package_to_azure_storage.py \
                 --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
