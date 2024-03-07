@@ -23,7 +23,7 @@ namespace cuda {
 
 __device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, half scale, half zp, half* output) {
   half2 scale_half2 = {scale, scale};
-  half zp_adjust = -scale * __short2half_rn(zp);
+  half zp_adjust = -scale * zp;
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
 
   alignas(16) half2 results[4];
@@ -158,7 +158,7 @@ Status Dequantize4Bits(
   int groups_per_K = k / block_size;
   int total_groups = n * groups_per_K;  // total elemenets in quant_data
   int groups_per_grid = static_cast<int>(CeilDiv(total_groups, groups_per_threadblock));
-  if (!reorder_idx) {
+  if (!reorder_idx || std::is_same_v<ZeroT, T>) {
     Dequantize4BitsKernel<T, ZeroT><<<groups_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         output,
         quant_data,
