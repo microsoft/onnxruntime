@@ -389,7 +389,7 @@ def get_identifier(commit_datetime, commit_hash, trt_version, branch, use_tensor
         root_dir = os.path.abspath(os.path.join(current_dir, '../../../../..'))
         deps_txt_path = os.path.join(root_dir, 'cmake', 'deps.txt')
         commit_head = ""
-        with open(deps_txt_path, "r") as file:
+        with open(deps_txt_path) as file:
             for line in file:
                 parts = line.split(";")
                 if parts[0] == "onnx_tensorrt":
