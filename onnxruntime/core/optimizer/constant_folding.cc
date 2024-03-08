@@ -28,15 +28,19 @@ ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
       execution_provider_(execution_provider) {
 }
 
-// We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
-// Shape to be able to be constant folded.
-static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
-  // Opset-15 Shape supports slicing using a 'start' and 'end' attribute
+static bool GetShapeInfo(Node& node, int64_t& start, int64_t& end, InlinedVector<int64_t>& dim_values) {
+  auto shape = node.InputDefs()[0]->Shape();
+  if (!shape) return false;
+  dim_values.clear();
+  for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
+    auto dim = shape->dim(dim_index);
+    dim_values.emplace_back(utils::HasDimValue(dim) ? dim.dim_value() : -1);
+  }
+
+  int64_t rank = static_cast<int64_t>(dim_values.size());
+  start = 0;
+  end = std::numeric_limits<int64_t>::max();
   const auto& shape_attributes = node.GetAttributes();
-
-  int64_t start = 0;
-  int64_t end = std::numeric_limits<int64_t>::max();
-
   for (const auto& attr : shape_attributes) {
     if (attr.first == "start") {
       start = attr.second.i();
@@ -44,53 +48,81 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
       end = attr.second.i();
     }
   }
+  start = start < 0 ? start + rank : start;
+  start = start < 0 ? 0 : ((start > rank) ? rank : start);
+  end = end < 0 ? end + rank : end;
+  end = end < 0 ? 0 : ((end > rank) ? rank : end);
+  if (end < start) end = start;
+  return true;
+}
 
-  auto shape = node.MutableInputDefs()[0]->Shape();
-  bool is_concrete_shape = true;
-  std::vector<int64_t> dim_values;
-  if (shape != nullptr) {
-    for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
-      auto dim = shape->dim(dim_index);
-      if (!utils::HasDimValue(dim)) {
-        is_concrete_shape = false;
-        break;
-      }
-      dim_values.push_back(dim.dim_value());
-    }
-  } else {
-    is_concrete_shape = false;
+// We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
+// Shape to be able to be constant folded.
+static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
+  int64_t start = 0;
+  int64_t end = std::numeric_limits<int64_t>::max();
+  InlinedVector<int64_t> dim_values;
+  if (!GetShapeInfo(node, start, end, dim_values) ||
+      std::any_of(dim_values.cbegin() + start, dim_values.cbegin() + end, [](int64_t dim) { return dim == -1; })) {
+    return false;
   }
 
-  if (is_concrete_shape) {
-    int64_t rank = static_cast<int64_t>(dim_values.size());
+  size_t slice_length = static_cast<size_t>(end - start);
+  ONNX_NAMESPACE::TensorProto shape_constant;
+  auto* constant_arg_out = node.MutableOutputDefs()[0];
+  shape_constant.set_name(constant_arg_out->Name());
+  shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  shape_constant.add_dims(slice_length);
+  shape_constant.set_raw_data(dim_values.data() + start, slice_length * sizeof(int64_t));
+  ONNX_NAMESPACE::TensorShapeProto result_shape;
+  result_shape.add_dim()->set_dim_value(slice_length);
+  constant_arg_out->SetShape(result_shape);
+  graph.AddInitializedTensor(shape_constant);
+  return true;
+}
 
-    // We ascertain the "true" starts/ends (if they were provided)
-    // Opset-15 Shape op supports slicing shape values
+// Handle Gather from a Shape node, and the indices are all selecting dimensions which have concrete values.
+static bool ConstantFoldGatherNode(Graph& graph, Node& node) {
+  if (node.GetInputEdgesCount() == 0) return false;
+  Node& pre_node = *graph.GetNode(node.InputNodesBegin()->Index());
+  if (pre_node.OpType() != "Shape" || pre_node.OutputDefs()[0]->Name() != node.InputDefs()[0]->Name()) return false;
+  int64_t start = 0;
+  int64_t end = std::numeric_limits<int64_t>::max();
+  InlinedVector<int64_t> dim_values;
+  if (!GetShapeInfo(pre_node, start, end, dim_values)) return false;
 
-    // Deal with negatives and clamp
-    start = start < 0 ? start + rank : start;
-    start = start < 0 ? 0 : ((start > rank) ? rank : start);
-
-    end = end < 0 ? end + rank : end;
-    end = end < 0 ? 0 : ((end > rank) ? rank : end);
-
-    int64_t slice_length = end - start;
-    size_t clamped_slice_length = slice_length < 0 ? 0 : static_cast<size_t>(slice_length);
-
-    ONNX_NAMESPACE::TensorProto shape_constant;
-    auto* constant_arg_out = node.MutableOutputDefs()[0];
-    shape_constant.set_name(constant_arg_out->Name());
-    shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    shape_constant.add_dims(clamped_slice_length);
-    shape_constant.set_raw_data(dim_values.data() + start,
-                                clamped_slice_length * sizeof(int64_t));
-    ONNX_NAMESPACE::TensorShapeProto result_shape;
-    result_shape.add_dim()->set_dim_value(clamped_slice_length);
-    constant_arg_out->SetShape(result_shape);
-    graph.AddInitializedTensor(shape_constant);
+  // Get indices input.
+  const ONNX_NAMESPACE::TensorProto* tensor_proto =
+      graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+  if (!tensor_proto || !utils::HasDataType(*tensor_proto) ||
+      tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto::INT64 || tensor_proto->dims_size() >= 2) {
+    return false;
+  }
+  size_t output_element_count = tensor_proto->dims_size() == 0 ? 1 : tensor_proto->dims()[0];
+  if (output_element_count == 0) return false;
+  InlinedVector<int64_t> output_values;
+  Initializer init_const{*tensor_proto, graph.ModelPath()};
+  const int64_t* indices_data = init_const.data<int64_t>();
+  int64_t sliced_rank = end - start;
+  for (size_t i = 0; i < output_element_count; ++i) {
+    int64_t index = indices_data[i];
+    if (index < 0) index += sliced_rank;
+    if (index < 0 || index >= sliced_rank || dim_values[index + start] == -1) return false;
+    output_values.push_back(dim_values[index + start]);
   }
 
-  return is_concrete_shape;  // convert to constant if this is true
+  ONNX_NAMESPACE::TensorProto gather_output_constant;
+  auto* gather_output_arg = node.MutableOutputDefs()[0];
+  gather_output_constant.set_name(gather_output_arg->Name());
+  gather_output_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  if (tensor_proto->dims_size() == 1) gather_output_constant.add_dims(static_cast<int64_t>(output_element_count));
+  gather_output_constant.set_raw_data(output_values.data(), output_element_count * sizeof(int64_t));
+  ONNX_NAMESPACE::TensorShapeProto gather_output_shape;
+  if (tensor_proto->dims_size() == 1)
+    gather_output_shape.add_dim()->set_dim_value(static_cast<int64_t>(output_element_count));
+  gather_output_arg->SetShape(gather_output_shape);
+  graph.AddInitializedTensor(gather_output_constant);
+  return true;
 }
 
 // This function inlines the appropriate subgraph. It does not literally fold it.
@@ -175,6 +207,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
     } else if (node->OpType().compare("Shape") == 0) {
       converted_to_constant = ConstantFoldShapeNode(graph, *node);
+    } else if (node->OpType().compare("Gather") == 0) {
+      converted_to_constant = ConstantFoldGatherNode(graph, *node);
     } else {
       InitializedTensorSet constant_inputs;
 
