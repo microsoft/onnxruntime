@@ -31,7 +31,7 @@ constexpr static ONNX_NAMESPACE::TensorProto_DataType GetDataType() {
   } else if constexpr (std::is_same<T, int64_t>::value) {
     return ONNX_NAMESPACE::TensorProto_DataType_INT64;
   } else {
-    static_assert(false, "Invalid data type requested for STFT decomposition");
+    throw std::logic_error("Invalid data type requested for STFT decomposition");
   }
 }
 
