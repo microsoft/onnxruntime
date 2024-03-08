@@ -14,9 +14,9 @@ from util.platform_helpers import is_windows
 
 
 class DefaultArgsRawHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    # copy _fill_test from RawDescriptionHelpFormatter as it's simpler to combine the 2 formatters
+    # copy _fill_text from RawDescriptionHelpFormatter as it's simpler to combine the 2 formatters
     def _fill_text(self, text, width, indent):
-        return ''.join(indent + line for line in text.splitlines(keepends=True))
+        return "".join(indent + line for line in text.splitlines(keepends=True))
 
 
 def _parse_args():
