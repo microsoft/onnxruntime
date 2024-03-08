@@ -13,6 +13,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import ORT117Thumbnail from '../../images/blogs/ort-1-17-thumbnail.png';
 	import WebGPUImage from '../../images/blogs/webgpu_blog_thumbnail.jpg';
+	import MistralImage from '../../images/blogs/mistral_thumbnail.png';
 	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
 	onMount(() => {
 		anime({
@@ -42,6 +43,15 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Accelerating Mistral inference with ONNX Runtime and Olive',
+			date: 'March 11th, 2024',
+			blurb:
+				'Learn how to use ONNX Runtime and Olive to 9X your Mistral model inference!',
+			link: 'blogs/accelerating-mistral',
+			image: MistralImage,
+			imgalt: 'Mistral prompt throughput comparisons for ONNX Runtime FP16 vs. torch.compile and llama.cpp'
+		},
+		{
 			title: 'ONNX Runtime Web unleashes generative AI in the browser using WebGPU',
 			date: 'February 29th, 2024',
 			blurb:
@@ -58,7 +68,9 @@
 			link: 'blogs/ort-1-17-release',
 			image: ORT117Thumbnail,
 			imgalt: 'ONNX Runtime 1.17 release logo'
-		},
+		}
+	];
+	let blogs = [
 		{
 			title: 'Accelerating Phi-2, CodeLlama, Gemma and other Gen AI models with ONNX Runtime',
 			date: 'February 26th, 2024',
@@ -67,9 +79,7 @@
 			link: 'blogs/accelerating-phi-2',
 			image: Phi2Image,
 			imgalt: 'Phi2 float16 token generation throughput comparison'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title: 'On-Device Training: Training a model in browser',
 			date: 'February 6th, 2024',
