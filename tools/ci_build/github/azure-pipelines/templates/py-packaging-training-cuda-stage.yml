@@ -48,7 +48,7 @@ parameters:
   default: false
 
 stages:
-- template: stages/py-packaging-training-cuda-stage-steps.yml
+- template: py-packaging-training-cuda-stage-steps.yml
   parameters:
     build_py_parameters: ${{ parameters.build_py_parameters }}
     torch_version: ${{ parameters.torch_version }}
