@@ -771,8 +771,14 @@ namespace Dml
                 !native16BitShaderOpsSupported &&
                 IsCustomOpShader(node))
             {
-                nodeContainsSupportedDataTypes = false;
-                return;
+                // STFT is a special case since it has a dml ep registered
+                // graph transformation that will decompose fp16 STFT into convolution
+                // and so it is OK to register for fp16.
+                if (strcmp("STFT", node.OpType().c_str()) != 0)
+                {
+                    nodeContainsSupportedDataTypes = false;
+                    return;
+                }
             }
 
             // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
