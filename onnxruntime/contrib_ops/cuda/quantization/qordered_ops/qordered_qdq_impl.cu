@@ -389,7 +389,7 @@ QOrderDequantizeKernel_Strict(const int8_t* __restrict__ src, const __half* __re
   }
 }
 
-Status QOrderDequantize_Strict(cudaStream_t stream, const cudaDeviceProp& device_prop,
+Status QOrderDequantize_Strict(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/,
                                const int8_t* src, __half* dst, float scale, size_t N) {
   ORT_RETURN_IF(N & 0x3LL, "N can not divide by 4!");
 

@@ -76,6 +76,10 @@ jobs:
 
     - name: image
       value: ort-image-$(Build.BuildId)
+    
+    - name: parser
+      ${{ if eq(parameters.UseTensorrtOssParser, true) }}:
+        value: --use_tensorrt_oss_parser $(parameters.UseTensorrtOssParser) }}
 
   steps:
     - ${{ if and(eq(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:
@@ -155,7 +159,7 @@ jobs:
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database)
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
     
     - template: templates/component-governance-component-detection-steps.yml
       parameters :

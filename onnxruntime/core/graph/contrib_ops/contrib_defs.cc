@@ -3474,6 +3474,8 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
               /*min_arity*/ 1)
       .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
+      .Attr("cpu_input_args", "CPU input argument indices.", AttributeProto::INTS, false)
+      .Attr("cpu_output_args", "CPU output argument indices.", AttributeProto::INTS, false)
       .TypeConstraint("T", OpSchema::all_tensor_types_ir4(),
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif

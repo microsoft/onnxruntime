@@ -109,6 +109,50 @@ Status IsInf::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+// IsNan
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    IsNaN,
+    kOnnxDomain,
+    9,
+    12,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", BuildKernelDefConstraints<ISNAN_OPSET9_FLOATS>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
+    IsNaN);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    IsNaN,
+    kOnnxDomain,
+    13,
+    19,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", BuildKernelDefConstraints<ISNAN_OPSET13_FLOATS>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
+    IsNaN);
+
+ONNX_OPERATOR_KERNEL_EX(
+    IsNaN,
+    kOnnxDomain,
+    20,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", BuildKernelDefConstraints<ISNAN_OPSET20_FLOATS>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
+    IsNaN);
+
+Status IsNaN::ComputeInternal(OpKernelContext* context) const {
+  UnaryElementwisePreparation p;
+  ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));
+
+  Explicit_Impl_IsNan(Stream(context), p.input_tensor->GetElementType(), p.input_tensor->DataRaw(),
+                      p.output_tensor->MutableData<bool>(),
+                      p.input_tensor->Shape().Size());
+
+  return Status::OK();
+}
+
 #define UNARY_OP_VERSIONED_TYPED(name, startver, endver, T) \
   UNARY_ELEMENTWISE_REGISTER_VERSIONED_KERNEL(name, startver, endver, T)
 

@@ -131,5 +131,11 @@ class IsInf final : public UnaryElementwise {
   int opset_;
 };
 
+class IsNaN : public UnaryElementwise {
+ public:
+  explicit IsNaN(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime
