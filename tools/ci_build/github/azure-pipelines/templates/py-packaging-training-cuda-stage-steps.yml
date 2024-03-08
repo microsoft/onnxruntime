@@ -2,7 +2,7 @@ parameters:
   build_py_parameters: ''
   torch_version: ''
   opset_version: ''
-  cuda_version:
+  cuda_version: ''
   cmake_cuda_architectures: ''
   docker_file: ''
   agent_pool: ''
@@ -52,9 +52,9 @@ stages:
             Dockerfile: tools/ci_build/github/linux/docker/${{ parameters.docker_file }}
             Context: tools/ci_build/github/linux/docker
             DockerBuildArgs: >-
-              --build-arg TORCH_VERSION=$(TorchVersion)
-              --build-arg OPSET_VERSION=$(OpsetVersion)
-              --build-arg PYTHON_VERSION=$(PythonVersion)
+              --build-arg TORCH_VERSION=${{ parameters.torch_version }}
+              --build-arg OPSET_VERSION=${{ parameters.opset_version }}
+              --build-arg PYTHON_VERSION=${{ parameters.python_version }}
               --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
               --build-arg BUILD_UID=$(id -u)
               --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
@@ -102,7 +102,7 @@ stages:
                     --enable_onnx_tests \
                     ${{ parameters.build_py_parameters }} \
                     --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_architectures }}' onnxruntime_BUILD_UNIT_TESTS=OFF \
-                    --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
+                    --use_cuda --cuda_version=${{ parameters.cuda_version }} --cuda_home=/usr/local/cuda-${{ parameters.cuda_version }} --cudnn_home=/usr/local/cuda-${{ parameters.cuda_version }};
             workingDirectory: $(Build.SourcesDirectory)
 
         - task: CmdLine@2
