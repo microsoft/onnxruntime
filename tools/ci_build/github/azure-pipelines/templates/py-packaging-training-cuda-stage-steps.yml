@@ -54,7 +54,7 @@ stages:
             DockerBuildArgs: >-
               --build-arg TORCH_VERSION=$(TorchVersion)
               --build-arg OPSET_VERSION=$(OpsetVersion)
-              --build-arg PYTHON_VERSION=$(python_version)
+              --build-arg PYTHON_VERSION=$(PythonVersion)
               --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
               --build-arg BUILD_UID=$(id -u)
               --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
