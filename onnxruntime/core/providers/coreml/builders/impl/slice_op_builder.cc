@@ -1,39 +1,31 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/coreml/builders/impl/base_op_builder.h"
-
 #include "core/optimizer/initializer.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/providers/shared/utils/utils.h"
 
-#if defined(__APPLE__)
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
-
 namespace onnxruntime::coreml {
 
 class SliceOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- private:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
- private:
   int GetMinSupportedOpSet(const Node& /* node */) const override {
     // Before Slice-10, some inputs were attributes instead. We don't support that for now.
     return 10;
   }
 
-  bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                              const logging::Logger& logger) const override;
+
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& builder_params,
                          const logging::Logger& logger) const override;
 };
@@ -62,7 +54,7 @@ Status PrepareSliceComputeMetadataFromConstantInitializers(const Node& slice_nod
       return Status::OK();
     }
 
-    const auto* tensor_proto = graph_viewer.GetConstantInitializer(input_defs[input_idx]->Name(), true);
+    const auto* tensor_proto = graph_viewer.GetConstantInitializer(input_defs[input_idx]->Name());
     ORT_RETURN_IF_NOT(tensor_proto, "Failed to get constant initializer.");
     Initializer unpacked_tensor(*tensor_proto, graph_viewer.ModelPath());
     const auto data_type = unpacked_tensor.data_type();
@@ -107,9 +99,6 @@ bool ValidateSliceComputeMetadataForCoreML(const SliceOp::PrepareForComputeMetad
 }
 }  // namespace
 
-// Add operator related
-#if defined(__APPLE__)
-
 void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs = node.InputDefs();
 
@@ -132,7 +121,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   ORT_RETURN_IF_ERROR(PrepareSliceComputeMetadataFromConstantInitializers(node, model_builder.GetGraphViewer(),
                                                                           compute_metadata));
 
-  auto layer = CreateNNLayer(model_builder, node);
+  auto layer = model_builder.CreateNNLayer(node);
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
   auto* slice_static = layer->mutable_slicestatic();
@@ -163,10 +152,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-#endif  // defined(__APPLE__)
-
-// Operator support related
-bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const {
+bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
+                                            const logging::Logger& logger) const {
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type, logger))
     return false;

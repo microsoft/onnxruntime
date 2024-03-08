@@ -160,11 +160,15 @@ Status ModelBuilder::RegisterInitializers() {
       }
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-        case ONNX_NAMESPACE::TensorProto_DataType_INT8:
         case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
           desc.set("type", emscripten::val("uint8"));
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                                reinterpret_cast<uint8_t*>(tensor_ptr))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+          desc.set("type", emscripten::val("int8"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<int8_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
@@ -318,10 +322,13 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint8_t),
                                                            reinterpret_cast<const uint8_t*>(dest))};
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int8_t),
+                                                           reinterpret_cast<const int8_t*>(dest))};
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint16_t),
@@ -379,7 +386,8 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   for (auto& name : output_names_) {
     named_operands.set(name, wnn_operands_.at(name));
   }
-  emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("buildSync", named_operands);
+
+  emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("build", named_operands).await();
   if (!wnn_graph.as<bool>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to build WebNN graph.");
   }
@@ -388,13 +396,10 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   model->SetOutputs(std::move(output_names_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // Pre-allocate the input and output tensors for the WebNN graph
-  // when WebAssembly multi-threads is enabled since WebNN API only
-  // accepts non-shared ArrayBufferView.
-  // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
+  // Wasm heap is not transferrable, we have to pre-allocate the MLNamedArrayBufferViews
+  // for inputs and outputs because they will be transferred after compute() done.
+  // https://webmachinelearning.github.io/webnn/#api-mlcontext-async-execution
   model->AllocateInputOutputBuffers();
-#endif
   return Status::OK();
 }
 

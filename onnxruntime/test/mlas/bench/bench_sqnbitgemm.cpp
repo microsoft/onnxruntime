@@ -61,10 +61,11 @@ void SQNBITGEMM(benchmark::State& state) {
   }
 
   std::unique_ptr<std::byte[]> PackedQuantBData;
-  if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen);
+  if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
-    MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, QuantBData.data(), PackedQuantBData.get(), tp.get());
+    MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
+                                 tp.get());
   }
 
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
@@ -87,7 +88,9 @@ void SQNBITGEMM(benchmark::State& state) {
   }
 }
 
-static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
+static void SQ4BitGemmArgs(benchmark::internal::Benchmark* b) {
+  constexpr size_t BlkBitWidth = 4;
+
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "ComputeType"});
 
   ArgsProductWithFilter(b,
@@ -96,80 +99,17 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
                          {1, 1024, 2048},                          // M
                          {4096, 11008},                            // N
                          {4096, 11008},                            // K
-                         {8},                                      // Threads
+                         {1, 8},                                   // Threads
                          {int64_t{false}, int64_t{true}},          // Symmetric
                          {int64_t{CompFp32}, int64_t{CompInt8}}},  // ComputeType
 
-                        [](const std::vector<int64_t>& args) {
+                        [&](const std::vector<int64_t>& args) {
                           return MlasIsSQNBitGemmAvailable(
-                              // M, N, K
-                              narrow<size_t>(args[1]), narrow<size_t>(args[2]), narrow<size_t>(args[3]),
                               // BlkBitWidth, BlkLen
-                              4, narrow<size_t>(args[0]),
+                              BlkBitWidth, narrow<size_t>(args[0]),
                               // ComputeType
                               static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(args[6]));
                         });
 }
 
-BENCHMARK(SQNBITGEMM<4>)->Apply(SQNBitGemmArgs)->UseRealTime();
-
-#if defined(MLAS_JBLAS)
-
-void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_SQNBIT_COMPUTE_TYPE cmp_type) {
-  if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
-  if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
-  if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");
-  if (state.range(3) <= 0) throw std::invalid_argument("Threads must greater than 0!");
-
-  const size_t M = static_cast<size_t>(state.range(0));
-  const size_t N = static_cast<size_t>(state.range(1));
-  const size_t K = static_cast<size_t>(state.range(2));
-  const size_t threads = static_cast<size_t>(state.range(3));
-  block_size = block_size == -1 ? static_cast<int>(K) : block_size;
-  const size_t pack_b_size = MlasNBitsGemmPackBSize(N, K, block_size, 4, is_asym, cmp_type);
-
-  OrtThreadPoolParams tpo;
-  tpo.thread_pool_size = static_cast<int>(threads);
-  tpo.auto_set_affinity = true;
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(onnxruntime::concurrency::CreateThreadPool(
-      &onnxruntime::Env::Default(), tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
-
-  auto A1 = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
-  auto B1 = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * K / 2), 0, 255);
-  auto blk_num = static_cast<size_t>((K + block_size - 1) / block_size);
-  auto B_scale = RandomVectorUniform(static_cast<size_t>(N * blk_num), 0.003f, 0.005f);
-  std::vector<float> C1(static_cast<size_t>(M * N));
-  auto B_zp = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * blk_num / 2), 0, 255);
-
-  std::vector<int8_t> B1_packed(pack_b_size);
-  MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, K, block_size,
-                     4, is_asym, true, cmp_type, tp.get());
-
-  MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS params1;
-  params1.A = A1.data();
-  params1.lda = K;
-  params1.C = C1.data();
-  params1.ldc = N;
-  params1.B = B1_packed.data();
-  std::vector<int8_t> workspace(static_cast<size_t>(M <= 32 ? 32 : M) * K * 4);
-  MlasSQNBitsGemmBatchPackedB(M, N, K, 1, &params1, workspace.data(), tp.get());
-
-  for (auto _ : state) {
-    MlasSQNBitsGemmBatchPackedB(M, N, K, 1, &params1, workspace.data(), tp.get());
-  }
-}
-
-static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
-  b->ArgNames({"M", "N", "K", "Threads"});
-  b->ArgsProduct({{1, 1024, 2048}, {4096, 11008}, {4096, 11008}, {8}});
-}
-
-BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G32SymInt8, 32, false, CompInt8)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G128SymInt8, 128, false, CompInt8)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4GPerNSymInt8, -1, false, CompInt8)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G32SymFp32, 32, false, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G128SymFp32, 128, false, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4GPerNSymFp32, -1, false, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G32AsymFp32, 32, true, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
-
-#endif  // defined(MLAS_JBLAS)
+BENCHMARK(SQNBITGEMM<4>)->Apply(SQ4BitGemmArgs)->UseRealTime();

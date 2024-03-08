@@ -111,7 +111,7 @@ export declare namespace InferenceSession {
     optimizedModelFilePath?: string;
 
     /**
-     * Wether enable profiling.
+     * Whether enable profiling.
      *
      * This setting is a placeholder for a future use.
      */
@@ -155,6 +155,12 @@ export declare namespace InferenceSession {
     preferredOutputLocation?: OnnxValueDataLocation|{readonly [outputName: string]: OnnxValueDataLocation};
 
     /**
+     * Whether enable graph capture.
+     * This setting is available only in ONNXRuntime Web for WebGPU EP.
+     */
+    enableGraphCapture?: boolean;
+
+    /**
      * Store configurations for a session. See
      * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_session_options_config_keys.h
@@ -181,7 +187,7 @@ export declare namespace InferenceSession {
 
   // Currently, we have the following backends to support execution providers:
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
-  // Backend WebAssembly: supports 'cpu', 'wasm', 'xnnpack' and 'webnn'.
+  // Backend WebAssembly: supports 'cpu', 'wasm', 'webgpu' and 'webnn'.
   // Backend ONNX.js: supports 'webgl'.
   // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
   interface ExecutionProviderOptionMap {

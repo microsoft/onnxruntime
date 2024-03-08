@@ -5,8 +5,9 @@
 #include <ctime>
 #include <cudnn.h>
 #include <cublas_v2.h>
-#include "NvInfer.h"
-#include "NvOnnxParser.h"
+
+#include "core/providers/tensorrt/nv_includes.h"
+
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
@@ -149,7 +150,6 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
-  bool sync_stream_after_enqueue = false;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
@@ -193,7 +193,6 @@ struct TensorrtShortFuncState {
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
-  bool sync_stream_after_enqueue = false;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
   OrtMutex* tensorrt_mu_ptr = nullptr;
@@ -235,8 +234,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  Status OnRunStart() override;
-  Status OnRunEnd(bool sync_stream) override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   ProviderOptions GetProviderOptions() const override {
     return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
@@ -251,8 +250,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
   bool IsGraphCaptureEnabled() const override;
-  bool IsGraphCaptured() const override;
-  Status ReplayGraph() override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  Status ReplayGraph(int graph_annotation_id) override;
 
  private:
   mutable TensorrtExecutionProviderInfo info_;
@@ -301,8 +300,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   // For create/dump EP context node model
   bool dump_ep_context_model_ = false;
+  std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
-  bool ep_context_compute_capability_enable_ = true;
+  std::string ctx_model_path_;
+  std::string ep_cache_context_attr_;
+  std::string engine_cache_relative_path_to_context_model_dir;
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
@@ -332,8 +334,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   cudnnHandle_t external_cudnn_handle_ = nullptr;
   cublasHandle_t external_cublas_handle_ = nullptr;
 
-  // Call cudaStreamSynchronize() after TRT enqueueV2()/enqueueV3()
-  mutable bool sync_stream_after_enqueue_ = false;
+  // Call cudaStreamSynchronize() after TRT enqueueV3()
+  mutable bool sync_stream_after_enqueue_ = true;
 
   CUDAGraph cuda_graph_;
   bool is_graph_captured_ = false;
@@ -371,10 +373,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
     bool IsGraphCaptureAllowed() const;
-    void CaptureBegin();
-    void CaptureEnd();
-    bool IsGraphCaptured() const;
-    Status ReplayGraph();
+    void CaptureBegin(int graph_annotation_id);
+    void CaptureEnd(int graph_annotation_id);
+    bool IsGraphCaptured(int graph_annotation_id) const;
+    Status ReplayGraph(int graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:
@@ -538,8 +540,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                         std::vector<NodeComputeInfo>& node_compute_funcs);
 
   bool IsGraphCaptureAllowed() const;
-  void CaptureBegin();
-  void CaptureEnd();
+  void CaptureBegin(int graph_annotation_id);
+  void CaptureEnd(int graph_annotation_id);
   void IncrementRegularRunCountBeforeGraphCapture();
 
   /**

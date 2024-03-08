@@ -87,40 +87,28 @@ class QDQQuantizer(ONNXQuantizer):
         # because those ops may be followed by nodes that require high resolution inputs.
         # Adding QDQ for those ops' output may end up with worse accuracy.
         # So, we don't recommend to add QDQ to node's output under such condition.
-        self.op_types_to_exclude_output_quantization = (
-            []
-            if "OpTypesToExcludeOutputQuantization" not in extra_options
-            else extra_options["OpTypesToExcludeOutputQuantization"]
-        )
+        self.op_types_to_exclude_output_quantization = extra_options.get("OpTypesToExcludeOutputQuantization", [])
 
         # We do quantization on Dequantizelinear's input to remove Quantizelinear for weight as an optimization.
         # In some cases, for example QDQ BERT model for TensorRT, QDQ should always appear as a pair.
         # Therefore, we need to disable this optimization and add qdq pair to weight.
-        self.add_qdq_pair_to_weight = (
-            False if "AddQDQPairToWeight" not in extra_options else extra_options["AddQDQPairToWeight"]
-        )
+        self.add_qdq_pair_to_weight = extra_options.get("AddQDQPairToWeight", False)
 
         # Some scenarios do not need the bias quantized. For example, in the case of Quantization Aware Training,
         # quantizing the bias is not needed. This is because in QAT, all model parameters are expected to be in
         # floating point format. To that end, we can use the FakeQuant operator for weights and activations that
         # can always have QDQ pairs (by using AddQDQPairToWeight). But for biases in a quantized model, we can't use
         # FakeQuant because it only ever appears before a DQ (since it is quantized as int32).
-        self.quantize_bias = True if "QuantizeBias" not in extra_options else extra_options["QuantizeBias"]
+        self.quantize_bias = extra_options.get("QuantizeBias", True)
 
         # The default behavior is that multiple nodes can share a QDQ pair as their inputs.
         # In TRT, QDQ pair can`t be shared between nodes, so it will create dedicated QDQ pairs for each node.
-        self.dedicated_qdq_pair = (
-            False if "DedicatedQDQPair" not in extra_options else extra_options["DedicatedQDQPair"]
-        )
+        self.dedicated_qdq_pair = extra_options.get("DedicatedQDQPair", False)
         if self.dedicated_qdq_pair:
             self.tensor_to_its_receiving_nodes = {}
 
         # Let user set channel axis for specific op type and it's effective only when per channel quantization is supported and per_channel is True.
-        self.qdq_op_type_per_channel_support_to_axis = (
-            {}
-            if "QDQOpTypePerChannelSupportToAxis" not in extra_options
-            else extra_options["QDQOpTypePerChannelSupportToAxis"]
-        )
+        self.qdq_op_type_per_channel_support_to_axis = extra_options.get("QDQOpTypePerChannelSupportToAxis", {})
 
         self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else None
 
@@ -128,7 +116,10 @@ class QDQQuantizer(ONNXQuantizer):
         # if the activation or weight types are 16-bit integers.
         # TODO: Remove this override (and use only the 'UseQDQContribOps' option) if/when ONNX adds 16-bit support.
         int16_types = (TensorProto.UINT16, TensorProto.INT16)
-        if not self.qdq_op_domain and (self.activation_qType in int16_types or self.weight_qType in int16_types):
+        overrides_have_int16 = any(t in int16_types for t in self.tensor_quant_override_types)
+        if not self.qdq_op_domain and (
+            self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
+        ):
             logging.warning(
                 "ONNX QuantizeLinear and DequantizeLinear operators do not support 16-bit integer quantization types. "
                 f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
@@ -270,6 +261,8 @@ class QDQQuantizer(ONNXQuantizer):
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
+        if self.qdq_op_domain == ms_domain:
+            self.model.set_opset_import(ms_domain, 1)
 
         return self.model.model
 

@@ -56,7 +56,7 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    required_minor_version = 7
+    required_minor_version = 8
     if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
         raise UsageError(
             f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
@@ -329,6 +329,12 @@ def parse_arguments():
         "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument(
+        "--rv64",
+        action="store_true",
+        help="[cross-compiling] Create riscv64 makefiles. Requires --update and no existing cache "
+        "CMake setup. Delete CMakeCache.txt if needed",
+    )
+    parser.add_argument(
         "--arm",
         action="store_true",
         help="[cross-compiling] Create ARM makefiles. Requires --update and no existing cache "
@@ -350,6 +356,18 @@ def parse_arguments():
         "--buildasx",
         action="store_true",
         help="[cross-compiling] Create ARM64X Binary.",
+    )
+    parser.add_argument(
+        "--riscv_toolchain_root",
+        type=str,
+        default="",
+        help="Path to RISC-V toolchain root dir. e.g. --riscv_toolchain_root=$HOME/riscv-tools/",
+    )
+    parser.add_argument(
+        "--riscv_qemu_path",
+        type=str,
+        default="",
+        help="Path to RISC-V qemu. e.g. --riscv_qemu_path=$HOME/qemu-dir/qemu-riscv64",
     )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
@@ -424,8 +442,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer. Windows/Linux/MacOS only."
     )
-    # The following feature requires installing some special Visual Studio components that do not get installed by default. Therefore the options is default OFF.
-    parser.add_argument("--enable_qspectre", action="store_true", help="Enable Qspectre. Windows only.")
+    # The following flag is mostly designed to be used in ONNX Runtime's Azure DevOps/Github build pipelines. Its main purpose is to make the built binaries pass BinSkim scan.
+    parser.add_argument("--use_binskim_compliant_compile_flags", action="store_true", help="Use preset compile flags.")
     parser.add_argument(
         "--disable_memleak_checker",
         action="store_true",
@@ -786,11 +804,6 @@ def get_linux_distro():
         return "", ""
 
 
-def is_ubuntu_1604():
-    dist, ver = get_linux_distro()
-    return dist == "Ubuntu" and ver.startswith("16.04")
-
-
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
@@ -842,15 +855,6 @@ def run_subprocess(
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
-
-
-def is_docker():
-    path = "/proc/self/cgroup"
-    return (
-        os.path.exists("/.dockerenv")
-        or os.path.isfile(path)
-        and any("docker" in line for line in open(path))  # noqa: SIM115
-    )
 
 
 def install_python_deps(numpy_version=""):
@@ -1091,6 +1095,19 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
     ]
 
+    if args.rv64:
+        add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
+        if not args.riscv_toolchain_root:
+            raise BuildError("The --riscv_toolchain_root option is required to build for riscv64.")
+        if not args.skip_tests and not args.riscv_qemu_path:
+            raise BuildError("The --riscv_qemu_path option is required for testing riscv64.")
+
+        cmake_args += [
+            "-DRISCV_TOOLCHAIN_ROOT:PATH=" + args.riscv_toolchain_root,
+            "-DRISCV_QEMU_PATH:PATH=" + args.riscv_qemu_path,
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
+        ]
+
     # By default on Windows we currently support only cross compiling for ARM/ARM64
     # (no native compilation supported through this script).
     if args.arm64 or args.arm64ec or args.arm:
@@ -1219,9 +1236,15 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # TensorRT and OpenVINO providers currently only support
-    # full_protobuf option.
-    if args.use_full_protobuf or args.use_tensorrt or args.use_openvino or args.use_vitisai or args.gen_doc:
+    # VitisAI and OpenVINO providers currently only support
+    # full_protobuf option. TensorRT provider only requires it if built with oss_parser
+    if (
+        args.use_full_protobuf
+        or (args.use_tensorrt and args.use_tensorrt_oss_parser)
+        or args.use_openvino
+        or args.use_vitisai
+        or args.gen_doc
+    ):
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:
@@ -1297,10 +1320,6 @@ def generate_build_tree(
     if args.use_webnn:
         if not args.build_wasm:
             raise BuildError("WebNN is only available for WebAssembly build.")
-        if args.disable_rtti:
-            # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
-            # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/16911
-            raise BuildError("WebNN is not supported with RTTI disabled.")
         cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
 
     if args.use_snpe:
@@ -1432,6 +1451,13 @@ def generate_build_tree(
             # tools need to use the symbols.
             add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
 
+        if number_of_parallel_jobs(args) > 0:
+            # https://devblogs.microsoft.com/cppblog/improved-parallelism-in-msbuild/
+            # NOTE: this disables /MP if set (according to comments on blog post).
+            # By default, MultiProcMaxCount and CL_MPCount value are equal to the number of CPU logical processors.
+            # See logic around setting CL_MPCount below
+            cmake_args += ["-DCMAKE_VS_GLOBALS=UseMultiToolTask=true;EnforceProcessCountAcrossBuilds=true"]
+
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
@@ -1471,24 +1497,29 @@ def generate_build_tree(
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
                     f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
                 ]
-    cflags = None
-    cxxflags = None
-    ldflags = None
+
     for config in configs:
+        cflags = []
+        cxxflags = None
+        ldflags = None
+        cudaflags = []
+        if is_windows() and not args.ios and not args.android and not args.build_wasm:
+            njobs = number_of_parallel_jobs(args)
+            if njobs > 1:
+                if args.parallel == 0:
+                    cflags += ["/MP"]
+                else:
+                    cflags += ["/MP%d" % njobs]
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
-            "CFLAGS" not in os.environ
-            and "CXXFLAGS" not in os.environ
+            (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
             and not args.ios
             and not args.android
             and not args.build_wasm
-            and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
-                cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
-                if args.parallel:
-                    cflags += ["/MP"]
+                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
@@ -1500,24 +1531,34 @@ def generate_build_tree(
                 # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
-                if args.enable_qspectre:
-                    cflags += ["/Qspectre"]
+                # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
+                if not args.enable_address_sanitizer:
+                    # Also enable a special perf patch that was made for Intel Meteor Lake mobile CPUs
+                    cflags += ["/Qspectre", "/DONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
                     cflags += ["/O2", "/Ob1", "/DNDEBUG"]
                 elif config == "Debug":
                     cflags += ["/Ob0", "/Od", "/RTC1"]
-                    if args.enable_address_sanitizer:
-                        cflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
                     cflags += ["/O1", "/Ob1", "/DNDEBUG"]
+                if args.enable_address_sanitizer:
+                    cflags += ["/fsanitize=address"]
                 cxxflags = cflags.copy()
-                if not args.disable_exceptions:
-                    cxxflags += ["/EHsc"]
+                if args.use_cuda:
+                    # On Windows, nvcc passes /EHsc to the host compiler by default.
+                    cuda_compile_flags_str = ""
+                    for compile_flag in cflags:
+                        if compile_flag.startswith("/D"):
+                            cudaflags.append(compile_flag)
+                        else:
+                            cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
+                    if len(cuda_compile_flags_str) != 0:
+                        cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
             elif is_linux() or is_macOS():
                 if is_linux():
-                    ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
+                    ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                 else:
                     ldflags = []
                 if config == "Release":
@@ -1558,9 +1599,14 @@ def generate_build_tree(
                     ]
                 if is_linux() and platform.machine() == "x86_64":
                     # The following flags needs GCC 8 and newer
-                    cflags += ["-fstack-clash-protection", "-fcf-protection"]
+                    cflags += ["-fstack-clash-protection"]
+                    if not args.rv64:
+                        cflags += ["-fcf-protection"]
                 cxxflags = cflags.copy()
-
+                if args.use_cuda:
+                    cudaflags = cflags.copy()
+        if cxxflags is None and cflags is not None and len(cflags) != 0:
+            cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1575,11 +1621,13 @@ def generate_build_tree(
             )
         preinstalled_dir = Path(build_dir) / config
         temp_cmake_args = cmake_args.copy()
-        if cflags is not None and cxxflags is not None:
+        if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
             ]
+        if cudaflags is not None and len(cudaflags) != 0:
+            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT=%s" % (" ".join(cudaflags))]
         if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
@@ -1590,9 +1638,11 @@ def generate_build_tree(
             [
                 *temp_cmake_args,
                 f"-DCMAKE_BUILD_TYPE={config}",
-                f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
-                else "",
+                (
+                    f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
+                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                    else ""
+                ),
             ],
             cwd=config_build_dir,
             cuda_home=cuda_home,
@@ -1619,15 +1669,24 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         build_tool_args = []
         if num_parallel_jobs != 1:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
+                # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
+                # not maxing out CL_MPCount
+                # Start by having one less than num_parallel_jobs (default is num logical cores),
+                # limited to a range of 1..3
+                # that gives maxcpucount projects building using up to 3 cl.exe instances each
                 build_tool_args += [
                     f"/maxcpucount:{num_parallel_jobs}",
+                    # one less than num_parallel_jobs, at least 1, up to 3
+                    f"/p:CL_MPCount={min(max(num_parallel_jobs - 1, 1), 3)}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
-                    f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
             elif args.cmake_generator == "Xcode":
-                # CMake will generate correct build tool args for Xcode
-                cmd_args += ["--parallel", str(num_parallel_jobs)]
+                build_tool_args += [
+                    "-parallelizeTargets",
+                    "-jobs",
+                    str(num_parallel_jobs),
+                ]
             else:
                 build_tool_args += [f"-j{num_parallel_jobs}"]
 
@@ -2048,7 +2107,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
                         run_subprocess(
-                            [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=SCRIPT_DIR
+                            [sys.executable, "-m", "pip", "install", "-r", "requirements-transformers-test.txt"],
+                            cwd=SCRIPT_DIR,
                         )
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
                         # Restore initial numpy/protobuf version in case other tests use it
@@ -2385,16 +2445,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
-def is_cross_compiling_on_apple(args):
-    if not is_macOS():
-        return False
-    if args.ios:
-        return True
-    if args.osx_arch != platform.machine():
-        return True
-    return False
-
-
 def generate_documentation(source_dir, build_dir, configs, validate):
     # Randomly choose one build config
     config = next(iter(configs))
@@ -2511,11 +2561,15 @@ def main():
     if args.build_nuget and cross_compiling:
         raise BuildError("Currently nuget package creation is not supported while cross-compiling")
 
-    if args.enable_pybind and args.disable_rtti:
-        raise BuildError("Python bindings use typeid so you can't disable RTTI")
+    if args.enable_pybind:
+        if args.disable_rtti:
+            raise BuildError("Python bindings use typeid so you can't disable RTTI")
 
-    if args.enable_pybind and args.disable_exceptions:
-        raise BuildError("Python bindings require exceptions to be enabled.")
+        if args.disable_exceptions:
+            raise BuildError("Python bindings require exceptions to be enabled.")
+
+        if args.minimal_build is not None:
+            raise BuildError("Python bindings are not supported in a minimal build.")
 
     if args.nnapi_min_api:
         if not args.use_nnapi:
@@ -2551,7 +2605,7 @@ def main():
         raise BuildError("Using --get-api-doc requires a single build config")
 
     # Disabling unit tests for GPU on nuget creation
-    if args.use_openvino != "CPU_FP32" and args.build_nuget:
+    if args.use_openvino and args.use_openvino != "CPU_FP32" and args.build_nuget:
         args.test = False
 
     # GDK builds don't support testing
@@ -2708,12 +2762,6 @@ def main():
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-        if is_ubuntu_1604():
-            if args.arm or args.arm64:
-                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
-            if not is_docker() and not args.use_acl and not args.use_armnn:
-                install_python_deps()
 
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)

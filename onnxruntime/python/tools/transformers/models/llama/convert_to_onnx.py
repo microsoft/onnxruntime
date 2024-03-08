@@ -4,6 +4,8 @@ import argparse
 import logging
 import os
 import shutil
+import subprocess
+import sys
 from itertools import chain
 
 import onnx
@@ -408,6 +410,31 @@ def optimize_export(config: AutoConfig, input_path: str, output_path: str, remov
         only_onnxruntime=False,
     )
     model_opt.save_model_to_file(output_path, use_external_data_format=True)
+
+    # Run symbolic shape inference on optimized model to avoid shape errors during runtime
+    # Ex: Before attention fusion, RotaryEmbedding assumes a 4D input and produces a 4D output.
+    # After attention fusion, RotaryEmbedding expects a 3D input and produces a 3D output.
+    wheel_cmd = [sys.executable, "-m", "onnxruntime.tools.symbolic_shape_infer"]
+    source_cmd = [sys.executable, "../symbolic_shape_infer.py"]
+    symbolic_shape_infer_args = [
+        "--input",
+        output_path,
+        "--output",
+        output_path,
+        "--auto_merge",
+        "--save_as_external_data",
+        "--all_tensors_to_one_file",
+        "--external_data_location",
+        os.path.basename(output_path) + ".data",
+    ]
+
+    file_path = os.path.dirname(__file__)
+    if os.path.exists(os.path.join(file_path, "../../../tools/symbolic_shape_infer.py")):
+        main_cmd = wheel_cmd
+    else:
+        main_cmd = source_cmd
+    subprocess.run(main_cmd + symbolic_shape_infer_args)  # noqa: PLW1510
+
     logger.info(f"The ONNX model at {input_path} has been successfully optimized and saved at {output_path}!")
     if remove_model:
         remove_existing_model(input_path)
@@ -754,6 +781,13 @@ def get_args():
         action="store_true",
         help="Avoid exporting model, only apply quantizations and optimizations to existing model exported from optimum.",
     )
+
+    parser.add_argument(
+        "--small_gpu",
+        action="store_true",
+        help="Load the llama in GPU every time for parity_check if it's running in a machine which GPU memory < 36GB.",
+    )
+
     parser.set_defaults(optimize_optimum=False)
 
     args = parser.parse_args()
@@ -761,9 +795,7 @@ def get_args():
 
 
 def main():
-    if version.parse(torch.__version__) < version.parse("2.2.0") and "2.2.0.dev" not in torch.__version__:
-        # Second predicate is for comparing nightly (ex: 2.2.0.dev20230920 vs 2.2.0) since first predicate is false
-        # in that scenario. It can be removed when torch v2.2.0 is released in stable.
+    if version.parse(torch.__version__) < version.parse("2.2.0"):
         logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
         return
 
@@ -994,7 +1026,11 @@ def main():
             args.precision,
             "--cache_dir",
             args.cache_dir,
+            "--torch_model_directory",
+            args.input,
         ]
+        if args.small_gpu:
+            parity_cmd.append("--small_gpu")
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
         if "merged" in filename:
@@ -1003,7 +1039,7 @@ def main():
             parity_cmd.append("--use_gqa")
 
         try:
-            logger.debug(f"check parity with cmd: {parity_cmd}")
+            logger.info(f"check parity with cmd: {parity_cmd}")
             parity_check(parity_cmd)
         except Exception as e:
             logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)

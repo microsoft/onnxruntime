@@ -78,10 +78,6 @@ stages:
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
       displayName: "Install Python requirements"
 
-    - script: |
-        $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/protobuf_install -d $(Build.SourcesDirectory)/cmake/deps.txt
-      displayName: "Build Host Protoc"
-
     # create and test mobile pods
     - script: |
         python tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
@@ -91,8 +87,7 @@ stages:
           --test \
           --variant ${{ parameters.packageVariant }} \
           --build-settings-file "${{ variables.buildSettingsFile }}" \
-          ${{ variables.optionalIncludeOpsByConfigOption }} \
-          -b="--path_to_protoc_exe=$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
+          ${{ variables.optionalIncludeOpsByConfigOption }}
       displayName: "Build macOS/iOS framework and assemble pod package files"
 
     - script: |

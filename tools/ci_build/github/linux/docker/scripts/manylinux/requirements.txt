@@ -10,3 +10,4 @@ protobuf==4.21.12
 sympy==1.12
 flatbuffers
 neural-compressor>=2.2.1
+triton

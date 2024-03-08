@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -67,24 +68,23 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
   const dataType = inputs[0].dataType;
   const axis = ShapeUtil.normalizeAxis(attributes.axis, inputShape.length);
   const outputs = new Array<IndicesHelper>(attributes.numOutputs);
-  const input = inputVariable('input', dataType, inputShape);
+  const input = inputVariable('input', dataType, inputShape.length);
   const sizeInSplitAxis = new Array<number>(attributes.numOutputs);
   const outputsTensorInfo: TensorInfo[] = [];
   const outputShapes: number[][] = [];
   let previousSum = 0;
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: inputSize}];
+  const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: inputSize}];
   for (let i = 0; i < attributes.numOutputs; i++) {
     previousSum += attributes.splitSizes[i];
     sizeInSplitAxis[i] = previousSum;
     const outputShape = inputShape.slice();
     outputShape[attributes.axis] = attributes.splitSizes[i];
     outputShapes.push(outputShape);
-    outputs[i] = outputVariable(`output${i}`, dataType, outputShape);
+    outputs[i] = outputVariable(`output${i}`, dataType, outputShape.length);
     outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType});
   }
-  programUniforms.push({type: 'uint32', data: sizeInSplitAxis});
-  programUniforms.push(...createTensorShapeVariables(inputShape));
-  outputShapes.forEach((outputShape) => programUniforms.push(...createTensorShapeVariables(outputShape)));
+  programUniforms.push(
+      {type: DataType.uint32, data: sizeInSplitAxis}, ...createTensorShapeVariables(inputShape, ...outputShapes));
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${
       shaderHelper.registerUniform('input_size', 'u32')

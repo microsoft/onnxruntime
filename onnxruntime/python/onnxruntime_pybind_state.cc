@@ -443,9 +443,9 @@ void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOpti
     if (it != options.end()) {
       trt_extra_plugin_lib_paths = it->second;
     }
-    std::vector<OrtCustomOpDomain*> domain_list;
-    tensorrt_provider_info->GetTensorRTCustomOpDomainList(domain_list, trt_extra_plugin_lib_paths);
-    for (auto ptr : domain_list) {
+    std::vector<OrtCustomOpDomain*> custom_op_domains;
+    tensorrt_provider_info->GetTensorRTCustomOpDomainList(custom_op_domains, trt_extra_plugin_lib_paths);
+    for (auto ptr : custom_op_domains) {
       if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
         so.custom_op_domains_.push_back(ptr);
       } else {
@@ -475,7 +475,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
       // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
       // and TRT EP instance, so it won't be released.)
-      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
+      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -728,19 +728,18 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_ep_context_model' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_ep_context_file_path") {
+            if (!option.second.empty()) {
+              ep_context_file_path = option.second;
+              params.trt_ep_context_file_path = ep_context_file_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_file_path' should be a string.\n");
+            }
           } else if (option.first == "trt_ep_context_embed_mode") {
             if (!option.second.empty()) {
               params.trt_ep_context_embed_mode = std::stoi(option.second);
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be a positive integer number i.e. '1'.\n");
-            }
-          } else if (option.first == "trt_ep_context_compute_capability_enable") {
-            if (option.second == "True" || option.second == "true") {
-              params.trt_ep_context_compute_capability_enable = true;
-            } else if (option.second == "False" || option.second == "false") {
-              params.trt_ep_context_compute_capability_enable = false;
-            } else {
-              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_compute_capability_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
@@ -983,7 +982,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
-#if USE_VITISAI
+#ifdef USE_VITISAI
     const auto it = provider_options_map.find(type);
     if (it == provider_options_map.end()) {
       LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
@@ -1328,14 +1327,14 @@ void addGlobalMethods(py::module& m) {
 
 #ifdef ENABLE_ATEN
   m.def("register_aten_op_executor",
-        [](const std::string& is_cpu_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_cpu_argument_address_int, aten_op_executor_address_int;
+        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
+          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
           ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_cpu_argument_address_str, is_cpu_argument_address_int));
+              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
           ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_cpu_argument = reinterpret_cast<void*>(is_cpu_argument_address_int);
+          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
           void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_cpu_argument, p_aten_op_executor);
+          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
         });
 #endif
 }

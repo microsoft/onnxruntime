@@ -33,10 +33,13 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
     emscripten::val view = emscripten::val::undefined();
     switch (tensor.tensor_info.data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                              static_cast<const uint8_t*>(tensor.buffer))};
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                             static_cast<const int8_t*>(tensor.buffer))};
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
@@ -67,22 +70,13 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                "The input of graph has unsupported type, name: ",
                                name, " type: ", tensor.tensor_info.data_type);
     }
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-    // Copy the inputs from Wasm SharedArrayBuffer to the pre-allocated ArrayBuffers.
+    // Copy the inputs from Wasm ArrayBuffer to the WebNN inputs ArrayBuffer.
+    // As Wasm ArrayBuffer is not detachable.
     wnn_inputs_[name].call<void>("set", view);
-#else
-    wnn_inputs_.set(name, view);
-#endif
   }
 
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // This vector uses for recording output buffers from WebNN graph compution when WebAssembly
-  // multi-threads is enabled, since WebNN API only accepts non-shared ArrayBufferView,
-  // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
-  // and at this time the 'view' defined by Emscripten is shared ArrayBufferView, the memory
-  // address is different from the non-shared one, additional memory copy is required here.
   InlinedHashMap<std::string, emscripten::val> output_views;
-#endif
+
   for (const auto& output : outputs) {
     const std::string& name = output.first;
     const struct OnnxTensorData tensor = output.second;
@@ -90,10 +84,13 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
     emscripten::val view = emscripten::val::undefined();
     switch (tensor.tensor_info.data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                              static_cast<const uint8_t*>(tensor.buffer))};
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                             static_cast<const int8_t*>(tensor.buffer))};
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
@@ -125,21 +122,23 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                name, " type: ", tensor.tensor_info.data_type);
     }
 
-#ifdef ENABLE_WEBASSEMBLY_THREADS
     output_views.insert({name, view});
-#else
-    wnn_outputs_.set(name, view);
-#endif
   }
-  wnn_context_.call<emscripten::val>("computeSync", wnn_graph_, wnn_inputs_, wnn_outputs_);
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // Copy the outputs from pre-allocated ArrayBuffers back to the Wasm SharedArrayBuffer.
+  emscripten::val results = wnn_context_.call<emscripten::val>(
+                                            "compute", wnn_graph_, wnn_inputs_, wnn_outputs_)
+                                .await();
+
+  // Copy the outputs from pre-allocated ArrayBuffers back to the Wasm ArrayBuffer.
   for (const auto& output : outputs) {
     const std::string& name = output.first;
     emscripten::val view = output_views.at(name);
-    view.call<void>("set", wnn_outputs_[name]);
+    view.call<void>("set", results["outputs"][name]);
   }
-#endif
+  // WebNN compute() method would return the input and output buffers via the promise
+  // resolution. Reuse the buffers to avoid additional allocation.
+  wnn_inputs_ = results["inputs"];
+  wnn_outputs_ = results["outputs"];
+
   return Status::OK();
 }
 
@@ -168,9 +167,11 @@ void Model::AllocateInputOutputBuffers() {
     const auto data_type = input_info.data_type;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         wnn_inputs_.set(input, emscripten::val::global("Uint8Array").new_(num_elements));
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        wnn_inputs_.set(input, emscripten::val::global("Int8Array").new_(num_elements));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
         wnn_inputs_.set(input, emscripten::val::global("Uint16Array").new_(num_elements));
@@ -201,9 +202,11 @@ void Model::AllocateInputOutputBuffers() {
     const auto data_type = output_info.data_type;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         wnn_outputs_.set(output, emscripten::val::global("Uint8Array").new_(num_elements));
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        wnn_outputs_.set(output, emscripten::val::global("Int8Array").new_(num_elements));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
         wnn_outputs_.set(output, emscripten::val::global("Uint16Array").new_(num_elements));

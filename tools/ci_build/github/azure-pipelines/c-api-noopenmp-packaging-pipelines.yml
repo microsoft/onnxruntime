@@ -83,6 +83,16 @@ resources:
 variables:
 - name: ReleaseVersionSuffix
   value: ''
+- name: docker_base_image
+  ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+- name: linux_trt_version
+  ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    value: 8.6.1.6-1.cuda11.8
+  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    value: 8.6.1.6-1.cuda12.0
 
 stages:
 - stage: Setup
@@ -189,64 +199,13 @@ stages:
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
-- stage: Linux_C_API_Packaging_GPU_x64
-  dependsOn: []
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    timeoutInMinutes: 120
-    pool: 'Onnxruntime-Linux-GPU'
-    variables:
-      - name: CUDA_VERSION_MAJOR
-        ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: '11'
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: '12'
-      - name: CUDA_VERSION
-        value: ${{ parameters.CudaVersion }}
-    steps:
-    - template: templates/set-version-number-variables-step.yml
-    - template: templates/get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecuda$(CUDA_VERSION_MAJOR)build
-
-    - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
-      workingDirectory: $(Build.SourcesDirectory)
-      displayName: 'Build and Test'
-
-    - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          arch: 'linux-x64'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64-cuda'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
-
-    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-        buildConfig: 'Release'
-        artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
-        artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
-        libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
-    - template: templates/clean-agent-build-directory-step.yml
-
-- template: templates/linux-gpu-tensorrt-packaging-pipeline.yml
+- template: stages/nuget-linux-cuda-packaging-stage.yml
   parameters:
-      artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
-      artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
-      buildJava: true
-      buildJavaOption: '--build_java'
-      buildNodejs: true
-      buildNodejsOption: '--build_nodejs'
+    CudaVersion: ${{ parameters.CudaVersion }}
+    docker_base_image: ${{ variables.docker_base_image }}
+    linux_trt_version: ${{ variables.linux_trt_version }}
+    buildJava: true
+    buildNodejs: true
 
 #CUDA without tensorrt
 - template: templates/win-ci.yml
@@ -289,7 +248,7 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 120
-    pool: onnxruntime-Ubuntu2004-AMD-CPU
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     variables:
       RocmVersion: '5.6'
     steps:
@@ -526,109 +485,6 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-
-- stage: Linux_Packaging_combined_GPU
-  dependsOn:
-  - Linux_C_API_Packaging_GPU_x64
-  - Linux_C_API_Packaging_GPU_TensorRT_x64
-  condition: succeeded()
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    pool: 'Onnxruntime-Linux-GPU'
-
-    steps:
-    - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
-      submodules: false
-    - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
-      submodules: false
-    - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux
-      submodules: false
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-
-    - script: |
-        set -e -x
-        cd $(Build.SourcesDirectory)
-        mv manylinux onnxruntime
-        ls
-
-    - template: templates/with-container-registry-steps.yml
-      parameters:
-        Steps:
-        - script: |
-            tools/ci_build/get_docker_image.py \
-              --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda \
-              --context tools/ci_build/github/linux/docker \
-              --docker-build-args "--network=host --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 --build-arg BUILD_UID=$( id -u )" \
-              --container-registry onnxruntimebuildcache \
-              --multiple_repos \
-              --repository onnxruntimecuda118xtrt86build
-          displayName: "Get onnxruntimecuda118xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
-          workingDirectory: $(Build.SourcesDirectory)/onnxruntime
-        ContainerRegistry: onnxruntimebuildcache
-
-    - template: templates/set-version-number-variables-step.yml
-      parameters:
-        versionFileDirectory: '$(Build.SourcesDirectory)/onnxruntime'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime'
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Combined GPU'
-      inputs:
-        artifactName: 'onnxruntime-linux-x64-cuda'
-        targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
-
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Combined GPU'
-      inputs:
-        artifactName: 'onnxruntime-linux-x64-tensorrt'
-        targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
-
-    - task: ShellScript@2
-      displayName: 'Shell Script'
-      inputs:
-        scriptPath: 'onnxruntime/tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
-        args: '-a $(Build.BinariesDirectory)/tgz-artifacts'
-        workingDirectory: '$(Build.BinariesDirectory)/tgz-artifacts'
-
-    - task: ArchiveFiles@2
-      inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)/tgz-artifacts/onnxruntime-linux-x64-gpu'
-        includeRootFolder: false
-        archiveType: 'tar' # Options: zip, 7z, tar, wim
-        tarCompression: 'gz'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
-        replaceExistingArchive: true
-
-    - template: templates/validate-package.yml
-      parameters:
-        PackageType: 'tarball'
-        PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
-        ScriptPath: '$(Build.SourcesDirectory)/onnxruntime/tools/nuget/validate_package.py'
-        PlatformsSupported: 'linux-x64'
-        VerifyNugetSigning: false
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-
-
-    - task: CmdLine@2
-      displayName: 'Test C API application for GPU package'
-      inputs:
-        script: |
-          docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/models:/data/models --volume $(Build.SourcesDirectory):/src_dir \
-          --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda118xtrt86build \
-          /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
-        artifactName: 'onnxruntime-linux-x64-gpu'
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
 
 
 - stage: Windows_Packaging_combined_GPU
@@ -1167,28 +1023,30 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-T4'
+    AgentPool : 'onnxruntime-Win2022-GPU-A10'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     Skipx86Tests: 'true'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-T4'
+    AgentPool : 'onnxruntime-Win2022-GPU-A10'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     MoreSuffix: '_Windows'
     Skipx86Tests: 'true'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU
+    AgentPool : Onnxruntime-Linux-GPU-A10
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
@@ -1197,7 +1055,7 @@ stages:
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU
+    AgentPool : Onnxruntime-Linux-GPU-A10
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     MoreSuffix: '_Linux'

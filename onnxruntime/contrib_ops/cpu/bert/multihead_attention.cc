@@ -40,6 +40,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
   num_heads_ = static_cast<int>(num_heads);
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
+  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 }
 
 // Reshape Q/K/V from BxSxD to BxSxNxH
@@ -57,11 +58,12 @@ Status Reshape_BSD_to_BSNH(Tensor* qkv,
 
 // Transpose Q/K/V from BxSxNxH to BxNxSxH
 Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
-                              OrtValue& qkv_transposed) {
+                              OrtValue& qkv_transposed,
+                              concurrency::ThreadPool* tp = nullptr) {
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
   size_t from = 2, to = 1;
-  SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to);
+  SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, tp);
   return Status::OK();
 }
 
@@ -142,7 +144,8 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
   ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(qkv_with_bias.GetMutable<Tensor>(), batch_size, sequence_length, num_heads, head_size));
 
   // Transpose Q from BxSxNxH to BxNxSxH
-  ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed));
+  auto tp = context->GetOperatorThreadPool();
+  ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(qkv_with_bias.GetMutable<Tensor>(), qkv_with_bias_transposed, tp));
 
   return Status::OK();
 }
@@ -283,8 +286,9 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       nullptr,
                                                                       &parameters,
                                                                       num_heads_,
-                                                                      scale,
                                                                       mask_filter_value_,
+                                                                      scale,
+                                                                      is_unidirectional_,
                                                                       past_present_share_buffer,
                                                                       false));
 

@@ -106,6 +106,8 @@ void TritonOpExecutor::ExecuteByFuncName(const std::string& func_name, const Inl
       PyDict_SetItemString(python_kwargs.get(), kv.first.c_str(), PyLong_FromLongLong(std::stoll(kv.second.first)));
     } else if (kv.second.second == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       PyDict_SetItemString(python_kwargs.get(), kv.first.c_str(), PyFloat_FromDouble(std::stod(kv.second.first)));
+    } else if (kv.second.second == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+      PyDict_SetItemString(python_kwargs.get(), kv.first.c_str(), PyUnicode_FromString(kv.second.first.c_str()));
     } else {
       ORT_THROW("Unsupported kwargs data type: ", kv.second.second);
     }

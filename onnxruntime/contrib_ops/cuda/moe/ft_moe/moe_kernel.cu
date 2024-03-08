@@ -16,8 +16,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUTLASS
-
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <math.h>
@@ -372,7 +370,7 @@ struct TopkConstants {
 
 template <typename T, int EXPERTS, int WARPS_PER_TB>
 void topk_gating_softmax_launcher_helper(const T* input, const bool* finished, T* output, int* indices, int* source_row,
-                                         int num_rows, int num_experts, int k, cudaStream_t stream) {
+                                         int num_rows, int /*num_experts*/, int k, cudaStream_t stream) {
   static constexpr unsigned long MAX_BYTES_PER_LDG = 16;
 
   static constexpr int BYTES_PER_LDG = std::min((int)MAX_BYTES_PER_LDG, (int)sizeof(T) * EXPERTS);
@@ -601,7 +599,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   static constexpr bool scales_required =
       std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value;
 
-  if (scales_required) {
+  if constexpr (scales_required) {
     if (fc1_scales == nullptr) {
       ORT_THROW("[FT Error][Run MoE FC] Scales expected but scale for first matmul is a null pointer");
     } else if (fc2_scales == nullptr) {
@@ -900,5 +898,3 @@ template void finalize_moe_routing_kernelLauncher(const half*, half*, const half
                                                   cudaStream_t);
 
 }  // namespace ort_fastertransformer
-
-#endif

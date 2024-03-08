@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -238,8 +239,10 @@ const addBiasTranspose =
      hiddenSize: number, biasOffset: number) => {
       const outputShape = [batchSize, sequenceLength, hiddenSize];
       const outputSize = ShapeUtil.size(outputShape);
-      const programUniforms: ProgramUniform[] =
-          [{type: 'uint32', data: outputSize}, {type: 'uint32', data: biasOffset}, {type: 'uint32', data: hiddenSize}];
+      const programUniforms: ProgramUniform[] = [
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: biasOffset},
+        {type: DataType.uint32, data: hiddenSize}
+      ];
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const output = outputVariable('qkv_with_bias', qkv.dataType, outputShape);

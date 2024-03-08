@@ -92,7 +92,7 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
-# enable stream for all the non-minimal build
+# Enable stream for all the non-minimal build
 if (NOT onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_ENABLE_STREAM)
 endif()
@@ -123,6 +123,11 @@ if (onnxruntime_DISABLE_RTTI)
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR->" "$<$<COMPILE_LANGUAGE:CXX>:/we4541>")
   else()
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>")
+    if (onnxruntime_USE_WEBNN)
+      # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
+      # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/7001
+      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0>")
+    endif()
   endif()
 else()
   #MSVC RTTI flag /GR is not added to CMAKE_CXX_FLAGS by default. But, anyway VC++2019 treats "/GR" default on.
@@ -200,7 +205,7 @@ endif()
 
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
-    execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
+    execute_process(COMMAND ${CUDAToolkit_BIN_DIR}/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
     message("NVCC_ERROR = ${NVCC_ERROR}")
     message("NVCC_OUT = ${NVCC_OUT}")
     if ("${NVCC_OUT}" MATCHES "0")

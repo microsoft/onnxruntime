@@ -659,7 +659,12 @@ static bool CheckIfInputIsSequenceType(const std::string& name_input,
   if (!temp) {
     throw std::runtime_error("Corresponding type_proto is null");
   } else {
-    type_proto = *temp;
+    if (temp->has_optional_type()) {
+      const ::onnx::TypeProto_Optional& optional_type_proto = temp->optional_type();
+      type_proto = optional_type_proto.elem_type();
+    } else {
+      type_proto = *temp;
+    }
   }
 
   return type_proto.has_sequence_type();
