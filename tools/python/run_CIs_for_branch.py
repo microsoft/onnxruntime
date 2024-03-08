@@ -13,10 +13,8 @@ from run_CIs_for_external_pr import get_pipeline_names
 from util.platform_helpers import is_windows
 
 
-class DefaultArgsRawHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    # copy _fill_text from RawDescriptionHelpFormatter as it's simpler to combine the 2 formatters
-    def _fill_text(self, text, width, indent):
-        return "".join(indent + line for line in text.splitlines(keepends=True))
+class DefaultArgsRawHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
 
 
 def _parse_args():
