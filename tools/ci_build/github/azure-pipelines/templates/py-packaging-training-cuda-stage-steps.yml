@@ -5,14 +5,15 @@ parameters:
   cuda_version: ''
   cmake_cuda_architectures: ''
   docker_file: ''
-  agent_pool: ''
   upload_wheel: ''
   debug_build:  ''
   python_version: ''
   stage_name: ''
+  SpecificArtifact: false
+  BuildId: '0'
 
 stages:
-  - stage: ${{ parameters.stage_name }}
+  - stage: Build_${{ parameters.stage_name }}
     variables:
       - name: isMain
         value: ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}
@@ -31,7 +32,8 @@ stages:
     dependsOn: []
 
     jobs:
-    - job: ${{ parameters.stage_name }}
+    - job: Build
+      pool: onnxruntime-Ubuntu2204-AMD-CPU
       steps:
         - task: CmdLine@2
           displayName: 'check variables'
@@ -105,6 +107,57 @@ stages:
                     --use_cuda --cuda_version=${{ parameters.cuda_version }} --cuda_home=/usr/local/cuda-${{ parameters.cuda_version }} --cudnn_home=/usr/local/cuda-${{ parameters.cuda_version }};
             workingDirectory: $(Build.SourcesDirectory)
 
+        - task: CopyFiles@2
+          displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+          inputs:
+            SourceFolder: '$(Build.BinariesDirectory)'
+            Contents: "${{ variables['buildConfig'] }}/dist/*.whl"
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
+          inputs:
+            ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
+
+        - template: component-governance-component-detection-steps.yml
+          parameters:
+            condition: 'succeeded'
+
+        - template: clean-agent-build-directory-step.yml
+
+  - stage: Test_${{ parameters.stage_name }}
+    variables:
+      - name: isMain
+        value: ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}
+      - name: finalStorage
+        ${{ if eq(variables['isMain'], 'true') }}:
+          value: '--final_storage'
+        ${{ else }}:
+          value: ''
+      - name: buildConfig
+        ${{ if eq(parameters['debug_build'], 'true') }}:
+          value: 'Debug'
+        ${{ else }}:
+          value: 'Release'
+      - name: PythonVersion
+        value: ${{ parameters.python_version }}
+    dependsOn: Build_${{ parameters.stage_name }}
+    jobs:
+    - job: Test_GPU
+      pool: Onnxruntime-Linux-GPU
+      steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - template: templates/flex-downloadPipelineArtifact.yml
+          parameters:
+            ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
+            StepName: 'Download Pipeline Artifact - Linux Training Build'
+            TargetPath: '$(Build.ArtifactStagingDirectory)'
+            SpecificArtifact: ${{ parameters.SpecificArtifact }}
+            BuildId: ${{ parameters.BuildId }}
+
         - task: CmdLine@2
           displayName: 'test ortmodule'
           inputs:
@@ -125,18 +178,6 @@ stages:
                   bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/${{ variables['buildConfig'] }}/dist/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)
 
-        - task: CopyFiles@2
-          displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-          inputs:
-            SourceFolder: '$(Build.BinariesDirectory)'
-            Contents: "${{ variables['buildConfig'] }}/dist/*.whl"
-            TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-        - task: PublishBuildArtifacts@1
-          displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
-          inputs:
-            ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
-
         # if the wheel size bigger than 300M, fail the UploadWheel step
         - task: CmdLine@2
           displayName: 'Upload wheel'
@@ -149,9 +190,3 @@ stages:
               (( $(wc -c < "${files[0]}") -  300*1024*1024 < 0 )) ||  (exit 1) && \
               python3 tools/ci_build/upload_python_package_to_azure_storage.py \
                   --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
-
-        - template: component-governance-component-detection-steps.yml
-          parameters:
-            condition: 'succeeded'
-
-        - template: clean-agent-build-directory-step.yml
