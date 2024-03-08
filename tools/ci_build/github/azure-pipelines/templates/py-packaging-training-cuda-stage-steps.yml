@@ -65,18 +65,6 @@ stages:
               --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
             Repository: onnxruntimetraininggpubuild
 
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-          displayName: 'Mount MNIST'
-          condition: succeededOrFailed()
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-          displayName: 'Mount bert-data'
-          condition: succeededOrFailed()
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-          displayName: 'Mount hf-models-cache'
-          condition: succeededOrFailed()
-
         - task: CmdLine@2
           displayName: 'build onnxruntime'
           inputs:
@@ -117,7 +105,7 @@ stages:
         - task: PublishBuildArtifacts@1
           displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
           inputs:
-            ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
+            ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}_${{ parameters.python_version }}"
 
         - template: component-governance-component-detection-steps.yml
           parameters:
@@ -152,30 +140,41 @@ stages:
 
         - template: flex-downloadPipelineArtifact.yml
           parameters:
-            ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
+            ArtifactName: ""onnxruntime_gpu_${{ variables['buildConfig'] }}_${{ parameters.python_version }}""
             StepName: 'Download Pipeline Artifact - Linux Training Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
+          displayName: 'Mount MNIST'
+          condition: succeededOrFailed()
+
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
+          displayName: 'Mount bert-data'
+          condition: succeededOrFailed()
+
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+          displayName: 'Mount hf-models-cache'
+          condition: succeededOrFailed()
+
         - task: CmdLine@2
           displayName: 'test ortmodule'
           inputs:
             script: |
-              rm -rf $(Build.BinariesDirectory)/${{ variables['buildConfig'] }}/onnxruntime/ && \
-              files=($(Build.BinariesDirectory)/${{ variables['buildConfig'] }}/dist/*.whl) && \
+              files=($(Build.ArtifactStagingDirectory)/*.whl) && \
               echo ${files[0]} && \
               whlfilename=$(basename ${files[0]}) && \
               echo $whlfilename && \
               docker run --rm \
                 --gpus all \
                 -e NVIDIA_VISIBLE_DEVICES=all \
-                --volume $(Build.BinariesDirectory):/build \
+                --volume $(Build.ArtifactStagingDirectory):/build \
                 --volume /mnist:/mnist \
                 --volume /bert_data:/bert_data \
                 --volume /hf_models_cache:/hf_models_cache \
                 onnxruntimetraininggpubuild \
-                  bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/${{ variables['buildConfig'] }}/dist/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
+                  bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)
 
         # if the wheel size bigger than 300M, fail the UploadWheel step
@@ -185,7 +184,7 @@ stages:
           inputs:
             script: |
               set -e -x
-              files=($(Build.ArtifactStagingDirectory)/${{ variables['buildConfig'] }}/dist/*.whl) && \
+              files=($(Build.ArtifactStagingDirectory)/*.whl) && \
               echo ${files[0]} && du -sh "${files[0]}" &&\
               (( $(wc -c < "${files[0]}") -  300*1024*1024 < 0 )) ||  (exit 1) && \
               python3 tools/ci_build/upload_python_package_to_azure_storage.py \
