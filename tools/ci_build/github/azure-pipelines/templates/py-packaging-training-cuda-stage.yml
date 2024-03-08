@@ -59,4 +59,5 @@ stages:
     agent_pool: ${{ parameters.agent_pool }}
     upload_wheel: ${{ parameters.upload_wheel }}
     debug_build: ${{ parameters.debug_build }}
+    stage_name: 'Linux_py_Training_Cuda_Wheels python38'
     python_version: '3.8'

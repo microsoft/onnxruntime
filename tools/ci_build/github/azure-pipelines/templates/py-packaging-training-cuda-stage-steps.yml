@@ -9,9 +9,10 @@ parameters:
   upload_wheel: ''
   debug_build:  ''
   python_version: ''
+  stage_name: ''
 
 stages:
-  - stage: "Linux_py_${{ parameters.python_version }}_Training_Cuda_Wheels"
+  - stage: ${{ parameters.stage_name }}
     variables:
       - name: isMain
         value: ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}
@@ -28,7 +29,7 @@ stages:
     dependsOn: []
 
     jobs:
-    - job: Linux_py_${{ parameters.python_version }}_Training_Cuda_Wheels
+    - job: ${{ parameters.stage_name }}
       steps:
         - task: CmdLine@2
           displayName: 'check variables'
