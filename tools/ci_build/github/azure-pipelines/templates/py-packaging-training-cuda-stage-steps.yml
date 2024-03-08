@@ -150,7 +150,7 @@ stages:
           clean: true
           submodules: none
 
-        - template: templates/flex-downloadPipelineArtifact.yml
+        - template: flex-downloadPipelineArtifact.yml
           parameters:
             ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
             StepName: 'Download Pipeline Artifact - Linux Training Build'
