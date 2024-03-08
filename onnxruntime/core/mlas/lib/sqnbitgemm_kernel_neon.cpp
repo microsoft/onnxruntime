@@ -750,7 +750,7 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen16(
             const int8x16_t av1 = vld1q_s8(Q8BlkData(QuantABlk1));
 
             // load B
-            const uint8x16_t bv_packed01 = vld1q_u8(QuantBDataPtr);
+            const uint8x16_t bv_packed01 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
 
             const uint8x16_t bv_lo01 = vandq_u8(bv_packed01, LowMaskU8x16);
             const uint8x16_t bv_hi01 = vshrq_n_u8(bv_packed01, 4);
@@ -799,7 +799,7 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen16(
             const int8x16_t av0 = vld1q_s8(Q8BlkData(QuantABlk0));
 
             // load B
-            const uint8x8_t bv_packed0 = vld1_u8(QuantBDataPtr);
+            const uint8x8_t bv_packed0 = vld1_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
 
             const uint8x8_t bv_lo0 = vand_u8(bv_packed0, LowMaskU8x8);
             const uint8x8_t bv_hi0 = vshr_n_u8(bv_packed0, 4);
@@ -901,8 +901,8 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32(
             const int8x16_t av_hi1 = vld1q_s8(Q8BlkData(QuantABlk1) + 16);
 
             // load B
-            const uint8x16_t bv_packed0 = vld1q_u8(QuantBDataPtr);
-            const uint8x16_t bv_packed1 = vld1q_u8(QuantBDataPtr + 16);
+            const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+            const uint8x16_t bv_packed1 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr) + 16);
 
             int8x16_t bv_lo0 = vreinterpret_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
             int8x16_t bv_hi0 = vreinterpret_s8_u8(vshrq_n_u8(bv_packed0, 4));
@@ -954,7 +954,7 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32(
             const int8x16_t av_hi0 = vld1q_s8(Q8BlkData(QuantABlk0) + 16);
 
             // load B
-            const uint8x16_t bv_packed0 = vld1q_u8(QuantBDataPtr);
+            const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
 
             int8x16_t bv_lo0 = vreinterpret_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
             int8x16_t bv_hi0 = vreinterpret_s8_u8(vshrq_n_u8(bv_packed0, 4));
@@ -1064,8 +1064,8 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32(
                 const int8x16_t av3 = vld1q_s8(QuantADataPtr + 48);
 
                 // load B
-                const uint8x16_t bv_packed0 = vld1q_u8(QuantBDataPtr);
-                const uint8x16_t bv_packed1 = vld1q_u8(QuantBDataPtr + 16);
+                const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+                const uint8x16_t bv_packed1 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr) + 16);
 
                 int8x16_t bv0 = vreinterpret_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
                 int8x16_t bv1 = vreinterpret_s8_u8(vshrq_n_u8(bv_packed0, 4));
