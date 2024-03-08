@@ -140,7 +140,7 @@ const createConcatProgramInfo =
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
   const inputs = context.inputs;
   const inputShape = inputs[0].dims;
-  const adjustedAxis = attributes.axis + (attributes.axis < 0 ? inputShape.length : 0);
+  const adjustedAxis = ShapeUtil.normalizeAxis(attributes.axis, inputShape.length);
   validateInputs(inputs, adjustedAxis);
   const outputShape = inputShape.slice();
   outputShape[adjustedAxis] =
