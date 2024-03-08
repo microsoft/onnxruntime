@@ -7,17 +7,17 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-template <class T>
+template <class T, typename ZeroT>
 Status Dequantize4Bits(
     T* output,
     const uint8_t* quant_data,
     const T* scales_data,
-    const uint8_t* zero_points,
+    const ZeroT* zero_points,
+    const int32_t* reorder_idx,
     int k,
     int n,
     int block_size,
     cudaStream_t stream);
-
 
 /**
  * @brief Dequantize a block-wise quantized matrix, and store the result in a

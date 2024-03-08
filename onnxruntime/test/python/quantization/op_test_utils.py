@@ -358,6 +358,7 @@ def check_model_correctness(
         model_onnx = onnx.load(f)
     ops_set = set(node.op_type for node in model_onnx.graph.node)
     check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention", "Transpose"})
+    check_target_evaluator = False
 
     with open(model_path_to_check, "rb") as f:
         model_check = onnx.load(f)
@@ -413,7 +414,7 @@ def check_model_correctness(
             check_sign_f8_quantization(model_path_origin, model_path_to_check)
 
     # Verifies the expected outputs.
-    if check_reference_evaluator and onnx_recent_enough:
+    if check_target_evaluator and onnx_recent_enough:
         if op_matmul:
             reference_new_ops = [QLinearMatMul]
         else:

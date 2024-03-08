@@ -94,6 +94,7 @@ class MemoryOptimizer : public GraphTransformer {
    */
   Status CreateRecomputeGraph(Graph& graph,
                               const InlinedVector<const Node*>& nodes_in_topological_order,
+                              const logging::Logger& logger,
                               Node*& recompute_subgraph_output_node) const;
 
   /**************************************************
