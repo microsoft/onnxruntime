@@ -1,18 +1,17 @@
 parameters:
   build_py_parameters: ''
+  torch_version: ''
+  opset_version: ''
+  cuda_version:
   cmake_cuda_architectures: ''
-  debug_build: ''
   docker_file: ''
-  finalStorage: ''
-  isMain: ''
-  PythonVersion: ''
-  OpsetVersion: ''
-  TorchVersion: ''
-  UploadWheel: ''
-  py_version: ''
+  agent_pool: ''
+  upload_wheel: ${{ parameters.upload_wheel }}
+  debug_build: ${{ parameters.debug_build }}
+  python_version: ''
 
 stages:
-  - stage: "Linux_py_${{ parameters.py_version }}_Training_Cuda_Wheels"
+  - stage: "Linux_py_${{ parameters.python_version }}_Training_Cuda_Wheels"
     variables:
       - name: isMain
         value: ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}
@@ -29,7 +28,7 @@ stages:
     dependsOn: []
 
     jobs:
-    - job: Linux_py_${{ parameters.py_version }}_Training_Cuda_Wheels
+    - job: Linux_py_${{ parameters.python_version }}_Training_Cuda_Wheels
       steps:
         - task: CmdLine@2
           displayName: 'check variables'
@@ -52,7 +51,7 @@ stages:
             DockerBuildArgs: >-
               --build-arg TORCH_VERSION=$(TorchVersion)
               --build-arg OPSET_VERSION=$(OpsetVersion)
-              --build-arg PYTHON_VERSION=$(PythonVersion)
+              --build-arg PYTHON_VERSION=$(python_version)
               --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
               --build-arg BUILD_UID=$(id -u)
               --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
