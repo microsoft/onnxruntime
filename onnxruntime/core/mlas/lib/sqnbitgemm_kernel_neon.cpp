@@ -755,8 +755,8 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen16(
             const uint8x16_t bv_lo01 = vandq_u8(bv_packed01, LowMaskU8x16);
             const uint8x16_t bv_hi01 = vshrq_n_u8(bv_packed01, 4);
 
-            int8x16_t bv0 = vreinterpret_s8_u8(vcombine_u8(vget_low_u8(bv_lo01), vget_low_u8(bv_hi01)));
-            int8x16_t bv1 = vreinterpret_s8_u8(vcombine_u8(vget_high_u8(bv_lo01), vget_high_u8(bv_hi01)));
+            int8x16_t bv0 = vreinterpretq_s8_u8(vcombine_u8(vget_low_u8(bv_lo01), vget_low_u8(bv_hi01)));
+            int8x16_t bv1 = vreinterpretq_s8_u8(vcombine_u8(vget_high_u8(bv_lo01), vget_high_u8(bv_hi01)));
 
             // subtract B zero point
             bv0 = vsubq_s8(bv0, bzp0);
@@ -804,7 +804,7 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen16(
             const uint8x8_t bv_lo0 = vand_u8(bv_packed0, LowMaskU8x8);
             const uint8x8_t bv_hi0 = vshr_n_u8(bv_packed0, 4);
 
-            int8x16_t bv0 = vreinterpret_s8_u8(vcombine_u8(bv_lo0, bv_hi0));
+            int8x16_t bv0 = vreinterpretq_s8_u8(vcombine_u8(bv_lo0, bv_hi0));
 
             // subtract B zero point
             bv0 = vsubq_s8(bv0, bzp0);
@@ -904,10 +904,10 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32(
             const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
             const uint8x16_t bv_packed1 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr) + 16);
 
-            int8x16_t bv_lo0 = vreinterpret_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
-            int8x16_t bv_hi0 = vreinterpret_s8_u8(vshrq_n_u8(bv_packed0, 4));
-            int8x16_t bv_lo1 = vreinterpret_s8_u8(vandq_u8(bv_packed1, LowMaskU8x16));
-            int8x16_t bv_hi1 = vreinterpret_s8_u8(vshrq_n_u8(bv_packed1, 4));
+            int8x16_t bv_lo0 = vreinterpretq_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
+            int8x16_t bv_hi0 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed0, 4));
+            int8x16_t bv_lo1 = vreinterpretq_s8_u8(vandq_u8(bv_packed1, LowMaskU8x16));
+            int8x16_t bv_hi1 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed1, 4));
 
             // subtract B zero point
             bv_lo0 = vsubq_s8(bv_lo0, bzp0);
@@ -956,8 +956,8 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32(
             // load B
             const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
 
-            int8x16_t bv_lo0 = vreinterpret_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
-            int8x16_t bv_hi0 = vreinterpret_s8_u8(vshrq_n_u8(bv_packed0, 4));
+            int8x16_t bv_lo0 = vreinterpretq_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
+            int8x16_t bv_hi0 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed0, 4));
 
             // subtract B zero point
             bv_lo0 = vsubq_s8(bv_lo0, bzp0);
@@ -1067,10 +1067,10 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32(
                 const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
                 const uint8x16_t bv_packed1 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr) + 16);
 
-                int8x16_t bv0 = vreinterpret_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
-                int8x16_t bv1 = vreinterpret_s8_u8(vshrq_n_u8(bv_packed0, 4));
-                int8x16_t bv2 = vreinterpret_s8_u8(vandq_u8(bv_packed1, LowMaskU8x16));
-                int8x16_t bv3 = vreinterpret_s8_u8(vshrq_n_u8(bv_packed1, 4));
+                int8x16_t bv0 = vreinterpretq_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
+                int8x16_t bv1 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed0, 4));
+                int8x16_t bv2 = vreinterpretq_s8_u8(vandq_u8(bv_packed1, LowMaskU8x16));
+                int8x16_t bv3 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed1, 4));
 
                 // subtract B zero point
                 bv0 = vsubq_s8(bv0, bzp);
