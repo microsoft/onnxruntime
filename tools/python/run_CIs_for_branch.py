@@ -13,10 +13,16 @@ from run_CIs_for_external_pr import get_pipeline_names
 from util.platform_helpers import is_windows
 
 
+class DefaultArgsRawHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    # copy _fill_test from RawDescriptionHelpFormatter as it's simpler to combine the 2 formatters
+    def _fill_text(self, text, width, indent):
+        return ''.join(indent + line for line in text.splitlines(keepends=True))
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=DefaultArgsRawHelpFormatter,
         description="""Run the CIs used to validate PRs for the specified branch.
 
         If not specified, the branch will be inferred (if possible) by running `git branch --show-current`.
