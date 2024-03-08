@@ -22,16 +22,17 @@ STFTDecomposition::STFTDecomposition(const InlinedHashSet<std::string_view>& com
 
 template <typename T>
 constexpr static int32_t GetDataType() {
-  if (std::is_same<T, float>::value) {
+  if constexpr (std::is_same<T, float>::value) {
     return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-  } else if (std::is_same<T, MLFloat16>::value) {
+  } else if constexpr (std::is_same<T, MLFloat16>::value) {
     return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-  } else if (std::is_same<T, double>::value) {
+  } else if constexpr (std::is_same<T, double>::value) {
     return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-  } else if (std::is_same<T, int64_t>::value) {
+  } else if constexpr (std::is_same<T, int64_t>::value) {
     return ONNX_NAMESPACE::TensorProto_DataType_INT64;
+  } else {
+    static_assert(false, "Invalid data type requested for STFT decomposition");
   }
-  return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
 }
 
 template <typename TDataType, size_t TDims>
@@ -39,12 +40,12 @@ NodeArg* AddInitializer(Graph& graph, const char* name, const int64_t (&shape)[T
   ONNX_NAMESPACE::TensorProto proto;
   proto.set_name(graph.GenerateNodeArgName(name));
   proto.set_data_type(GetDataType<TDataType>());
-  int64_t size = 1;
+  int64_t element_count = 1;
   for (size_t i = 0; i < TDims; i++) {
-    size *= shape[i];
+    element_count *= shape[i];
     proto.add_dims(shape[i]);
   }
-  proto.set_raw_data(begin, size * sizeof(TDataType));
+  proto.set_raw_data(begin, element_count * sizeof(TDataType));
   return &graph_utils::AddInitializer(graph, proto);
 }
 
@@ -54,17 +55,16 @@ NodeArg* AddShapeInitializer(Graph& graph, const char* name, const int64_t (&sha
   return AddInitializer<int64_t>(graph, name, shape_shape, shape);
 }
 
-template <size_t TNumInputs>
 std::pair<Node*, NodeArg*> AddNode(Graph& graph,
                                    const char* op_type,
                                    ProviderType execution_provider_type,
-                                   NodeArg* (&inputs)[TNumInputs]) {
+                                   gsl::span<NodeArg*> inputs) {
   auto def_name = graph.GenerateNodeArgName(op_type);
   auto node_arg = &graph.GetOrCreateNodeArg(def_name, nullptr);
   Node& node = graph.AddNode(graph.GenerateNodeName(op_type),
                              op_type,
                              "",
-                             gsl::make_span(inputs, inputs + TNumInputs),
+                             inputs,
                              {node_arg});
   node.SetExecutionProviderType(execution_provider_type);
   return std::make_pair(&node, node_arg);
@@ -217,7 +217,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       for (size_t k = 0; k < static_cast<size_t>(dft_unique_bins); k++) {
         for (size_t n = 0; n < static_cast<size_t>(dft_size); n++) {
           auto index = static_cast<size_t>(k * dft_size + n);
-          auto theta = -2 * 3.14159 * k * n / static_cast<float>(dft_size);
+          auto theta = -2 * M_PI * k * n / static_cast<float>(dft_size);
           real_weights_data[index] = static_cast<float>(cos(theta));
           imag_weights_data[index] = static_cast<float>(sin(theta));
         }
