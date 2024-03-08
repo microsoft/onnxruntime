@@ -376,7 +376,6 @@ public:
         {
             causalMaskTensorDesc = TensorDesc::ConstructDefaultTensorDesc(MLOperatorTensorDataType::Int32, causalMaskOutputShape);
             namedcausalMaskTensorDesc = causalMaskTensorDesc.GetDmlDesc();
-            causalMaskOperatorDesc.InputTensor = nullptr;
             causalMaskOperatorDesc.ValueDataType = DML_TENSOR_DATA_TYPE_INT32;
             causalMaskOperatorDesc.DiagonalFillBegin = INT32_MIN;
             causalMaskOperatorDesc.DiagonalFillEnd = pastSequenceLength + 1;
@@ -396,12 +395,14 @@ public:
 
         mhaOperatorDesc.StackedQueryKeyValueTensor = &namedQueryKeyValueTransposedOutputTensorDesc;
 
+        // Broadcast to MHA MaskTensor Shape
+        std::array<uint32_t, 4> mhaMaskTensorShape = {batchSize, numHeads, sequenceLength, pastSequenceLength + sequenceLength};
+        TensorDesc broadcastedcausalMaskTensorDesc;
+        DML_TENSOR_DESC namedbroadcastedcausalMaskTensorDesc;
         if (unidirectional && !hasMask)
         {
-            // Broadcast to MHA MaskTensor Shape
-            std::array<uint32_t, 4> mhaMaskTensorShape = {batchSize, numHeads, sequenceLength, pastSequenceLength + sequenceLength};
-            TensorDesc broadcastedcausalMaskTensorDesc = TensorDesc::ConstructBroadcastedTensorDesc(MLOperatorTensorDataType::Int32, mhaMaskTensorShape, causalMaskOutputShape);
-            const DML_TENSOR_DESC namedbroadcastedcausalMaskTensorDesc = broadcastedcausalMaskTensorDesc.GetDmlDesc();
+            broadcastedcausalMaskTensorDesc = TensorDesc::ConstructBroadcastedTensorDesc(MLOperatorTensorDataType::Int32, mhaMaskTensorShape, causalMaskOutputShape);
+            namedbroadcastedcausalMaskTensorDesc = broadcastedcausalMaskTensorDesc.GetDmlDesc();
             mhaOperatorDesc.MaskTensor = &namedbroadcastedcausalMaskTensorDesc;
         }
         else if (hasMaxSequenceMask)
