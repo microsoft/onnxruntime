@@ -56,7 +56,7 @@ stages:
     cuda_version: ${{ parameters.cuda_version }}
     cmake_cuda_architectures: ${{ parameters.cmake_cuda_architectures }}
     docker_file: ${{ parameters.docker_file }}
-    agent_pool: ${{ parameters.agent_pool }}
+    agent_pool: onnxruntime-Ubuntu2204-AMD-CPU
     upload_wheel: ${{ parameters.upload_wheel }}
     debug_build: ${{ parameters.debug_build }}
     stage_name: 'Linux_py_Training_Cuda_Wheels_python38'
