@@ -28,7 +28,7 @@ static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 static const std::string kWeightlessEngineEnable = "ORT_TENSORRT_WEIGHTLESS_ENGINE_ENABLE";
-// As a timing cache can be used across multiple ONNX files it makes sense to have a seperate cache path
+// As a timing cache can be used across multiple ONNX files it makes sense to have a separate cache path
 static const std::string kTimingCachePath = "ORT_TENSORRT_GLOBAL_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
@@ -556,5 +556,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder() const;
+
+  /**
+   * Check if a cached engine is present on disk, to avoid creating a TRT Builder instance.
+   */
+  bool IsCachedEnginePresent(const std::string& sub_graph_metadef_name);
 };
 }  // namespace onnxruntime
