@@ -26,6 +26,8 @@ stages:
           value: 'Debug'
         ${{ else }}:
           value: 'Release'
+      - name: PythonVersion
+        value: ${{ parameters.python_version }}
     dependsOn: []
 
     jobs:
