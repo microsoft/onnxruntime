@@ -21,7 +21,7 @@ STFTDecomposition::STFTDecomposition(const InlinedHashSet<std::string_view>& com
 }
 
 template <typename T>
-constexpr static int32_t GetDataType() {
+constexpr static ONNX_NAMESPACE::TensorProto_DataType GetDataType() {
   if constexpr (std::is_same<T, float>::value) {
     return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   } else if constexpr (std::is_same<T, MLFloat16>::value) {
@@ -70,7 +70,8 @@ std::pair<Node*, NodeArg*> AddNode(Graph& graph,
   return std::make_pair(&node, node_arg);
 }
 
-std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in, int32_t data_type) {
+std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in,
+                                       ONNX_NAMESPACE::TensorProto_DataType data_type) {
   auto def_name = graph.GenerateNodeArgName("Cast");
   auto node_arg = &graph.GetOrCreateNodeArg(def_name, nullptr);
   Node& node = graph.AddNode(graph.GenerateNodeName("Cast"),
@@ -166,7 +167,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     auto batch_size = batch_size_dim.has_dim_value() ? batch_size_dim.dim_value() : static_cast<int64_t>(-1);
     auto signal_length = signal_length_dim.dim_value();
     auto is_real = signal_components_dim.dim_value() == 1;
-    auto data_type = signal->TypeAsProto()->tensor_type().elem_type();
+    auto data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(signal->TypeAsProto()->tensor_type().elem_type());
 
     auto frame_step_initializer = graph_utils::GetConstantInitializer(graph, frame_step->Name());
     auto window_initializer = graph_utils::GetConstantInitializer(graph, window->Name());
