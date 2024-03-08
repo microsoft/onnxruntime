@@ -10,6 +10,7 @@ namespace onnxruntime {
 /**
 @Class ShapeInputMerge
 Merge all shape inputs having same shape value to a single shape input.
+This change will not affect the performance, but it open chances for CSE fusion to merge nodes.
 */
 class ShapeInputMerge : public GraphTransformer {
  public:

@@ -117,9 +117,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 #endif
 
       // Put ConstantSharing and ShapeInputMerge before CommonSubexpressionElimination by intention as it can create
-      // more opportunities for CSE. For example, if A and B nodes both do Add operation with a same value but different
-      // initializers, by default, CSE will not merge them, because the different initializers are represented by
-      // different NodeArg.
+      // more opportunities for CSE. For example, if A and B nodes consume same different args but produce same output
+      // or consume different initializers with same value, by default, CSE will not merge them.
       transformers.emplace_back(std::make_unique<ConstantSharing>(compatible_eps));
       transformers.emplace_back(std::make_unique<ShapeInputMerge>(compatible_eps));
       // LayerNormFusion must be applied before CommonSubexpressionElimination as the latter will break the pattern when 2 LayerNormFusion share the same input.

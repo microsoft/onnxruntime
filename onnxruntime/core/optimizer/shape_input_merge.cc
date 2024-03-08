@@ -17,8 +17,10 @@ std::string GetShapeString(const NodeArg* input_arg) {
     auto dim = shape->dim(i);
     if (dim.has_dim_value()) {
       shape_str += std::to_string(dim.dim_value());
-    } else {
+    } else if (dim.has_dim_param()) {
       shape_str += ("'" + dim.dim_param() + "'");
+    } else {
+      return "";
     }
   }
   shape_str += "]";
@@ -46,6 +48,7 @@ Status ShapeInputMerge::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     input_hash_to_nodes[shape_str].emplace_back(p_node);
   }
 
+  // All Shape nodes are processed in topological order, so we can safely merge the inputs to the first node's input.
   for (auto& kv : input_hash_to_nodes) {
     if (kv.second.size() < 2) continue;
     NodeArg* first_input_arg = kv.second[0]->MutableInputDefs()[0];
@@ -58,9 +61,8 @@ Status ShapeInputMerge::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         const Node::EdgeEnd& input_edge = *p_node->InputEdgesBegin();
         graph.RemoveEdge(input_edge.GetNode().Index(), p_node->Index(), input_edge.GetSrcArgIndex(), 0);
       }
-      if (is_first_input_arg_graph_input) {
-        graph_utils::ReplaceNodeInput(*p_node, 0, *first_input_arg);
-      } else {
+      graph_utils::ReplaceNodeInput(*p_node, 0, *first_input_arg);
+      if (!is_first_input_arg_graph_input) {
         const Node::EdgeEnd& first_input_edge = *kv.second[0]->InputEdgesBegin();
         graph.AddEdge(first_input_edge.GetNode().Index(), p_node->Index(), first_input_edge.GetSrcArgIndex(), 0);
       }

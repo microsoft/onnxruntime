@@ -82,6 +82,8 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
 }
 
 // Handle Gather from a Shape node, and the indices are all selecting dimensions which have concrete values.
+// This is a pattern from some transformer models, when folding these nodes, the concrete value can be fused further to
+// MatMul nodes as alpha, which will save one Mul/Div node and Memcpy node between device and host.
 static bool ConstantFoldGatherNode(Graph& graph, Node& node) {
   if (node.GetInputEdgesCount() == 0) return false;
   Node& pre_node = *graph.GetNode(node.InputNodesBegin()->Index());
@@ -115,11 +117,14 @@ static bool ConstantFoldGatherNode(Graph& graph, Node& node) {
   auto* gather_output_arg = node.MutableOutputDefs()[0];
   gather_output_constant.set_name(gather_output_arg->Name());
   gather_output_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  if (tensor_proto->dims_size() == 1) gather_output_constant.add_dims(static_cast<int64_t>(output_element_count));
+  if (tensor_proto->dims_size() == 1) {
+    gather_output_constant.add_dims(static_cast<int64_t>(output_element_count));
+  }
   gather_output_constant.set_raw_data(output_values.data(), output_element_count * sizeof(int64_t));
   ONNX_NAMESPACE::TensorShapeProto gather_output_shape;
-  if (tensor_proto->dims_size() == 1)
+  if (tensor_proto->dims_size() == 1) {
     gather_output_shape.add_dim()->set_dim_value(static_cast<int64_t>(output_element_count));
+  }
   gather_output_arg->SetShape(gather_output_shape);
   graph.AddInitializedTensor(gather_output_constant);
   return true;
@@ -207,150 +212,155 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
     } else if (node->OpType().compare("Shape") == 0) {
       converted_to_constant = ConstantFoldShapeNode(graph, *node);
-    } else if (node->OpType().compare("Gather") == 0) {
-      converted_to_constant = ConstantFoldGatherNode(graph, *node);
     } else {
-      InitializedTensorSet constant_inputs;
-
-      // Check if constant folding can be applied on this node.
-      const auto can_constant_fold_node = [&](const Node& n, bool skip_inputs_constant_check = false) {
-        return graph_utils::IsSupportedProvider(n, GetCompatibleExecutionProviders()) &&
-               optimizer_utils::IsOperationDeterministic(n.Domain(), n.OpType()) &&
-               // constant folding does not support executing a node that includes subgraphs (control flow operators,
-               // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
-               // by the Recurse call above
-               !n.ContainsSubgraph() &&
-               (skip_inputs_constant_check ||
-                graph_utils::AllNodeInputsAreConstant(graph, n, constant_inputs, excluded_initializers_));
-      };
-
-      if (!can_constant_fold_node(*node)) {
-        continue;
+      if (node->OpType().compare("Gather") == 0) {
+        converted_to_constant = ConstantFoldGatherNode(graph, *node);
       }
+      // If Gather is not folded, still need to go over below logic.
+      if (!converted_to_constant) {
+        InitializedTensorSet constant_inputs;
 
-      // if skip_dequantize_linear is true we want to maintain QDQ node units so avoid constant folding
-      // DequantizeLinear unless we can fold the whole QDQ node unit
-      if (skip_dequantize_linear_ && node->OpType() == "DequantizeLinear") {
-        bool can_constant_fold_qdq_node_unit = false;
+        // Check if constant folding can be applied on this node.
+        const auto can_constant_fold_node = [&](const Node& n, bool skip_inputs_constant_check = false) {
+          return graph_utils::IsSupportedProvider(n, GetCompatibleExecutionProviders()) &&
+                 optimizer_utils::IsOperationDeterministic(n.Domain(), n.OpType()) &&
+                 // constant folding does not support executing a node that includes subgraphs (control flow operators,
+                 // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
+                 // by the Recurse call above
+                 !n.ContainsSubgraph() &&
+                 (skip_inputs_constant_check ||
+                  graph_utils::AllNodeInputsAreConstant(graph, n, constant_inputs, excluded_initializers_));
+        };
 
-        // Simplest scenario where the whole QDQ node unit of (DQ -> X -> Q) can be constant folded is if:
-        //   - the DQ node does not produce a graph output, and its output is only consumed by X
-        //   - X is a deterministic node with a single input and single output
-        //   - the output from X is not a graph output and is only consumed by a Q node
-        if (optimizer_utils::CheckOutputEdges(graph, *node, 1)) {  // DQ does not produce graph output, single consumer
-          const Node& node_x = *node->OutputNodesBegin();
-          if (node_x.InputDefs().size() == 1 &&
-              node_x.OutputDefs().size() == 1 &&
-              optimizer_utils::CheckOutputEdges(graph, node_x, 1)) {
-            const Node& probably_q = *node_x.OutputNodesBegin();
+        if (!can_constant_fold_node(*node)) {
+          continue;
+        }
 
-            if (probably_q.OpType() == "QuantizeLinear") {
-              // the inputs to these nodes are not const yet, but will be if we constant fold,
-              // so set skip_const_check to simulate that having happened
-              constexpr bool skip_const_check = true;
-              can_constant_fold_qdq_node_unit = can_constant_fold_node(node_x, skip_const_check) &&
-                                                can_constant_fold_node(probably_q, skip_const_check);
+        // if skip_dequantize_linear is true we want to maintain QDQ node units so avoid constant folding
+        // DequantizeLinear unless we can fold the whole QDQ node unit
+        if (skip_dequantize_linear_ && node->OpType() == "DequantizeLinear") {
+          bool can_constant_fold_qdq_node_unit = false;
+
+          // Simplest scenario where the whole QDQ node unit of (DQ -> X -> Q) can be constant folded is if:
+          //   - the DQ node does not produce a graph output, and its output is only consumed by X
+          //   - X is a deterministic node with a single input and single output
+          //   - the output from X is not a graph output and is only consumed by a Q node
+          if (optimizer_utils::CheckOutputEdges(graph, *node,
+                                                1)) {  // DQ does not produce graph output, single consumer
+            const Node& node_x = *node->OutputNodesBegin();
+            if (node_x.InputDefs().size() == 1 && node_x.OutputDefs().size() == 1 &&
+                optimizer_utils::CheckOutputEdges(graph, node_x, 1)) {
+              const Node& probably_q = *node_x.OutputNodesBegin();
+
+              if (probably_q.OpType() == "QuantizeLinear") {
+                // the inputs to these nodes are not const yet, but will be if we constant fold,
+                // so set skip_const_check to simulate that having happened
+                constexpr bool skip_const_check = true;
+                can_constant_fold_qdq_node_unit = can_constant_fold_node(node_x, skip_const_check) &&
+                                                  can_constant_fold_node(probably_q, skip_const_check);
+              }
             }
+          }
+
+          if (!can_constant_fold_qdq_node_unit) {
+            continue;
           }
         }
 
-        if (!can_constant_fold_qdq_node_unit) {
-          continue;
-        }
-      }
-
 #if !defined(DISABLE_SPARSE_TENSORS)
-      // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                         is_sparse_initializer_check);
+        // Create execution frame for executing constant nodes.
+        OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
+                                           is_sparse_initializer_check);
 #else
-      // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                         [](std::string const&) { return false; });
+        // Create execution frame for executing constant nodes.
+        OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
+                                           [](std::string const&) { return false; });
 #endif
 
-      std::vector<int> fetch_mlvalue_idxs;
-      for (const auto* node_out : node->OutputDefs()) {
-        fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
-      }
+        std::vector<int> fetch_mlvalue_idxs;
+        for (const auto* node_out : node->OutputDefs()) {
+          fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
+        }
 
-      const bool node_on_cpu_ep = node->GetExecutionProviderType() == kCpuExecutionProvider;
+        const bool node_on_cpu_ep = node->GetExecutionProviderType() == kCpuExecutionProvider;
 
-      std::unique_ptr<const OpKernel> kernel;
+        std::unique_ptr<const OpKernel> kernel;
 
-      if (!node_on_cpu_ep) {
-        // We need to copy the string here instead of taking a reference to it since node->SetExecutionProviderType
-        // will change the value of the reference
-        auto ep_type = node->GetExecutionProviderType();
+        if (!node_on_cpu_ep) {
+          // We need to copy the string here instead of taking a reference to it since node->SetExecutionProviderType
+          // will change the value of the reference
+          auto ep_type = node->GetExecutionProviderType();
 
-        // override the EP assigned to the node so that it will use the CPU kernel for Compute.
-        node->SetExecutionProviderType(kCpuExecutionProvider);
+          // override the EP assigned to the node so that it will use the CPU kernel for Compute.
+          node->SetExecutionProviderType(kCpuExecutionProvider);
 
-        kernel = info.CreateKernel(node, config_options_);
+          kernel = info.CreateKernel(node, config_options_);
 
-        // undo the EP change to the value that was assigned at graph partitioning time
-        node->SetExecutionProviderType(ep_type);
-      } else {
-        kernel = info.CreateKernel(node, config_options_);
-      }
+          // undo the EP change to the value that was assigned at graph partitioning time
+          node->SetExecutionProviderType(ep_type);
+        } else {
+          kernel = info.CreateKernel(node, config_options_);
+        }
 
-      // We currently constant fold using the CPU EP only.
-      // If we can't find a CPU kernel for this node, then we can't proceed with constant folding.
-      //
-      // TODO(adrianlizarraga): Support constant folding with other execution providers. For example, we may be able
-      // to use a CUDA kernel to constant fold operators with data types not supported by the CPU EP kernel.
-      if (kernel == nullptr) {
-        LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
-                              << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+        // We currently constant fold using the CPU EP only.
+        // If we can't find a CPU kernel for this node, then we can't proceed with constant folding.
+        //
+        // TODO(adrianlizarraga): Support constant folding with other execution providers. For example, we may be able
+        // to use a CUDA kernel to constant fold operators with data types not supported by the CPU EP kernel.
+        if (kernel == nullptr) {
+          LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
+                                << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
 
-        // Move on to the next candidate node
-        continue;
-      }
+          // Move on to the next candidate node
+          continue;
+        }
 
-      OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
+        OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 6387)
 #endif
-      OpKernelContext op_kernel_context(&frame, kernel.get(), /*stream*/ nullptr, nullptr, logger);
-      ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
+        OpKernelContext op_kernel_context(&frame, kernel.get(), /*stream*/ nullptr, nullptr, logger);
+        ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
 
-      std::vector<OrtValue> fetches;
-      ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+        std::vector<OrtValue> fetches;
+        ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
 
-      // Go over all output node args and substitute them with the newly computed tensors, which will be
-      // added to the graph as initializers.
-      ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
-      converted_to_constant = true;
-      for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-        const auto& constant_arg_out = *node->OutputDefs()[fetch_idx];
-        // XXX: Add support for SparseTensors outputs when we have sparse outputs
-        if (!utils::HasTensorType(*constant_arg_out.TypeAsProto())) {
-          LOGS(logger, INFO) << "Unsupported output type of " << constant_arg_out.Type()
-                             << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
-          converted_to_constant = false;
-          break;
-        }
-      }
-
-      if (converted_to_constant) {
+        // Go over all output node args and substitute them with the newly computed tensors, which will be
+        // added to the graph as initializers.
+        ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
+        converted_to_constant = true;
         for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-          OrtValue& ort_value = fetches[fetch_idx];
-          // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
-          auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
-          const Tensor& out_tensor = ort_value.Get<Tensor>();
-          ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
-
-          ONNX_NAMESPACE::TensorShapeProto result_shape;
-          for (auto& dim : out_tensor.Shape().GetDims()) {
-            result_shape.add_dim()->set_dim_value(dim);
+          const auto& constant_arg_out = *node->OutputDefs()[fetch_idx];
+          // XXX: Add support for SparseTensors outputs when we have sparse outputs
+          if (!utils::HasTensorType(*constant_arg_out.TypeAsProto())) {
+            LOGS(logger, INFO) << "Unsupported output type of " << constant_arg_out.Type() << ". Can't constant fold "
+                               << node->OpType() << " node '" << node->Name() << "'";
+            converted_to_constant = false;
+            break;
           }
+        }
 
-          constant_arg_out->SetShape(result_shape);
-          graph.AddInitializedTensor(out_tensorproto);
+        if (converted_to_constant) {
+          for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+            OrtValue& ort_value = fetches[fetch_idx];
+            // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
+            auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
+            const Tensor& out_tensor = ort_value.Get<Tensor>();
+            ONNX_NAMESPACE::TensorProto out_tensorproto =
+                utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+
+            ONNX_NAMESPACE::TensorShapeProto result_shape;
+            for (auto& dim : out_tensor.Shape().GetDims()) {
+              result_shape.add_dim()->set_dim_value(dim);
+            }
+
+            constant_arg_out->SetShape(result_shape);
+            graph.AddInitializedTensor(out_tensorproto);
+          }
         }
       }
     }

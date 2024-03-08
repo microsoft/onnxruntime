@@ -172,6 +172,7 @@ bool AreRangesEqual(const Range& lhs, const Range& rhs) {
 }
 
 // Check if two tensor attributes are equal scalar tensors, mainly to support ConstantOfShape Op.
+// Currently support float, float16 and int64 data types, and requires the data are raw data in TensorProto.
 bool AreScalarTensorAttributeEqual(const ONNX_NAMESPACE::TensorProto& lhs_t, const ONNX_NAMESPACE::TensorProto& rhs_t) {
   if (!(utils::HasDataType(lhs_t) && utils::HasDataType(rhs_t) && lhs_t.data_type() == rhs_t.data_type() &&
         (lhs_t.data_type() == onnx::TensorProto_DataType_FLOAT ||
@@ -234,7 +235,7 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
   return false;
 }
 
-// Support scalar tensor attribute only for now.
+// Support scalar float/int64/fp16 tensor attribute only for now, and requires data is raw data in TensorProto.
 std::size_t GetTensorAttributeHash(const ONNX_NAMESPACE::TensorProto& attr_t) {
   std::size_t hash = 0;
   if (utils::HasDataType(attr_t) && attr_t.dims_size() == 1 && attr_t.dims()[0] == 1 && utils::HasRawData(attr_t)) {

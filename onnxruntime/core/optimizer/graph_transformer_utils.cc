@@ -213,9 +213,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
       // Put ConstantSharing and ShapeInputMerge before CommonSubexpressionElimination by intention as it can create
-      // more opportunities for CSE. For example, if A and B nodes both do Add operation with a same value but different
-      // initializers, by default, CSE will not merge them, because the different initializers are represented by
-      // different NodeArg.
+      // more opportunities for CSE. For example, if A and B nodes consume same different args but produce same output
+      // or consume different initializers with same value, by default, CSE will not merge them.
       InlinedHashSet<std::string> excluded_initializers;
       excluded_initializers.reserve(session_options.initializers_to_share_map.size());
       for (const auto& p : session_options.initializers_to_share_map) {
