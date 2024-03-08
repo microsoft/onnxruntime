@@ -140,7 +140,7 @@ stages:
 
         - template: flex-downloadPipelineArtifact.yml
           parameters:
-            ArtifactName: ""onnxruntime_gpu_${{ variables['buildConfig'] }}_${{ parameters.python_version }}""
+            ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}_${{ parameters.python_version }}"
             StepName: 'Download Pipeline Artifact - Linux Training Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
