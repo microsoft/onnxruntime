@@ -172,7 +172,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     }
   };
 
-  size_t nodes_processed = 0;
+  size_t num_nodes_processed = 0;
 
   while (!nodes_to_process.empty() || !nodes_to_process_with_next_group.empty()) {
     if (nodes_to_process.empty()) {
@@ -182,12 +182,11 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       continue;
     }
 
-    ++nodes_processed;
     const Node& node = *nodes_to_process.front();
     nodes_to_process.pop_front();
 
     const NodeUnit* node_unit = node_unit_map ? node_unit_map->at(&node) : nullptr;
-    bool is_qdq_node_unit = node_unit && node_unit->UnitType() == NodeUnit::Type::QDQGroup;
+    const bool is_qdq_node_unit = node_unit && node_unit->UnitType() == NodeUnit::Type::QDQGroup;
 
     // a node that is already assigned to an EP other than current EP is unsupported
     const bool is_node_supported = (node.GetExecutionProviderType().empty() ||
@@ -197,7 +196,6 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     if (!is_node_supported && Contains(supported_group_border, &node)) {
       // an unsupported node on the border will be processed after the current partition node group
       nodes_to_process_with_next_group.push_back(&node);
-      --nodes_processed;  // we will process again later, so don't count yet
       continue;
     }
 
@@ -224,6 +222,19 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     // For each downstream node:
     //   1: add the downstream node to the border if the current node is supported
     //   2: adjust in-degrees of the nodes consuming the current node's outputs, and add any new nodes to process
+    const auto process_downstream_node = [&](const Node& downstream_node) {
+      if (is_node_supported) {
+        supported_group_border.insert(&downstream_node);
+      }
+
+      auto& downstream_node_in_degree = in_degree[downstream_node.Index()];
+      --downstream_node_in_degree;
+
+      if (downstream_node_in_degree == 0) {
+        nodes_to_process.push_back(&downstream_node);
+      }
+    };
+
     if (node_unit_map) {
       std::for_each(node_unit->OutputEdgesBegin(), node_unit->OutputEdgesEnd(),
                     [&](const Node::EdgeEnd& edge_end) {
@@ -231,38 +242,20 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
                       const NodeUnit& downstream_node_unit = *node_unit_map->at(&n);
                       const Node& output = downstream_node_unit.GetNode();
 
-                      if (is_node_supported) {
-                        supported_group_border.insert(&output);
-                      }
-
-                      auto& output_node_in_degree = in_degree[output.Index()];
-                      --output_node_in_degree;
-
-                      if (output_node_in_degree == 0) {
-                        nodes_to_process.push_back(&output);
-                      }
+                      process_downstream_node(output);
                     });
     } else {
       std::for_each(node.OutputNodesBegin(), node.OutputNodesEnd(),
-                    [&](const Node& output) {
-                      if (is_node_supported) {
-                        supported_group_border.insert(&output);
-                      }
-
-                      auto& output_node_in_degree = in_degree[output.Index()];
-                      --output_node_in_degree;
-
-                      if (output_node_in_degree == 0) {
-                        nodes_to_process.push_back(&output);
-                      }
-                    });
+                    [&](const Node& output) { process_downstream_node(output); });
     }
+
+    ++num_nodes_processed;
   }
 
   close_group();
 
-  ORT_ENFORCE(nodes_processed == in_degree.size(),
-              "Processed ", nodes_processed, " nodes. Expected to process ", in_degree.size());
+  ORT_ENFORCE(num_nodes_processed == in_degree.size(),
+              "Processed ", num_nodes_processed, " nodes. Expected to process ", in_degree.size());
 
   return supported_groups;
 }
