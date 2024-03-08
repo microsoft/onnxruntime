@@ -218,12 +218,14 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Run tests'
 
-      - task: PublishTestResults@2
+      - powershell: |
+          $testResultsFiles = Get-ChildItem -Path $(Build.BinariesDirectory)\${{ parameters.BuildConfig }} -Recurse -Filter *.results.xml
+          $testResultsFilesPath = $testResultsFiles.FullName -join ";"
+          
+          Write-Host "Test results files: $testResultsFilesPath"
+          
+          Write-Host "##vso[results.publish type=JUnit;mergeResults=true;publishRunAttachments=true;resultFiles=$testResultsFilesPath;]Unit Test Run"
         displayName: 'Publish unit test results'
-        inputs:
-          testResultsFiles: '**/*.results.xml'
-          searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
-          testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
 
   - ${{ if eq(parameters.GenerateDocumentation, true) }}:
