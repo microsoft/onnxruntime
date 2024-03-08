@@ -6,8 +6,8 @@ parameters:
   cmake_cuda_architectures: ''
   docker_file: ''
   agent_pool: ''
-  upload_wheel: ${{ parameters.upload_wheel }}
-  debug_build: ${{ parameters.debug_build }}
+  upload_wheel: ''
+  debug_build:  ''
   python_version: ''
 
 stages:
