@@ -4,7 +4,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 
 #include <string_view>
-
+#include <string>
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
@@ -111,7 +111,7 @@ class ConvActivationSelector : public NodeSelector {
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
         return std::nullopt;
       }
-    } else if (node_ep.empty() || node_ep == kCpuExecutionProvider) {
+    } else if (node_ep.empty() || node_ep == kCpuExecutionProvider || node_ep == kJsExecutionProvider) {
       if (!is_supported_non_cuda_rocm_ep_activation(*next_node) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6})) {
         return std::nullopt;
@@ -174,9 +174,29 @@ using NTO = NodesToOptimize;
 
 class FuseConvActivationAction : public ReplaceWithNew {
  private:
-  std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
+  std::string OpType(const RuntimeState& runtime_state) const override {
+    const auto& domain = runtime_state.selected_nodes.Target().Domain();
+    const auto& op_type = runtime_state.selected_nodes.Target().OpType();
+    if (domain == kOnnxDomain) {
+      if (op_type == "Conv") {
+        return "FusedConv";
+      }
+    } else if (domain == kMSDomain) {
+      if (op_type == "NhwcConv") {
+        return "NhwcFusedConv";
+      }
+    } else if (domain == kMSInternalNHWCDomain) {
+      if (op_type == "Conv") {
+        return "Conv";
+      }
+    }
+    ORT_THROW("Unsupported operator: ", op_type, " and domain: ", domain);
+  }
 
-  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
+  std::string Domain(const RuntimeState& runtime_state) const override {
+    auto domain = runtime_state.selected_nodes.Target().Domain();
+    return domain == kOnnxDomain ? kMSDomain : domain;
+  }
 
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
@@ -260,8 +280,11 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAct";
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
+  const std::string msInternalNHWCDomainConv = SelectorActionRegistry::OpVersionsMapKey("Conv", kMSInternalNHWCDomain);
+  const std::string msDomainConv = SelectorActionRegistry::OpVersionsMapKey("NhwcConv", kMSDomain);
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
+
+  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {msInternalNHWCDomainConv, {11}}, {msDomainConv, {1}}},
                                      std::move(selector), std::move(action));
 #else
   registry.RegisterAction(name, std::move(action));

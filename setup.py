@@ -196,26 +196,38 @@ try:
                     "libcublasLt.so.11",
                     "libcublasLt.so.12",
                     "libcudart.so.11.0",
-                    "libcudart.so.12.0",
+                    "libcudart.so.12",
                     "libcudnn.so.8",
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
                 ]
                 rocm_dependencies = [
-                    "librccl.so.1",
-                    "libnuma.so.1",
                     "libamd_comgr.so.2",
-                    "libdrm.so.2",
-                    "librocblas.so.0",
-                    "libdrm_amdgpu.so.1",
                     "libamdhip64.so.5",
-                    "libroctracer64.so.4",
-                    "libMIOpen.so.1",
-                    "libtinfo.so.6",
+                    "libamdhip64.so.6",
+                    "libdrm.so.2",
+                    "libdrm_amdgpu.so.1",
                     "libelf.so.1",
-                    "librocm_smi64.so.5",
+                    "libhipfft.so.0",
+                    "libhiprtc.so.5",
+                    "libhiprtc.so.6",
                     "libhsa-runtime64.so.1",
+                    "libMIOpen.so.1",
+                    "libnuma.so.1",
+                    "librccl.so.1",
+                    "librocblas.so.3",
+                    "librocblas.so.4",
+                    "librocfft.so.0",
+                    "libroctx64.so.4",
+                    "librocm_smi64.so.5",
+                    "librocm_smi64.so.6",
+                    "libroctracer64.so.4",
+                    "libtinfo.so.6",
+                    "libmigraphx_c.so.3",
+                    "libmigraphx.so.2",
+                    "libmigraphx_onnx.so.2",
+                    "libmigraphx_tf.so.2",
                 ]
 
                 tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
@@ -291,6 +303,7 @@ if platform.system() == "Linux":
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
+    libs.extend(["libonnxruntime_providers_vitisai.so"])
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
@@ -303,6 +316,7 @@ elif platform.system() == "Darwin":
     libs.extend(["libonnxruntime_providers_dnnl.dylib"])
     libs.extend(["libonnxruntime_providers_tensorrt.dylib"])
     libs.extend(["libonnxruntime_providers_cuda.dylib"])
+    libs.extend(["libonnxruntime_providers_vitisai.dylib"])
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
 else:
@@ -313,6 +327,7 @@ else:
     libs.extend(["onnxruntime_providers_tensorrt.dll"])
     libs.extend(["onnxruntime_providers_openvino.dll"])
     libs.extend(["onnxruntime_providers_cuda.dll"])
+    libs.extend(["onnxruntime_providers_vitisai.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
     if nightly_build:
@@ -391,7 +406,6 @@ packages = [
     "onnxruntime",
     "onnxruntime.backend",
     "onnxruntime.capi",
-    "onnxruntime.capi.training",
     "onnxruntime.datasets",
     "onnxruntime.tools",
     "onnxruntime.tools.mobile_helpers",
@@ -402,12 +416,15 @@ packages = [
     "onnxruntime.quantization",
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
+    "onnxruntime.quantization.fusions",
+    "onnxruntime.quantization.execution_providers.qnn",
     "onnxruntime.transformers",
     "onnxruntime.transformers.models.bart",
     "onnxruntime.transformers.models.bert",
     "onnxruntime.transformers.models.gpt2",
     "onnxruntime.transformers.models.llama",
     "onnxruntime.transformers.models.longformer",
+    "onnxruntime.transformers.models.phi2",
     "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.stable_diffusion",
     "onnxruntime.transformers.models.whisper",
@@ -443,6 +460,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
 ]
@@ -456,7 +474,6 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.experimental",
                 "onnxruntime.training.experimental.gradient_graph",
                 "onnxruntime.training.optim",
-                "onnxruntime.training.torchdynamo",
                 "onnxruntime.training.ortmodule",
                 "onnxruntime.training.ortmodule.experimental",
                 "onnxruntime.training.ortmodule.experimental.json_config",
@@ -480,7 +497,7 @@ if enable_training or enable_training_apis:
         )
 
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc", "*.h"]
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
             "*.cpp",

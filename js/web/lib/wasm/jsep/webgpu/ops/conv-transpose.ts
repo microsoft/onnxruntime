@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 import {TensorView} from '../../tensor-view';
-import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
 import {createConv2DTransposeMatMulProgramInfo} from './3rd-party/conv_backprop_mm_webgpu';
@@ -59,7 +58,6 @@ export interface ConvTransposeAttributes extends ConvAttributes {
   readonly outputShape: readonly number[];
 }
 
-
 const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
       const kernelShape = attributes.kernelShape.slice();
@@ -96,11 +94,7 @@ const getAdjustedConvTransposeAttributes =
 
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
-      const cacheKey = attributes.cacheKey + [
-        kernelShape.join('n,'), pads.join(','), strides.join(','), outputPadding.join(','), outputShape.join(','),
-        dilations.join(',')
-      ].join('_');
-      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, dilations, strides, cacheKey});
+      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, dilations, strides});
       return newAttributes;
     };
 
@@ -119,7 +113,7 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
   const wIsConst = (attributes.wIsConst as () => boolean)();
   const outputPadding = attributes.outputPadding as [number, number, number, number];
   const outputShape = attributes.outputShape as [number, number];
-  return createAttributeWithCacheKey({
+  return {
     autoPad,
     format,
     dilations,
@@ -130,8 +124,9 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
     pads,
     strides,
     wIsConst,
-    ...activationAttributes
-  });
+    ...activationAttributes,
+    cacheKey: `${attributes.format};${activationAttributes.activation};`
+  };
 };
 
 const validateInputs = (inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
@@ -209,18 +204,20 @@ const convTranspose2d =
     (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
       const isChannelsLast = attributes.format === 'NHWC';
-      const hasBias = inputs.length === 3;
-      if (adjustedAttributes.group !== 1) {
+      const outputShape = adjustedAttributes.outputShape;
+      const outChannels = outputShape[isChannelsLast ? 3 : 1];
+      const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
+      // Switch to naive method when outChannels and inputChannels are very small. It's because that in this case it's
+      // not suitable for matmul version since matmul uses tile size 32x32 resulting the underlying execution unit
+      // utilization rate is very low.
+      if (adjustedAttributes.group !== 1 || (outChannels === 1 && inputChannels === 1)) {
         context.compute(createConvTranspose2DProgramInfo(inputs, adjustedAttributes));
         return;
       }
-      const outputShape = adjustedAttributes.outputShape;
       const outHeight = outputShape[isChannelsLast ? 1 : 2];
       const outWidth = outputShape[isChannelsLast ? 2 : 3];
-      const outChannels = outputShape[isChannelsLast ? 3 : 1];
       const weightHeight = inputs[1].dims[2];
       const weightWidth = inputs[1].dims[3];
-      const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
 
       const dimAOuter = isChannelsLast ? outHeight * outWidth : outChannels;
       const dimBOuter = isChannelsLast ? outChannels : outHeight * outWidth;
@@ -240,6 +237,7 @@ const convTranspose2d =
 
       // STEP.2: prepare reshaped inputs
       const convTransposeInputs = [inputs[0], transposedWeight];
+      const hasBias = inputs.length === 3;
       if (hasBias) {
         if (!isChannelsLast && inputs[2].dims.length === 1) {
           convTransposeInputs.push(inputs[2].reshape([inputs[2].dims[0], 1, 1]));

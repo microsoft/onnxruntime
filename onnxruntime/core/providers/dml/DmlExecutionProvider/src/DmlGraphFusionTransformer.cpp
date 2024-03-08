@@ -24,15 +24,20 @@ namespace Dml
             std::vector<uint8_t> isInputsUploadedByDmlEP;
             GraphDescBuilder::GraphDesc graphDesc;
             std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable;
+            std::vector<std::unique_ptr<std::byte[]>> smallConstantData; // Need to keep it alive for maintaining lifetime
+            std::unordered_map<uint32_t, uint32_t> serializedGraphInputIndexToSubgraphInputIndex;
+            std::unordered_map<std::string_view, uint32_t> serializedGraphLargeConstantNameToSubgraphInputIndex;
         };
     }
 
     DmlGraphFusionTransformer::DmlGraphFusionTransformer(
         const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
+        const onnxruntime::IExecutionProvider* provider,
+        const bool graphSerializationEnabled
     )
         :onnxruntime::GraphTransformer(name),
-         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl())
+         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl()),
+         graphSerializationEnabled(graphSerializationEnabled)
     {
     }
 
@@ -227,23 +232,39 @@ namespace Dml
 
                     ComPtr<IDMLDevice> device;
                     ORT_THROW_IF_FAILED(m_providerImpl->GetDmlDevice(device.GetAddressOf()));
+                    // This map will be used to transfer the initializer to D3D12 system heap memory.
+                    // 'serializedDmlGraphDesc' will have constant input as intermediate edges, that's why
+                    // we need a mapping between intermediateEdgeIndex and indexedSubGraph's (a given partition)
+                    // input arg index.
+                    //   For ex: Let's say intermediate edge index = idx, then
+                    //           indexedSubGraphInputArgIdx = constantEdgeIdxToSubgraphInputArgIdxMap[idx];
+                    //           corresponding constant tensor = initializerNameToInitializerMap[indexedSubGraph.GetMetaDef()->inputs[indexedSubGraphInputArgIdx]]
+                    // We are using intermediate edge index as a key because same constant tensor can be used by
+                    // multiple nodes.
+                    std::unordered_map<uint32_t, uint32_t> serializedGraphInputIndexToSubgraphInputIndex;
+                    std::unordered_map<std::string_view, uint32_t> serializedGraphLargeConstantNameToSubgraphInputIndex;
+                    std::vector<std::unique_ptr<std::byte[]>> smallConstantData;
                     GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
                         isInputsUploadedByDmlEP.data(),
                         isInputsUploadedByDmlEP.size(),
                         isInitializerTransferable,
                         partitionNodePropsMap,
-                        device.Get(),
                         m_providerImpl,
                         modelPath,
                         subgraphNodes,
                         subgraphInputs,
-                        subgraphOutputs);
+                        subgraphOutputs,
+                        serializedGraphInputIndexToSubgraphInputIndex,
+                        serializedGraphLargeConstantNameToSubgraphInputIndex,
+                        smallConstantData);
 
                     // Compile the operator
                     auto compiledPartition = DmlGraphFusionHelper::TryCreateCompiledOperator(
                         graphDesc,
                         indexedSubGraph,
-                        m_providerImpl);
+                        m_providerImpl,
+                        &serializedGraphInputIndexToSubgraphInputIndex,
+                        &serializedGraphLargeConstantNameToSubgraphInputIndex);
 
                     if (!compiledPartition)
                     {
@@ -264,6 +285,9 @@ namespace Dml
                         compiledPartitionInfo->isInputsUploadedByDmlEP = std::move(isInputsUploadedByDmlEP);
                         compiledPartitionInfo->graphDesc = std::move(graphDesc);
                         compiledPartitionInfo->isInitializerTransferable = std::move(isInitializerTransferable);
+                        compiledPartitionInfo->smallConstantData = std::move(smallConstantData);
+                        compiledPartitionInfo->serializedGraphInputIndexToSubgraphInputIndex = std::move(serializedGraphInputIndexToSubgraphInputIndex);
+                        compiledPartitionInfo->serializedGraphLargeConstantNameToSubgraphInputIndex = std::move(serializedGraphLargeConstantNameToSubgraphInputIndex);
                         compiledPartitionInfos[partitionIndex] = std::move(compiledPartitionInfo);
                     }
                 }
@@ -271,12 +295,14 @@ namespace Dml
         }
         while (!additionalSplittingNodes.empty());
 
+        uint32_t partitionIndex = 0;
         for (auto&& compiledPartitionInfo : compiledPartitionInfos)
         {
             // Null compiled operators were not DML partitions
             if (compiledPartitionInfo)
             {
                 DmlGraphFusionHelper::FusePartitionAndRegisterKernel(
+                    partitionIndex++,
                     graph,
                     m_providerImpl->GetKernelRegistry().get(),
                     compiledPartitionInfo->isInitializerTransferable,
@@ -284,7 +310,10 @@ namespace Dml
                     compiledPartitionInfo->indexedSubGraph,
                     std::move(compiledPartitionInfo->isInputsUploadedByDmlEP),
                     compiledPartitionInfo->graphDesc,
-                    compiledPartitionInfo->compiledOperator);
+                    compiledPartitionInfo->compiledOperator,
+                    graphSerializationEnabled,
+                    &compiledPartitionInfo->serializedGraphInputIndexToSubgraphInputIndex,
+                    &compiledPartitionInfo->serializedGraphLargeConstantNameToSubgraphInputIndex);
             }
         }
 

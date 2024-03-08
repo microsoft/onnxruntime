@@ -6,6 +6,8 @@
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/mldata_type_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -117,6 +119,75 @@ Status TransformModelInputsForInference(Graph& inference_graph,
   return Status::OK();
 }
 #endif
+
+InlinedHashMap<std::string, const NodeArg*> BuildParameterToInputNodeArgMap(const ModuleCheckpointState& state,
+                                                                            const InputDefList* model_inputs) {
+  ORT_ENFORCE(model_inputs != nullptr, "Model inputs are not defined.");
+  InlinedHashMap<std::string, const NodeArg*> parameter_to_input_node_arg_map;
+  parameter_to_input_node_arg_map.reserve(state.named_parameters.size());
+  for (const auto& input_def : *model_inputs) {
+    const std::string& input_name = input_def->Name();
+    const auto param_it = state.named_parameters.find(input_name);
+    if (param_it == state.named_parameters.end()) {
+      continue;
+    }
+    parameter_to_input_node_arg_map[input_name] = input_def;
+  }
+  return parameter_to_input_node_arg_map;
+}
+
+InlinedHashMap<std::string, size_t> BuildParameterToGradInputIndexMap(gsl::span<const std::string> grad_names) {
+  InlinedHashMap<std::string, size_t> param_name_to_grad_input_index_map;
+  param_name_to_grad_input_index_map.reserve(grad_names.size());
+  for (size_t i = 0; i < grad_names.size(); ++i) {
+    std::string param_name;
+    utils::GetParamNameFromGradient(grad_names[i], param_name);
+    param_name_to_grad_input_index_map.insert({param_name, i});
+  }
+  return param_name_to_grad_input_index_map;
+}
+
+Status LoadParameter(const std::string& param_name, const Tensor& src_weight_tensor,
+                     const SessionState& session_state, const bool force_load,
+                     const InlinedHashMap<std::string, size_t>& param_to_grad_index,
+                     gsl::span<const std::string> grad_names, Parameter& param) {
+  InlinedVector<SessionState::NodeInfo> node_info_vec;
+  ORT_THROW_IF_ERROR(session_state.GetInputNodeInfo(param_name, node_info_vec));
+  const auto& node_info = node_info_vec.front();
+  const auto target_device = *node_info.device;
+  for (auto it = node_info_vec.begin(); it != node_info_vec.end(); ++it) {
+    ORT_ENFORCE(target_device == *(it->device), "Inconsistent device requirements found for input: ", param_name);
+  }
+
+  if (force_load || src_weight_tensor.Location().device.Type() != target_device.Type()) {
+    auto weight_allocator = session_state.GetAllocator(target_device);
+    ORT_ENFORCE(weight_allocator != nullptr);
+
+    // Create a new tensor on the target_device and switch the source_ortvalue to point to this new tensor
+    auto dst_weight_tensor = std::make_unique<Tensor>(src_weight_tensor.DataType(), src_weight_tensor.Shape(),
+                                                      weight_allocator);
+    ORT_THROW_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(src_weight_tensor, *dst_weight_tensor.get()));
+    auto ml_tensor_type = DataTypeImpl::GetType<Tensor>();
+    param.Data().Init(dst_weight_tensor.release(), ml_tensor_type, ml_tensor_type->GetDeleteFunc());
+  }
+
+  if (param.RequiresGrad()) {
+    // Create gradient accumulation buffer.
+    auto grad_it = param_to_grad_index.find(param_name);
+    ORT_ENFORCE(grad_it != param_to_grad_index.end(), "Gradient buffer input not provided for param: ",
+                param_name);
+
+    const size_t grad_input_index = grad_it->second;
+    auto& param_grad_name = grad_names[grad_input_index];
+
+    OrtValue param_grad;
+    ORT_THROW_IF_ERROR(utils::CreateZeroValuedOrtValueLike(session_state, param.Data(), param_grad));
+    ORT_THROW_IF_ERROR(param.SetGrad(param_grad_name, param_grad));
+  }
+
+  return Status::OK();
+}
+
 }  // namespace
 
 Status Parameter::CopyTo(const DataTransferManager* data_transfer_manager, OrtValue& data) const {
@@ -251,7 +322,6 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   // user inputs, weights, gradients, reset_grad
   InlinedVector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
 
-  std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
   for (const auto& input_name : train_input_names) {
     auto it = state_->module_checkpoint_state.named_parameters.find(input_name);
     if (it != state_->module_checkpoint_state.named_parameters.end()) {
@@ -259,7 +329,6 @@ Module::Module(const ModelIdentifiers& model_identifiers,
     } else if (input_name == ACCUMULATE_GRAD_CONTROL_INPUT_NAME) {
       reset_grad_name.emplace_back(input_name);
     } else if (std::string param_name; utils::GetParamNameFromGradient(input_name, param_name)) {
-      param_name_to_grad_input_index_map.insert({param_name, grad_input_names.size()});
       grad_input_names.emplace_back(input_name);
     } else {
       user_input_names.emplace_back(input_name);
@@ -268,11 +337,7 @@ Module::Module(const ModelIdentifiers& model_identifiers,
 
   gradients_.resize(grad_input_names.size());
 
-  train_input_names_ = user_input_names;
-  train_user_input_count_ = user_input_names.size();
-  train_input_names_.insert(train_input_names_.end(), param_input_names.begin(), param_input_names.end());
-  train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
-  train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
+  train_input_names_ = TrainInputNames(user_input_names, param_input_names, grad_input_names);
 
   for (const auto& output_name : train_output_names) {
     if (std::string param_name; !utils::GetParamNameFromGradient(output_name, param_name)) {
@@ -280,58 +345,24 @@ Module::Module(const ModelIdentifiers& model_identifiers,
     }
   }
 
-  // Loop each parameter, and allocate its memory based on the user-specified device.
-  auto& train_sess_state = train_sess_->GetSessionState();
-  for (auto& param_name : param_input_names) {
-    auto params_iter = state_->module_checkpoint_state.named_parameters.find(param_name);
-    ORT_ENFORCE(params_iter != state_->module_checkpoint_state.named_parameters.end());
+  if (!state_->module_checkpoint_state.is_nominal_state) {
+    // ORT_THROW_IF_ERROR(AllocateMemoryForWeights());
+    // Loop each parameter, and allocate its memory based on the user-specified device.
+    const auto param_to_grad_index = BuildParameterToGradInputIndexMap(train_input_names_.GradientInputNames());
+    for (auto& param_name : train_input_names_.WeightsInputNames()) {
+      auto params_iter = state_->module_checkpoint_state.named_parameters.find(param_name);
+      ORT_ENFORCE(params_iter != state_->module_checkpoint_state.named_parameters.end());
 
-    // Retrieve the target device for "param_name".
-    InlinedVector<SessionState::NodeInfo> node_info_vec;
-    ORT_THROW_IF_ERROR(train_sess_state.GetInputNodeInfo(param_name, node_info_vec));
-    const auto& node_info = node_info_vec.front();
-    const auto target_device = *node_info.device;
-    for (auto it = node_info_vec.begin(); it != node_info_vec.end(); ++it) {
-      ORT_ENFORCE(target_device == *(it->device), "Inconsistent device requirements found for input: ", param_name);
-    }
-
-    // Copy ortvalue buffer from CPU to target_device for this "param_name" (based on graph partitioning)
-    // Only copies data if the target device is not the same as the current device the buffer is placed on
-    OrtValue& param_data = params_iter->second->Data();
-    ORT_ENFORCE(param_data.IsTensor());
-    const Tensor& param_data_tensor = param_data.Get<Tensor>();
-    // If the source device type is already the same as target device skip copy
-    if (param_data_tensor.Location().device.Type() != target_device.Type()) {
-      // TODO: move this outside of the for loop?
-      auto target_allocator = train_sess_state.GetAllocator(target_device);
-      ORT_ENFORCE(target_allocator != nullptr);
-
-      // Create a new tensor on the target_device and switch the source_ortvalue to point to this new tensor
-      auto target_tensor = std::make_unique<Tensor>(param_data_tensor.DataType(), param_data_tensor.Shape(),
-                                                    target_allocator);
-      ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(param_data_tensor, *target_tensor.get()));
-      auto ml_tensor_type = DataTypeImpl::GetType<Tensor>();
-      param_data.Init(target_tensor.release(), ml_tensor_type, ml_tensor_type->GetDeleteFunc());
-    }
-
-    weights_.push_back(param_data);
-    weight_names_.push_back(param_name);
-
-    // Create gradient buffer when parameter requires gradient.
-    if (params_iter->second->RequiresGrad()) {
-      // Create gradient accumulation buffer.
-      auto it = param_name_to_grad_input_index_map.find(param_name);
-      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not provided for param: ",
-                  param_name);
-
-      const size_t grad_input_index = it->second;
-      auto& param_grad_name = grad_input_names[grad_input_index];
-      // TODO: don't pre-allocate the gradient buffer.
-      // Gradient usually stays on the same device of its parameter.
-      OrtValue param_grad;
-      ORT_THROW_IF_ERROR(utils::CreateZeroValuedOrtValueLike(train_sess_state, param_data, param_grad));
-      ORT_THROW_IF_ERROR(params_iter->second->SetGrad(param_grad_name, param_grad));
-      gradients_[grad_input_index] = params_iter->second->Gradient();
+      OrtValue& param_data = params_iter->second->Data();
+      ORT_ENFORCE(param_data.IsTensor(), "Expected: Parameter data should be of tensor type. Actual: ",
+                  params_iter->second->Name(), " is not a tensor.");
+      ORT_THROW_IF_ERROR(LoadParameter(param_name, param_data.Get<Tensor>(), train_sess_->GetSessionState(),
+                                       false /* force_load */, param_to_grad_index,
+                                       train_input_names_.GradientInputNames(), *params_iter->second));
+      weights_.push_back(param_data);
+      if (params_iter->second->RequiresGrad()) {
+        gradients_[param_to_grad_index.at(param_name)] = params_iter->second->Gradient();
+      }
     }
   }
 
@@ -414,16 +445,24 @@ std::string Module::GetEvalModelOutputName(size_t index) const {
 
 size_t Module::GetParametersSize(const bool trainable_only) const {
   SafeInt<size_t> parameters_size = 0;
-  for (const auto& it : state_->module_checkpoint_state.named_parameters) {
-    if (trainable_only && !it.second->RequiresGrad()) {
+  const auto model_inputs_with_error = GetTrainingModelInputs();
+  ORT_THROW_IF_ERROR(model_inputs_with_error.first);
+  ORT_ENFORCE(model_inputs_with_error.second, "Training model graph inputs are not defined.");
+  for (const auto& input_def : *model_inputs_with_error.second) {
+    const std::string& input_name = input_def->Name();
+    const auto param_it = state_->module_checkpoint_state.named_parameters.find(input_name);
+    if (param_it == state_->module_checkpoint_state.named_parameters.end() ||
+        (trainable_only && !param_it->second->RequiresGrad())) {
       continue;
     }
-    parameters_size += it.second->Data().Get<Tensor>().Shape().Size();
+    parameters_size += onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*input_def->Shape()).Size();
   }
   return parameters_size;
 }
 
 std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
+  ORT_ENFORCE(!state_->module_checkpoint_state.is_nominal_state,
+              "Cannot fetch parameters from a nominal checkpoint state. Please load the model parameters first.");
   std::vector<std::shared_ptr<Parameter>> params;
   for (auto& it : state_->module_checkpoint_state.named_parameters) {
     params.push_back(it.second);
@@ -432,23 +471,27 @@ std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
 }
 
 std::unordered_map<std::string, std::shared_ptr<Parameter>> Module::NamedParameters() const {
+  ORT_ENFORCE(!state_->module_checkpoint_state.is_nominal_state,
+              "Cannot fetch named parameters from a nominal checkpoint state. Please load the model parameters first.");
   return state_->module_checkpoint_state.named_parameters;
 }
 
 Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only) {
-  ORT_ENFORCE(parameters_buffer.IsAllocated(), "Parameters buffer should be pre-allocated.");
-  ORT_ENFORCE(parameters_buffer.IsTensor(), "Parameters buffer should be of tensor type.");
+  ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
+                "Cannot copy parameters from a nominal checkpoint state. Please load the model parameters first.");
+  ORT_RETURN_IF_NOT(parameters_buffer.IsAllocated(), "Parameters buffer should be pre-allocated.");
+  ORT_RETURN_IF_NOT(parameters_buffer.IsTensor(), "Parameters buffer should be of tensor type.");
   auto* init_tensor = parameters_buffer.GetMutable<Tensor>();
   ORT_ENFORCE(nullptr != init_tensor);
   auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
-  ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
-              "Parameters buffer size incorrect. Expected:", expected_buffer_size,
-              ", Actual:", init_tensor->Shape().Size());
+  ORT_RETURN_IF(init_tensor->Shape().Size() != expected_buffer_size,
+                "Parameters buffer size incorrect. Expected:", expected_buffer_size,
+                ", Actual:", init_tensor->Shape().Size());
 
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
 
   size_t offset = 0;
-  for (const auto& param_name : weight_names_) {
+  for (const auto& param_name : train_input_names_.WeightsInputNames()) {
     auto& param = state_->module_checkpoint_state.named_parameters.at(param_name);
     if (trainable_only && !param->RequiresGrad()) {
       continue;
@@ -458,7 +501,7 @@ Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool tr
 
     const TensorShape& shape = weight_tensor->Shape();
     auto element_type = init_tensor->DataType();
-    ORT_ENFORCE(weight_tensor->DataType() == element_type, "Data types must match.");
+    ORT_RETURN_IF(weight_tensor->DataType() != element_type, "Data types must match.");
 
     const OrtMemoryInfo& info = init_tensor->Location();
     std::unique_ptr<Tensor> p_tensor;
@@ -470,54 +513,102 @@ Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool tr
                                           data_buffer + offset,
                                           info);
     } else {
-      ORT_THROW("Unsupported type: ", element_type);
+      ORT_THROW("Unsupported type: ", element_type, " encountered while copying parameters to buffer. ",
+                "Only float is supported.");
     }
-    ORT_THROW_IF_ERROR(sess_data_transfer_manager.CopyTensor(*weight_tensor, *p_tensor.get()));
+    ORT_RETURN_IF_ERROR(sess_data_transfer_manager.CopyTensor(*weight_tensor, *p_tensor.get()));
     offset += shape.Size();
   }
   return Status::OK();
 }
 
 Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
-  ORT_ENFORCE(parameters_buffer.IsAllocated(), "Parameters buffer should be pre-allocated.");
-  ORT_ENFORCE(parameters_buffer.IsTensor(), "Parameters buffer should be of tensor type.");
-  auto* init_tensor = parameters_buffer.GetMutable<Tensor>();
-  ORT_ENFORCE(nullptr != init_tensor);
+  // In case of a nominal checkpoint state, all parameters need to be loaded into the model.
+  // i.e. trainable_only must be false.
+  ORT_RETURN_IF(trainable_only && state_->module_checkpoint_state.is_nominal_state,
+                "For nominal checkpoint state, all parameters need to be loaded into the model "
+                "(trainable_only = false).");
+  ORT_RETURN_IF_NOT(parameters_buffer.IsAllocated(), "Parameters buffer should be pre-allocated.");
+  ORT_RETURN_IF_NOT(parameters_buffer.IsTensor(), "Parameters buffer should be of tensor type.");
+  auto* buffer_tensor = parameters_buffer.GetMutable<Tensor>();
+  ORT_RETURN_IF(nullptr == buffer_tensor, "Expected valid parameter buffer. Actual: nullptr.");
   auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
-  ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
-              "Parameters buffer size incorrect. Expected:", expected_buffer_size,
-              ", Actual:", init_tensor->Shape().Size());
+  ORT_RETURN_IF(buffer_tensor->Shape().Size() != expected_buffer_size,
+                "Parameters buffer size incorrect. Expected:", expected_buffer_size,
+                ", Actual:", buffer_tensor->Shape().Size());
 
+  auto& train_sess_state = train_sess_->GetSessionState();
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
+  const auto model_inputs_with_error = GetTrainingModelInputs();
+  ORT_RETURN_IF_ERROR(model_inputs_with_error.first);
+  ORT_RETURN_IF_NOT(model_inputs_with_error.second, "Training model graph inputs are not defined.");
+  const auto param_to_node_arg = BuildParameterToInputNodeArgMap(state_->module_checkpoint_state,
+                                                                 model_inputs_with_error.second);
+  const auto param_to_grad_index = BuildParameterToGradInputIndexMap(train_input_names_.GradientInputNames());
+
+  if (state_->module_checkpoint_state.is_nominal_state) {
+    // weights_ vector is not initialized for a nominal state. This function is expected to
+    // initialize the weights_.
+    ORT_ENFORCE(weights_.empty(), "Weights vector should be empty for a nominal state.");
+  }
 
   size_t offset = 0;
-  for (const auto& param_name : weight_names_) {
+  for (const auto& param_name : train_input_names_.WeightsInputNames()) {
     auto& param = state_->module_checkpoint_state.named_parameters.at(param_name);
     if (trainable_only && !param->RequiresGrad()) {
       continue;
     }
     OrtValue& weight = param->Data();
-    auto* weight_tensor = weight.GetMutable<Tensor>();
 
-    const TensorShape& shape = weight_tensor->Shape();
-    auto element_type = init_tensor->DataType();
-    ORT_ENFORCE(weight_tensor->DataType() == element_type, "Data types must match.");
+    auto param_it = param_to_node_arg.find(param_name);
+    const TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(
+        *(param_it->second->Shape()));
+    const auto element_type = static_cast<const TensorTypeBase*>(
+                                  onnxruntime::utils::GetMLDataType(*param_it->second))
+                                  ->GetElementType();
 
-    const OrtMemoryInfo& info = init_tensor->Location();
-    std::unique_ptr<Tensor> p_tensor;
+    const OrtMemoryInfo& info = buffer_tensor->Location();
+    std::unique_ptr<Tensor> src_tensor;
 
     if (onnxruntime::utils::IsPrimitiveDataType<float>(element_type)) {
-      float* data_buffer = init_tensor->MutableData<float>();
-      p_tensor = std::make_unique<Tensor>(element_type,
-                                          shape,
-                                          data_buffer + offset,
-                                          info);
+      float* data_buffer = buffer_tensor->MutableData<float>();
+      src_tensor = std::make_unique<Tensor>(element_type,
+                                            shape,
+                                            data_buffer + offset,
+                                            info);
     } else {
-      ORT_THROW("Unsupported type: ", element_type);
+      ORT_THROW("Unsupported type: ", element_type, " encountered while copying buffer to parameters. ",
+                "Only float is supported.");
     }
-    ORT_THROW_IF_ERROR(sess_data_transfer_manager.CopyTensor(*p_tensor.get(), *weight_tensor));
+
+    if (state_->module_checkpoint_state.is_nominal_state) {
+      // If state is a nominal state, then we first need to allocate the memory for
+      // parameters and their gradients in the checkpoint state before copying the data.
+      ORT_RETURN_IF_ERROR(LoadParameter(param_name, *src_tensor, train_sess_state, true,
+                                        param_to_grad_index, train_input_names_.GradientInputNames(),
+                                        *param));
+      weights_.push_back(param->Data());
+      if (param->RequiresGrad()) {
+        // It is expected that the gradients_ vector is already initialized with the correct size
+        // in the Module constructor (even though the OrtValues contained in the vector are empty).
+        gradients_[param_to_grad_index.at(param_name)] = param->Gradient();
+      }
+    } else {
+      // If state is not a nominal state, then we can directly copy the data to the existing
+      // parameters in the checkpoint state.
+      auto* weight_tensor = weight.GetMutable<Tensor>();
+      ORT_ENFORCE(weight_tensor->DataType() == element_type, "Data types must match.");
+      ORT_THROW_IF_ERROR(sess_data_transfer_manager.CopyTensor(*src_tensor.get(), *weight_tensor));
+    }
+
     offset += shape.Size();
   }
+
+  if (state_->module_checkpoint_state.is_nominal_state) {
+    // Once the parameters are loaded, the state is no longer a nominal state.
+    state_->module_checkpoint_state.is_nominal_state = false;
+  }
+
   return Status::OK();
 }
 
@@ -527,6 +618,9 @@ Status Module::LazyResetGrad() {
 }
 
 Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
+                "Cannot perform TrainStep with a nominal state. Please load the model parameters first.");
+  std::vector<std::shared_ptr<Parameter>> params;
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
@@ -535,7 +629,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   utils::WrapInOrtValue<bool>(!accumulate_gradient_, &reset_grad_input);
   feeds.push_back(reset_grad_input);
 
-  ORT_THROW_IF_ERROR(train_sess_->Run(RunOptions(), train_input_names_, feeds, train_output_names_, &outputs));
+  ORT_THROW_IF_ERROR(train_sess_->Run(RunOptions(), train_input_names_.AllInputNames(), feeds, train_output_names_, &outputs));
 
   // Reset the flag after every step. In case the ResetGrad was called before running
   // the current step, it will have done the effective resetting during the
@@ -546,6 +640,8 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
 }
 
 Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
+                "Cannot perform EvalStep with a nominal state. Please load the model parameters first.");
   ORT_ENFORCE(nullptr != eval_sess_, "Evaluation session not initialized.");
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
@@ -560,6 +656,8 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
 //                      transform it to an inference model and save it in ort_format.
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
                                          gsl::span<const std::string> graph_output_names) const {
+  ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
+                "Cannot export the model with a nominal state. Please load the model parameters first.");
   ORT_RETURN_IF(!eval_sess_ || !eval_model_path_.has_value(),
                 "Eval model was not provided. Cannot export a model for inferencing.");
 
@@ -586,7 +684,7 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
 #endif
 
 size_t Module::GetTrainingModelInputCount() const noexcept {
-  return train_user_input_count_;
+  return train_input_names_.UserInputNames().size();
 }
 
 size_t Module::GetEvalModelInputCount() const noexcept {
@@ -594,10 +692,10 @@ size_t Module::GetEvalModelInputCount() const noexcept {
 }
 
 std::string Module::GetTrainingModelInputName(size_t index) const {
-  ORT_ENFORCE(index < train_user_input_count_,
-              "Train input name index out of range. Expected in range [0-", train_user_input_count_, "). Actual: ",
+  ORT_ENFORCE(index < train_input_names_.UserInputNames().size(),
+              "Train input name index out of range. Expected in range [0-", train_input_names_.UserInputNames().size(), "). Actual: ",
               index);
-  return train_input_names_.at(index);
+  return train_input_names_.UserInputNames()[index];
 }
 
 std::string Module::GetEvalModelInputName(size_t index) const {
@@ -613,6 +711,43 @@ std::pair<common::Status, const InputDefList*> Module::GetTrainingModelInputs() 
 
 std::pair<common::Status, const InputDefList*> Module::GetEvalModelInputs() const noexcept {
   return eval_sess_->GetModelInputs();
+}
+
+Module::TrainInputNames::TrainInputNames(gsl::span<const std::string> user_input_names,
+                                         gsl::span<const std::string> weights_input_names,
+                                         gsl::span<const std::string> gradient_input_names) {
+  train_input_names_.reserve(user_input_names.size() +
+                             weights_input_names.size() +
+                             gradient_input_names.size() +
+                             1U);  // +1 for the reset gradient flag input
+  train_input_index_offsets_.reserve(3);
+
+  train_input_names_.insert(train_input_names_.end(),
+                            user_input_names.begin(), user_input_names.end());
+  train_input_index_offsets_.push_back(train_input_names_.size());
+  train_input_names_.insert(train_input_names_.end(),
+                            weights_input_names.begin(), weights_input_names.end());
+  train_input_index_offsets_.push_back(train_input_names_.size());
+  train_input_names_.insert(train_input_names_.end(),
+                            gradient_input_names.begin(), gradient_input_names.end());
+  train_input_index_offsets_.push_back(train_input_names_.size());
+  train_input_names_.push_back(ACCUMULATE_GRAD_CONTROL_INPUT_NAME);
+}
+
+gsl::span<const std::string> Module::TrainInputNames::AllInputNames() const { return train_input_names_; }
+
+gsl::span<const std::string> Module::TrainInputNames::UserInputNames() const {
+  return gsl::span<const std::string>{train_input_names_.begin(), train_input_index_offsets_[0]};
+}
+
+gsl::span<const std::string> Module::TrainInputNames::WeightsInputNames() const {
+  return gsl::span<const std::string>{train_input_names_.begin() + train_input_index_offsets_[0],
+                                      train_input_index_offsets_[1] - train_input_index_offsets_[0]};
+}
+
+gsl::span<const std::string> Module::TrainInputNames::GradientInputNames() const {
+  return gsl::span<const std::string>{train_input_names_.begin() + train_input_index_offsets_[1],
+                                      train_input_index_offsets_[2] - train_input_index_offsets_[1]};
 }
 
 }  // namespace api

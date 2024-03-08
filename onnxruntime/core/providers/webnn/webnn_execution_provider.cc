@@ -17,24 +17,24 @@
 
 namespace onnxruntime {
 
-WebNNExecutionProvider::WebNNExecutionProvider(
-    const std::string& webnn_device_flags, const std::string& webnn_power_flags)
-    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider, true} {
+WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags,
+                                               const std::string& webnn_threads_number, const std::string& webnn_power_flags)
+    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
   // Create WebNN context and graph builder.
   const emscripten::val ml = emscripten::val::global("navigator")["ml"];
   if (!ml.as<bool>()) {
     ORT_THROW("Failed to get ml from navigator.");
   }
   emscripten::val context_options = emscripten::val::object();
-  // Currently WebNN implementation in Chromium temporarily reuses the MLContextOptions
-  // defined in Model Loader API, which uses MLDevicePreference instead of MLDeviceType
-  // defined in WebNN. Because there's an ongoing spec discussion to simplify this API at
-  // https://github.com/webmachinelearning/webnn/issues/302.
-  context_options.set("devicePreference", emscripten::val(webnn_device_flags));
+  context_options.set("deviceType", emscripten::val(webnn_device_flags));
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
     preferred_layout_ = DataLayout::NHWC;
     wnn_device_type_ = webnn::WebnnDeviceType::CPU;
+    // Set "numThreads" if it's not default 0.
+    if (webnn_threads_number.compare("0") != 0) {
+      context_options.set("numThreads", stoi(webnn_threads_number));
+    }
   } else {
     preferred_layout_ = DataLayout::NCHW;
     wnn_device_type_ = webnn::WebnnDeviceType::GPU;
@@ -42,7 +42,8 @@ WebNNExecutionProvider::WebNNExecutionProvider(
   if (webnn_power_flags.compare("default") != 0) {
     context_options.set("powerPreference", emscripten::val(webnn_power_flags));
   }
-  wnn_context_ = ml.call<emscripten::val>("createContextSync", context_options);
+
+  wnn_context_ = ml.call<emscripten::val>("createContext", context_options).await();
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
   }
@@ -59,10 +60,15 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                       const IKernelLookup& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // We do not run WebNN EP on subgraph, instead we cover this in the control flow nodes.
-  // TODO investigate whether we want to support subgraph using WebNN EP.
-  if (graph_viewer.IsSubgraph()) {
-    return result;
+  // For subgraph which is the attribute of the control flow nodes, part of its initializers are stored in its
+  // ancestor graphs as common initializers shared for other subgraphs. We need to collect all of them used for
+  // identifying the required initializer names and storing into 'meta_def->constant_initializers'.
+  // Thus we are able to get the required initialized tensors for this subgraph via the GetInitializerTensors()
+  // method defined in the model_builder.h file.
+  InitializedTensorSet all_initializers;
+  const bool is_subgraph = graph_viewer.IsSubgraph();
+  if (is_subgraph) {
+    all_initializers = webnn::CollectAllInitializedTensors(graph_viewer);
   }
 
   /*
@@ -110,6 +116,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
+    std::vector<std::string> subgraph_initializers;
     InlinedHashSet<const NodeArg*> node_outputs;
     InlinedHashSet<const NodeArg*> subgraph_inputs;
     InlinedHashSet<const NodeArg*> subgraph_outputs;
@@ -126,7 +133,11 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
           // skip the placeholder inputs.
           continue;
         }
-        // if the node input was not produced by this subgraph, add it to the subgraph inputs.
+        // If it is a subgraph of a control flow node, collect the constant initializer.
+        if (is_subgraph && Contains(all_initializers, input->Name())) {
+          subgraph_initializers.push_back(input->Name());
+        }
+        // If the node input was not produced by this subgraph, add it to the subgraph inputs.
         if (node_outputs.count(input) == 0) {
           if (subgraph_inputs.count(input) == 0) {
             subgraph_inputs.insert(input);
@@ -158,12 +169,18 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // Assign inputs and outputs to subgraph's meta_def.
     uint64_t model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     meta_def->name = "WEBNN_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain = kMSDomain;
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+
+    if (is_subgraph) {
+      for (const auto& initializer : subgraph_initializers) {
+        meta_def->constant_initializers.push_back(initializer);
+      }
+    }
 
     for (const auto& input : ordered_subgraph_inputs) {
       meta_def->inputs.push_back(input->Name());
@@ -265,9 +282,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         // Since all the input output of WebNN EP is MultiArray, we will make the scalar input as a {1} MultiArray.
         if (shape.empty())
           shape.push_back(1);
-        std::vector<int> temp(shape.size());
-        transform(shape.begin(), shape.end(), temp.begin(),
-                  [](int64_t dim) -> uint32_t { return SafeInt<int32_t>(dim); });
         const void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
@@ -301,6 +315,8 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           void* output_buffer;
           switch (output_type) {
             case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+            case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+            case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
             case ONNX_NAMESPACE::TensorProto_DataType_INT32:

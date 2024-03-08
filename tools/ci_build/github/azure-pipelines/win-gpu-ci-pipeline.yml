@@ -59,16 +59,32 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+        additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        # Some unit tests crash on A10 GPUs. So this job still needs to use T4.
-        MachinePool: onnxruntime-Win2022-GPU-T4
+        MachinePool: onnxruntime-Win2022-GPU-A10
         isTraining: true
+
+- stage: dml
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_pybind --use_dml --enable_wcos  --use_winml
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        ORT_EP_NAME: DML
+        WITH_CACHE: false
+        MachinePool: onnxruntime-Win2022-GPU-dml-A10
 
 - stage: kernelDocumentation
   dependsOn: []

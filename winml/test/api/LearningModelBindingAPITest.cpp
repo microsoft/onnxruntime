@@ -669,7 +669,8 @@ const LearningModelBindingAPITestsApi& getapi() {
     VerifyOutputAfterEvaluateAsyncCalledTwice,
     VerifyOutputAfterImageBindCalledTwice,
     SequenceLengthTensorFloat,
-    SequenceConstructTensorString};
+    SequenceConstructTensorString
+  };
 
   if (SkipGpuTests()) {
     api.GpuSqueezeNet = SkipTest;

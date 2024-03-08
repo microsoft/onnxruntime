@@ -1,9 +1,7 @@
 // Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include <map>
-#include <string>
-#include <memory>
+#include <algorithm>
 #include <sstream>
 #include <fstream>
 
@@ -56,9 +54,9 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   }
   const std::string model = model_proto.SerializeAsString();
   try {
-    auto cnn_network = global_context.ie_core.ReadModel(model);
+    auto cnn_network = global_context.ie_core.ReadModel(model, global_context.onnx_model_path_name);
     if ((subgraph_context.precision == "FP16") &&
-        (global_context.device_type.find("VPUX") == std::string::npos)) {
+        (global_context.device_type.find("NPU") == std::string::npos)) {
       // FP16 transformations
       ov::pass::ConvertFP32ToFP16 pass_obj;
       pass_obj.run_on_model(cnn_network);
@@ -88,7 +86,8 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       size_t index = results.size() - 1;
 
       for (auto it = results.rbegin(); it != results.rend(); ++it) {
-        if (auto const_node = std::dynamic_pointer_cast<ov::op::v0::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+        if (auto const_node =
+                std::dynamic_pointer_cast<ov::op::v0::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
           const_outputs_map[(*it)->get_friendly_name()] = const_node;
           results.erase(results.begin() + index);
         }
@@ -96,13 +95,11 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       }
     }
 #ifndef NDEBUG
-#if defined(OPENVINO_2022_3) || (OPENVINO_2023_0) || (OPENVINO_2023_1)
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();
       ov::pass::Serialize serializer(name + ".xml", name + ".bin");
       serializer.run_on_model(cnn_network);
     }
-#endif
 #endif
     return cnn_network;
   } catch (std::string const& msg) {
@@ -254,7 +251,7 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName) {
-  long long totalTime = 0;
+  int64_t totalTime = 0;
   // Print performance counts
   stream << std::endl
          << "performance counts:" << std::endl

@@ -55,10 +55,6 @@ import onnx
 import torch
 from benchmark_helper import Precision, setup_logger
 from fusion_utils import NumpyHelper
-from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
-from models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
-from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
-from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 from onnx import GraphProto, ModelProto, TensorProto
 from onnx_model import OnnxModel
 from transformers import (
@@ -73,6 +69,10 @@ from transformers import (
 )
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
+from onnxruntime.transformers.models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
+from onnxruntime.transformers.models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
+from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+from onnxruntime.transformers.models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 
 logger = logging.getLogger("")
 
@@ -372,7 +372,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         required=False,
         default=1,
-        help="Minimumber of tokens we keep per batch example in the output.",
+        help="Minimum number of tokens we keep per batch example in the output.",
     )
 
     beam_parameters_group.add_argument(
@@ -466,7 +466,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--save_test_data",
         required=False,
         action="store_true",
-        help="save test data for onnxruntimer_perf_test tool",
+        help="save test data for onnxruntime_perf_test tool",
     )
     test_group.set_defaults(save_test_data=False)
 
@@ -1225,7 +1225,7 @@ def find_past_seq_len_usage(subg: GraphProto):
     tensor_names_to_rename = set()
     nodes_to_remove = []
 
-    graph_intput_names = {inp.name: index for index, inp in enumerate(subg.input)}
+    graph_input_names = {inp.name: index for index, inp in enumerate(subg.input)}
 
     input_name_to_nodes = {}
     output_name_to_node = {}
@@ -1259,7 +1259,7 @@ def find_past_seq_len_usage(subg: GraphProto):
                 if (
                     shape_node.op_type == "Shape"
                     and shape_node.input[0]
-                    and shape_node.input[0] in graph_intput_names
+                    and shape_node.input[0] in graph_input_names
                     and (
                         shape_node.input[0].startswith("past_key_self_")
                         or shape_node.input[0].startswith("past_value_self_")
@@ -1272,35 +1272,98 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
-def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads: int = 0):
-    past_seq_len = past_seq_len_input
-    if past_seq_len not in model.get_graphs_input_names():
-        # Add model input for past sequence length
-        new_input = onnx.helper.make_tensor_value_info(past_seq_len, onnx.TensorProto.INT64, shape=[1])
-        model.model.graph.input.append(new_input)
+def replace_mha_with_gqa(
+    model: OnnxModel, attn_mask: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = 0
+):
+    # Insert attention_mask subgraph to calculate shared inputs for all GroupQueryAttention nodes
+    #
+    #                attention_mask
+    #               /              \
+    #          ReduceSum          Shape
+    #              |                |
+    #             Sub             Gather
+    #              |                |
+    #          seqlens_k   total_sequence_length
+    #              |                |
+    #        Cast to int32    Cast to int32
+
+    model.add_initializer(
+        onnx.helper.make_tensor(
+            name="one",
+            data_type=TensorProto.INT64,
+            dims=[1],
+            vals=[1],
+        )
+    )
+    reduce_sum_node = onnx.helper.make_node(
+        "ReduceSum",
+        inputs=[attn_mask, "one"],
+        outputs=[attn_mask + "_row_sums"],
+        name=model.create_node_name("ReduceSum"),
+    )
+    sub_node = onnx.helper.make_node(
+        "Sub",
+        inputs=[attn_mask + "_row_sums", "one"],
+        outputs=["seqlens_k_int64"],
+        name=model.create_node_name("Sub"),
+    )
+    seqlen_k_cast_node = onnx.helper.make_node(
+        "Cast",
+        inputs=["seqlens_k_int64"],
+        outputs=["seqlens_k"],
+        name=model.create_node_name("Cast"),
+        to=TensorProto.INT32,
+    )
+    shape_node = onnx.helper.make_node(
+        "Shape",
+        inputs=[attn_mask],
+        outputs=[attn_mask + "_shape"],
+        name=model.create_node_name("Shape"),
+    )
+    gather_node = onnx.helper.make_node(
+        "Gather",
+        inputs=[attn_mask + "_shape", "one"],
+        outputs=["total_seq_len_int64"],
+        name=model.create_node_name("Gather"),
+        axis=0,
+    )
+    total_seqlen_cast_node = onnx.helper.make_node(
+        "Cast",
+        inputs=["total_seq_len_int64"],
+        outputs=["total_seq_len"],
+        name=model.create_node_name("Cast"),
+        to=TensorProto.INT32,
+    )
+    model.model.graph.node.extend(
+        [reduce_sum_node, sub_node, seqlen_k_cast_node, shape_node, gather_node, total_seqlen_cast_node]
+    )
 
     # Replace MultiHeadAttention with GroupQueryAttention
-    for node in model.model.graph.node:
-        if node.op_type == "MultiHeadAttention":
-            gqa_node = onnx.helper.make_node(
-                "GroupQueryAttention",
-                inputs=[
-                    node.input[0],  # query
-                    node.input[1],  # key
-                    node.input[2],  # value
-                    node.input[6],  # past_key
-                    node.input[7],  # past_value
-                    past_seq_len,  # past_sequence_length
-                ],
-                outputs=node.output,
-                name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
-                domain="com.microsoft",
-                num_heads=node.attribute[0].i,
-                kv_num_heads=node.attribute[0].i if kv_num_heads == 0 else kv_num_heads,
-                is_past_bsnh=0,
-            )
-            model.model.graph.node.remove(node)
-            model.model.graph.node.extend([gqa_node])
+    mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
+    for node in mha_nodes:
+        num_heads_mha = 0
+        for att in node.attribute:
+            if att.name == "num_heads":
+                num_heads_mha = att.i
+        gqa_node = onnx.helper.make_node(
+            "GroupQueryAttention",
+            inputs=[
+                node.input[0],  # query
+                node.input[1],  # key
+                node.input[2],  # value
+                node.input[6],  # past_key
+                node.input[7],  # past_value
+                "seqlens_k",  # seqlens_k (for attention_mask)
+                "total_seq_len",  # total_seq_len (for attention_mask)
+            ],
+            outputs=node.output,
+            name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
+            domain="com.microsoft",
+            num_heads=num_heads_mha // world_size,
+            kv_num_heads=num_heads_mha // world_size if kv_num_heads == 0 else kv_num_heads // world_size,
+        )
+        model.model.graph.node.remove(node)
+        model.model.graph.node.extend([gqa_node])
     return model
 
 
@@ -1360,7 +1423,7 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
         if node.op_type == "MultiHeadAttention":
             old_nodes.extend([node])
 
-    # If not all the MultiheadAttention nodes are fused, this optimization is not applicable
+    # If not all the MultiHeadAttention nodes are fused, this optimization is not applicable
     if len(old_nodes) < num_layers:
         return False
 

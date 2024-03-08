@@ -21,6 +21,8 @@ class MatMulBnb4 final : public OpKernel {
     ORT_ENFORCE(
         quant_type_ == FP4 || quant_type_ == NF4,
         "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
+    is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
+    transB_ = static_cast<bool>(info.GetAttrOrDefault("transB", static_cast<int64_t>(1)));
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -30,6 +32,8 @@ class MatMulBnb4 final : public OpKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t quant_type_;
+  bool is_training_mode_;
+  bool transB_;
 };
 
 Status MatMulBnb4::Compute(OpKernelContext* ctx) const {
@@ -58,7 +62,7 @@ Status MatMulBnb4::Compute(OpKernelContext* ctx) const {
       thread_pool);
 
   constexpr bool transa = false;
-  constexpr bool transb = true;
+  const bool transb = transB_;
   TensorShape b_shape({N_, K_});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, transa, transb));

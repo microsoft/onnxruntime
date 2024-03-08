@@ -1,3 +1,9 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This code is used to generate the test cases for the AffineGrid operator
+# in onnxruntime/test/providers/cpu/tensor/affine_grid_test.cc
+
 import argparse
 
 import numpy as np

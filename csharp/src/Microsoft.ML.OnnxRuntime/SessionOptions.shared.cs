@@ -697,6 +697,15 @@ namespace Microsoft.ML.OnnxRuntime
         private bool _enableCpuMemArena = true;
 
         /// <summary>
+        /// Disables the per session threads. Default is true.
+        /// This makes all sessions in the process use a global TP.
+        /// </summary>
+        public void DisablePerSessionThreads()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisablePerSessionThreads(handle));
+        }
+
+        /// <summary>
         /// Log Id to be used for the session. Default is empty string.
         /// </summary>
         /// <value>returns _logId value</value>

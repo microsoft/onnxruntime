@@ -16,7 +16,7 @@ from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import unflatten_user_output
-from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
+from ._logger import ORTModuleInitPhase, TrackTime
 from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
 
@@ -207,7 +207,6 @@ class InferenceManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
     @TrackTime(ORTModuleInitPhase.BUILD_GRAPH)
-    @SuppressLogs(ORTModuleInitPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
 
@@ -221,7 +220,6 @@ class InferenceManager(GraphExecutionManager):
             )
 
     @TrackTime(ORTModuleInitPhase.CREATE_SESSION)
-    @SuppressLogs(ORTModuleInitPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 

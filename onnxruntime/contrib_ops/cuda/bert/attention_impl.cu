@@ -58,12 +58,12 @@ size_t AlignSize(size_t bytes) {
   return bytesAligned;
 }
 
-void CumulatedSequenceLengthCache::Initialize(int32_t sequence_length, cudaStream_t stream) {
-  if (this->sequence_length != sequence_length) {
+void CumulatedSequenceLengthCache::Initialize(int32_t seq_length, cudaStream_t stream) {
+  if (this->sequence_length != seq_length) {
     ORT_ENFORCE(buffer.get() != nullptr && this->max_batch_size > 0);
     LaunchTrtSequenceOffset(reinterpret_cast<int32_t*>(buffer.get()), nullptr,
-                            this->max_batch_size, sequence_length, stream);
-    this->sequence_length = sequence_length;
+                            this->max_batch_size, seq_length, stream);
+    this->sequence_length = seq_length;
   }
 }
 
@@ -213,9 +213,9 @@ Status FusedTrtCrossAttention(
 
 template <>
 Status FusedTrtCrossAttention<float>(
-    cudaStream_t stream,
-    contrib::AttentionParameters& parameters,
-    AttentionData<float>& data) {
+    cudaStream_t /*stream*/,
+    contrib::AttentionParameters& /*parameters*/,
+    AttentionData<float>& /*data*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
                          "Trt fused cross attention does not support float tensor");
 }
@@ -276,9 +276,9 @@ Status FusedTrtSelfAttention(
 // Template Specialization for float type
 template <>
 Status FusedTrtSelfAttention<float>(
-    cudaStream_t stream,
-    contrib::AttentionParameters& parameters,
-    AttentionData<float>& data) {
+    cudaStream_t /*stream*/,
+    contrib::AttentionParameters& /*parameters*/,
+    AttentionData<float>& /*data*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
                          "Trt fused attention does not support float tensor");
 }
@@ -313,10 +313,13 @@ Status FlashAttention(
                 parameters.batch_size, parameters.total_sequence_length,
                 parameters.num_heads, parameters.v_head_size);
 
+  bool is_bf16 = false;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.scratch),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
-      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional));
+      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional, is_bf16,
+      parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
+      true));
 
   DUMP_TENSOR("flash attention output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
@@ -372,6 +375,7 @@ Status EfficientAttention(
   p.num_heads = parameters.num_heads;
   p.sequence_length = parameters.sequence_length;
   p.kv_sequence_length = parameters.total_sequence_length;
+  p.max_sequence_length = parameters.total_sequence_length;
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = parameters.is_unidirectional;
@@ -393,10 +397,12 @@ Status EfficientAttention(
   p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
+  p.is_kv_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(parameters.v_head_size, sizeof(T) == sizeof(float))
                     ? data.scratch
                     : nullptr;
   p.stream = stream;
+  p.has_custom_right_padding = false;
   run_memory_efficient_attention(p);
   DUMP_TENSOR("efficient attention output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
@@ -455,7 +461,8 @@ Status UnfusedAttention(
       total_sequence_length, sequence_length, qk_head_size,
       &alpha, data.k, qk_head_size, present_size_per_batch_k,
       data.q, qk_head_size, sequence_length * qk_head_size,
-      &zero, data.scratch, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
+      &zero, data.scratch, total_sequence_length, sequence_length * total_sequence_length, batches,
+      device_prop, parameters.use_tf32));
 
   DUMP_TENSOR_D("Q", data.q, batch_size, num_heads, sequence_length, qk_head_size);
   DUMP_TENSOR_D("K", data.k, batch_size, num_heads, qk_head_size, sequence_length);
@@ -508,7 +515,7 @@ Status UnfusedAttention(
       v_head_size, sequence_length, total_sequence_length,
       &one, data.v, v_head_size, present_size_per_batch_v,
       scratch2, total_sequence_length, sequence_length * total_sequence_length,
-      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
+      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
 
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,

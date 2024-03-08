@@ -52,5 +52,6 @@ bool VideoFramesHaveSameDevice(const wm::IVideoFrame& video_frame_1, const wm::I
 wgdx::Direct3D11::IDirect3DDevice GetDeviceFromDirect3DSurface(const wgdx::Direct3D11::IDirect3DSurface& d3dSurface);
 
 constexpr std::array<DXGI_FORMAT, 3> supportedWinMLFormats = {
-  DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8X8_UNORM};
+  DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8X8_UNORM
+};
 }  // namespace _winml::Imaging

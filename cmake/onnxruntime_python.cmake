@@ -170,7 +170,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_TVM}
-    ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_COREML}
@@ -283,10 +282,7 @@ if (WIN32)
     get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
     string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
     if(NOT onnxruntime_CUDA_VERSION)
-      message("Reading json file ${onnxruntime_CUDA_HOME}/version.json")
-      set(CUDA_SDK_JSON_FILE_PATH "${onnxruntime_CUDA_HOME}/version.json")
-      file(READ ${CUDA_SDK_JSON_FILE_PATH} CUDA_SDK_JSON_CONTENT)
-      string(JSON onnxruntime_CUDA_VERSION GET ${CUDA_SDK_JSON_CONTENT} "cuda" "version")
+      set(onnxruntime_CUDA_VERSION ${CUDAToolkit_VERSION})
       message("onnxruntime_CUDA_VERSION=${onnxruntime_CUDA_VERSION}")
     endif()
     file(APPEND "${VERSION_INFO_FILE}"
@@ -339,9 +335,6 @@ configure_file(${ONNXRUNTIME_ROOT}/python/_pybind_state.py.in
                ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py)
 
 if (onnxruntime_ENABLE_TRAINING)
-  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/deprecated/*.py"
-  )
   file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
   )
@@ -356,9 +349,6 @@ if (onnxruntime_ENABLE_TRAINING)
   )
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/optim/*.py"
-  )
-  file(GLOB onnxruntime_python_torchdynamo_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/torchdynamo/*.py"
   )
   file(GLOB onnxruntime_python_ortmodule_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/*.py"
@@ -419,10 +409,6 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/optim/*"
     )
   endif()
-else()
-  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/training/*.py"
-  )
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
@@ -443,6 +429,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_transformers_testdata_whisper CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/whisper/*.onnx"
   )
+  file(GLOB onnxruntime_python_transformers_testdata_conformer CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/conformer/*.onnx"
+  )
 endif()
 
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
@@ -456,6 +445,12 @@ file(GLOB onnxruntime_python_quantization_operators_src CONFIGURE_DEPENDS
 )
 file(GLOB onnxruntime_python_quantization_cal_table_flatbuffers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/CalTableFlatBuffers/*.py"
+)
+file(GLOB onnxruntime_python_quantization_fusions_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/fusions/*.py"
+)
+file(GLOB onnxruntime_python_quantization_ep_qnn_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/execution_providers/qnn/*.py"
 )
 file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
@@ -474,6 +469,9 @@ file(GLOB onnxruntime_python_transformers_models_llama_src CONFIGURE_DEPENDS
 )
 file(GLOB onnxruntime_python_transformers_models_longformer_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/longformer/*.py"
+)
+file(GLOB onnxruntime_python_transformers_models_phi2_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/phi2/*.py"
 )
 file(GLOB onnxruntime_python_transformers_models_stable_diffusion_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/stable_diffusion/*.py"
@@ -545,17 +543,22 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/gpt2
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/llama
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/phi2
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/fusions
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/conformer
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -577,9 +580,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
       ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_capi_training_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
@@ -624,6 +624,12 @@ add_custom_command(
       ${onnxruntime_python_quantization_cal_table_flatbuffers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_fusions_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/fusions/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_ep_qnn_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -641,6 +647,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_longformer_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_phi2_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/phi2/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_stable_diffusion_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion/
@@ -711,6 +720,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_whisper}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_conformer}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/conformer/
   )
 endif()
 
@@ -734,7 +746,6 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental/gradient_graph
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/torchdynamo
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/json_config
@@ -751,9 +762,6 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_capi_training_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
-    COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_root_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -768,9 +776,6 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_torchdynamo_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/torchdynamo/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/
@@ -845,6 +850,16 @@ if (onnxruntime_USE_DNNL)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_VITISAI)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_vitisai>
         $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )

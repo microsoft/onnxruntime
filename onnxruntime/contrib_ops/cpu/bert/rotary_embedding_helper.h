@@ -11,13 +11,15 @@ namespace rotary_embedding_helper {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct RotaryParameters {
-  int batch_size;           // Batch size used by input
-  int sequence_length;      // Sequence length used by input
-  int hidden_size;          // Hidden size used by input
-  int head_size;            // Head size used by cos/sin cache * 2
-  int num_heads;            // num_heads = hidden_size / head_size
-  int max_sequence_length;  // Sequence length used by cos/sin cache
-  int position_ids_format;  // Format of position ids - 0 is (1), 1 is (batch_size, sequence_length)
+  int batch_size;            // Batch size used by input
+  int sequence_length;       // Sequence length used by input
+  int hidden_size;           // Hidden size used by input
+  int head_size;             // Head size
+  int rotary_embedding_dim;  // Rotary embedding dimension.
+  int num_heads;             // num_heads = hidden_size / head_size
+  int max_sequence_length;   // Sequence length used by cos/sin cache
+  int position_ids_format;   // Format of position ids - 0 is (1), 1 is (batch_size, sequence_length)
+  bool transposed;           // Whether the input tensor has been transposed into (batch, num_heads, seq_len, hidden)
 };
 
 template <typename T>
@@ -25,16 +27,18 @@ Status CheckInputs(const T* input,
                    const T* position_ids,
                    const T* cos_cache,
                    const T* sin_cache,
+                   int num_heads,
+                   int rotary_embedding_dim,
                    void* parameters) {
   //    input        : (batch_size, sequence_length, hidden_size)
   //    position ids : (1) or (batch_size, sequence_length)
-  //    cos cache    : (max_sequence_length, head_size / 2)
-  //    sin cache    : (max_sequence_length, head_size / 2)
+  //    cos cache    : (max_sequence_length, rotary_embedding_dim / 2)
+  //    sin cache    : (max_sequence_length, rotary_embedding_dim / 2)
 
   // Check input
   const auto& input_dims = input->Shape().GetDims();
-  if (input_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'x' is expected to have 3 dimensions, got ",
+  if (input_dims.size() != 3 && input_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'x' is expected to have 3 or 4 dimensions, got ",
                            input_dims.size());
   }
   // Check position_ids
@@ -59,13 +63,32 @@ Status CheckInputs(const T* input,
                            "the same shape");
   }
 
+  // Check num_heads and rotary_embedding_dim
+  if (rotary_embedding_dim > 0 && num_heads == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads must be provided if rotary_embedding_dim is ",
+                           "specified");
+  }
+
   // Get attributes from inputs
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);
+
+  bool transposed = false;
+  if (input_dims.size() == 4) {
+    // input is [batch, num_heads, seq, head_size]
+    sequence_length = static_cast<int>(input_dims[2]);
+    hidden_size = static_cast<int>(input_dims[1]) * static_cast<int>(input_dims[3]);
+    transposed = true;
+  }
   int max_sequence_length = static_cast<int>(cos_cache_dims[0]);
-  int head_size = static_cast<int>(cos_cache_dims[1]) * 2;
-  int num_heads = hidden_size / head_size;
+  int head_size = rotary_embedding_dim == 0 ? static_cast<int>(cos_cache_dims[1]) * 2
+                                            : static_cast<int>(hidden_size / num_heads);
+  if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
+                           "head_size");
+  }
+
   int position_ids_format = -1;
 
   // Check position_ids input shapes
@@ -82,23 +105,15 @@ Status CheckInputs(const T* input,
   } else {
     position_ids_format = 0;
   }
+
   // Check cos_cache input shapes
   if (max_sequence_length != static_cast<int>(cos_cache_dims[0])) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 0 should be same as ",
                            "max_sequence_length, got ", cos_cache_dims[0]);
   }
-  if ((head_size / 2) != static_cast<int>(cos_cache_dims[1])) {
+  if ((head_size / 2) != static_cast<int>(cos_cache_dims[1]) && (rotary_embedding_dim > 0 && (rotary_embedding_dim / 2) != static_cast<int>(cos_cache_dims[1]))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 1 should be same as ",
-                           "head_size / 2, got ", cos_cache_dims[1]);
-  }
-  // Check sin_cache input shapes
-  if (max_sequence_length != static_cast<int>(sin_cache_dims[0])) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'sin_cache' dimension 0 should be same as ",
-                           "max_sequence_length, got ", sin_cache_dims[0]);
-  }
-  if ((head_size / 2) != static_cast<int>(sin_cache_dims[1])) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'sin_cache' dimension 1 should be same as ",
-                           "head_size / 2, got ", sin_cache_dims[1]);
+                           "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
   }
 
   // Set rotary parameters
@@ -108,9 +123,11 @@ Status CheckInputs(const T* input,
     output_parameters->sequence_length = sequence_length;
     output_parameters->hidden_size = hidden_size;
     output_parameters->head_size = head_size;
-    output_parameters->num_heads = num_heads;
+    output_parameters->num_heads = num_heads > 0 ? num_heads : static_cast<int>(hidden_size / head_size);
     output_parameters->max_sequence_length = max_sequence_length;
     output_parameters->position_ids_format = position_ids_format;
+    output_parameters->transposed = transposed;
+    output_parameters->rotary_embedding_dim = rotary_embedding_dim > 0 ? rotary_embedding_dim : head_size;
   }
 
   return Status::OK();

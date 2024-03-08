@@ -150,12 +150,6 @@ class MlasBlkQ8ShortExeTest : public MlasTestFixture<MlasBlkQ8Test<Threaded>> {
   size_t M_, K_;
 };
 
-template <>
-MlasBlkQ8Test<true>* MlasTestFixture<MlasBlkQ8Test<true>>::mlas_tester(nullptr);
-
-template <>
-MlasBlkQ8Test<false>* MlasTestFixture<MlasBlkQ8Test<false>>::mlas_tester(nullptr);
-
 static size_t BlkQ8ReisterShortTests() {
   size_t cnt = 0;
   cnt += MlasBlkQ8ShortExeTest<true>::RegisterShortExecuteTests();

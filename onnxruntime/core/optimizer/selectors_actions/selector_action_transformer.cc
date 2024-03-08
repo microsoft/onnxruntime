@@ -3,9 +3,10 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 #include <iterator>
+#include <string>
 #include <utility>
 
 #include "core/graph/op_identifier_utils.h"
@@ -56,9 +57,9 @@ const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::s
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-auto SelectorActionRegistry::LookUpByOpType(const std::string& op_type) const
+auto SelectorActionRegistry::LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const
     -> std::vector<gsl::not_null<const Entry*>> {
-  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(op_type);
+  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(OpVersionsMapKey(op_type, domain));
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
   std::transform(range_begin, range_end, std::back_inserter(result),
@@ -93,20 +94,15 @@ static Status MatchAndProcess(
   Status status = Status::OK();
 
   do {
-    // TODO: for now this just needs to support ONNX and Micrsoft Domain ops.
-    // If we ever had a transformer that was going to target non-ONNX ops,
-    // we'd need to rework a few things to include the op domain in the matches
-    if (node.Domain() != kOnnxDomain && node.Domain() != kMSDomain) {
-      break;
-    }
-
     std::optional<NodesToOptimizeIndices> node_selection_opt{};
     const SelectorActionRegistry::Entry* selector_action_entry_ptr = nullptr;
 
-    const auto selector_action_entries = selector_action_registry.LookUpByOpType(node.OpType());
+    const auto selector_action_entries =
+        selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
+    std::string key = SelectorActionRegistry::OpVersionsMapKey(node.OpType(), node.Domain());
     for (const auto& entry : selector_action_entries) {
       // check the supported versions if specified
-      const auto& versions = entry->ops_and_versions.find(node.OpType())->second;
+      const auto& versions = entry->ops_and_versions.find(key)->second;
       if (!versions.empty()) {
         if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
           continue;

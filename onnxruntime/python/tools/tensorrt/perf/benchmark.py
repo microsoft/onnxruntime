@@ -89,7 +89,13 @@ TRT_ENGINE_CACHE_DIR_NAME = "engine_cache"
 
 def split_and_sort_output(string_list):
     string_list = string_list.split("\n")
-    string_list.sort()
+
+    def custom_sort(item):
+        # Parse digits
+        numbers = re.findall(r"\d+", item)
+        return int(numbers[0]) if numbers else float("inf")
+
+    string_list.sort(key=custom_sort)
     return string_list
 
 
@@ -1569,19 +1575,45 @@ def output_metrics(model_to_metrics, csv_filename):
         for value in results:
             row = [
                 value["model_name"],
-                value["ratio_of_ops_in_cuda_not_fallback_cpu"]
-                if "ratio_of_ops_in_cuda_not_fallback_cpu" in value
-                else "  ",
-                value["total_ops_in_trt"] if "total_ops_in_trt" in value else "  ",
-                value["total_ops"] if "total_ops" in value else "  ",
-                value["ratio_of_ops_in_trt"] if "ratio_of_ops_in_trt" in value else "  ",
-                value["total_trt_execution_time"] if "total_trt_execution_time" in value else "  ",
-                value["total_execution_time"] if "total_execution_time" in value else "  ",
-                value["ratio_of_execution_time_in_trt"] if "ratio_of_execution_time_in_trt" in value else "  ",
+                value.get("ratio_of_ops_in_cuda_not_fallback_cpu", "  "),
+                value.get("total_ops_in_trt", "  "),
+                value.get("total_ops", "  "),
+                value.get("ratio_of_ops_in_trt", "  "),
+                value.get("total_trt_execution_time", "  "),
+                value.get("total_execution_time", "  "),
+                value.get("ratio_of_execution_time_in_trt", "  "),
             ]
             csv_writer.writerow(row)
 
     logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
+
+
+def output_op_metrics(model_to_metrics, csv_filename):
+    with open(csv_filename, mode="w", newline="") as csv_file:
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow([model_title, "Ep", "op percentage in each ep"])
+
+        for model, ep_info in model_to_metrics.items():
+            if cuda in ep_info:
+                cuda_data = ep_info[cuda]["ratio_of_ops_in_cuda_not_fallback_cpu"]
+                csv_writer.writerow([model, cuda, cuda_data])
+            if cuda_fp16 in ep_info:
+                cuda_fp16_data = ep_info[cuda_fp16]["ratio_of_ops_in_cuda_not_fallback_cpu"]
+                csv_writer.writerow([model, cuda_fp16, cuda_fp16_data])
+            if cuda in ep_info and trt in ep_info:
+                total_ops_in_cuda = ep_info[cuda]["total_ops"]
+                cuda_cpu_ops_in_trt = ep_info[trt]["total_ops"]
+                trt_data = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
+                csv_writer.writerow([model, trt, trt_data])
+            if cuda_fp16 in ep_info and trt_fp16 in ep_info:
+                total_ops_in_cuda = ep_info[cuda_fp16]["total_ops"]
+                cuda_cpu_ops_in_trt = ep_info[trt_fp16]["total_ops"]
+                trt_fp16_data = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
+                csv_writer.writerow([model, trt_fp16, trt_fp16_data])
+
+    logger.info(
+        f"op metrics for cuda/trt ep are saved to csv file: {csv_filename} and will be displayed at Perf Dashboard"
+    )
 
 
 def output_system_info(result, csv_filename):

@@ -135,8 +135,7 @@ static void RunQDQPadOpTest(const TestInputDef<float>& data_def,
                                                       has_constant_value, constant_value_quantized),
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 //
@@ -167,7 +166,7 @@ TEST_F(QnnCPUBackendTests, Pad2dPadsNotIni) {
 TEST_F(QnnCPUBackendTests, DISABLED_PadModeReflect) {
   bool has_constant_value = false;
   RunPadOpTest(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
-               TestInputDef<int64_t>({4}, true, {0, 2, 0, 0}),
+               TestInputDef<int64_t>({4}, true, {0, 1, 0, 0}),
                TestInputDef<float>({1}, true, {0.0f}),
                {utils::MakeAttribute("mode", "reflect")},
                ExpectedEPNodeAssignment::All,
@@ -266,11 +265,35 @@ TEST_F(QnnHTPBackendTests, PadHasConstantValueQuantized) {
                            constant_value_quantized);
 }
 
-// QNN graph execute error. Error code: 6031
-TEST_F(QnnHTPBackendTests, DISABLED_PadReflectMode) {
+TEST_F(QnnHTPBackendTests, PadReflectMode) {
+  bool has_constant_value_input = false;
+  RunQDQPadOpTest<uint8_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
+                           TestInputDef<int64_t>({4}, true, {0, 1, 0, 0}),
+                           TestInputDef<float>({1}, true, {0.0f}),
+                           {utils::MakeAttribute("mode", "reflect")},
+                           ExpectedEPNodeAssignment::All,
+                           has_constant_value_input);
+}
+
+// Pad amount should not be greater than shape(input[0])[i] - 1
+TEST_F(QnnHTPBackendTests, PadReflectModeOutOfRangePadAmount) {
   bool has_constant_value_input = false;
   RunQDQPadOpTest<uint8_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
                            TestInputDef<int64_t>({4}, true, {0, 2, 0, 0}),
+                           TestInputDef<float>({1}, true, {0.0f}),
+                           {utils::MakeAttribute("mode", "reflect")},
+                           ExpectedEPNodeAssignment::None,
+                           has_constant_value_input);
+}
+
+TEST_F(QnnHTPBackendTests, Pad4dReflectMode) {
+  bool has_constant_value_input = false;
+  RunQDQPadOpTest<uint8_t>(TestInputDef<float>({1, 2, 2, 2}, false,
+                                               {1.0f, 2.0f,
+                                                3.0f, 4.0f,
+                                                5.0f, 6.0f,
+                                                7.0f, 8.0f}),
+                           TestInputDef<int64_t>({8}, true, {0, 1, 1, 1, 0, 1, 1, 1}),
                            TestInputDef<float>({1}, true, {0.0f}),
                            {utils::MakeAttribute("mode", "reflect")},
                            ExpectedEPNodeAssignment::All,

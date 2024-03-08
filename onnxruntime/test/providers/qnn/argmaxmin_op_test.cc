@@ -102,8 +102,7 @@ static void RunQDQArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
                        BuildQDQArgMxxTestCase<QType>(op_type, input_def, attrs),  // QDQ model
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 //

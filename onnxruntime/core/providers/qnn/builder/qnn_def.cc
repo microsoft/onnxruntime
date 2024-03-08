@@ -89,6 +89,15 @@ void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>
   }
 }
 
+void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, void* buf_data, uint32_t buf_size) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    qnn_tensor.v1.clientBuf.data = buf_data;
+    qnn_tensor.v1.clientBuf.dataSize = buf_size;
+  } else {
+    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+  }
+}
+
 void SetQnnTensorClientBufSize(Qnn_Tensor_t& qnn_tensor, uint32_t client_buf_size) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.clientBuf.dataSize = client_buf_size;
@@ -199,6 +208,30 @@ const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) 
   } else {
     ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
   }
+}
+
+Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                             float& scale_diff, int32_t& offset_diff) {
+  scale_diff = 0.0f;
+  offset_diff = 0;
+
+  ORT_RETURN_IF_NOT((qparam0.encodingDefinition == qparam1.encodingDefinition &&
+                     qparam0.quantizationEncoding == qparam1.quantizationEncoding),
+                    "Expected quantization parameters to be the same type.");
+
+  if (qparam0.encodingDefinition == QNN_DEFINITION_DEFINED) {
+    switch (qparam0.quantizationEncoding) {
+      case QNN_QUANTIZATION_ENCODING_SCALE_OFFSET: {
+        scale_diff = std::abs(qparam0.scaleOffsetEncoding.scale - qparam1.scaleOffsetEncoding.scale);
+        offset_diff = std::abs(qparam0.scaleOffsetEncoding.offset - qparam1.scaleOffsetEncoding.offset);
+        break;
+      }
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported quantization encoding: ", qparam0.quantizationEncoding);
+    }
+  }
+
+  return Status::OK();
 }
 
 bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,

@@ -26,7 +26,7 @@ jobs:
         --enable_training_apis \
         --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
         --update --skip_submodule_sync \
-        --build --parallel --target onnx_proto
+        --build --parallel --use_binskim_compliant_compile_flags --target onnx_proto
     displayName: Generate compile_commands.json and ONNX protobuf files
 
   - script: |

@@ -3,8 +3,28 @@
 
 'use strict';
 
-// init JSEP
-Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, releaseKernel, runKernel) => {
+/**
+ * Mount external data files of a model to the virtual file system (MEMFS).
+ *
+ * @param {string} externalDataFilesPath
+ * @param {Uint8Array} externalDataFilesData
+ */
+Module['mountExternalData'] = (externalDataFilePath, externalDataFileData) => {
+  const files = Module.MountedFiles || (Module.MountedFiles = new Map());
+    files.set(externalDataFilePath, externalDataFileData);
+};
+
+/**
+ * Unmount external data files of a model from the virtual file system (MEMFS).
+ */
+Module['unmountExternalData'] = () => {
+  delete Module.MountedFiles;
+};
+
+/**
+ * init JSEP
+ */
+Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, releaseKernel, runKernel, captureBegin, captureEnd, replay) => {
   Module.jsepBackend = backend;
   Module.jsepAlloc = alloc;
   Module.jsepFree = free;
@@ -13,6 +33,9 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   Module.jsepCreateKernel = createKernel;
   Module.jsepReleaseKernel = releaseKernel;
   Module.jsepRunKernel = runKernel;
+  Module.jsepCaptureBegin = captureBegin;
+  Module.jsepCaptureEnd = captureEnd;
+  Module.jsepReplay = replay;
 
   // This is a simplified version of cwrap() with options.async === true (-sASYNCIFY=1)
   // It removes some overhead in cwarp() and ccall() that we don't need.
@@ -140,6 +163,10 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   };
 
   // replace the original functions with asyncified versions
+  Module['_OrtCreateSession'] = jsepWrapAsync(
+      Module['_OrtCreateSession'],
+      () => Module['_OrtCreateSession'],
+      v => Module['_OrtCreateSession'] = v);
   Module['_OrtRun'] = runAsync(jsepWrapAsync(
       Module['_OrtRun'],
       () => Module['_OrtRun'],
@@ -157,13 +184,16 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   Module['jsepRegisterBuffer'] = (sessionId, index, buffer, size) => {
     return backend['registerBuffer'](sessionId, index, buffer, size);
   };
-  Module['jsepUnregisterBuffers'] = sessionId => {
-    backend['unregisterBuffers'](sessionId);
-  };
   Module['jsepGetBuffer'] = (dataId) => {
     return backend['getBuffer'](dataId);
   };
   Module['jsepCreateDownloader'] = (gpuBuffer, size, type) => {
     return backend['createDownloader'](gpuBuffer, size, type);
+  };
+  Module['jsepOnReleaseSession'] = sessionId => {
+    backend['onReleaseSession'](sessionId);
+  };
+  Module['jsepOnRunStart'] = sessionId => {
+    return backend['onRunStart'](sessionId);
   };
 };

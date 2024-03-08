@@ -34,6 +34,14 @@ export declare namespace Env {
     simd?: boolean;
 
     /**
+     * set or get a boolean value indicating whether to enable trace.
+     *
+     * @deprecated Use `env.trace` instead. If `env.trace` is set, this property will be ignored.
+     * @defaultValue `false`
+     */
+    trace?: boolean;
+
+    /**
      * Set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds. A zero
      * value indicates no timeout is set.
      *
@@ -92,11 +100,49 @@ export declare namespace Env {
     async?: boolean;
   }
 
+  export interface WebGpuProfilingDataV1TensorMetadata {
+    dims: readonly number[];
+    dataType: string;
+  }
+  export interface WebGpuProfilingDataV1 {
+    version: 1;
+    inputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    outputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    kernelId: number;
+    kernelType: string;
+    kernelName: string;
+    programName: string;
+    startTime: number;
+    endTime: number;
+  }
+
+  export type WebGpuProfilingData = WebGpuProfilingDataV1;
+
   export interface WebGpuFlags {
     /**
      * Set or get the profiling mode.
+     *
+     * @deprecated Use `env.webgpu.profiling.mode` instead. If `env.webgpu.profiling.mode` is set, this property will be
+     * ignored.
      */
     profilingMode?: 'off'|'default';
+    /**
+     * Set or get the profiling configuration.
+     */
+    profiling?: {
+      /**
+       * Set or get the profiling mode.
+       *
+       * @defaultValue `'off'`
+       */
+      mode?: 'off'|'default';
+
+      /**
+       * Set or get a callback function when a profiling data is received. If not set, the profiling data will be
+       * printed to console.
+       */
+      ondata?: (data: WebGpuProfilingData) => void;
+    };
     /**
      * Get the device for WebGPU.
      *
@@ -122,12 +168,20 @@ export interface Env {
    * @defaultValue `'warning'`
    */
   logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
+
   /**
    * Indicate whether run in debug mode.
    *
    * @defaultValue `false`
    */
   debug?: boolean;
+
+  /**
+   * set or get a boolean value indicating whether to enable trace.
+   *
+   * @defaultValue `false`
+   */
+  trace?: boolean;
 
   /**
    * Get version of the current package.

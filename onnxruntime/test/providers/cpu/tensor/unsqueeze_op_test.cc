@@ -99,7 +99,7 @@ TEST(TensorOpTest, Unsqueeze_scalar_2) {
     test.AddInput<float>("input", {}, std::vector<float>{1.0f});
     test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, -1}, axes_is_initializer);
     test.AddOutput<float>("output", {1, 1}, std::vector<float>{1.0f});
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   };
   run_test(false);
   run_test(true);

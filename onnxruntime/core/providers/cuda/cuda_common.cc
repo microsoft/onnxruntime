@@ -14,6 +14,27 @@ namespace cuda {
 //   0x04 - pedantic
 constexpr const char* kCudaGemmOptions = "ORT_CUDA_GEMM_OPTIONS";
 
+const char* CudaDataTypeToString(cudaDataType_t dt) {
+  switch (dt) {
+    case CUDA_R_16F:
+      return "CUDA_R_16F";
+    case CUDA_R_16BF:
+      return "CUDA_R_16BF";
+    case CUDA_R_32F:
+      return "CUDA_R_32F";
+#if !defined(DISABLE_FLOAT8_TYPES)
+    // Note: CUDA_R_8F_E4M3 is defined with CUDA>=11.8
+    case CUDA_R_8F_E4M3:
+      return "CUDA_R_8F_E4M3";
+    case CUDA_R_8F_E5M2:
+      return "CUDA_R_8F_E5M2";
+#endif
+    default:
+      return "<unknown>";
+  }
+}
+
+#ifndef USE_CUDA_MINIMAL
 // Initialize the singleton instance
 HalfGemmOptions HalfGemmOptions::instance;
 
@@ -54,25 +75,6 @@ const char* cublasGetErrorEnum(cublasStatus_t error) {
   }
 }
 
-const char* CudaDataTypeToString(cudaDataType_t dt) {
-  switch (dt) {
-    case CUDA_R_16F:
-      return "CUDA_R_16F";
-    case CUDA_R_16BF:
-      return "CUDA_R_16BF";
-    case CUDA_R_32F:
-      return "CUDA_R_32F";
-#if (CUDA_VERSION >= 11080)
-    case CUDA_R_8F_E4M3:
-      return "CUDA_R_8F_E4M3";
-    case CUDA_R_8F_E5M2:
-      return "CUDA_R_8F_E5M2";
-#endif
-    default:
-      return "<unknown>";
-  }
-}
-
 const char* CublasComputeTypeToString(cublasComputeType_t ct) {
   switch (ct) {
     case CUBLAS_COMPUTE_16F:
@@ -91,6 +93,7 @@ const char* CublasComputeTypeToString(cublasComputeType_t ct) {
       return "<unknown>";
   }
 }
+#endif
 
 // It must exist somewhere already.
 cudaDataType_t ToCudaDataType(int32_t element_type) {
@@ -101,7 +104,7 @@ cudaDataType_t ToCudaDataType(int32_t element_type) {
       return CUDA_R_16F;
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       return CUDA_R_16BF;
-#if (!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
+#if !defined(DISABLE_FLOAT8_TYPES)
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
       return CUDA_R_8F_E4M3;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:

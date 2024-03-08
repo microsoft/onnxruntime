@@ -50,9 +50,6 @@ class MlasComputeExpTest : public MlasTestBase {
   }
 };
 
-template <>
-MlasComputeExpTest* MlasTestFixture<MlasComputeExpTest>::mlas_tester(nullptr);
-
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   // no long execute needed
   return is_short_execute ? MlasDirectShortExecuteTests<MlasComputeExpTest>::RegisterShortExecute() : 0;

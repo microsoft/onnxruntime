@@ -55,6 +55,8 @@ struct AttentionParameters {
   int v_hidden_size;          // hidden size of V
   int v_head_size;            // hidden size per head of V
   int num_heads;
+  int num_splits;
+  int rotary_embedding;
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
@@ -62,6 +64,7 @@ struct AttentionParameters {
   bool pass_past_in_kv;
   float mask_filter_value;
   float scale;
+  bool use_tf32;
   AttentionMaskType mask_type;
   AttentionQkvFormat qkv_format;
 };
@@ -80,26 +83,33 @@ struct PackedAttentionParameters {
   int token_count;
   bool has_relative_position_bias;
   bool broadcast_res_pos_bias;
+  bool use_tf32;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct GroupQueryAttentionParameters {
   int batch_size;
-  int sequence_length;
-  int past_sequence_length;     // actual sequence length of past_key and past_value
-  int kv_sequence_length;       // sequence length of key and value (or new_k and new_v when past is present)
-  int present_sequence_length;  // past_sequence_length + kv_sequence_length
-  int max_sequence_length;      // allocated length of past_key and past_value
+  int sequence_length;          // sequence length of input query, key, value
+  int seqlen_past_kv_cache;     // sequence length of past kv tensor
+  int seqlen_present_kv_cache;  // sequence length of present kv tensor
   int hidden_size;
   int num_heads;
   int head_size;
   int kv_hidden_size;
   int kv_num_heads;
+  int num_splits;          // number of splits for splitkv
   bool is_unidirectional;  // causal
+  int local_window_size;
+  bool kv_share_buffer;
+  bool is_packed_qkv;
+  bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
+  bool do_rotary;
+  bool rotary_interleaved;
   float scale;
-  int num_splits;  // number of splits for splitkv
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
+  int zeros_count;
+  int* zero_ptr;
 };
 
 namespace attention {
@@ -129,6 +139,10 @@ constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
 constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV";
 // Default value for the above setting.
 constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
+
+// Environment variable to enable loading more KV data in flight in
+// DecoderMaskedMultiHeadAttention/DecoderMaskedSelfAttention kernels
+constexpr const char* kDecoderMaskedAttentionLoadKVDataInFlight = "ORT_DECODER_MASKED_ATTENTION_LOAD_KV_DATA_IN_FLIGHT";
 
 }  // namespace attention
 

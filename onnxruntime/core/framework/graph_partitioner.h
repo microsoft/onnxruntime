@@ -13,6 +13,7 @@ namespace onnxruntime {
 class ExecutionProviders;
 class KernelRegistryManager;
 class Model;
+struct ConfigOptions;
 
 class GraphPartitioner {
  public:
@@ -31,6 +32,8 @@ class GraphPartitioner {
   // Run partitioning.
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
+                   const ConfigOptions& config_options,
+                   const logging::Logger& logger,
                    Mode mode = Mode::kNormal,
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
 
@@ -48,10 +51,12 @@ class GraphPartitioner {
   /// <param name="model">model instance</param>
   /// <param name="execution_providers">execution providers considered</param>
   /// <param name="kernel_registry_manager">registry manager</param>
+  /// <param name="logger">session logger</param>
   /// <returns></returns>
   Status InlineFunctionsAOT(Model& model,
                             const ExecutionProviders& execution_providers,
-                            const KernelRegistryManager& kernel_registry_manager) const;
+                            const KernelRegistryManager& kernel_registry_manager,
+                            const logging::Logger& logger) const;
 #endif
 
  private:

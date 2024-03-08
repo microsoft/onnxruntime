@@ -2,9 +2,7 @@
 // Licensed under the MIT License
 
 #include <fstream>
-#include <vector>
-#include <string>
-#include <memory>
+#include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "contexts.h"
@@ -15,22 +13,16 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-static std::unique_ptr<GlobalContext> g_global_context;
-
 GlobalContext& BackendManager::GetGlobalContext() {
-  // This is not thread safe to call for the first time, but it is first called on the main thread by the constructor so it is safe.
-  if (!g_global_context)
-    g_global_context = std::make_unique<GlobalContext>();
-  return *g_global_context;
+  return global_context_;
 }
 
-void BackendManager::ReleaseGlobalContext() {
-  g_global_context.reset();
-}
-
-BackendManager::BackendManager(const onnxruntime::Node& fused_node,
+BackendManager::BackendManager(const GlobalContext& global_context,
+                               const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
                                const logging::Logger& logger) {
+  global_context_ = global_context;
+
   auto prec_str = GetGlobalContext().precision_str;
   if (prec_str == "FP32") {
     subgraph_context_.precision = "FP32";
@@ -75,20 +67,24 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
         GetGlobalContext().device_type.find("GPU") != std::string::npos) {
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
-                         << "Creating backend Dynamic Shapes";
-      try {
-        concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
-                                                        GetGlobalContext(),
-                                                        subgraph_context_);
-      } catch (std::string const& msg) {
-        throw msg;
+      if (!GetGlobalContext().disable_dynamic_shapes) {
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
+                           << "Creating backend Dynamic Shapes";
+        try {
+          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
+                                                          GetGlobalContext(),
+                                                          subgraph_context_);
+        } catch (std::string const& msg) {
+          throw msg;
+        }
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+                           << "Backend created for graph " << subgraph_context_.subgraph_name;
       }
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Backend created for graph " << subgraph_context_.subgraph_name;
     }
   } else {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. Initializing backend for graph " << subgraph_context_.subgraph_name;
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. "
+                       << "Initializing backend for graph "
+                       << subgraph_context_.subgraph_name;
 
     subgraph_context_.has_dynamic_input_shape = false;
     try {
@@ -104,7 +100,7 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
 bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   bool has_batched_inputs = true;
 
-  for (int i = 0; i < (int)subgraph_context_.input_indexes.size(); i++) {
+  for (int i = 0; i < static_cast<int>(subgraph_context_.input_indexes.size()); i++) {
     auto& input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
 
     // Batch-process only raw image inputs (NCHW or NHWC layouts)
@@ -215,7 +211,10 @@ BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_pr
   auto graph_proto = model_copy->mutable_graph();
 
   for (size_t i = 0, limit = input_shapes.size(); i < limit; i++) {
-    auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
+    auto g_in_shape = graph_proto->mutable_input(static_cast<int>(i))
+                          ->mutable_type()
+                          ->mutable_tensor_type()
+                          ->mutable_shape();
     g_in_shape->clear_dim();
     const auto& shape = input_shapes[i];
     for (size_t dim = 0, end = shape.size(); dim < end; dim++) {
@@ -234,7 +233,11 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
   auto graph_proto = model_copy->mutable_graph();
 
   for (int i = 0; i < graph_proto->input_size(); i++) {
-    ONNX_NAMESPACE::TensorShapeProto* g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
+    ONNX_NAMESPACE::TensorShapeProto* g_in_shape =
+        graph_proto->mutable_input(static_cast<int>(i))
+            ->mutable_type()
+            ->mutable_tensor_type()
+            ->mutable_shape();
     g_in_shape->mutable_dim(0)->clear_dim_value();
     g_in_shape->mutable_dim(0)->set_dim_value(1);
   }
@@ -252,7 +255,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
   }
 #endif
   bool use_dynamic_backend = true;
-  if (subgraph_context_.has_dynamic_input_shape &&
+  if (!GetGlobalContext().disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
       (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
        GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
     concrete_backend_->Infer(context);

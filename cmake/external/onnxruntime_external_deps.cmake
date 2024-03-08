@@ -47,8 +47,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
-    FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
+    FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
   )
 endif()
 
@@ -108,47 +108,52 @@ FetchContent_Declare(
 )
 
 # Download a protoc binary from Internet if needed
-if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
+if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
   # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
   # variable.
-  message("CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME}")
-  if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-    if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
-      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64})
-      FetchContent_Populate(protoc_binary)
-    elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
-      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
-      FetchContent_Populate(protoc_binary)
-    endif()
-    if(protoc_binary_SOURCE_DIR)
-      message("Use prebuilt protoc")
-      set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc.exe)
-	  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
-    endif()
-  elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-    if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
-      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64})
-      FetchContent_Populate(protoc_binary)
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
-      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86})
-      FetchContent_Populate(protoc_binary)
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
-      FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64})
-      FetchContent_Populate(protoc_binary)
-    endif()
-    if(protoc_binary_SOURCE_DIR)
-      message("Use prebuilt protoc")
-      set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
-	  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
-    endif()
-  elseif ((CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS") AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+  if (CMAKE_HOST_APPLE)
+    # Using CMAKE_CROSSCOMPILING is not recommended for Apple target devices.
+    # https://cmake.org/cmake/help/v3.26/variable/CMAKE_CROSSCOMPILING.html
+    # To keep it simple, just download and use the universal protoc binary for all Apple host builds.
     FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
     FetchContent_Populate(protoc_binary)
     if(protoc_binary_SOURCE_DIR)
       message("Use prebuilt protoc")
       set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
       set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+    endif()
+  elseif (CMAKE_CROSSCOMPILING)
+    message("CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME}")
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+      if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64})
+        FetchContent_Populate(protoc_binary)
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
+        FetchContent_Populate(protoc_binary)
+      endif()
+      if(protoc_binary_SOURCE_DIR)
+        message("Use prebuilt protoc")
+        set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc.exe)
+        set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+      endif()
+    elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+      if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64})
+        FetchContent_Populate(protoc_binary)
+      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86})
+        FetchContent_Populate(protoc_binary)
+      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64})
+        FetchContent_Populate(protoc_binary)
+      endif()
+      if(protoc_binary_SOURCE_DIR)
+        message("Use prebuilt protoc")
+        set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
+        set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+      endif()
     endif()
   endif()
 endif()
@@ -184,9 +189,9 @@ FetchContent_Declare(
 )
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
-#TODO: we'd better to turn the following option off. However, it will cause 
+#TODO: we'd better to turn the following option off. However, it will cause
 # ".\build.bat --config Debug --parallel --skip_submodule_sync --update" fail with an error message:
-# install(EXPORT "ONNXTargets" ...) includes target "onnx_proto" which requires target "libprotobuf-lite" that is 
+# install(EXPORT "ONNXTargets" ...) includes target "onnx_proto" which requires target "libprotobuf-lite" that is
 # not in any export set.
 #set(protobuf_INSTALL OFF CACHE BOOL "Install protobuf binaries and files" FORCE)
 set(protobuf_USE_EXTERNAL_GTEST ON CACHE BOOL "" FORCE)
@@ -221,8 +226,6 @@ FetchContent_Declare(
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_Install OFF CACHE INTERNAL "")
 
 FetchContent_Declare(
     nlohmann_json
@@ -253,14 +256,7 @@ if (onnxruntime_ENABLE_CPUINFO)
       set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
-      # Exclude Windows ARM build and Windows Store
-      if (${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
-        message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
-        set(CPUINFO_SUPPORTED FALSE)
-      elseif (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-        message(WARNING "Cpuinfo not included non-Desktop builds")
-        set(CPUINFO_SUPPORTED FALSE)
-      endif()
+      set(CPUINFO_SUPPORTED TRUE)
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       message(WARNING
         "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
@@ -281,7 +277,7 @@ if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
     pytorch_clog
     URL ${DEP_URL_pytorch_cpuinfo}
     URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-	SOURCE_SUBDIR deps/clog
+    SOURCE_SUBDIR deps/clog
   )
   set(ONNXRUNTIME_CLOG_PROJ pytorch_clog)
   set(ONNXRUNTIME_CLOG_TARGET_NAME clog)
@@ -335,6 +331,7 @@ if(onnxruntime_USE_CUDA)
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 else()
   FetchContent_Declare(
@@ -535,22 +532,32 @@ if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxrunt
   onnxruntime_fetchcontent_makeavailable(cxxopts)
 endif()
 
+if (onnxruntime_USE_COREML)
+  FetchContent_Declare(
+    coremltools
+    URL ${DEP_URL_coremltools}
+    URL_HASH SHA1=${DEP_SHA1_coremltools}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/coremltools/crossplatformbuild.patch
+  )
+  # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
+  FetchContent_Populate(coremltools)
+endif()
+
 message("Finished fetching external dependencies")
 
 
 set(onnxruntime_LINK_DIRS )
 if (onnxruntime_USE_CUDA)
       #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
+      find_package(CUDAToolkit REQUIRED)
       if (WIN32)
         if(onnxruntime_CUDNN_HOME)
           list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib/x64)
         endif()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
       else()
         if(onnxruntime_CUDNN_HOME)
           list(APPEND onnxruntime_LINK_DIRS  ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib64)
         endif()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib64)
       endif()
 endif()
 
@@ -561,4 +568,3 @@ endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
 FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
-

@@ -20,7 +20,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   }
 
   async dispose(): Promise<void> {
-    return Promise.resolve();
+    this.#inferenceSession.dispose();
   }
 
   readonly inputNames: string[];
@@ -36,7 +36,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
       Promise<SessionHandler.ReturnType> {
     return new Promise((resolve, reject) => {
-      process.nextTick(() => {
+      setImmediate(() => {
         try {
           resolve(this.#inferenceSession.run(feeds, fetches, options));
         } catch (e) {
@@ -56,7 +56,7 @@ class OnnxruntimeBackend implements Backend {
   async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<InferenceSessionHandler> {
     return new Promise((resolve, reject) => {
-      process.nextTick(() => {
+      setImmediate(() => {
         try {
           resolve(new OnnxruntimeSessionHandler(pathOrBuffer, options || {}));
         } catch (e) {

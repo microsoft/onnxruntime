@@ -845,6 +845,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& SetIntraOpNumThreads(int intra_op_num_threads);                              ///< Wraps OrtApi::SetIntraOpNumThreads
   SessionOptionsImpl& SetInterOpNumThreads(int inter_op_num_threads);                              ///< Wraps OrtApi::SetInterOpNumThreads
   SessionOptionsImpl& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::SetSessionGraphOptimizationLevel
+  SessionOptionsImpl& SetDeterministicCompute(bool value);                                         ///< Wraps OrtApi::SetDeterministicCompute
 
   SessionOptionsImpl& EnableCpuMemArena();   ///< Wraps OrtApi::EnableCpuMemArena
   SessionOptionsImpl& DisableCpuMemArena();  ///< Wraps OrtApi::DisableCpuMemArena
@@ -873,10 +874,12 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
 
-  SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);               ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
-  SessionOptionsImpl& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
-  SessionOptionsImpl& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);               ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
-  SessionOptionsImpl& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
+  SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
+  SessionOptionsImpl& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
+  SessionOptionsImpl& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
+  SessionOptionsImpl& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
+  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO_V2
+  SessionOptionsImpl& AppendExecutionProvider_OpenVINO_V2(const std::unordered_map<std::string, std::string>& provider_options = {});
   SessionOptionsImpl& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
@@ -898,6 +901,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& RegisterCustomOpsLibrary(const ORTCHAR_T* library_name, const CustomOpConfigs& custom_op_configs = {});
 
   SessionOptionsImpl& RegisterCustomOpsUsingFunction(const char* function_name);  ///< Wraps OrtApi::RegisterCustomOpsUsingFunction
+
+  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_VitisAI
+  SessionOptionsImpl& AppendExecutionProvider_VitisAI(const std::unordered_map<std::string, std::string>& provider_options = {});
 };
 }  // namespace detail
 
@@ -2056,6 +2062,7 @@ struct KernelContext {
   Logger GetLogger() const;
   OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
   OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
+  void ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const;
 
  private:
   OrtKernelContext* ctx_;
@@ -2228,6 +2235,8 @@ struct ShapeInferContext {
 
 using ShapeInferFn = Ort::Status (*)(Ort::ShapeInferContext&);
 
+#define MAX_CUSTOM_OP_END_VER (1UL << 31) - 1
+
 template <typename TOp, typename TKernel, bool WithStatus = false>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
@@ -2280,6 +2289,14 @@ struct CustomOpBase : OrtCustomOp {
     }
 
     SetShapeInferFn<TOp>(0);
+
+    OrtCustomOp::GetStartVersion = [](const OrtCustomOp* this_) {
+      return static_cast<const TOp*>(this_)->start_ver_;
+    };
+
+    OrtCustomOp::GetEndVersion = [](const OrtCustomOp* this_) {
+      return static_cast<const TOp*>(this_)->end_ver_;
+    };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
@@ -2348,6 +2365,9 @@ struct CustomOpBase : OrtCustomOp {
  protected:
   // Helper function that returns a map of session config entries specified by CustomOpBase::GetSessionConfigKeys.
   void GetSessionConfigs(std::unordered_map<std::string, std::string>& out, ConstSessionOptions options) const;
+
+  int start_ver_ = 1;
+  int end_ver_ = MAX_CUSTOM_OP_END_VER;
 };
 
 }  // namespace Ort

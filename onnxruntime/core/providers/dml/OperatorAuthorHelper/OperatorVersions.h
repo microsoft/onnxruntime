@@ -406,6 +406,26 @@ namespace OperatorHelper
         static const int sc_sinceVer_BitwiseNot = 18;
         static const int sc_sinceVer_Pad = 18;
         static const int sc_sinceVer_Split = 18;
+        static const int sc_sinceVer_LpPool = 18;
+        static const int sc_sinceVer_Col2Im = 18;
+        static const int sc_sinceVer_Resize = 18;
+    }
+
+    namespace OnnxOperatorSet19
+    {
+        static const int sc_sinceVer_AveragePool = 19;
+        static const int sc_sinceVer_Resize = 19;
+        static const int sc_sinceVer_Pad = 19;
+        static const int sc_sinceVer_Cast = 19;
+        static const int sc_sinceVer_CastLike = 19;
+        static const int sc_sinceVer_Constant = 19;
+        static const int sc_sinceVer_Equal = 19;
+        static const int sc_sinceVer_Identity = 19;
+        static const int sc_sinceVer_QuantizeLinear = 19;
+        static const int sc_sinceVer_DequantizeLinear = 19;
+        static const int sc_sinceVer_Reshape = 19;
+        static const int sc_sinceVer_Shape = 19;
+        static const int sc_sinceVer_Size = 19;
     }
 
     namespace MsftOperatorSet1
@@ -429,6 +449,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_FusedMatMulActivation = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
         static const int sc_sinceVer_Attention = 1;
+        static const int sc_sinceVer_MatMulIntegerToFloat = 1;
         static const int sc_sinceVer_MultiHeadAttention = 1;
         static const int sc_sinceVer_SkipLayerNormalization = 1;
         static const int sc_sinceVer_EmbedLayerNormalization = 1;
@@ -437,6 +458,10 @@ namespace OperatorHelper
         static const int sc_sinceVer_BiasAdd = 1;
         static const int sc_sinceVer_QuickGelu = 1;
         static const int sc_sinceVer_GroupNorm = 1;
+        static const int sc_sinceVer_QLinearConcat = 1;
+        static const int sc_sinceVer_RotaryEmbedding = 1;
+        static const int sc_sinceVer_QLinearAveragePool = 1;
+        static const int sc_sinceVer_QLinearGlobalAveragePool = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper
