@@ -30,7 +30,7 @@ stages:
 
     jobs:
     - job: Linux_py_${{ parameters.py_version }}_Training_Cuda_Wheels
-        steps:
+      steps:
         - task: CmdLine@2
           displayName: 'check variables'
           inputs:
