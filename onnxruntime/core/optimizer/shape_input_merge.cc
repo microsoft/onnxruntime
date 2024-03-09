@@ -11,21 +11,23 @@ namespace {
 std::string GetShapeString(const NodeArg* input_arg) {
   auto shape = input_arg->Shape();
   if (!shape) return "";
-  std::string shape_str = "[";
+  std::stringstream ss;
+  ss << "[";
   for (int i = 0; i < shape->dim_size(); ++i) {
-    if (i != 0) shape_str += ",";
+    if (i != 0) ss << ",";
     auto dim = shape->dim(i);
     if (dim.has_dim_value()) {
-      shape_str += std::to_string(dim.dim_value());
+      ss << std::to_string(dim.dim_value());
     } else if (dim.has_dim_param()) {
-      shape_str += ("'" + dim.dim_param() + "'");
+      ss << "'" << dim.dim_param() << "'";
     } else {
       return "";
     }
   }
-  shape_str += "]";
-  return shape_str;
+  ss << "]";
+  return ss.str();
 }
+
 }  // namespace
 
 Status ShapeInputMerge::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {

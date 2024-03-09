@@ -100,7 +100,8 @@ static bool ConstantFoldGatherNode(Graph& graph, Node& node) {
       tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto::INT64 || tensor_proto->dims_size() >= 2) {
     return false;
   }
-  size_t output_element_count = tensor_proto->dims_size() == 0 ? 1 : tensor_proto->dims()[0];
+  size_t output_element_count = 1;
+  if (tensor_proto->dims_size() > 0) output_element_count = static_cast<size_t>(tensor_proto->dims()[0]);
   if (output_element_count == 0) return false;
   InlinedVector<int64_t> output_values;
   Initializer init_const{*tensor_proto, graph.ModelPath()};
@@ -109,8 +110,8 @@ static bool ConstantFoldGatherNode(Graph& graph, Node& node) {
   for (size_t i = 0; i < output_element_count; ++i) {
     int64_t index = indices_data[i];
     if (index < 0) index += sliced_rank;
-    if (index < 0 || index >= sliced_rank || dim_values[index + start] == -1) return false;
-    output_values.push_back(dim_values[index + start]);
+    if (index < 0 || index >= sliced_rank || dim_values[static_cast<size_t>(index + start)] == -1) return false;
+    output_values.push_back(dim_values[static_cast<size_t>(index + start)]);
   }
 
   ONNX_NAMESPACE::TensorProto gather_output_constant;
