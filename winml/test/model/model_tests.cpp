@@ -118,7 +118,7 @@ TEST_P(ModelTest, Run) {
   LearningModelDevice device = nullptr;
   LearningModelSession session = nullptr;
   LearningModelBinding binding = nullptr;
-  WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(m_testCase->GetModelUrl()));
+  WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(m_testCase->GetModelUrl().native()));
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(m_deviceKind));
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
   for (size_t i = 0; i < m_testCase->GetDataCount(); i++) {
