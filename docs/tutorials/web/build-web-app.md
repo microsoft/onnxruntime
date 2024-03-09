@@ -3,7 +3,7 @@ title: Build a web app with ONNX Runtime
 description: Considerations and options for building a web application with ONNX Runtime
 parent: Web
 grand_parent: Tutorials
-nav_order: 3
+nav_order: 1
 redirect_from: /reference/build-web-app
 
 ---

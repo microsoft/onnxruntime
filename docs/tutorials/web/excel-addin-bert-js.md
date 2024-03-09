@@ -4,7 +4,7 @@ description:  Custom Excel Functions for BERT Tasks in JavaScript
 parent: Web
 grand_parent: Tutorials
 has_children: false
-nav_order: 2
+nav_order: 4
 ---
 
 # ONNX Runtime Custom Excel Functions for BERT NLP Tasks in JavaScript
