@@ -3,8 +3,9 @@
 # Licensed under the MIT License.
 
 import os
-import sys
+import re
 import shutil
+import sys
 
 
 # Note: This script is mainly used for handling extracting duplicate named .o files under different subdirectories for
@@ -12,21 +13,58 @@ import shutil
 def main():
     source_dir = sys.argv[1]
     dest_dir = sys.argv[2]
+    files_from_static_lib = sys.argv[3]
+    files_from_source_dir = []
     for subdir, dirs, files in os.walk(source_dir):
         for file_name in files:
             if file_name.endswith(".o"):
+                files_from_source_dir.append(file_name.strip())
                 dest_name_without_extension, _ = os.path.splitext(file_name)
                 counter = 0
 
                 dest_file = f"{dest_name_without_extension}.o"
                 while os.path.exists(os.path.join(dest_dir, dest_file)):
-                    print("Duplicates" + os.path.join(dest_dir, dest_file))
+                    print("Duplicate named files: " + os.path.join(dest_dir, dest_file))
                     counter += 1
                     dest_file = f"{dest_name_without_extension}_{counter}.o"
 
                 destination_path = os.path.join(dest_dir, dest_file)
                 source_file = os.path.join(source_dir, subdir, file_name)
                 shutil.copy(source_file, destination_path)
+
+    # Sanity check to ensure the number of .o object from the original cmake source directory matches with the number
+    # of .o files extracted from each onnxruntime library
+    file_lists_from_static_lib = []
+    with open(files_from_static_lib, "r") as file:
+        filenames = file.readlines()
+    for filename in filenames:
+        file_lists_from_static_lib.append(filename.strip())
+
+    sorted_list1 = sorted(file_lists_from_static_lib)
+    sorted_list2 = sorted(files_from_source_dir)
+
+    if len(sorted_list1) != len(sorted_list2):
+        print(
+            "Caught a mismatch in the number of .o object files from the original cmake source directory: ",
+            len(sorted_list1),
+            "the number of .o files extracted from the static onnxruntime lib: ",
+            len(sorted_list2),
+            "for: ",
+            os.path.basename(source_dir),
+        )
+
+    if sorted_list1 == sorted_list2:
+        print(
+            "Sanity check passed: object files from original source directory matches with files extracted "
+            + "from static library for: ",
+            os.path.basename(source_dir),
+        )
+    else:
+        print(
+            "Error: Mismatch between object files from original source directory "
+            + "and the .o files extracted from static library for: ",
+            os.path.basename(source_dir),
+        )
 
 
 if __name__ == "__main__":

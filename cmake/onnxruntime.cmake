@@ -305,8 +305,8 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # to enforce symbol visibility. doing it this way limits the symbols included from the .a files to symbols used
   # by the ORT .o files.
 
-  # If it's an onnxruntime library, extract .o files to a separate directory for each library to avoid any clashes
-  # with filenames (e.g. utils.o)
+  # If it's an onnxruntime library, extract .o files from the original cmake build path to a separate directory for
+  # each library to avoid any clashes with filenames (e.g. utils.o)
   foreach(_LIB ${onnxruntime_INTERNAL_LIBRARIES} )
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
@@ -320,9 +320,16 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
         # Simply use 'ar ARGS -x' for extracting the .o files would possibly cause duplicate naming files being overwritten.
         set(CUR_TARGET_CMAKE_SOURCE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
         add_custom_command(TARGET onnxruntime POST_BUILD
-            COMMAND mkdir -p ${CUR_STATIC_LIB_OBJ_DIR}
-            COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/handle_duplicate_object_files.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR}
-            WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+                          COMMAND ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > object_file_list.txt
+                          WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+        add_custom_command(TARGET onnxruntime POST_BUILD
+                          COMMAND mkdir -p ${CUR_STATIC_LIB_OBJ_DIR}
+                          COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/handle_duplicate_object_files.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/object_file_list.txt
+                          WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+      else()
+        add_custom_command(TARGET onnxruntime POST_BUILD
+        COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
+        WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
       endif()
     endif()
   endforeach()
