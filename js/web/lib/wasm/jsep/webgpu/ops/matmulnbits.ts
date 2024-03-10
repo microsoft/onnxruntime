@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
+import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
 
 //  TODO support quantization bits not equal to 4
 export interface MatMulNBitsAttributes extends AttributeWithCacheKey {
@@ -52,8 +52,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAt
 export const createMatMulNBitsProgramInfo =
     (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes): ProgramInfo => {
       const a = inputs[0];
-      const b = inputs[1];
-      const scales = inputs[2];
       const aRank = a.dims.length;
       const outputShape = a.dims.slice(0, aRank - 1).concat(attributes.n);
       const outputSize = ShapeUtil.size(outputShape);
@@ -64,24 +62,17 @@ export const createMatMulNBitsProgramInfo =
         {type: DataType.uint32, data: attributes.n}, {type: DataType.uint32, data: attributes.accuracyLevel},
         {type: DataType.uint32, data: attributes.bits}, {type: DataType.uint32, data: attributes.blockSize}
       ];
-      programUniforms.push(...createTensorShapeVariables(a.dims));
-      programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(b.dims)));
-      programUniforms.push(...createTensorShapeVariables(scales.dims));
-      if (inputs.length === 4) {
-        programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(inputs[3].dims)));
-      }
-      programUniforms.push(...createTensorShapeVariables(outputShape));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const a = inputVariable('a', inputs[0].dataType, inputs[0].dims.length);
-        const b = inputVariable('b', DataType.uint32, inputs[1].dims.length);
-        const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
+        const a = inputVariable('a', inputs[0].dataType, inputs[0].dims);
+        const b = inputVariable('b', DataType.uint32, ShapeUtil.convertShape(inputs[1].dims));
+        const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims);
         const inputVariables = [a, b, scales];
         const zeroPoints =
-            inputs.length === 4 ? inputVariable('zero_points', DataType.uint32, inputs[3].dims.length) : undefined;
+            inputs.length === 4 ? inputVariable('zero_points', DataType.uint32, inputs[3].dims) : undefined;
         if (zeroPoints) {
           inputVariables.push(zeroPoints);
         }
-        const output = outputVariable('output', inputs[0].dataType, outputShape.length);
+        const output = outputVariable('output', inputs[0].dataType, outputShape);
         const uniforms: UniformsArrayType = [
           {name: 'output_size', type: 'u32'}, {name: 'k', type: 'u32'}, {name: 'n', type: 'u32'},
           {name: 'accuracy_level', type: 'u32'}, {name: 'bits', type: 'u32'}, {name: 'block_size', type: 'u32'}
@@ -165,7 +156,7 @@ export const createMatMulNBitsProgramInfo =
       return {
         name: 'MatMulNBits',
         shaderCache:
-            {hint: `${attributes.cacheKey};${inputs.length}`, inputDependencies: Array(inputs.length).fill('rank')},
+            {hint: `${attributes.cacheKey};${inputs.length}`, inputDependencies: Array(inputs.length).fill('dims')},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64)},
