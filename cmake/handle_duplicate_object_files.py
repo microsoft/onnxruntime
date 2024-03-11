@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 
 import os
-import re
 import shutil
 import sys
 
@@ -15,7 +14,7 @@ def main():
     dest_dir = sys.argv[2]
     files_from_static_lib = sys.argv[3]
     files_from_source_dir = []
-    for subdir, dirs, files in os.walk(source_dir):
+    for subdir, _, files in os.walk(source_dir):
         for file_name in files:
             if file_name.endswith(".o"):
                 files_from_source_dir.append(file_name.strip())
@@ -35,7 +34,7 @@ def main():
     # Sanity check to ensure the number of .o object from the original cmake source directory matches with the number
     # of .o files extracted from each onnxruntime library
     file_lists_from_static_lib = []
-    with open(files_from_static_lib, "r") as file:
+    with open(files_from_static_lib) as file:
         filenames = file.readlines()
     for filename in filenames:
         file_lists_from_static_lib.append(filename.strip())
@@ -56,13 +55,13 @@ def main():
     if sorted_list1 == sorted_list2:
         print(
             "Sanity check passed: object files from original source directory matches with files extracted "
-            + "from static library for: ",
+            "from static library for: ",
             os.path.basename(source_dir),
         )
     else:
         print(
             "Error: Mismatch between object files from original source directory "
-            + "and the .o files extracted from static library for: ",
+            "and the .o files extracted from static library for: ",
             os.path.basename(source_dir),
         )
 
