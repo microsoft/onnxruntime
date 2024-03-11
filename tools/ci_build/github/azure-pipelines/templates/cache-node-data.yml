@@ -1,9 +1,8 @@
 steps:
   - task: UseNode@1
-    displayName: 'Use Node 14.x'
+    displayName: 'Install Node.js'
     inputs:
-      versionSpec: 14.x
-      checkLatest: true
+      versionSpec: 16.x
 
   - task: Cache@2
     inputs:
