@@ -10,7 +10,7 @@ import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
+import {AdapterInfo, ComputeContext, GpuArchitecture, GpuData, GpuVendor, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
 
 interface CommandInfo {
   readonly kernelId: number;
@@ -94,13 +94,9 @@ const getProgramInfoUniqueKey =
       return key;
     };
 
-
-/**
- * this class is designed for info and related helper functions of the GPU adapter in use
- */
-export class AdapterInfo {
-  private architecture: string;
-  private vendor: string;
+class AdapterInfoImpl implements AdapterInfo {
+  readonly architecture: string;
+  readonly vendor: string;
 
   constructor(adapterInfo: GPUAdapterInfo) {
     if (adapterInfo) {
@@ -109,16 +105,14 @@ export class AdapterInfo {
     }
   }
 
-  // architecture could be ampere, gen12-lp, etc.
-  isArchitecture(architecture: string): boolean {
+  isArchitecture(architecture: GpuArchitecture): boolean {
     if (typeof this.architecture === 'undefined') {
       return false;
     }
     return this.architecture === architecture;
   }
 
-  // vendor could be amd, intel, nvidia, etc.
-  isVendor(vendor: string): boolean {
+  isVendor(vendor: GpuVendor): boolean {
     if (typeof this.vendor === 'undefined') {
       return false;
     }
@@ -131,7 +125,7 @@ export class AdapterInfo {
  * the first parameter so that it is stored for future use.
  */
 export class WebGpuBackend {
-  adapterInfo: AdapterInfo;
+  adapterInfo: AdapterInfoImpl;
   device: GPUDevice;
   /**
    * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
@@ -245,8 +239,7 @@ export class WebGpuBackend {
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
-    const adapterInfo = await adapter.requestAdapterInfo();
-    this.adapterInfo = new AdapterInfo(adapterInfo);
+    this.adapterInfo = new AdapterInfoImpl(await adapter.requestAdapterInfo());
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();

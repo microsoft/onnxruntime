@@ -6,11 +6,11 @@ import {Env} from 'onnxruntime-common';
 import {OrtWasmModule} from '../binding/ort-wasm';
 import {DataType, getTensorElementSize} from '../wasm-common';
 
-import {AdapterInfo, WebGpuBackend} from './backend-webgpu';
+import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
-import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
+import {AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
 

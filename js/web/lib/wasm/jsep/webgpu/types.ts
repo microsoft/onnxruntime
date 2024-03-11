@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../wasm-common';
-import {AdapterInfo} from '../backend-webgpu'
 import {TensorView} from '../tensor-view';
 
 import {ShaderHelper} from './ops/common';
@@ -15,6 +14,16 @@ export enum GpuDataType {
   profile = 2
 }
 export type GpuDataId = number;
+
+export type GpuArchitecture = 'ampere';
+export type GpuVendor = 'amd'|'intel'|'nvidia';
+export interface AdapterInfo {
+  readonly architecture: string;
+  readonly vendor: string;
+
+  isArchitecture: (architecture: GpuArchitecture) => boolean;
+  isVendor: (vendor: GpuVendor) => boolean;
+}
 
 export interface GpuData {
   type: GpuDataType;
