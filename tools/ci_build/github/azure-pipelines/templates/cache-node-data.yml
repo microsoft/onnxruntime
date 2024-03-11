@@ -15,7 +15,8 @@ steps:
     displayName: 'Cache ONNX node test data'
 
   - script: |
-     if [[ -e "/data/onnx/test/data/node/__generated_onnx_node_tests" ]] then
+     set -ex
+     if [[ ! -e "$(Agent.TempDirectory)/data/onnx/node/__generated_onnx_node_tests" ]]; then
         rm -rf $(Agent.TempDirectory)/data/onnx
         cd $(Build.SourcesDirectory)/js/
         npm install
@@ -23,4 +24,4 @@ steps:
         find . $(Agent.TempDirectory)/data/onnx
      fi
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
-    displayName: 'Copy pre-downloaded test data'
+    displayName: 'Download ONNX node test data'
