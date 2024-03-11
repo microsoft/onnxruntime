@@ -557,5 +557,85 @@
         ]
       }
     ]
+  },
+  {
+    "name": "Concat 2D axis=1; Preserve dims",
+    "operator": "Concat",
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 0,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "Some but not all input tensors are zero-sized",
+        "inputs": [
+          {
+            "data": [],
+            "dims": [0, 1],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1, 1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1],
+            "dims": [1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Concat 2D axis=1; Preserve dims",
+    "operator": "Concat",
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "All input tensors are zero-sized",
+        "inputs": [
+          {
+            "data": [],
+            "dims": [0, 0],
+            "type": "float32"
+          },
+          {
+            "data": [],
+            "dims": [0, 1],
+            "type": "float32"
+          },
+          {
+            "data": [],
+            "dims": [0, 2],
+            "type": "float32"
+          },
+          {
+            "data": [],
+            "dims": [0, 3],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [],
+            "dims": [0, 6],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
   }
 ]

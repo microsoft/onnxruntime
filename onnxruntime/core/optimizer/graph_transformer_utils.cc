@@ -37,7 +37,6 @@
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/optimizer/gather_fusion.h"
-#include "core/optimizer/gather_slice_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
@@ -279,7 +278,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                onnxruntime::kAclExecutionProvider,
                                                                                onnxruntime::kArmNNExecutionProvider,
                                                                                onnxruntime::kJsExecutionProvider};
-
+      const InlinedHashSet<std::string_view> cpu_dml_eps = {onnxruntime::kCpuExecutionProvider,
+                                                            onnxruntime::kDmlExecutionProvider};
 #ifdef MLAS_TARGET_AMD64_IX86
       const bool avx2_precision_mode =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1" && MlasPlatformU8S8Overflow();
@@ -297,7 +297,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
-      transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
+      transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_eps));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_js_eps));
@@ -307,9 +307,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<GatherToSplitFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_rocm_eps));
 
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_dml_rocm_eps));

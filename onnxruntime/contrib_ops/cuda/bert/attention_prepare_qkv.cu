@@ -231,7 +231,7 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
                                 AttentionData<T>& data,
                                 cudaStream_t stream,
                                 int max_threads_per_block,
-                                T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+                                T* /*q*/, T* /*k*/, T* /*v*/, AttentionQkvFormat& qkv_format) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int num_heads = parameters.num_heads;
@@ -279,7 +279,7 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
                                AttentionData<T>& data,
                                cudaStream_t stream,
                                int max_threads_per_block,
-                               T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+                               T* /*q*/, T* k, T* /*v*/, AttentionQkvFormat& qkv_format) {
   const int batch_size = parameters.batch_size;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;

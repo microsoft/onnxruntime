@@ -18,6 +18,7 @@
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 
 #ifdef _WIN32
@@ -467,7 +468,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
       } else if (key.empty()) {
       } else {
-        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
+        ORT_THROW(
+            "[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options "
+            "that are available for NNAPI. "
+            "['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
       }
     }
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
@@ -475,10 +479,31 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
+#ifdef __APPLE__
 #ifdef USE_COREML
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, 0));
+    uint32_t coreml_flags = 0;
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    std::istringstream ss(ov_string);
+
+    std::string key;
+    while (ss >> key) {
+      if (key == "COREML_FLAG_CREATE_MLPROGRAM") {
+        coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+        std::cout << "Enabling ML Program.\n";
+      } else if (key.empty()) {
+      } else {
+        ORT_THROW(
+            "[ERROR] [CoreML] wrong key type entered. Choose from the following runtime key options "
+            "that are available for CoreML. ['COREML_FLAG_CREATE_MLPROGRAM'] \n");
+      }
+    }
+    // COREML_FLAG_CREATE_MLPROGRAM
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, coreml_flags));
 #else
-    ORT_THROW("COREML is not supported in this build\n");
+    ORT_THROW("CoreML is not supported in this build\n");
+#endif
+#else
+    ORT_THROW("COREML is not supported on this platform.\n");
 #endif
   } else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
@@ -540,6 +565,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ORT_THROW(
               "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else if (key == "enable_graph_serialization") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          session_options.AddConfigEntry(kOrtSessionOptionsConfigEnableGraphSerialization, value.data());
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'enable_graph_serialization'. "
               "Select from 'true' or 'false' \n");
         }
       }

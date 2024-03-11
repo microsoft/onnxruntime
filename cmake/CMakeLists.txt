@@ -118,7 +118,6 @@ option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code cov
 option(onnxruntime_DONT_VECTORIZE "Do not vectorize operations in Eigen" OFF)
 
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
-option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." OFF)
 cmake_dependent_option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB "Build dump debug information about node inputs and outputs with support for sql database." OFF "onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS" OFF)
@@ -324,15 +323,27 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   # replicate strategy used by pytorch to get ROCM_VERSION
-  # https://github.com/pytorch/pytorch/blob/8eb21488fdcdb8b0e6fa2e46179b5fa6c42e75af/cmake/public/LoadHIP.cmake#L153-L173
-  file(READ "${onnxruntime_ROCM_HOME}/.info/version-dev" ROCM_VERSION_DEV_RAW)
-  string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+)-.*$" ROCM_VERSION_DEV_MATCH ${ROCM_VERSION_DEV_RAW})
-  if (ROCM_VERSION_DEV_MATCH)
+  # https://github.com/pytorch/pytorch/blob/5c5b71b6eebae76d744261715231093e62f0d090/cmake/public/LoadHIP.cmake
+  # with modification
+  if (EXISTS "${onnxruntime_ROCM_HOME}/.info/version-dev")
+    file(READ "${onnxruntime_ROCM_HOME}/.info/version-dev" ROCM_VERSION_DEV_RAW)
+    string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+)-.*$" ROCM_VERSION_MATCH ${ROCM_VERSION_DEV_RAW})
+  elseif (EXISTS "${onnxruntime_ROCM_HOME}/include/rocm_version.h")
+    file(READ "${onnxruntime_ROCM_HOME}/include/rocm_version.h" ROCM_VERSION_H_RAW)
+    string(REGEX MATCH "\"([0-9]+)\.([0-9]+)\.([0-9]+).*\"" ROCM_VERSION_MATCH ${ROCM_VERSION_H_RAW})
+  elseif (EXISTS "${onnxruntime_ROCM_HOME}/include/rocm-core/rocm_version.h")
+    file(READ "${onnxruntime_ROCM_HOME}/include/rocm-core/rocm_version.h" ROCM_VERSION_H_RAW)
+    string(REGEX MATCH "\"([0-9]+)\.([0-9]+)\.([0-9]+).*\"" ROCM_VERSION_MATCH ${ROCM_VERSION_H_RAW})
+  endif()
+
+  if (ROCM_VERSION_MATCH)
     set(ROCM_VERSION_DEV_MAJOR ${CMAKE_MATCH_1})
     set(ROCM_VERSION_DEV_MINOR ${CMAKE_MATCH_2})
     set(ROCM_VERSION_DEV_PATCH ${CMAKE_MATCH_3})
     set(ROCM_VERSION_DEV "${ROCM_VERSION_DEV_MAJOR}.${ROCM_VERSION_DEV_MINOR}.${ROCM_VERSION_DEV_PATCH}")
     math(EXPR ROCM_VERSION_DEV_INT "(${ROCM_VERSION_DEV_MAJOR}*10000) + (${ROCM_VERSION_DEV_MINOR}*100) + ${ROCM_VERSION_DEV_PATCH}")
+  else()
+    message(FATAL_ERROR "Cannot determine ROCm version string")
   endif()
   message("\n***** ROCm version from ${onnxruntime_ROCM_HOME}/.info/version-dev ****\n")
   message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
@@ -715,6 +726,9 @@ if (onnxruntime_USE_CUDA)
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
     set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
   endif()
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.4)
+    message( FATAL_ERROR "Failed build due to CUDA compiler version < 11.4")
+  endif()
 else()
   set(onnxruntime_USE_FLASH_ATTENTION OFF)
   set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
@@ -735,8 +749,8 @@ if (onnxruntime_USE_CUDA)
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=1)
     endif()
-
 endif()
+
 if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_VITISAI=1)
@@ -1239,17 +1253,15 @@ if (onnxruntime_USE_TVM)
     $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
 
   set(onnxruntime_tvm_libs onnxruntime_providers_tvm)
-
-  # needs to link with stdc++fs in Linux
-  if (UNIX)
-    if (NOT APPLE)
-      set(FS_STDLIB stdc++fs)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
+# needs to link with stdc++fs in Linux
+if (UNIX AND "${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
+  set(FS_STDLIB stdc++fs)
+endif()
+list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
 
 # onnxruntime-extensions
 if (onnxruntime_USE_EXTENSIONS)
@@ -1259,11 +1271,7 @@ endif()
 #Dependencies end. In the next we'll enable "treat warning as error"
 
 #Adjust warning flags
-if (onnxruntime_USE_CUDA)
-  set_msvc_c_cpp_compiler_warning_level(3)
-else()
-  set_msvc_c_cpp_compiler_warning_level(4)
-endif()
+set_msvc_c_cpp_compiler_warning_level(4)
 
 set(onnxruntime_DELAYLOAD_FLAGS "")
 
@@ -1400,6 +1408,10 @@ endif()
 if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   set(CMAKE_CUDA_STANDARD 17)
+  if(onnxruntime_CUDA_HOME)
+    file(TO_CMAKE_PATH CUDAToolkit_ROOT ${onnxruntime_CUDA_HOME})
+  endif()
+  find_package(CUDAToolkit REQUIRED)
   if(onnxruntime_CUDNN_HOME)
     file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   endif()

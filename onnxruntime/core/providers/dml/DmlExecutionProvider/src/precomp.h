@@ -17,6 +17,8 @@
 #include <chrono>
 #include <variant>
 #include <cassert>
+#include <fstream>
+#include <filesystem>
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -37,6 +39,7 @@
 #include <d3d12sdklayers.h>
 #include "External/D3DX12/d3dx12.h"
 #endif
+#include "flatbuffers/flatbuffers.h"
 
 #include "GraphicsUnknownHelper.h"
 
@@ -53,6 +56,9 @@
 #include "External/DirectMLHelpers/SchemaHelpers.h"
 #include "External/DirectMLHelpers/GeneratedSchemaHelpers.h"
 #include "External/DirectMLHelpers/DirectMLX.h"
+#include "External/DirectMLHelpers/DmlSerializedGraphDesc.h"
+#include "External/DirectMLHelpers/DmlGraphSerialization.h"
+#include "External/DirectMLHelpers/DmlGraphDeserialization.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -67,3 +73,4 @@ using Microsoft::WRL::ComPtr;
 #include "TensorDesc.h"
 #include "DescriptorPool.h"
 #include "IExecutionProvider.h"
+#include "Utility.h"
