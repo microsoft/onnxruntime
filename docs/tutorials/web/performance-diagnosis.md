@@ -6,7 +6,7 @@ grand_parent: Tutorials
 has_children: false
 nav_order: 4
 ---
-{::options toc_levels="3" /}
+{::options toc_levels="2..4" /}
 
 # Performance Diagnosis
 {: .no_toc }
