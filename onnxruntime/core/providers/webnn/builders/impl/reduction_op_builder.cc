@@ -65,7 +65,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (opset >= 18 || (op_type == "ReduceSum" && opset >= 13)) {
     // 'axes' is an optional input.
     const auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
-    if (input_defs.size() > 1) {
+    if (!GetTensorName(input_defs, 1).empty()) {
       // Optional input axes is provided, use axes initializer data.
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(input_defs[1]->Name());

@@ -53,7 +53,6 @@ Status ConvTransposeGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream, c
             algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args.y_tensor, args.y_data));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>
@@ -71,7 +70,6 @@ Status ConvTransposeGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream, 
             algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args.w_desc, args.dw_data));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>

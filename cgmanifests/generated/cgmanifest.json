@@ -116,7 +116,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "361e8d1cfe0c6c36d30b39f1b61302ece5507320",
+          "commitHash": "344117638c8ff7e239044fd0fa7085839fc03021",
           "repositoryUrl": "https://github.com/google/benchmark.git"
         },
         "comments": "google_benchmark"
@@ -340,6 +340,16 @@
           "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
         },
         "comments": "composable_kernel"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "150798fe976556078f443fdb059a1ff0361f58a2",
+          "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
+        },
+        "comments": "cudnn_frontend"
       }
     }
   ]

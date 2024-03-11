@@ -843,11 +843,11 @@ void InvokeAddBiasTransposeTrt(
 
 template <>
 void LaunchAddBiasTransposeTrt(
-    cudaStream_t stream, const int max_threads_per_block,
-    const int batch_size, const int sequence_length,
-    const int num_heads, const int head_size,
-    const float* biases, const float* query, const float* key, const float* value, float* output,
-    bool is_cross_attention, int kv_sequence_length) {
+    cudaStream_t /*stream*/, const int /*max_threads_per_block*/,
+    const int /*batch_size*/, const int /*sequence_length*/,
+    const int /*num_heads*/, const int /*head_size*/,
+    const float* /*biases*/, const float* /*query*/, const float* /*key*/, const float* /*value*/, float* /*output*/,
+    bool /*is_cross_attention*/, int /*kv_sequence_length*/) {
   ORT_ENFORCE(false, "Shall not call this since fused kernel does not support float input.");
 }
 

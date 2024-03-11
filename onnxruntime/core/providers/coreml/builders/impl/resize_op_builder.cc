@@ -98,7 +98,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input_defs = node.InputDefs();
   const auto& initializers(model_builder.GetInitializerTensors());
 
-  if (input_defs.size() == 3) {  // use scales
+  if (input_defs.size() >= 3 && input_defs[2]->Exists()) {  // use scales
     std::vector<float> scales;
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
     coreml_upsample->add_scalingfactor(static_cast<int64_t>(scales[2]));
@@ -182,20 +182,24 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       return false;
     }
 
+    bool using_scales = input_defs.size() >= 3 && input_defs[2]->Exists();
     // scales
-    if (input_defs.size() == 3 && !Contains(initializers, input_defs[2]->Name())) {
-      LOGS(logger, VERBOSE) << "Input scales of Resize must be known";
+    if (using_scales && !input_params.graph_viewer.GetConstantInitializer(input_defs[2]->Name())) {
+      LOGS(logger, VERBOSE) << "scales input of Resize must be a constant initializer";
       return false;
     }
 
     // sizes
-    if (input_defs.size() > 3 && !Contains(initializers, input_defs[3]->Name())) {
-      LOGS(logger, VERBOSE) << "Input sizes of Resize must be known";
+    if (!using_scales &&
+        (input_defs.size() < 4 ||
+         !input_defs[3]->Exists() ||
+         !input_params.graph_viewer.GetConstantInitializer(input_defs[3]->Name()))) {
+      LOGS(logger, VERBOSE) << "sizes input of Resize must be a constant initializer";
       return false;
     }
 
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
-    if (input_defs.size() == 3) {  // we are using scales
+    if (using_scales) {
       std::vector<float> scales;
       if (!GetResizeScales(initializers, node, scales, logger))
         return false;

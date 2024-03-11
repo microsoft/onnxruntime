@@ -17,14 +17,19 @@
 #ifdef HAS_SHORTEN_64_TO_32
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4244)  // conversion from long to int
 #endif
 
 // Model.pb.h is generated in the build output directory from the CoreML protobuf files in
-// onnxruntime/core/providers/coreml/coremltools/mlmodel/format
+// <build output directory>/_deps/coremltools-src/mlmodel/format
 #include "coreml_proto/Model.pb.h"
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
 #endif
 
 namespace COREML_SPEC = CoreML::Specification;

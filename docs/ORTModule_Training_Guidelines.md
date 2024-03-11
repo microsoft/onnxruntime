@@ -246,7 +246,7 @@ to standard outputs.
 #### ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER
 
 - **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, this is disabled. This env var can be used for enabling or disabling the embedding input
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the embedding input
 data sparsity based performance optimizations.
 
 	```bash
@@ -287,13 +287,16 @@ A classical usage of disabling the deep copy: when the deep copy before module e
 #### ORTMODULE_MEMORY_OPT_LEVEL
 
 - **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, the level is 0. This env var can be used for enabling recomputation for reducing memory peak requirement. Setting the level to be 0 means all detected subgraphs with each transformer-based model layer generating stashed activations will be recomputed. This is conceptually equivalent to PyTorch's gradient checkpoint. When level is not 0, check Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for more details.
+- **Description**: By default, the level is 0. This env var can be used for enabling recomputation for reducing memory peak requirement.
+   - Setting the level to be 1 means all detected recomputable subgraphs (NOT including compromised recomputable graphs)  with each transformer-based model layer generating stashed activations will be recomputed. This is conceptually equivalent to PyTorch's gradient checkpoint.
+   - Setting the level to be 2 means all detected recomputable subgraphs (including compromised recomputable graphs) with each transformer-based model layer generating stashed activations will be recomputed. This is conceptually equivalent to PyTorch's gradient checkpoint.
+   - When the level is 0, check Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for more details.
 
     ```bash
     export ORTMODULE_MEMORY_OPT_LEVEL=0
     ```
 
-### ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT
+#### ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT
 
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, the memory-efficient gradient management is turned off. The gradient after it is computed in ONNX Runtime, will trigger the corresponding parameter's backward function through `PythonOpGrad` operator. This would help release the gradient buffer managed in ONNX Runtime, which originally is released once all backward computation finishes.

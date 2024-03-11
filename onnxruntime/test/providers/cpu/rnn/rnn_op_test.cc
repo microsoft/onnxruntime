@@ -744,7 +744,9 @@ TEST(RNNTest, RNN_invalid_sequence_lens) {
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
     // the CUDA RNN version allows the invalid sequence lengths, so disable testing on CUDA and TensorRT
-    test.Run(OpTester::ExpectResult::kExpectFailure, error_msg, {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectFailure, error_msg,
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+              kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   };
 
   // should batch batch_size to be valid
@@ -842,7 +844,8 @@ TEST(RNNTest, RNN_bidirectional_with_sequence_lens) {
 
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(RNNTest, RNN_with_invalid_activation_load_failure) {

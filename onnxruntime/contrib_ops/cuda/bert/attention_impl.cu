@@ -58,12 +58,12 @@ size_t AlignSize(size_t bytes) {
   return bytesAligned;
 }
 
-void CumulatedSequenceLengthCache::Initialize(int32_t sequence_length, cudaStream_t stream) {
-  if (this->sequence_length != sequence_length) {
+void CumulatedSequenceLengthCache::Initialize(int32_t seq_length, cudaStream_t stream) {
+  if (this->sequence_length != seq_length) {
     ORT_ENFORCE(buffer.get() != nullptr && this->max_batch_size > 0);
     LaunchTrtSequenceOffset(reinterpret_cast<int32_t*>(buffer.get()), nullptr,
-                            this->max_batch_size, sequence_length, stream);
-    this->sequence_length = sequence_length;
+                            this->max_batch_size, seq_length, stream);
+    this->sequence_length = seq_length;
   }
 }
 
@@ -213,9 +213,9 @@ Status FusedTrtCrossAttention(
 
 template <>
 Status FusedTrtCrossAttention<float>(
-    cudaStream_t stream,
-    contrib::AttentionParameters& parameters,
-    AttentionData<float>& data) {
+    cudaStream_t /*stream*/,
+    contrib::AttentionParameters& /*parameters*/,
+    AttentionData<float>& /*data*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
                          "Trt fused cross attention does not support float tensor");
 }
@@ -276,9 +276,9 @@ Status FusedTrtSelfAttention(
 // Template Specialization for float type
 template <>
 Status FusedTrtSelfAttention<float>(
-    cudaStream_t stream,
-    contrib::AttentionParameters& parameters,
-    AttentionData<float>& data) {
+    cudaStream_t /*stream*/,
+    contrib::AttentionParameters& /*parameters*/,
+    AttentionData<float>& /*data*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
                          "Trt fused attention does not support float tensor");
 }

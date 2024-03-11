@@ -242,18 +242,18 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
   using AlignedAK = AttentionKernel<T, ArchTag, true, queries_per_block, keys_per_block, single_value_iteration>;
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
-#pragma warning(disable : 6287)
+#pragma warning(disable : 6287 4189)  // kAligned is used via capture so 4189 warning seems incorrect
 #endif
   // Run a more efficient kernel with `isAligned=True` when memory is correctly aligned.
   bool is_aligned = params.qk_head_size % AlignedAK::kAlignmentQ == 0 &&
                     params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
                   LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, single_value_iteration>(params);
                 }));
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }
 
 template <typename T, typename ArchTag>

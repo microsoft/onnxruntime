@@ -202,7 +202,7 @@ struct MoeFCGemm {
           total_rows_before_expert(total_rows_before_expert),
           gemm_n(gemm_n),
           gemm_k(gemm_k),
-          host_problem_sizes(nullptr) {
+          host_problem_sizes(host_problem_sizes) {
       if (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value) {
         assert(weight_scales);
       }

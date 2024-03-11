@@ -3,7 +3,7 @@
  * Licensed under the MIT License.
  *
  * Module Name:
- *    prepack_sm80.h
+ *    blk_q4/f16_prepack_sm80.h
  *
  * Abstract:
  *    Prepack weights and quantization parameters (scales and offsets) for

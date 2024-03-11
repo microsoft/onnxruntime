@@ -85,9 +85,15 @@ bool IsInputSupported(const Node& node, const NodeArg& input,
     }
 
     if (dim == 0) {
-      LOGS(logger, WARNING) << "CoreML does not support shapes with dimension values of 0. Input:" << input_name
-                            << ", shape: " << Shape2String(shape);
-      return false;
+      if (node.OpType() == "Resize" && &input == node.InputDefs()[1]) {
+        // one special case. Resize 'roi' input was originally a required input but is rarely used.
+        // ROI is not supported in the CoreML implementation so we will ignore the value, but is often added
+        // (at least in the unit tests) as an initializer with shape {0}.
+      } else {
+        LOGS(logger, WARNING) << "CoreML does not support shapes with dimension values of 0. Input:" << input_name
+                              << ", shape: " << Shape2String(shape);
+        return false;
+      }
     }
   }
 
@@ -125,7 +131,7 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
 
 bool CheckIsConstantInitializer(const NodeArg& node_arg, const GraphViewer& graph_viewer,
                                 const logging::Logger& logger, std::string_view input_description) {
-  if (graph_viewer.GetConstantInitializer(node_arg.Name(), true) == nullptr) {
+  if (graph_viewer.GetConstantInitializer(node_arg.Name()) == nullptr) {
     LOGS(logger, VERBOSE) << input_description << " (NodeArg name: '" << node_arg.Name()
                           << "') is not a constant initializer tensor";
     return false;

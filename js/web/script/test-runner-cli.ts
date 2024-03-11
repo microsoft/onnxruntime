@@ -569,6 +569,9 @@ async function main() {
       if (webnn) {
         chromiumFlags.push('--enable-experimental-web-platform-features');
       }
+      if (process.argv.includes('--karma-debug')) {
+        karmaArgs.push('--log-level debug');
+      }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
       karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
       if (browser.startsWith('Edge')) {

@@ -11,6 +11,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
+#include <cudnn_frontend.h>
 
 namespace onnxruntime {
 
@@ -210,7 +211,7 @@ class Conv : public CudaKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) override;
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
@@ -220,8 +221,12 @@ class Conv : public CudaKernel {
   }
 
   Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
-  Status CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* W, const Tensor* B, const TensorShapeVector& y_dims, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
+
+#if !defined(__CUDACC__)
+  Status CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* W, const Tensor* B, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
                                     const std::vector<int64_t>& pads, const std::vector<int64_t>& strides, const std::vector<int64_t>& dilations, const bool bias_expected, const bool fuse_bias) const;
+#endif
+
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;

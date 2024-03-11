@@ -1015,9 +1015,19 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
   }
 
 #ifdef ENABLE_ATEN
+  // For ATen node, we assume that all tensor inputs are on device, all non-tensor inputs are on CPU,
+  // except those specified in attribute cpu_input_args;
   if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" &&
       node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();
+    if (auto entry = attrs.find("cpu_input_args"); entry != attrs.end()) {
+      const auto& attr = entry->second;
+      if (utils::HasInts(attr) && std::any_of(attr.ints().cbegin(), attr.ints().cend(),
+                                              [index](int64_t arg) { return static_cast<int64_t>(index) == arg; })) {
+        return true;
+      }
+    }
+
     ORT_ENFORCE(utils::HasString(attrs.at("operator")));
     std::string op_name = attrs.at("operator").s();
     std::string overload_name = "";
@@ -1025,7 +1035,7 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
       overload_name = attrs.at("overload_name").s();
     }
 
-    return contrib::aten_ops::ATenOperatorExecutor::Instance().IsCpuArgument(op_name, overload_name, index, true);
+    return !contrib::aten_ops::ATenOperatorExecutor::Instance().IsTensorArgument(op_name, overload_name, index, true);
   }
 #else
   ORT_UNUSED_PARAMETER(node);
@@ -1040,9 +1050,19 @@ bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index
   }
 
 #ifdef ENABLE_ATEN
+  // For ATen node, we assume that all tensor outputs are on device, all non-tensor outputs are on CPU,
+  // except those specified in attribute cpu_output_args;
   if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" &&
       node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();
+    if (auto entry = attrs.find("cpu_output_args"); entry != attrs.end()) {
+      const auto& attr = entry->second;
+      if (utils::HasInts(attr) && std::any_of(attr.ints().cbegin(), attr.ints().cend(),
+                                              [index](int64_t arg) { return static_cast<int64_t>(index) == arg; })) {
+        return true;
+      }
+    }
+
     ORT_ENFORCE(utils::HasString(attrs.at("operator")));
     std::string op_name = attrs.at("operator").s();
     std::string overload_name = "";
@@ -1050,7 +1070,7 @@ bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index
       overload_name = attrs.at("overload_name").s();
     }
 
-    return contrib::aten_ops::ATenOperatorExecutor::Instance().IsCpuArgument(op_name, overload_name, index, false);
+    return !contrib::aten_ops::ATenOperatorExecutor::Instance().IsTensorArgument(op_name, overload_name, index, false);
   }
 #else
   ORT_UNUSED_PARAMETER(node);

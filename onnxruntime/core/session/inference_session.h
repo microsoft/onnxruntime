@@ -675,7 +675,6 @@ class InferenceSession {
    * If we encounter an invalid request, we return an error
    * back to the user.
    */
-
   [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
                                                                  /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
@@ -867,14 +866,17 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
     }
 
-    bool IsGraphCaptured() const {
-      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured();
+    bool IsGraphCaptured(int graph_annotation_id) const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured(graph_annotation_id);
     }
 
-    Status ReplayGraph() {
-      ORT_ENFORCE(IsGraphCaptured());
+    bool AllowGraphCaptureOnRun(int graph_annotation_id) const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
+    }
+
+    Status ReplayGraph(int graph_annotation_id) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph();
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }
@@ -884,6 +886,8 @@ class InferenceSession {
     }
 
     IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
+    // TODO(wy): Same as kCudaGraphAnnotationSkip in cuda_graph.h. Move to a common place.
+    constexpr static int kGraphAnnotationSkip = -1;
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;

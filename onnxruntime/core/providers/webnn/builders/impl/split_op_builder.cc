@@ -57,7 +57,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
   options.set("axis", axis);
 
-  if (input_defs.size() == 2) {
+  if (!GetTensorName(input_defs, 1).empty()) {
     // Inputs contains optional 'split' input
     std::vector<int32_t> splits;
     const auto& initializers(model_builder.GetInitializerTensors());

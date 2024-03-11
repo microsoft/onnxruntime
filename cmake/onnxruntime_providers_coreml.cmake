@@ -111,7 +111,7 @@ if(_enable_ML_PROGRAM)
   file(GLOB
     onnxruntime_providers_coreml_modelpackage_cc_srcs CONFIGURE_DEPENDS
     "${coremltools_SOURCE_DIR}/modelpackage/src/ModelPackage.?pp"
-    "${coremltools_SOURCE_DIR}/modelpackage/src/Utils/JsonMap.?pp"
+    "${coremltools_SOURCE_DIR}/modelpackage/src/utils/JsonMap.?pp"
   )
 
   set(coremltools_srcs

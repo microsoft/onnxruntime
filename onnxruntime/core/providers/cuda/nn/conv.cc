@@ -10,6 +10,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cuda/tensor/transpose.h"
+#include "core/common/status.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -97,11 +98,11 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                              bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+                              bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
-  if (NHWC && is_nhwc_domain_) {  // InputTensors::IN_W
-    if (input_idx == 1) {
+  if constexpr (NHWC) {
+    if (is_nhwc_domain_ && input_idx == 1) {  // InputTensors::IN_W
       // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
       auto orig_shape = tensor.Shape();
 
@@ -123,10 +124,16 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
       CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
       is_packed = true;
     }
+  } else {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
   }
 
   return Status::OK();
 }
+
+#if !defined(__CUDACC__)
 
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* W, const Tensor* B, const TensorShapeVector& y_dims, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
@@ -198,6 +205,8 @@ Status Conv<T, NHWC>::CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* 
                 common::StatusCode::EP_FAIL, supported.get_message());
 }
 
+#endif
+
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) const {
   // set X
@@ -219,8 +228,11 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
   // Make sure input and weight are 4D for NHWC since we set 4D descriptor for NHWC.
   constexpr bool channels_last = NHWC;
-  if (channels_last && (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+  if constexpr (channels_last) {
+    if (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+    }
   }
 
   // set B
@@ -231,6 +243,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
   } else {
     s_.b_data = nullptr;
   }
+
   // set Z
   if (context->InputCount() >= 4) {
     const Tensor* Z = context->Input<Tensor>(3);
@@ -382,6 +395,8 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     }
 
     size_t kernel_shape_size = kernel_shape.size();
+
+#if !defined(__CUDACC__)
     ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(X, W, B, y_dims_cudnn, handle, heur_mode,
                                                    std::vector<int64_t>(pads.begin(),
                                                                         pads.begin() + kernel_shape_size),
@@ -390,6 +405,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
                                                    std::vector<int64_t>(dilations.begin(),
                                                                         dilations.begin() + kernel_shape_size),
                                                    bias_expected, cuda_ep->IsFuseBias()));
+#endif
   } else {
     // set Y
     s_.Y = context->Output(0, s_.y_dims);
@@ -498,6 +514,8 @@ Status CudnnConvolutionDescriptor::Set(
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
   if (data_type == CUDNN_DATA_HALF) {
     CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+  } else if (data_type == CUDNN_DATA_FLOAT && !use_tf32) {
+    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_FMA_MATH));
   }
 
   return Status::OK();

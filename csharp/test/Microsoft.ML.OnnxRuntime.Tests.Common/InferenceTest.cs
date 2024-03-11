@@ -55,6 +55,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_ALL, opt.GraphOptimizationLevel);
 
+                // No get, so no verify
+                opt.DisablePerSessionThreads();
+
                 // try setting options
                 opt.ExecutionMode = ExecutionMode.ORT_PARALLEL;
                 Assert.Equal(ExecutionMode.ORT_PARALLEL, opt.ExecutionMode);
@@ -98,7 +101,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
 
                 // SessionOptions.RegisterOrtExtensions can be manually tested by referencing the
-                // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.                
+                // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.
                 ex = Assert.Throws<OnnxRuntimeException>(() => { opt.RegisterOrtExtensions(); });
                 Assert.Contains("Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced", ex.Message);
 

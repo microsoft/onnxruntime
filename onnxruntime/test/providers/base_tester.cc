@@ -622,6 +622,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       static const std::string all_provider_types[] = {
           kCpuExecutionProvider,
           kCudaExecutionProvider,
+#ifdef ENABLE_CUDA_NHWC_OPS
+          kCudaNHWCExecutionProvider,
+#endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
           kOpenVINOExecutionProvider,
@@ -650,6 +653,10 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultCpuExecutionProvider();
         else if (provider_type == onnxruntime::kCudaExecutionProvider)
           execution_provider = DefaultCudaExecutionProvider();
+#ifdef ENABLE_CUDA_NHWC_OPS
+        else if (provider_type == onnxruntime::kCudaNHWCExecutionProvider)
+          execution_provider = DefaultCudaNHWCExecutionProvider();
+#endif
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)

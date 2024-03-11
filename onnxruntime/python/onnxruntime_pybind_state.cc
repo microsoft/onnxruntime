@@ -1327,14 +1327,14 @@ void addGlobalMethods(py::module& m) {
 
 #ifdef ENABLE_ATEN
   m.def("register_aten_op_executor",
-        [](const std::string& is_cpu_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_cpu_argument_address_int, aten_op_executor_address_int;
+        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
+          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
           ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_cpu_argument_address_str, is_cpu_argument_address_int));
+              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
           ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_cpu_argument = reinterpret_cast<void*>(is_cpu_argument_address_int);
+          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
           void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_cpu_argument, p_aten_op_executor);
+          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
         });
 #endif
 }
