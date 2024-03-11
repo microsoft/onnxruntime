@@ -546,14 +546,14 @@ class WhisperHelper:
         ort_outputs = ort_session.run(None, inputs)[0]
 
         expected_transcription_no_comma_prompt1 = " John has doubts whether Sir Frederick Layton's work is really Greek after all and can discover in it but little of Rocky I"
-        expected_transcription_mispelled_prompt1 = " John has doubts whether Sir Frederick Latins work is really Greek after all and can discover in it but little of Rocky I"
+        expected_transcription_misspelled_prompt1 = " John has doubts whether Sir Frederick Latins work is really Greek after all and can discover in it but little of Rocky I"
         expected_transcription_no_comma_prompt2 = " Maria has grave doubts whether Sir Frederick Layton's work is really Greek after all and can discover in it but little of Rocky"
-        expected_transcription_mispelled_prompt2 = " Maria has grave doubts whether Sir Frederick Latins work is really Greek after all and can discover in it but little of Rocky I"
+        expected_transcription_misspelled_prompt2 = " Maria has grave doubts whether Sir Frederick Latins work is really Greek after all and can discover in it but little of Rocky I"
         expected_transcription_options = {
             expected_transcription_no_comma_prompt1,
             expected_transcription_no_comma_prompt2,
-            expected_transcription_mispelled_prompt1,
-            expected_transcription_mispelled_prompt2,
+            expected_transcription_misspelled_prompt1,
+            expected_transcription_misspelled_prompt2,
         }
         ort_outputs = ort_session.run(None, inputs)[0]
         ort_transcription = []
