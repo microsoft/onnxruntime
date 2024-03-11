@@ -467,7 +467,6 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   }
 }
 
-
 /**
  * Tests the accuracy of a FP16 model on QNN EP by runnning 3 inferences:
  *
@@ -605,7 +604,7 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
       float max_f16_qnn_err = 0.0f;
 
       for (size_t j = 0; j < num_vals && error_count < max_error_count; j++) {
-        const float expected_val = cpu_f32_vals[j];             // f32@CPU_EP val ("ground-truth")
+        const float expected_val = cpu_f32_vals[j];           // f32@CPU_EP val ("ground-truth")
         const float qnn_f16_val = qnn_f16_vals[j].ToFloat();  // f16@QNN_EP val
         const float cpu_f16_val = cpu_f16_vals[j].ToFloat();  // f16@CPU_EP val
 
