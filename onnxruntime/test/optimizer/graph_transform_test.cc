@@ -1371,68 +1371,6 @@ TEST_F(GraphTransformationTests, SubgraphWithConstantInputs) {
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
 }
 
-TEST_F(GraphTransformationTests, ConstantFoldingWithShapeGather) {
-  auto build_test_case = [&](ModelTestBuilder& builder) {
-    std::vector<std::variant<int64_t, std::string>> input_shape;
-    input_shape.reserve(4);
-    input_shape.emplace_back("dim0");
-    input_shape.emplace_back(512);
-    input_shape.emplace_back(16);
-    input_shape.emplace_back("dim3");
-    auto* input_arg = builder.MakeSymbolicInput<int64_t>(input_shape);
-    auto* neg_out = builder.MakeIntermediate();
-    auto* shape_out = builder.MakeIntermediate();
-    auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
-    auto* gather_out_1 = builder.MakeIntermediate();
-    auto* gather_index_2 = builder.MakeInitializer<int64_t>({2}, {static_cast<int64_t>(2), static_cast<int64_t>(1)});
-    auto* gather_out_2 = builder.MakeIntermediate();
-    auto* gather_index_3 = builder.MakeInitializer<int64_t>({2}, {static_cast<int64_t>(2), static_cast<int64_t>(3)});
-    auto* gather_out_3 = builder.MakeIntermediate();
-    auto* mul_out = builder.MakeOutput();
-    auto* concat_out = builder.MakeOutput();
-    builder.AddNode("Neg", {input_arg}, {neg_out});
-    builder.AddNode("Shape", {input_arg}, {shape_out});
-    builder.AddNode("Gather", {shape_out, gather_index_1}, {gather_out_1});
-    builder.AddNode("Gather", {shape_out, gather_index_2}, {gather_out_2});
-    builder.AddNode("Gather", {shape_out, gather_index_3}, {gather_out_3});
-    builder.AddNode("Mul", {neg_out, gather_out_1}, {mul_out});
-    builder.AddNode("Concat", {gather_out_3, gather_out_2}, {concat_out}).AddAttribute("axis", static_cast<int64_t>(0));
-  };
-
-  auto pre_graph_checker = [&](Graph& graph) {
-    auto op_count_map = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_map["Gather"] == 3);
-    return Status::OK();
-  };
-
-  auto post_graph_checker = [&](Graph& graph) {
-    auto op_count_map = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_count_map["Gather"] == 1);
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "Mul" || node.OpType() == "Concat") {
-        const NodeArg& input_arg = *(node.InputDefs()[1]);
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
-        TEST_RETURN_IF_NOT(tensor_proto != nullptr);
-        Initializer init_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
-        const int64_t* data = init_const.data<int64_t>();
-        if (node.OpType() == "Mul") {
-          TEST_RETURN_IF_NOT(512 == static_cast<int32_t>(data[0]));
-        } else {
-          TEST_RETURN_IF_NOT(16 == static_cast<int32_t>(data[0]));
-          TEST_RETURN_IF_NOT(512 == static_cast<int32_t>(data[1]));
-        }
-      }
-    }
-    return Status::OK();
-  };
-
-  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(*e.get(), false, ConfigOptions());
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
-}
-
 TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-no-bias.onnx";
 

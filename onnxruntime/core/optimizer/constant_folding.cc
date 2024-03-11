@@ -28,14 +28,15 @@ ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
       execution_provider_(execution_provider) {
 }
 
-static bool GetShapeValues(Node& node, InlinedVector<int64_t>& dim_values) {
-  auto shape = node.InputDefs()[0]->Shape();
-  if (!shape) return false;
+// We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
+// Shape to be able to be constant folded.
+static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
+  // Opset-15 Shape supports slicing using a 'start' and 'end' attribute
+  const auto& shape_attributes = node.GetAttributes();
 
-  int64_t rank = static_cast<int64_t>(shape->dim_size());
   int64_t start = 0;
   int64_t end = std::numeric_limits<int64_t>::max();
-  const auto& shape_attributes = node.GetAttributes();
+
   for (const auto& attr : shape_attributes) {
     if (attr.first == "start") {
       start = attr.second.i();
@@ -43,86 +44,53 @@ static bool GetShapeValues(Node& node, InlinedVector<int64_t>& dim_values) {
       end = attr.second.i();
     }
   }
-  start = start < 0 ? start + rank : start;
-  start = start < 0 ? 0 : ((start > rank) ? rank : start);
-  end = end < 0 ? end + rank : end;
-  end = end < 0 ? 0 : ((end > rank) ? rank : end);
-  if (end < start) end = start;
 
-  dim_values.clear();
-  for (; start < end; ++start) {
-    auto dim = shape->dim(static_cast<int>(start));
-    dim_values.emplace_back(utils::HasDimValue(dim) ? dim.dim_value() : -1);
+  auto shape = node.MutableInputDefs()[0]->Shape();
+  bool is_concrete_shape = true;
+  std::vector<int64_t> dim_values;
+  if (shape != nullptr) {
+    for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
+      auto dim = shape->dim(dim_index);
+      if (!utils::HasDimValue(dim)) {
+        is_concrete_shape = false;
+        break;
+      }
+      dim_values.push_back(dim.dim_value());
+    }
+  } else {
+    is_concrete_shape = false;
   }
 
-  return true;
-}
+  if (is_concrete_shape) {
+    int64_t rank = static_cast<int64_t>(dim_values.size());
 
-static void AddIntInitializerToGraph(Graph& graph, const InlinedVector<int64_t>& dims,
-                                     const InlinedVector<int64_t>& values, NodeArg* output_arg) {
-  ONNX_NAMESPACE::TensorProto const_tensor_proto;
-  const_tensor_proto.set_name(output_arg->Name());
-  const_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  const_tensor_proto.set_raw_data(values.data(), values.size() * sizeof(int64_t));
-  ONNX_NAMESPACE::TensorShapeProto output_shape;
-  for (auto dim : dims) {
-    const_tensor_proto.add_dims(dim);
-    output_shape.add_dim()->set_dim_value(dim);
-  }
-  output_arg->SetShape(output_shape);
-  graph.AddInitializedTensor(const_tensor_proto);
-}
+    // We ascertain the "true" starts/ends (if they were provided)
+    // Opset-15 Shape op supports slicing shape values
 
-// We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
-// Shape to be able to be constant folded.
-static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
-  InlinedVector<int64_t> dim_values;
-  if (!GetShapeValues(node, dim_values) ||
-      std::any_of(dim_values.cbegin(), dim_values.cend(), [](int64_t dim) { return dim == -1; })) {
-    return false;
-  }
-  AddIntInitializerToGraph(graph, InlinedVector<int64_t>{static_cast<int64_t>(dim_values.size())}, dim_values,
-                           node.MutableOutputDefs()[0]);
-  return true;
-}
+    // Deal with negatives and clamp
+    start = start < 0 ? start + rank : start;
+    start = start < 0 ? 0 : ((start > rank) ? rank : start);
 
-// Handle Gather from a Shape node, and the indices are all selecting dimensions which have concrete values.
-// This is a pattern from some transformer models, when folding these nodes, the concrete value can be fused further to
-// MatMul nodes as alpha, which will save one Mul/Div node and Memcpy node between device and host.
-static bool ConstantFoldGatherNode(Graph& graph, Node& node) {
-  if (node.GetInputEdgesCount() == 0) return false;
-  Node& pre_node = *graph.GetNode(node.InputNodesBegin()->Index());
-  if (pre_node.OpType() != "Shape" || pre_node.OutputDefs()[0]->Name() != node.InputDefs()[0]->Name()) return false;
-  InlinedVector<int64_t> dim_values;
-  if (!GetShapeValues(pre_node, dim_values)) return false;
+    end = end < 0 ? end + rank : end;
+    end = end < 0 ? 0 : ((end > rank) ? rank : end);
 
-  // Get indices input.
-  const ONNX_NAMESPACE::TensorProto* tensor_proto =
-      graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
-  if (!tensor_proto || !utils::HasDataType(*tensor_proto) ||
-      tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto::INT64) {
-    return false;
-  }
-  size_t output_element_count = 1;
-  InlinedVector<int64_t> output_dims;
-  for (int i = 0; i < tensor_proto->dims_size(); ++i) {
-    int64_t dim = tensor_proto->dims()[i];
-    output_dims.emplace_back(dim);
-    output_element_count *= static_cast<size_t>(dim);
-  }
-  InlinedVector<int64_t> output_values;
-  Initializer init_const{*tensor_proto, graph.ModelPath()};
-  const int64_t* indices_data = init_const.data<int64_t>();
-  int64_t rank = static_cast<int64_t>(dim_values.size());
-  for (size_t i = 0; i < output_element_count; ++i) {
-    int64_t index = indices_data[i];
-    if (index < 0) index += rank;
-    if (index < 0 || index >= rank || dim_values[static_cast<size_t>(index)] == -1) return false;
-    output_values.emplace_back(dim_values[static_cast<size_t>(index)]);
+    int64_t slice_length = end - start;
+    size_t clamped_slice_length = slice_length < 0 ? 0 : static_cast<size_t>(slice_length);
+
+    ONNX_NAMESPACE::TensorProto shape_constant;
+    auto* constant_arg_out = node.MutableOutputDefs()[0];
+    shape_constant.set_name(constant_arg_out->Name());
+    shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    shape_constant.add_dims(clamped_slice_length);
+    shape_constant.set_raw_data(dim_values.data() + start,
+                                clamped_slice_length * sizeof(int64_t));
+    ONNX_NAMESPACE::TensorShapeProto result_shape;
+    result_shape.add_dim()->set_dim_value(clamped_slice_length);
+    constant_arg_out->SetShape(result_shape);
+    graph.AddInitializedTensor(shape_constant);
   }
 
-  AddIntInitializerToGraph(graph, output_dims, output_values, node.MutableOutputDefs()[0]);
-  return true;
+  return is_concrete_shape;  // convert to constant if this is true
 }
 
 // This function inlines the appropriate subgraph. It does not literally fold it.
@@ -208,154 +176,147 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     } else if (node->OpType().compare("Shape") == 0) {
       converted_to_constant = ConstantFoldShapeNode(graph, *node);
     } else {
-      if (node->OpType().compare("Gather") == 0) {
-        converted_to_constant = ConstantFoldGatherNode(graph, *node);
+      InitializedTensorSet constant_inputs;
+
+      // Check if constant folding can be applied on this node.
+      const auto can_constant_fold_node = [&](const Node& n, bool skip_inputs_constant_check = false) {
+        return graph_utils::IsSupportedProvider(n, GetCompatibleExecutionProviders()) &&
+               optimizer_utils::IsOperationDeterministic(n.Domain(), n.OpType()) &&
+               // constant folding does not support executing a node that includes subgraphs (control flow operators,
+               // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
+               // by the Recurse call above
+               !n.ContainsSubgraph() &&
+               (skip_inputs_constant_check ||
+                graph_utils::AllNodeInputsAreConstant(graph, n, constant_inputs, excluded_initializers_));
+      };
+
+      if (!can_constant_fold_node(*node)) {
+        continue;
       }
-      // If Gather is not folded, still need to go over below logic.
-      if (!converted_to_constant) {
-        InitializedTensorSet constant_inputs;
 
-        // Check if constant folding can be applied on this node.
-        const auto can_constant_fold_node = [&](const Node& n, bool skip_inputs_constant_check = false) {
-          return graph_utils::IsSupportedProvider(n, GetCompatibleExecutionProviders()) &&
-                 optimizer_utils::IsOperationDeterministic(n.Domain(), n.OpType()) &&
-                 // constant folding does not support executing a node that includes subgraphs (control flow operators,
-                 // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
-                 // by the Recurse call above
-                 !n.ContainsSubgraph() &&
-                 (skip_inputs_constant_check ||
-                  graph_utils::AllNodeInputsAreConstant(graph, n, constant_inputs, excluded_initializers_));
-        };
+      // if skip_dequantize_linear is true we want to maintain QDQ node units so avoid constant folding
+      // DequantizeLinear unless we can fold the whole QDQ node unit
+      if (skip_dequantize_linear_ && node->OpType() == "DequantizeLinear") {
+        bool can_constant_fold_qdq_node_unit = false;
 
-        if (!can_constant_fold_node(*node)) {
-          continue;
-        }
+        // Simplest scenario where the whole QDQ node unit of (DQ -> X -> Q) can be constant folded is if:
+        //   - the DQ node does not produce a graph output, and its output is only consumed by X
+        //   - X is a deterministic node with a single input and single output
+        //   - the output from X is not a graph output and is only consumed by a Q node
+        if (optimizer_utils::CheckOutputEdges(graph, *node, 1)) {  // DQ does not produce graph output, single consumer
+          const Node& node_x = *node->OutputNodesBegin();
+          if (node_x.InputDefs().size() == 1 &&
+              node_x.OutputDefs().size() == 1 &&
+              optimizer_utils::CheckOutputEdges(graph, node_x, 1)) {
+            const Node& probably_q = *node_x.OutputNodesBegin();
 
-        // if skip_dequantize_linear is true we want to maintain QDQ node units so avoid constant folding
-        // DequantizeLinear unless we can fold the whole QDQ node unit
-        if (skip_dequantize_linear_ && node->OpType() == "DequantizeLinear") {
-          bool can_constant_fold_qdq_node_unit = false;
-
-          // Simplest scenario where the whole QDQ node unit of (DQ -> X -> Q) can be constant folded is if:
-          //   - the DQ node does not produce a graph output, and its output is only consumed by X
-          //   - X is a deterministic node with a single input and single output
-          //   - the output from X is not a graph output and is only consumed by a Q node
-          if (optimizer_utils::CheckOutputEdges(graph, *node,
-                                                1)) {  // DQ does not produce graph output, single consumer
-            const Node& node_x = *node->OutputNodesBegin();
-            if (node_x.InputDefs().size() == 1 && node_x.OutputDefs().size() == 1 &&
-                optimizer_utils::CheckOutputEdges(graph, node_x, 1)) {
-              const Node& probably_q = *node_x.OutputNodesBegin();
-
-              if (probably_q.OpType() == "QuantizeLinear") {
-                // the inputs to these nodes are not const yet, but will be if we constant fold,
-                // so set skip_const_check to simulate that having happened
-                constexpr bool skip_const_check = true;
-                can_constant_fold_qdq_node_unit = can_constant_fold_node(node_x, skip_const_check) &&
-                                                  can_constant_fold_node(probably_q, skip_const_check);
-              }
+            if (probably_q.OpType() == "QuantizeLinear") {
+              // the inputs to these nodes are not const yet, but will be if we constant fold,
+              // so set skip_const_check to simulate that having happened
+              constexpr bool skip_const_check = true;
+              can_constant_fold_qdq_node_unit = can_constant_fold_node(node_x, skip_const_check) &&
+                                                can_constant_fold_node(probably_q, skip_const_check);
             }
           }
-
-          if (!can_constant_fold_qdq_node_unit) {
-            continue;
-          }
         }
 
-#if !defined(DISABLE_SPARSE_TENSORS)
-        // Create execution frame for executing constant nodes.
-        OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                           is_sparse_initializer_check);
-#else
-        // Create execution frame for executing constant nodes.
-        OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                           [](std::string const&) { return false; });
-#endif
-
-        std::vector<int> fetch_mlvalue_idxs;
-        for (const auto* node_out : node->OutputDefs()) {
-          fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
-        }
-
-        const bool node_on_cpu_ep = node->GetExecutionProviderType() == kCpuExecutionProvider;
-
-        std::unique_ptr<const OpKernel> kernel;
-
-        if (!node_on_cpu_ep) {
-          // We need to copy the string here instead of taking a reference to it since node->SetExecutionProviderType
-          // will change the value of the reference
-          auto ep_type = node->GetExecutionProviderType();
-
-          // override the EP assigned to the node so that it will use the CPU kernel for Compute.
-          node->SetExecutionProviderType(kCpuExecutionProvider);
-
-          kernel = info.CreateKernel(node, config_options_);
-
-          // undo the EP change to the value that was assigned at graph partitioning time
-          node->SetExecutionProviderType(ep_type);
-        } else {
-          kernel = info.CreateKernel(node, config_options_);
-        }
-
-        // We currently constant fold using the CPU EP only.
-        // If we can't find a CPU kernel for this node, then we can't proceed with constant folding.
-        //
-        // TODO(adrianlizarraga): Support constant folding with other execution providers. For example, we may be able
-        // to use a CUDA kernel to constant fold operators with data types not supported by the CPU EP kernel.
-        if (kernel == nullptr) {
-          LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
-                                << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
-
-          // Move on to the next candidate node
+        if (!can_constant_fold_qdq_node_unit) {
           continue;
         }
+      }
 
-        OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
+#if !defined(DISABLE_SPARSE_TENSORS)
+      // Create execution frame for executing constant nodes.
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
+                                         is_sparse_initializer_check);
+#else
+      // Create execution frame for executing constant nodes.
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
+                                         [](std::string const&) { return false; });
+#endif
+
+      std::vector<int> fetch_mlvalue_idxs;
+      for (const auto* node_out : node->OutputDefs()) {
+        fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
+      }
+
+      const bool node_on_cpu_ep = node->GetExecutionProviderType() == kCpuExecutionProvider;
+
+      std::unique_ptr<const OpKernel> kernel;
+
+      if (!node_on_cpu_ep) {
+        // We need to copy the string here instead of taking a reference to it since node->SetExecutionProviderType
+        // will change the value of the reference
+        auto ep_type = node->GetExecutionProviderType();
+
+        // override the EP assigned to the node so that it will use the CPU kernel for Compute.
+        node->SetExecutionProviderType(kCpuExecutionProvider);
+
+        kernel = info.CreateKernel(node, config_options_);
+
+        // undo the EP change to the value that was assigned at graph partitioning time
+        node->SetExecutionProviderType(ep_type);
+      } else {
+        kernel = info.CreateKernel(node, config_options_);
+      }
+
+      // We currently constant fold using the CPU EP only.
+      // If we can't find a CPU kernel for this node, then we can't proceed with constant folding.
+      //
+      // TODO(adrianlizarraga): Support constant folding with other execution providers. For example, we may be able
+      // to use a CUDA kernel to constant fold operators with data types not supported by the CPU EP kernel.
+      if (kernel == nullptr) {
+        LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
+                              << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+
+        // Move on to the next candidate node
+        continue;
+      }
+
+      OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 6387)
 #endif
-        OpKernelContext op_kernel_context(&frame, kernel.get(), /*stream*/ nullptr, nullptr, logger);
-        ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
+      OpKernelContext op_kernel_context(&frame, kernel.get(), /*stream*/ nullptr, nullptr, logger);
+      ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
 
-        std::vector<OrtValue> fetches;
-        ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+      std::vector<OrtValue> fetches;
+      ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
 
-        // Go over all output node args and substitute them with the newly computed tensors, which will be
-        // added to the graph as initializers.
-        ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
-        converted_to_constant = true;
-        for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-          const auto& constant_arg_out = *node->OutputDefs()[fetch_idx];
-          // XXX: Add support for SparseTensors outputs when we have sparse outputs
-          if (!utils::HasTensorType(*constant_arg_out.TypeAsProto())) {
-            LOGS(logger, INFO) << "Unsupported output type of " << constant_arg_out.Type() << ". Can't constant fold "
-                               << node->OpType() << " node '" << node->Name() << "'";
-            converted_to_constant = false;
-            break;
-          }
+      // Go over all output node args and substitute them with the newly computed tensors, which will be
+      // added to the graph as initializers.
+      ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
+      converted_to_constant = true;
+      for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+        const auto& constant_arg_out = *node->OutputDefs()[fetch_idx];
+        // XXX: Add support for SparseTensors outputs when we have sparse outputs
+        if (!utils::HasTensorType(*constant_arg_out.TypeAsProto())) {
+          LOGS(logger, INFO) << "Unsupported output type of " << constant_arg_out.Type()
+                             << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+          converted_to_constant = false;
+          break;
         }
+      }
 
-        if (converted_to_constant) {
-          for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-            OrtValue& ort_value = fetches[fetch_idx];
-            // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
-            auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
-            const Tensor& out_tensor = ort_value.Get<Tensor>();
-            ONNX_NAMESPACE::TensorProto out_tensorproto =
-                utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+      if (converted_to_constant) {
+        for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+          OrtValue& ort_value = fetches[fetch_idx];
+          // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
+          auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
+          const Tensor& out_tensor = ort_value.Get<Tensor>();
+          ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
 
-            ONNX_NAMESPACE::TensorShapeProto result_shape;
-            for (auto& dim : out_tensor.Shape().GetDims()) {
-              result_shape.add_dim()->set_dim_value(dim);
-            }
-
-            constant_arg_out->SetShape(result_shape);
-            graph.AddInitializedTensor(out_tensorproto);
+          ONNX_NAMESPACE::TensorShapeProto result_shape;
+          for (auto& dim : out_tensor.Shape().GetDims()) {
+            result_shape.add_dim()->set_dim_value(dim);
           }
+
+          constant_arg_out->SetShape(result_shape);
+          graph.AddInitializedTensor(out_tensorproto);
         }
       }
     }
