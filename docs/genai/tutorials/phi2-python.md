@@ -33,9 +33,9 @@ You can replace the name of the output folder specified with the `-o` option wit
 
 After you run the script, you will see a series of files generated in this folder. They include the HuggingFace configs for your reference, as well as the following generated files used by ONNX Runtime GenAI.
 
-`model.onnx`: the phi-2 ONNX model
-`model.onnx.data`: the phi-2 ONNX model weights
-`genai_config.json`: the configuration used by ONNX Runtime GenAI
+- `model.onnx`: the phi-2 ONNX model
+- `model.onnx.data`: the phi-2 ONNX model weights
+- `genai_config.json`: the configuration used by ONNX Runtime GenAI
 
 You can view and change the values in the `genai_config.json` file. The model section should not be updated unless you have brought your own model and it has different parameters. 
 
