@@ -443,7 +443,7 @@ def _get_bert_for_sequence_classification_sample_data_with_random_shapes(device)
     return input_ids, input_mask, labels
 
 
-def _get_bert_for_sequence_classification_sample_data(device, shape):
+def _get_bert_for_sequence_classification_sample_data(device):
     """Returns sample data to be used with BertForSequenceClassification model"""
 
     input_ids = torch.randint(0, 100, (32, 64), dtype=torch.long, device=device)
