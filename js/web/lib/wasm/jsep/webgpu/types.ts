@@ -18,9 +18,6 @@ export type GpuDataId = number;
 export type GpuArchitecture = 'ampere';
 export type GpuVendor = 'amd'|'intel'|'nvidia';
 export interface AdapterInfo {
-  readonly architecture: string;
-  readonly vendor: string;
-
   isArchitecture: (architecture: GpuArchitecture) => boolean;
   isVendor: (vendor: GpuVendor) => boolean;
 }

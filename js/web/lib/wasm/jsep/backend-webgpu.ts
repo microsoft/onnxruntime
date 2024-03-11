@@ -95,8 +95,8 @@ const getProgramInfoUniqueKey =
     };
 
 class AdapterInfoImpl implements AdapterInfo {
-  readonly architecture: string;
-  readonly vendor: string;
+  readonly architecture?: string;
+  readonly vendor?: string;
 
   constructor(adapterInfo: GPUAdapterInfo) {
     if (adapterInfo) {

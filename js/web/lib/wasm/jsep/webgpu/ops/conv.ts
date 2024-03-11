@@ -149,11 +149,10 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const isChannelsLast = attributes.format === 'NHWC';
   if (attributes.group !== 1) {
     // One CI with NVIDIA GPU (ampere architecutre) fails with below 2 cases, but we couldn't repro them with any other
-    // GPUs, including NVIDIA ones.
+    // GPUs, including NVIDIA ones. So just disable vectorize on NVIDIA ampere to ensure always correct outputs.
     // [webgpu]Conv - conv - vectorize group - B
     // [webgpu]Conv - conv - vectorize group - D
-    // Disable vectorize on NVIDIA ampere to make bots happy.
-    const enableGroupedConvVectorize = context.adapterInfo.isArchitecture('ampere') ? false : true;
+    const enableGroupedConvVectorize = !context.adapterInfo.isArchitecture('ampere');
     if (enableGroupedConvVectorize && isChannelsLast && inputs[1].dims[0] === attributes.group &&
         inputs[1].dims[1] === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1) {
       const outputShape = calculateOutputShape(
