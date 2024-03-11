@@ -245,8 +245,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
                       process_downstream_node(output);
                     });
     } else {
-      std::for_each(node.OutputNodesBegin(), node.OutputNodesEnd(),
-                    [&](const Node& output) { process_downstream_node(output); });
+      std::for_each(node.OutputNodesBegin(), node.OutputNodesEnd(), process_downstream_node);
     }
 
     ++num_nodes_processed;

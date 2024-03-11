@@ -135,7 +135,7 @@ TEST(PartitioningUtilsTest, TestHandlingQDQNodeUnitWithNoQNodes) {
 }
 
 // TopK produces 2 outputs, one of which is used in a QDQ node group (Q of values output)
-// and the other (indices output) is not. A downstream node consumuing the indices output has an edge from the target
+// and the other (indices output) is not. A downstream node consuming the indices output has an edge from the target
 // node and not a Q node.
 // To process this correctly, the QDQ NodeUnit must return output edges for both the Q node/s of the values output,
 // and the downstream node (Cast in this case) of the indices output.
