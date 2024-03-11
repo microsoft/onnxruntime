@@ -152,6 +152,7 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.GetDims();
+  auto kernel_shape = pool_attrs_.kernel_shape;
 
   if constexpr (NHWC) {
     if (kernel_shape.size() < 2)
@@ -162,7 +163,6 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
-  auto kernel_shape = pool_attrs_.kernel_shape;
   auto pads = pool_attrs_.pads;
   auto strides = pool_attrs_.strides;
 
