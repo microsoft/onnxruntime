@@ -68,22 +68,29 @@ export const createMatMulNBitsProgramInfo =
         {type: DataType.uint32, data: attributes.N}, {type: DataType.uint32, data: attributes.accuracyLevel},
         {type: DataType.uint32, data: attributes.bits}, {type: DataType.uint32, data: attributes.blockSize}
       ];
+      const aShape = inputs[0].dims.slice();
+      aShape.splice(-1, 1, attributes.K / aComponents);
+      const bShape = ShapeUtil.convertShape(inputs[1].dims).slice();
+      bShape.splice(-1, 1, blobSizeInWords / bComponents);
+      programUniforms.push(...createTensorShapeVariables(aShape));
+      programUniforms.push(...createTensorShapeVariables(bShape));
+      programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+      if (inputs.length === 4) {
+        programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(inputs[3].dims)));
+      }
+      programUniforms.push(...createTensorShapeVariables(outputShape));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const aShape = inputs[0].dims.slice();
-        aShape.splice(-1, 1, attributes.k / aComponents);
-        const a = inputVariable('a', inputs[0].dataType, aShape, aComponents);
-        const bShape = ShapeUtil.convertShape(inputs[1].dims).slice();
-        bShape.splice(-1, 1, blobSizeInWords / bComponents);
-        const b = inputVariable('b', DataType.uint32, bShape, bComponents);
-        const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims);
+        const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
+        const b = inputVariable('b', DataType.uint32, bShape.length, bComponents);
+        const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length, components);
         const inputVariables = [a, b, scales];
         const zeroPoints = inputs.length === 4 ?
-            inputVariable('zero_points', DataType.uint32, inputs[3].dims, zComponents) :
+            inputVariable('zero_points', DataType.uint32, inputs[3].dims.length, zComponents) :
             undefined;
         if (zeroPoints) {
           inputVariables.push(zeroPoints);
         }
-        const output = outputVariable('output', inputs[0].dataType, outputShape, components);
+        const output = outputVariable('output', inputs[0].dataType, outputShape.length, components);
         const uniforms: UniformsArrayType = [
           {name: 'output_size', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
           {name: 'accuracy_level', type: 'u32'}, {name: 'bits', type: 'u32'}, {name: 'block_size', type: 'u32'}
