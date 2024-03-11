@@ -2238,11 +2238,10 @@ def test_bert_inputs_with_dynamic_shape():
         loss.backward()
         return outputs[0]
 
-    for _step in range(1):
+    for _step in range(10):
         x, y, z = _get_bert_for_sequence_classification_sample_data_with_random_shapes("cuda")
 
         pt_p = run_step(pt_model, x, y, z)
-
         ort_p = run_step(ort_model, x, y, z)
 
         _test_helpers.assert_values_are_close(ort_p, pt_p, atol=1e-01)
