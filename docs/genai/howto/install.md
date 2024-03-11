@@ -16,6 +16,7 @@ nav_order: 1
 ## Python package release candidates
 
 ```bash
+pip install numpy
 pip install onnxruntime-genai --pre --index-url=
 https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/`
 ```
