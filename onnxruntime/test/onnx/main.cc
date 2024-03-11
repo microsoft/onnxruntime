@@ -339,11 +339,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     logging_level = ORT_LOGGING_LEVEL_VERBOSE;
   }
 
-  if (concurrent_session_runs > 1 && repeat_count > 1) {
-    fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
-    usage();
-    return -1;
-  }
   argc -= optind;
   argv += optind;
   if (argc < 1) {
