@@ -6,6 +6,7 @@ grand_parent: Tutorials
 has_children: false
 nav_order: 2
 ---
+{::options toc_levels="3" /}
 
 # Using WebGPU Execution Provider
 {: .no_toc }

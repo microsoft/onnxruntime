@@ -4,7 +4,7 @@ description: Classify images in a NextJS web application built from a GitHub tem
 parent: Web
 grand_parent: Tutorials
 has_children: false
-nav_order: 4
+nav_order: 6
 ---
 
 

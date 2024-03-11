@@ -4,15 +4,16 @@ description: Performance Diagnosis
 parent: Web
 grand_parent: Tutorials
 has_children: false
-nav_order: 3
+nav_order: 4
 ---
+{::options toc_levels="3" /}
 
 # Performance Diagnosis
 {: .no_toc }
 
 ONNX Runtime Web is designed to be fast and efficient, but there are a number of factors that can affect the performance of your application. This document provides some guidance on how to diagnose performance issues in ONNX Runtime Web.
 
-Before you start, make sure that ONNX Runtime Web successfully loads and runs your model. If you encounter any issues, see the [troubleshooting guide](./troubleshooting.md) for help first.
+Before you start, make sure that ONNX Runtime Web successfully loads and runs your model. If you encounter any issues, see the [troubleshooting guide](./trouble-shooting.md) for help first.
 
 
 ## Contents
@@ -40,7 +41,7 @@ Choose the right execution provider for your scenario.
 
   - **WebNN (webnn)**: This is the option which offers potential near-native performance on the web. It is currently not supported by default in browsers, but you can enable WebNN feature manually in browser's settings.
     
-  - **WebGL**: This execution provider is designed to run models using GPU on older devices that do not support WebGPU.
+  - **WebGL (webgl)**: This execution provider is designed to run models using GPU on older devices that do not support WebGPU.
 
 ### Use the diagnostic features
 
@@ -54,7 +55,7 @@ If you are using the WebAssembly (wasm) execution provider, you can use the foll
 
 Always enable multi-threading if the environment supports it. Multi-threading can significantly improve the performance of your application by utilizing multiple CPU cores.
 
-This feature is enabled by default in ONNX Runtime Web, however it only works when `crossOriginIsolated` mode is enabled. See https://web.dev/cross-origin-isolation-guide/ for more info.
+This feature is enabled by default in ONNX Runtime Web, however it only works when `crossOriginIsolated` mode is enabled. See [https://web.dev/cross-origin-isolation-guide/](https://web.dev/cross-origin-isolation-guide/) for more info.
 
 You can also use flag `ort.env.wasm.numThreads` to set the number of threads to be used.
 
@@ -78,6 +79,10 @@ Always enable SIMD if it's supported. SIMD (Single Instruction, Multiple Data) i
 This feature is enabled by default in ONNX Runtime Web, unless you explicitly disable it by setting `ort.env.wasm.simd = false`.
 
 See [API reference: env.wasm.simd](https://onnxruntime.ai/docs/api/js/interfaces/Env.WebAssemblyFlags.html#simd) for more details.
+
+### Prefer uint8 quantized models
+
+If you are using a quantized model, prefer uint8 quantized models. Avoid float16 models if possible, as float16 is not natively supported by CPU and it is going to be slow.
 
 ### Enable Proxy Worker
 
