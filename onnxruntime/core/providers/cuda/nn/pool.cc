@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
+#include <assert.h>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/nn/pool.h"
@@ -186,9 +187,14 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
       x_dims_cudnn.push_back(1);
       y_dims_cudnn.push_back(1);
     }
-    ORT_ENFORCE(pads.size() >= kernel_shape.size());
+    assert(pads.size() == kernel_shape.size() * 2);
+    // The format for pads is: [x1_begin, x2_begin…, xn_begin, x1_end, x2_end,…,xn_end].
+    // Now we want to add one more begin/end pair to the array.
+    // Insert the begin
     pads.insert(pads.begin() + kernel_shape.size(), 0);
+    // Insert the end
     pads.insert(pads.end(), 0);
+    // Expand kernel_shape to 2D
     kernel_shape.push_back(1);
     strides.push_back(1);
   }

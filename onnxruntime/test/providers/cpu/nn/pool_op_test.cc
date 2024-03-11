@@ -184,8 +184,25 @@ TEST(PoolTest, MaxPool_8_With_Index) {
   MaxPool_8_WithIndexTest(true, 0 /*storage_order*/);  // row major
   MaxPool_8_WithIndexTest(true, 1 /*storage_order*/);  // col major
 }
+TEST(PoolTest, MaxPool1D_wrong_kernel_shape) {
+  OpTester test("MaxPool");
 
-TEST(PoolTest, MaxPool1D) {
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{});
+
+  std::vector<float> x_vals = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<int64_t> x_dims = {1, 2, 4};
+  std::vector<int64_t> expected_dims = {1, 2, 2};
+  std::vector<float> expected_vals = {2, 4, 6, 8};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Attribute kernel_shape has incorrect size", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool1D_case1) {
   OpTester test("MaxPool");
 
   test.AddAttribute("auto_pad", "");
@@ -197,6 +214,44 @@ TEST(PoolTest, MaxPool1D) {
   std::vector<int64_t> x_dims = {1, 2, 4};
   std::vector<int64_t> expected_dims = {1, 2, 2};
   std::vector<float> expected_vals = {2, 4, 6, 8};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool1D_case2) {
+  OpTester test("MaxPool");
+  // no padding
+  test.AddAttribute("auto_pad", "VALID");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  std::vector<float> x_vals = {1, 2, 3, 4, 5};
+  std::vector<int64_t> x_dims = {1, 1, 5};
+  // The last dim is (5-2+1)/1 = 4
+  std::vector<int64_t> expected_dims = {1, 1, 4};
+  std::vector<float> expected_vals = {2, 3, 4, 5};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool1D_case3) {
+  OpTester test("MaxPool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  // Pad one element
+  test.AddAttribute("pads", vector<int64_t>{0, 1});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  std::vector<float> x_vals = {1, 2, 3, 4, 5};
+  std::vector<int64_t> x_dims = {1, 1, 5};
+  // Since we padded it, the last dim is larger compared to the case above
+  std::vector<int64_t> expected_dims = {1, 1, 5};
+  std::vector<float> expected_vals = {2, 3, 4, 5, 5};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
