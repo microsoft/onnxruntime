@@ -37,7 +37,7 @@ For build instructions for iOS devices, please see [Build for iOS](../build/ios.
 
 The ONNX Runtime API details are [here](../api).
 
-The CoreML EP can be used via the C, C++, Objective-C, C# and Java APIs. 
+The CoreML EP can be used via the C, C++, Objective-C, C# and Java APIs.
 
 The CoreML EP must be explicitly registered when creating the inference session. For example:
 
@@ -66,12 +66,13 @@ coreml_flags |= COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE;
 
 Limit CoreML to running on CPU only.
 
-This may decrease the performance but will provide reference output value without precision loss, which is useful for validation.
+This decreases performance but provides reference output value without precision loss, which is useful for validation.
+<br>
+Intended for developer usage only.
 
 #####  COREML_FLAG_ENABLE_ON_SUBGRAPH
 
 Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.e. a [Loop](https://github.com/onnx/onnx/blob/master/docs/Operators.md#loop), [Scan](https://github.com/onnx/onnx/blob/master/docs/Operators.md#scan) or [If](https://github.com/onnx/onnx/blob/master/docs/Operators.md#if) operator).
-
 
 ##### COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
 
@@ -82,8 +83,21 @@ Note, enabling this option does not guarantee the entire model to be executed us
 
 For more information, see [Which devices have an ANE?](https://github.com/hollance/neural-engine/blob/master/docs/supported-devices.md)
 
-## Supported ops
-Following ops are supported by the CoreML Execution Provider,
+##### COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES
+
+Only allow the CoreML EP to take nodes with inputs that have static shapes.
+By default the CoreML EP will also allow inputs with dynamic shapes, however performance may be negatively impacted by inputs with dynamic shapes.
+
+##### COREML_FLAG_CREATE_MLPROGRAM
+
+Create an MLProgram format model. Requires Core ML 5 or later (iOS 15+ or macOS 12+).
+The default is for a NeuralNetwork model to be created as that requires Core ML 3 or later (iOS 13+ or macOS 10.15+).
+
+## Supported operators
+
+### NeuralNetwork
+
+Operators that are supported by the CoreML Execution Provider when a NeuralNetwork model (the default) is created:
 
 |Operator|Note|
 |--------|------|
@@ -123,3 +137,25 @@ Following ops are supported by the CoreML Execution Provider,
 |ai.onnx:Sub||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
+
+### MLProgram
+
+Operators that are supported by the CoreML Execution Provider when a MLProgram model (COREML_FLAG_CREATE_MLPROGRAM flag is set) is created:
+
+|Operator|Note|
+|--------|------|
+|ai.onnx:Add||
+|ai.onnx:AveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
+|ai.onnx:Clip||
+|ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Bias if provided must be constant.|
+|ai.onnx:Div||
+|ai.onnx:Gemm|Input B must be constant.|
+|ai.onnx:GlobalAveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
+|ai.onnx:GlobalMaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
+|ai.onnx:MatMul|Only support for transA == 0, alpha == 1.0 and beta == 1.0 is currently implemented.|
+|ai.onnx:MaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
+|ai.onnx:Mul||
+|ai.onnx:Pow|Only supports cases when both inputs are fp32.|
+|ai.onnx:Relu||
+|ai.onnx:Reshape||
+|ai.onnx:Sub||
