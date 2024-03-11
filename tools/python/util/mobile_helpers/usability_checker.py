@@ -9,18 +9,10 @@ import pathlib
 import tempfile
 from collections import deque
 from enum import IntEnum
-from typing import Dict, List, Optional, Set
 
 import onnx
 
-from ..onnx_model_utils import (
-    ModelProtoWithShapeInfo,
-    get_producer_consumer_maps,
-    is_fixed_size_tensor,
-    iterate_graph_per_graph_func,
-    iterate_graph_per_node_func,
-    optimize_model,
-)
+from ..onnx_model_utils import ModelProtoWithShapeInfo, get_producer_consumer_maps, is_fixed_size_tensor, optimize_model
 
 
 class _SupportedOpsChecker:
@@ -444,8 +436,8 @@ def check_partitioning(
     def _check_graph(
         graph: onnx.GraphProto,
         outer_scope_value_info: dict[str, onnx.ValueInfoProto],
-        outer_scope_initializers: Optional[set[str]] = set(),
-        partitioning_info: Optional[PartitioningInfo] = None,
+        outer_scope_initializers: set[str] | None = None,
+        partitioning_info: PartitioningInfo | None = None,
     ) -> PartitioningInfo:
         if outer_scope_value_info is not None:
             # extend value info if we're using it. we replace any value shadowed with a local one
@@ -453,6 +445,9 @@ def check_partitioning(
             _update_value_info(graph, value_info)
         else:
             value_info = None
+
+        if outer_scope_initializers is None:
+            outer_scope_initializers = set()
 
         info = _check_partitioning_for_graph(
             graph,
@@ -531,7 +526,7 @@ def check_coreml_partitions(model: onnx.ModelProto, require_fixed_input_sizes: b
     return _check_ep_partitioning(model, config_path, require_fixed_input_sizes, max_rank)
 
 
-def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None):
+def check_shapes(graph: onnx.GraphProto, logger: logging.Logger | None = None):
     """
     Check the shapes of graph inputs, values and graph outputs to determine if they have static or dynamic sizes.
     NNAPI and CoreML do not support dynamically sized values.
@@ -676,7 +671,7 @@ def checker(model_path: pathlib.Path, logger: logging.Logger):
     )
 
 
-def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger: Optional[logging.Logger] = None):
+def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger: logging.Logger | None = None):
     """
     Analyze the provided model to determine if it's likely to work well with the NNAPI or CoreML Execution Providers
     :param model_path: Model to analyze.
