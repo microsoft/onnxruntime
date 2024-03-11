@@ -153,7 +153,12 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.GetDims();
 
-  if (x_shape.NumDimensions() < 3) {
+  if constexpr (NHWC) {
+    if (kernel_shape.size() < 2)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "1D pooling for NHWC is not implemented yet");
+    if (x_shape.NumDimensions() < 4)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 4.");
+  } else if (x_shape.NumDimensions() < 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
@@ -180,13 +185,8 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   TensorShapeVector y_dims_cudnn(y_dims);
   if (kernel_shape.size() < 2) {
     // cudnn only takes 4D or 5D input, so pad dimensions if needed
-    if (NHWC) {
-      x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
-      y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
-    } else {
-      x_dims_cudnn.push_back(1);
-      y_dims_cudnn.push_back(1);
-    }
+    x_dims_cudnn.push_back(1);
+    y_dims_cudnn.push_back(1);
     assert(pads.size() == kernel_shape.size() * 2);
     // The format for pads is: [x1_begin, x2_begin…, xn_begin, x1_end, x2_end,…,xn_end].
     // Now we want to add one more begin/end pair to the array.
