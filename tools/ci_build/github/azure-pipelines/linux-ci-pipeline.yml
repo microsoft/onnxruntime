@@ -65,6 +65,10 @@ stages:
 
       - template: templates/cache-node-data.yml
 
+      - script: |
+          find . $(Agent.TempDirectory)/data/onnx
+        displayName: 'List files in onnx directory'
+
       - template: templates/linux-build-step-with-cache.yml
         parameters:
           WithCache: false
