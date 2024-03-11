@@ -77,17 +77,17 @@ class PartitioningInfo:
         YES = 2
 
     def __init__(
-            self,
-            num_nodes: int,
-            num_supported_nodes: int,
-            num_partitions: int,
-            supported_ops_checker: _SupportedOpsChecker,
-            supported_groups: list[onnx.NodeProto],
-            unsupported_ops: set[str],
-            nodes_unsupported_due_to_op: int,
-            nodes_unsupported_due_to_dynamic_input: int,
-            num_unsupported_nodes_due_to_rank: int,
-            ops_with_unsupported_rank: set[str],
+        self,
+        num_nodes: int,
+        num_supported_nodes: int,
+        num_partitions: int,
+        supported_ops_checker: _SupportedOpsChecker,
+        supported_groups: list[onnx.NodeProto],
+        unsupported_ops: set[str],
+        nodes_unsupported_due_to_op: int,
+        nodes_unsupported_due_to_dynamic_input: int,
+        num_unsupported_nodes_due_to_rank: int,
+        ops_with_unsupported_rank: set[str],
     ):
         self.num_nodes = num_nodes
         self.num_supported_nodes = num_supported_nodes
@@ -238,14 +238,14 @@ class PartitioningInfo:
 
 
 def _check_partitioning_for_graph(
-        graph: onnx.GraphProto,
-        node_to_producers: dict[onnx.NodeProto, set[onnx.NodeProto]],
-        node_to_consumers: dict[onnx.NodeProto, set[onnx.NodeProto]],
-        supported_ops_checker: _SupportedOpsChecker,
-        outer_scope_initializers: set[str],
-        require_fixed_input_sizes: bool,
-        value_info: dict[str, onnx.ValueInfoProto],
-        max_rank: int = 999,  # max rank if EP has a limitation
+    graph: onnx.GraphProto,
+    node_to_producers: dict[onnx.NodeProto, set[onnx.NodeProto]],
+    node_to_consumers: dict[onnx.NodeProto, set[onnx.NodeProto]],
+    supported_ops_checker: _SupportedOpsChecker,
+    outer_scope_initializers: set[str],
+    require_fixed_input_sizes: bool,
+    value_info: dict[str, onnx.ValueInfoProto],
+    max_rank: int = 999,  # max rank if EP has a limitation
 ):
     # initializers have fixed sizes.
     initializers = [i.name for i in graph.initializer]
@@ -404,10 +404,10 @@ def _check_partitioning_for_graph(
 
 
 def check_partitioning(
-        main_graph: onnx.GraphProto,
-        supported_ops_checker: _SupportedOpsChecker,
-        require_fixed_input_sizes: bool,
-        max_rank: int = 999,
+    main_graph: onnx.GraphProto,
+    supported_ops_checker: _SupportedOpsChecker,
+    require_fixed_input_sizes: bool,
+    max_rank: int = 999,
 ) -> PartitioningInfo:
     """
     Estimate the partitions the graph will be split into for nodes that is_node_supported_fn returns true for.
@@ -442,10 +442,10 @@ def check_partitioning(
     node_to_producers, node_to_consumers = get_producer_consumer_maps(main_graph)
 
     def _check_graph(
-            graph: onnx.GraphProto,
-            outer_scope_value_info: dict[str, onnx.ValueInfoProto],
-            outer_scope_initializers: Optional[set[str]] = set(),
-            partitioning_info: Optional[PartitioningInfo] = None,
+        graph: onnx.GraphProto,
+        outer_scope_value_info: dict[str, onnx.ValueInfoProto],
+        outer_scope_initializers: Optional[set[str]] = set(),
+        partitioning_info: Optional[PartitioningInfo] = None,
     ) -> PartitioningInfo:
         if outer_scope_value_info is not None:
             # extend value info if we're using it. we replace any value shadowed with a local one
@@ -495,7 +495,7 @@ def check_partitioning(
 
 
 def _check_ep_partitioning(
-        model: onnx.ModelProto, supported_ops_config: pathlib.Path, require_fixed_input_sizes: bool, max_rank: int = 999
+    model: onnx.ModelProto, supported_ops_config: pathlib.Path, require_fixed_input_sizes: bool, max_rank: int = 999
 ):
     supported_ops = _SupportedOpsChecker(supported_ops_config)
     partition_info = check_partitioning(model.graph, supported_ops, require_fixed_input_sizes, max_rank)
@@ -663,16 +663,16 @@ def checker(model_path: pathlib.Path, logger: logging.Logger):
     coreml_mlprogram_suitability = check_ep("CoreML MLProgram", check_mlprogram_coreml)
 
     if (
-            nnapi_suitability != PartitioningInfo.TryWithEP.YES
-            or coreml_nn_suitability != PartitioningInfo.TryWithEP.YES
-            or coreml_mlprogram_suitability != PartitioningInfo.TryWithEP.YES
+        nnapi_suitability != PartitioningInfo.TryWithEP.YES
+        or coreml_nn_suitability != PartitioningInfo.TryWithEP.YES
+        or coreml_mlprogram_suitability != PartitioningInfo.TryWithEP.YES
     ) and logger.getEffectiveLevel() > logging.INFO:
         logger.info("Re-run with log level of INFO for more details on the NNAPI/CoreML issues.")
 
     return (
-            nnapi_suitability != PartitioningInfo.TryWithEP.NO
-            or coreml_nn_suitability != PartitioningInfo.TryWithEP.NO
-            or coreml_mlprogram_suitability != PartitioningInfo.TryWithEP.NO
+        nnapi_suitability != PartitioningInfo.TryWithEP.NO
+        or coreml_nn_suitability != PartitioningInfo.TryWithEP.NO
+        or coreml_mlprogram_suitability != PartitioningInfo.TryWithEP.NO
     )
 
 
@@ -714,8 +714,8 @@ def parse_args():
         "--skip_optimize",
         action="store_true",
         help="Don't optimize the model to BASIC level prior to analyzing. "
-             "Optimization will occur when exporting the model to ORT format, so in general "
-             "should not be skipped unless you have a specific reason to do so.",
+        "Optimization will occur when exporting the model to ORT format, so in general "
+        "should not be skipped unless you have a specific reason to do so.",
     )
     parser.add_argument("model_path", type=pathlib.Path, help="Provide path to ONNX model")
 
