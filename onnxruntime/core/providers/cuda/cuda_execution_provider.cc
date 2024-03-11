@@ -242,7 +242,8 @@ Status CUDAExecutionProvider::PerThreadContext::ReplayGraph(CudaGraphAnnotation_
 void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture(
     CudaGraphAnnotation_t cuda_graph_annotation_id) {
   if (graph_id_to_run_count_.find(cuda_graph_annotation_id) == graph_id_to_run_count_.end()) {
-    graph_id_to_run_count_[cuda_graph_annotation_id] = 0;
+    graph_id_to_run_count_[cuda_graph_annotation_id] = 1;
+    return;
   }
   graph_id_to_run_count_[cuda_graph_annotation_id]++;
 }
