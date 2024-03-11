@@ -148,6 +148,7 @@ def get_model(args: argparse.Namespace):
             provider=provider,
             provider_options=provider_options,
             session_options=sess_options,
+            use_io_binding=True,  # Avoid memory copy overhead
         )
         end_time = time.time()
 
