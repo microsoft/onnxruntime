@@ -56,18 +56,18 @@ stages:
         clean: true
         submodules: none
 
+      - template: templates/cache-node-data.yml
+
+      - script: |
+          find . $(Agent.TempDirectory)/data/onnx
+        displayName: 'List files in onnx directory'
+
       - template: templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuildcentos8x64
-
-      - template: templates/cache-node-data.yml
-
-      - script: |
-          find . $(Agent.TempDirectory)/data/onnx
-        displayName: 'List files in onnx directory'
 
       - template: templates/linux-build-step-with-cache.yml
         parameters:
