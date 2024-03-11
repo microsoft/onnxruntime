@@ -96,7 +96,7 @@ Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtim
 
 ### Model caching
 
-OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html).
+OpenVINO™ supports [model caching](https://docs.openvino.ai/2024/openvino-workflow/running-inference/optimize-inference/optimizing-latency/model-caching-overview.html).
 
 From OpenVINO™ 2023.1 version, model caching feature is supported on CPU, GPU along with kernel caching on iGPU, dGPU.
 
