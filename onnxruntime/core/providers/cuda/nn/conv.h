@@ -226,8 +226,11 @@ class Conv : public CudaKernel {
   Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
 
 #if !defined(__CUDACC__)
-  Status CreateCudnnFeExecutionPlan(const Tensor* X, const Tensor* W, const Tensor* B, const TensorShapeVector& y_dims, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
-                                                   const std::vector<int64_t>& pads, const std::vector<int64_t>& strides, const std::vector<int64_t>& dilations, const bool bias_expected, const bool fuse_bias) const;
+  Status CreateCudnnFeExecutionPlan(
+      const Tensor* X, const Tensor* W, const Tensor* B,
+      const TensorShapeVector& y_dims, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
+      const std::vector<int64_t>& pads, const std::vector<int64_t>& strides, const std::vector<int64_t>& dilations,
+      const bool bias_expected, const bool fuse_bias) const;
 #endif
 
   ConvAttributes conv_attrs_;

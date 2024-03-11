@@ -252,11 +252,15 @@ CudnnFeTensor<NHWC>::CudnnFeTensor(const onnxruntime::TensorShapeVector& shape, 
   if (shape.size() == 1) {
     shape_vec = {1, shape[0], 1, 1};
   } else if (shape.size() == 4) {
-    if (NHWC) shape_vec = {shape[0], shape[3], shape[1], shape[2]};
-    else shape_vec = {shape[0], shape[1], shape[2], shape[3]};
+    if (NHWC)
+      shape_vec = {shape[0], shape[3], shape[1], shape[2]};
+    else
+      shape_vec = {shape[0], shape[1], shape[2], shape[3]};
   } else if (shape.size() == 5) {
-    if (NHWC) shape_vec = {shape[0], shape[4], shape[1], shape[2], shape[3]};
-    else shape_vec = {shape[0], shape[1], shape[2], shape[3], shape[4]};
+    if (NHWC)
+      shape_vec = {shape[0], shape[4], shape[1], shape[2], shape[3]};
+    else
+      shape_vec = {shape[0], shape[1], shape[2], shape[3], shape[4]};
   } else {
     ORT_THROW("Invalid tensor shape size, tensor name: ", name, ", shape size: ", shape.size());
   }

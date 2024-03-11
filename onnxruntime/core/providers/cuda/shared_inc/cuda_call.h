@@ -25,9 +25,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
 #define CUDNN_CALL(expr) (CudaCall<cudnnStatus_t, false>((expr), #expr, "CUDNN", CUDNN_STATUS_SUCCESS, "", __FILE__, __LINE__))
 #define CUDNN_CALL2(expr, m) (CudaCall<cudnnStatus_t, false>((expr), #expr, "CUDNN", CUDNN_STATUS_SUCCESS, m, __FILE__, __LINE__))
 
-#if defined(ENABLE_CUDA_NHWC_OPS) && !defined(__CUDACC__)
 #define CUDNN_FE_CALL(expr) (CudaCall<cudnn_frontend::error_t, false, cudnn_frontend::error_code_t>((cudnn_frontend::error_t)(expr), #expr, "CUDNN_FE", cudnn_frontend::error_code_t::OK, "", __FILE__, __LINE__))
-#endif
 
 #define CUFFT_CALL(expr) (CudaCall<cufftResult, false>((expr), #expr, "CUFFT", CUFFT_SUCCESS, "", __FILE__, __LINE__))
 

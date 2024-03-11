@@ -431,26 +431,26 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
   }
   auto cudnn_handle = GetCudnnHandle(context);
 #if !defined(__CUDACC__)
-    s_.variant_pack.insert_or_assign(s_.cudnn_fe_X, const_cast<void*>(s_.x_data));
-    s_.variant_pack.insert_or_assign(s_.cudnn_fe_W, const_cast<void*>(s_.w_data));
-    s_.variant_pack.insert_or_assign(s_.cudnn_fe_Y, s_.y_data);
+  s_.variant_pack.insert_or_assign(s_.cudnn_fe_X, const_cast<void*>(s_.x_data));
+  s_.variant_pack.insert_or_assign(s_.cudnn_fe_W, const_cast<void*>(s_.w_data));
+  s_.variant_pack.insert_or_assign(s_.cudnn_fe_Y, s_.y_data);
 
-    if (s_.bias_fused && s_.b_data != nullptr) {
-      s_.variant_pack.insert_or_assign(s_.cudnn_fe_B, const_cast<void*>(s_.b_data));
-    }
+  if (s_.bias_fused && s_.b_data != nullptr) {
+    s_.variant_pack.insert_or_assign(s_.cudnn_fe_B, const_cast<void*>(s_.b_data));
+  }
 
-    CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_graph->execute(cudnn_handle,
-                                                        s_.variant_pack,
-                                                        GetWorkSpace(context->GetComputeStream()).get()));
+  CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_graph->execute(cudnn_handle,
+                                                      s_.variant_pack,
+                                                      GetWorkSpace(context->GetComputeStream()).get()));
 
-    if (!s_.bias_fused && s_.b_data != nullptr) {
-      s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_bias_X, s_.y_data);
-      s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_bias_Y, s_.y_data);
-      s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_B, const_cast<void*>(s_.b_data));
-      CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_bias_graph->execute(cudnn_handle,
-                                                          s_.variant_pack_bias,
-                                                          GetWorkSpace(context->GetComputeStream()).get()));
-    }
+  if (!s_.bias_fused && s_.b_data != nullptr) {
+    s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_bias_X, s_.y_data);
+    s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_bias_Y, s_.y_data);
+    s_.variant_pack_bias.insert_or_assign(s_.cudnn_fe_B, const_cast<void*>(s_.b_data));
+    CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_bias_graph->execute(cudnn_handle,
+                                                             s_.variant_pack_bias,
+                                                             GetWorkSpace(context->GetComputeStream()).get()));
+  }
 #endif
 
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
