@@ -506,7 +506,13 @@ def main(argv=None):
         # Wrap parity check in try-except to allow export to continue in case this produces an error
         try:
             with torch.no_grad():
-                max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, cache_dir, ort_session, device)
+                # Verify batched decoding with prompts for whisper openai implementation
+                if args.model_impl == "openai" and args.use_forced_decoder_ids:
+                    max_diff = WhisperHelper.verify_onnx_multi_batch(
+                        args.model_name_or_path, cache_dir, ort_session, device
+                    )
+                else:
+                    max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, cache_dir, ort_session, device)
             if max_diff > 1e-4:
                 logger.warning("PyTorch and ONNX Runtime results are NOT close")
             else:

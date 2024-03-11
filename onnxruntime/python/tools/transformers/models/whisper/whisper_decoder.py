@@ -126,6 +126,7 @@ class WhisperDecoderInputs:
         device: torch.device,
         float16: bool = False,
         use_int32_inputs: bool = False,
+        model_impl: str = "hf",
     ):  # -> WhisperDecoderInputs:
         """Create dummy inputs for WhisperDecoder.
 
@@ -170,7 +171,7 @@ class WhisperDecoderInputs:
             cross_attention_past_shape = [
                 batch_size,
                 num_attention_heads,
-                encode_sequence_length,
+                encode_sequence_length if model_impl == "hf" else past_decode_sequence_length,
                 head_size,
             ]
 
@@ -228,6 +229,7 @@ class WhisperDecoderHelper:
             past_decode_sequence_length=6 if isinstance(decoder, WhisperDecoder) else 0,
             device=device,
             use_int32_inputs=use_int32_inputs,
+            model_impl=decoder.model_impl,
         )
         input_list = inputs.to_list()
 

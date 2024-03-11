@@ -434,3 +434,149 @@ class WhisperHelper:
             logger.warning(f"ONNX Runtime outputs: {ort_transcription}")
 
         return max_diff
+
+    @staticmethod
+    def verify_onnx_multi_batch(
+        model_name_or_path: str,
+        cache_dir: str,
+        ort_session: InferenceSession,
+        device: torch.device,
+    ):
+        """Compare the result from PyTorch and ONNX Runtime to verify the ONNX model is good."""
+        extra_kwargs = {}
+        if version.parse(transformers_version) >= version.parse("4.36.0"):
+            extra_kwargs["attn_implementation"] = "eager"
+        pt_model = WhisperForConditionalGeneration.from_pretrained(
+            model_name_or_path, cache_dir=cache_dir, **extra_kwargs
+        ).to(device)
+        processor = WhisperProcessor.from_pretrained(model_name_or_path)
+        config = WhisperConfig.from_pretrained(model_name_or_path)
+
+        # Try to import `datasets` pip package
+        try:
+            from datasets import load_dataset
+        except Exception as e:
+            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)
+            install_cmd = "pip install datasets"
+            logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
+            os.system(install_cmd)
+
+        from datasets import load_dataset
+
+        ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
+        input_features_ = [
+            processor([ds[3]["audio"]["array"]], return_tensors="pt").input_features,
+            processor([ds[3]["audio"]["array"]], return_tensors="pt").input_features,
+        ]
+        input_features = torch.cat((input_features_[0], input_features_[1])).to(device)
+
+        start_id = [config.decoder_start_token_id]  # ex: [50258]
+        prompt_ids = processor.get_decoder_prompt_ids(language="english", task="transcribe")
+        prompt_ids = list(map(lambda token: token[1], prompt_ids))  # ex: [50259, 50358, 50363]
+        forced_decoder_ids = start_id + prompt_ids  # ex: [50258, 50259, 50358, 50363]
+
+        batch_size, max_length, min_length, num_beams, num_return_sequences = 2, 30, 0, 1, 1
+        length_penalty, repetition_penalty = 1.0, 1.0
+        inputs = {
+            "input_features": input_features.to(device),
+            "max_length": max_length,
+            "min_length": min_length,
+            "num_beams": num_beams,
+            "num_return_sequences": num_return_sequences,
+            "length_penalty": length_penalty,
+            "repetition_penalty": repetition_penalty,
+            "early_stopping": True,
+            "use_cache": True,
+        }
+        prompts = ["John has doubts", "Maria has grave doubts"]
+        prompt_ids = [processor.get_prompt_ids(p) for p in prompts]
+        pt_transcription = []
+        for i in range(batch_size):
+            inputs["prompt_ids"] = torch.from_numpy(prompt_ids[i])
+            inputs["input_features"] = input_features_[i].to(device)
+            pt_outputs = pt_model.generate(**inputs).detach().cpu().numpy()
+            pt_transcription.append(processor.batch_decode(pt_outputs, skip_special_tokens=True)[0])
+        inputs["input_features"] = input_features
+        del inputs["prompt_ids"]
+        del inputs["early_stopping"]
+        del inputs["use_cache"]
+        ort_names = list(map(lambda entry: entry.name, ort_session.get_inputs()))
+        ort_dtypes = list(map(lambda entry: entry.type, ort_session.get_inputs()))
+        ort_to_np = {
+            "tensor(float)": np.float32,
+            "tensor(float16)": np.float16,
+            "tensor(int64)": np.int64,
+            "tensor(int32)": np.int32,
+            "tensor(int8)": np.int8,
+            "tensor(uint8)": np.uint8,
+        }
+
+        for name, dtype in zip(ort_names, ort_dtypes):
+            if name == "input_features":
+                inputs[name] = inputs[name].detach().cpu().numpy()
+            elif name == "vocab_mask":
+                inputs[name] = np.ones(config.vocab_size, dtype=ort_to_np[dtype])
+            elif name == "prefix_vocab_mask":
+                inputs[name] = np.ones((batch_size, config.vocab_size), dtype=ort_to_np[dtype])
+            elif name == "decoder_input_ids":
+                # This logic handles the scenario for when prompts are not of the same size
+                # For example if our prompt ids are [p1_id_1, p1_id_2] and [p2_id_1]
+                # The final decoder_input_ids will look as such after padding
+                # [prev_token, p1_id_1, p1_id_2, start_token, lang_token, transcribe_token]
+                # [prev_token, p2_id_1, PAD_TOKEN, start_token, lang_token, transcribe_token]
+                ort_prompts = []
+                for i in range(batch_size):
+                    ort_prompts.append(prompt_ids[i].tolist())
+                max_len = max(len(p) for p in ort_prompts)
+                padded_prompts = []
+                for p in ort_prompts:
+                    padded_prompt = [*p, *([config.pad_token_id] * (max_len - len(p)))]
+                    padded_prompts.append(padded_prompt + forced_decoder_ids)
+                inputs[name] = np.array(padded_prompts, dtype=ort_to_np[dtype])
+            elif name == "logits_processor":
+                inputs[name] = np.array([1], dtype=ort_to_np[dtype])
+            elif name == "cross_qk_layer_head":
+                inputs[name] = np.array([[0, 0]], dtype=ort_to_np[dtype])
+            elif name == "extra_decoding_ids":
+                inputs[name] = np.repeat(np.array([prompt_ids], dtype=ort_to_np[dtype]), batch_size, 0)
+            elif name == "temperature":
+                inputs[name] = np.array([1.0], dtype=ort_to_np[dtype])
+            else:
+                inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
+        ort_outputs = ort_session.run(None, inputs)[0]
+
+        expected_transcription_no_comma_prompt1 = " John has doubts whether Sir Frederick Layton's work is really Greek after all and can discover in it but little of Rocky I"
+        expected_transcription_mispelled_prompt1 = " John has doubts whether Sir Frederick Latins work is really Greek after all and can discover in it but little of Rocky I"
+        expected_transcription_no_comma_prompt2 = " Maria has grave doubts whether Sir Frederick Layton's work is really Greek after all and can discover in it but little of Rocky"
+        expected_transcription_mispelled_prompt2 = " Maria has grave doubts whether Sir Frederick Latins work is really Greek after all and can discover in it but little of Rocky I"
+        expected_transcription_options = {
+            expected_transcription_no_comma_prompt1,
+            expected_transcription_no_comma_prompt2,
+            expected_transcription_mispelled_prompt1,
+            expected_transcription_mispelled_prompt2,
+        }
+        ort_outputs = ort_session.run(None, inputs)[0]
+        ort_transcription = []
+        for o in ort_outputs:
+            ort_transcription.append(processor.batch_decode(o, skip_special_tokens=True)[0])
+
+        parity = 1
+        for i in range(batch_size):
+            parity *= (
+                pt_transcription[i] in expected_transcription_options
+                and ort_transcription[i] in expected_transcription_options
+            )
+        max_diff = 0
+
+        if not parity:
+            if pt_outputs.shape != ort_outputs.shape:
+                diff = pt_outputs - ort_outputs[:, : len(pt_outputs[0])]
+            else:
+                diff = pt_outputs - ort_outputs
+            max_diff = max(diff.min(), diff.max(), key=abs)
+
+        if max_diff != 0:
+            logger.warning(f"PyTorch outputs: {pt_transcription}")
+            logger.warning(f"ONNX Runtime outputs: {ort_transcription}")
+
+        return max_diff
