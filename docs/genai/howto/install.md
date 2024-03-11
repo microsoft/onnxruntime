@@ -13,63 +13,43 @@ nav_order: 1
 * TOC placeholder
 {:toc}
 
-## Python package
+## Python package release candidates
 
-(Coming soon) `pip install onnxruntime-genai`
+```bash
+pip install onnxruntime-genai --pre --index-url=
+https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/`
+```
 
-(Temporary)
-1. Build from source
+Append `-cuda` for the library that is optimized for CUDA environments
 
-   Follow the [build from source](./build-from-source.md) instructions.
+```bash
+pip install onnxruntime-genai-cuda --pre --index-url=
+https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/`
 
-2. Install wheel
+```
 
-   ```bash
-   cd build/wheel
-   pip install onnxruntime-genai*.whl
-   ```
+## Nuget package release candidates
 
-## C# package
+To install the NuGet release candidates, add a new package source in Visual Studio, go to `Project` -> `Manage NuGet Packages`.
 
-(Coming soon) `dotnet add package Microsoft.ML.OnnxRuntime.GenAI`
+1. Click on the `Settings` cog icon
 
-(Temporary)
-1. Build from source
+2. Click the `+` button to add a new package source
 
-   Follow the [build from source](./build-from-source.md) instructions.
+   - Change the Name to `onnxruntime-genai`
+   - Change the Source to `https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/nuget/v3/index.json`
 
-2. Build nuget package
+3. Check the `Include prerelease` button
 
-   ```cmd
-   nuget.exe pack Microsoft.ML.OnnxRuntimeGenAI.nuspec -Prop version=0.1.0 -Prop id="Microsoft.ML.OnnxRuntimeGenAI.Gpu"
-   ```
+4. Add the `Microsoft.ML.OnnxRuntimeGenAI` package
 
-3. Install the nuget package
+5. Add the `Microsoft.ML.OnnxRuntime` package
 
-   ```cmd
-   dotnet add package .. local instructions
-   ```
+To run with CUDA, use the following packages instead:
 
+- `Microsoft.ML.OnnxRuntimeGenAI.Cuda`
+- `Microsoft.ML.OnnxRuntime.Gpu`
 
-## C artifacts
-
-(Coming soon) Download release archive
-
-Unzip archive
-
-(Temporary)
-1. Build from source
-
-   Follow the [build from source](build-from-source.md) instructions.
-
-   
-2. Use the following include locations to build your C application
-
-   * 
-
-3. Use the following library locations to build your C application
-
-   * 
 
    
 
