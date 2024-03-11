@@ -180,22 +180,17 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   if (kernel_shape.size() < 2) {
     // cudnn only takes 4D or 5D input, so pad dimensions if needed
     if (NHWC) {
-      x_dims_cudnn.insert(x_dims_cudnn.begin() + 1, 1);
-      y_dims_cudnn.insert(y_dims_cudnn.begin() + 1, 1);
-      ORT_ENFORCE(pads.size() >= kernel_shape.size());
-      pads.insert(pads.begin() + kernel_shape.size(), 0);
-      pads.insert(pads.end(), 0);
-      kernel_shape.insert(kernel_shape.begin() + 1, 1);
-      strides.insert(strides.begin() + 1, 1);
+      x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
+      y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
     } else {
       x_dims_cudnn.push_back(1);
       y_dims_cudnn.push_back(1);
-      ORT_ENFORCE(pads.size() >= kernel_shape.size());
-      pads.insert(pads.begin() + kernel_shape.size(), 0);
-      pads.insert(pads.end(), 0);
-      kernel_shape.push_back(1);
-      strides.push_back(1);
     }
+    ORT_ENFORCE(pads.size() >= kernel_shape.size());
+    pads.insert(pads.begin() + kernel_shape.size(), 0);
+    pads.insert(pads.end(), 0);
+    kernel_shape.push_back(1);
+    strides.push_back(1);
   }
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
