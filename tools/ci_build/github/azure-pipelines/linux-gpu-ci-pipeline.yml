@@ -224,6 +224,7 @@ stages:
             $(Repository) \
             /bin/bash -c '
               nvidia-smi; \
+              [ -d "/data/onnx/opset18" ] ||  (echo "NO node test data"; exit 1) && echo " node test data exists"; \
               /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so"; \
               cat /usr/local/cuda/include/cuda.h | grep -m1 CUDA_VERSION; \
               cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -m1 -A 2; \
