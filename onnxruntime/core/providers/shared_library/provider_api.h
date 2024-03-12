@@ -280,7 +280,8 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const bool aggressive_cpu_fallback);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 

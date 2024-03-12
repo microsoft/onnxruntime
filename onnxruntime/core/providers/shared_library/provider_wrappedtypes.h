@@ -1075,6 +1075,13 @@ class SessionState {
   PROVIDER_DISALLOW_ALL(SessionState)
 };
 
+class SessionOptions {
+ public:
+  const ConfigOptions& GetConfigOptions() const { return g_host->SessionOptions__GetConfigOptions(this); }
+
+  PROVIDER_DISALLOW_ALL(SessionOptions)
+};
+
 struct Tensor final {
   static std::unique_ptr<Tensor> CreateDefault() { return g_host->Tensor__construct_default(); }
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return g_host->Tensor__construct(p_type, shape, std::move(allocator)); }

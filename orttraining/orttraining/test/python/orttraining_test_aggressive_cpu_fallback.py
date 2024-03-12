@@ -37,6 +37,7 @@ class TestAggressiveCpuFallback(unittest.TestCase):
 
         session_options = onnxruntime.SessionOptions()
         session_options.optimized_model_filepath = "cpu_fallback_test.onnx"
+        session_options.add_session_config_entry("session.reverse_traverse_cpu_fallback", "1")
         # This call should trigger GetCpuPreferredNodes and then GetShapeRelatedNodes
         # when environment variable ORT_AGGRESSIVE_CPU_FALLBACK=1 is set.
         # As a result, no memcopy node should be observed in optimized graph.

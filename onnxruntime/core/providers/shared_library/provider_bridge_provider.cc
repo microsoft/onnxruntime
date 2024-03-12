@@ -364,8 +364,9 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const bool aggressive_cpu_fallback) {
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, aggressive_cpu_fallback);
 }
 
 namespace profiling {
