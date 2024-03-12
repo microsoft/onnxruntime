@@ -148,7 +148,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
   if (attributes.group !== 1) {
-    // NVIDIA GPU with ampere architecutre fails with below 2 cases, but we couldn't repro them with any other
+    // NVIDIA GPU with ampere architecture fails with below 2 cases, but we couldn't repro them with any other
     // GPUs. So just disable vectorize on NVIDIA ampere to ensure always correct outputs.
     // [webgpu]Conv - conv - vectorize group - B
     // [webgpu]Conv - conv - vectorize group - D
