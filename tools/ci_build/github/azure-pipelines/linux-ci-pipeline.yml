@@ -86,7 +86,7 @@ stages:
                     -e NIGHTLY_BUILD \
                     -e BUILD_BUILDNUMBER \
                     onnxruntimecpubuildcentos8x64 \
-                    /bin/bash -c "
+                    /bin/bash -c '
                       set -ex; \
                       [ -d "/data/onnx/opset18" ] ||  (echo "NO node test data"; exit 1) && echo " node test data exists"; \
                       python3.9 /onnxruntime_src/tools/ci_build/build.py \
@@ -106,7 +106,8 @@ stages:
                         --parallel --use_binskim_compliant_compile_flags \
                         --build_csharp \
                         --enable_onnx_tests --enable_address_sanitizer \
-                        --test;"
+                        --test;
+                      '
                 workingDirectory: $(Build.SourcesDirectory)
 
       - task: PublishTestResults@2
