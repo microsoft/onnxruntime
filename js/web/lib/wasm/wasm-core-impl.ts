@@ -381,7 +381,12 @@ export const prepareInputOutputTensor =
         const gpuBuffer = tensor[2].gpuBuffer as GPUBuffer;
         const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(dataType))!;
         dataByteLength = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
-        rawData = wasm.jsepRegisterBuffer(sessionId, index, gpuBuffer, dataByteLength);
+
+        const registerBuffer = wasm.jsepRegisterBuffer;
+        if (!registerBuffer) {
+          throw new Error('Tensor location "gpu-buffer" is not supported without using WebGPU.');
+        }
+        rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
       } else {
         const data = tensor[2];
 
@@ -596,7 +601,11 @@ export const run = async(
           // If a certain output's preferred location is GPU but the tensor is empty, we still need to create a CPU
           // tensor for it. There is no mapping GPU buffer for an empty tensor.
           if (preferredLocation === 'gpu-buffer' && size > 0) {
-            const gpuBuffer = wasm.jsepGetBuffer(dataOffset);
+            const getBuffer = wasm.jsepGetBuffer;
+            if (!getBuffer) {
+              throw new Error('preferredLocation "gpu-buffer" is not supported without using WebGPU.');
+            }
+            const gpuBuffer = getBuffer(dataOffset);
             const elementSize = getTensorElementSize(dataType);
             if (elementSize === undefined || !isGpuBufferSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
@@ -608,7 +617,7 @@ export const run = async(
             output.push([
               type, dims, {
                 gpuBuffer,
-                download: wasm.jsepCreateDownloader(gpuBuffer, size * elementSize, type),
+                download: wasm.jsepCreateDownloader!(gpuBuffer, size * elementSize, type),
                 dispose: () => {
                   wasm._OrtReleaseTensor(tensor);
                 }

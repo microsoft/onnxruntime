@@ -4,7 +4,7 @@
 'use strict';
 
 /**
- * Mount external data files of a model to the virtual file system (MEMFS).
+ * Mount external data files of a model to an internal map, which will be used during session initialization.
  *
  * @param {string} externalDataFilesPath
  * @param {Uint8Array} externalDataFilesData
@@ -15,7 +15,7 @@ Module['mountExternalData'] = (externalDataFilePath, externalDataFileData) => {
 };
 
 /**
- * Unmount external data files of a model from the virtual file system (MEMFS).
+ * Unmount external data files of a model.
  */
 Module['unmountExternalData'] = () => {
   delete Module.MountedFiles;
@@ -131,7 +131,7 @@ let jsepInitAsync = () => {
         }
 
         // Flush the backend. This will submit all pending commands to the GPU.
-        backend['flush']();
+        Module.jsepBackend?.['flush']();
 
         // Await all pending promises. This includes GPU validation promises for diagnostic purposes.
         const errorPromises = state.errors;
@@ -180,7 +180,8 @@ Module['jsepInit'] = (name, params) => {
   jsepInitAsync?.();
 
   if (name === 'webgpu') {
-    [Module.jsepBackend, Module.jsepAlloc,
+    [Module.jsepBackend,
+     Module.jsepAlloc,
      Module.jsepFree,
      Module.jsepCopy,
      Module.jsepCopyAsync,

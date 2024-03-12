@@ -119,7 +119,7 @@ class ComputeContextImpl implements ComputeContext {
       for (let i = 0; i < dims.length; i++) {
         this.module.HEAPU32[offset++] = dims[i];
       }
-      return this.module._JsepOutput(this.opKernelContext, index, data);
+      return this.module._JsepOutput!(this.opKernelContext, index, data);
     } catch (e) {
       throw new Error(
           `Failed to generate kernel's output[${index}] with dims [${dims}]. ` +
@@ -200,8 +200,8 @@ export const init =
           },
 
       // jsepCreateKernel
-      (kernelType: string, kernelId: number, attribute: unknown) =>
-          backend.createKernel(kernelType, kernelId, attribute, module.UTF8ToString(module._JsepGetNodeName(kernelId))),
+      (kernelType: string, kernelId: number, attribute: unknown) => backend.createKernel(
+          kernelType, kernelId, attribute, module.UTF8ToString(module._JsepGetNodeName!(kernelId))),
 
       // jsepReleaseKernel
       (kernel: number) => backend.releaseKernel(kernel),
