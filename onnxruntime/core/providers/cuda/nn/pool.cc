@@ -183,7 +183,7 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
       strides.assign(kernel_shape.size(), 1);
     }
   }
-  auto out_channel = NHWC ? x_shape.back() : x_shape[1];
+  auto out_channel = NHWC ? x_shape[x_shape.NumDimensions() - 1] : x_shape[1];
   auto y_dims = pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, NHWC);
   TensorShape y_shape(y_dims);
   Tensor* Y = context->Output(0, y_shape);
