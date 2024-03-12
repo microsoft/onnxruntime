@@ -167,6 +167,14 @@ def run_pytorch_export_contrib_ops_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_cpu_gpu_outputs_from_inference_session_test(cwd, log):
+    log.debug("Running: CPU/GPU outputs from inference session test")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_cpu_gpu_outputs_from_inference_session.py"]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -206,6 +214,8 @@ def main():
     run_hooks_tests(cwd, log)
 
     run_utils_tests(cwd, log)
+
+    run_cpu_gpu_outputs_from_inference_session_test(cwd, log)
 
     run_experimental_gradient_graph_tests(cwd, log)
 
