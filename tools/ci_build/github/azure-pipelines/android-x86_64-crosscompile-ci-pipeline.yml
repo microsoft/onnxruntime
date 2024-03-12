@@ -359,7 +359,7 @@ stages:
   # because coverage report is hard to support in cross machines.
   displayName: NNAPI MASTER BUILD&TEST
   dependsOn: []
-  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+#  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
@@ -457,7 +457,7 @@ stages:
     - name: skipComponentGovernanceDetection
       value: true
     pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    condition: succeeded()
+#    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     dependsOn:
     - NNAPI_EP_MASTER
     steps:
