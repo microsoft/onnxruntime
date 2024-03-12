@@ -68,7 +68,7 @@ export const createMatMulNBitsProgramInfo =
         {type: DataType.uint32, data: attributes.bits}, {type: DataType.uint32, data: attributes.blockSize}
       ];
       const aShape = inputShape.slice();
-      aShape.splice(-1, 1, attributes.K / aComponents);
+      aShape.splice(-1, 1, attributes.k / aComponents);
       const bShape = ShapeUtil.convertShape(inputs[1].dims).slice();
       bShape.splice(-1, 1, blobSizeInWords / bComponents);
       programUniforms.push(...createTensorShapeVariables(aShape));
@@ -78,7 +78,7 @@ export const createMatMulNBitsProgramInfo =
         programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(inputs[3].dims)));
       }
       const oShape = outputShape.slice();
-      oShape.splice(-1, 1, attributes.N / components);
+      oShape.splice(-1, 1, attributes.n / components);
       programUniforms.push(...createTensorShapeVariables(oShape));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
