@@ -97,51 +97,56 @@ export const createMatMulNBitsProgramInfo =
         ];
         const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
         const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-        const dequantizeArrayReturnType = (() => {
+
+        const qDqDataType = (() => {
           switch (aComponents) {
             case 1:
               return `array<${dataType}, 8>`;
             case 2:
-              return `array<vec2<${dataType}>, 4>`;
+              return `mat4x2<${dataType}>`;
             case 4:
-              return `array<vec4<${dataType}>, 2>`;
+              return `mat2x4<${dataType}>`;
             default:
               throw new Error(`${aComponents}-component is not supported.`);
           }
         })();
-        const dequantizeArrayImpl =
-            (() => `fn dequantize_array(quantized_data: array<${dataType}, 8>, zero_point: ${dataType}, scale: ${
-                 dataType}) -> ${dequantizeArrayReturnType} {
-          var result: ${dequantizeArrayReturnType};
+
+        const dequantizeImpl = `
+        fn dequantize(quantized: ${qDqDataType}, zero_point: ${dataType}, scale: ${dataType}) -> ${qDqDataType} {
           ${(() => {
-               switch (aComponents) {
-                 case 1:
-                   return `
-              for (var i: u32 = 0; i < 8; i++) {
-                result[i] = dequantize(quantized_data[i], zero_point, scale);
-              }`;
-                 case 2:
-                   return `
-              for (var i: u32 = 0; i < 4; i++) {
-                let dequantized0 = dequantize(quantized_data[i*2], zero_point, scale);
-                let dequantized1 = dequantize(quantized_data[i*2+1], zero_point, scale);
-                result[i] = vec2<${dataType}>(dequantized0, dequantized1);
-              }`;
-                 case 4:
-                   return `
-              for (var i: u32 = 0; i < 2; i++) {
-                let dequantized0 = dequantize(quantized_data[i*4], zero_point, scale);
-                let dequantized1 = dequantize(quantized_data[i*4+1], zero_point, scale);
-                let dequantized2 = dequantize(quantized_data[i*4+2], zero_point, scale);
-                let dequantized3 = dequantize(quantized_data[i*4+3], zero_point, scale);
-                result[i] = vec4<${dataType}>(dequantized0, dequantized1, dequantized2, dequantized3);
-              }`;
-                 default:
-                   throw new Error(`${aComponents}-component is not supported.`);
-               }
-             })()}
-          return result;
-        }`)();
+          if (aComponents === 1) {
+            return `var dequantized = ${qDqDataType}(${
+                Array.from({length: 8}, (_, i) => `(quantized[${i}] - zero_point) * scale`).join(', ')});
+              return dequantized;`
+          } else {
+            return `var zero_points: ${qDqDataType} = ${qDqDataType}(${Array(8).fill('zero_point').join(',')});
+              return (quantized - zero_points) * scale;`
+          }
+        })()}
+        }`;
+        const ortUnpack8x4snormImpl = `
+        fn ortUnpack8x4snorm(value: u32) -> ${qDqDataType} {
+          var quantized: ${qDqDataType};
+          var offset: u32 = 0;
+          let count: u32 = 4;
+          for (var i: u32 = 0; i < 8u; i++) {
+            var result = ${dataType}(extractBits(value, offset, count));
+            ${(() => {
+          switch (aComponents) {
+            case 1:
+              return 'quantized[i] = result;';
+            case 2:
+              return 'quantized[i / 2][i % 2] = result;';
+            case 4:
+              return 'quantized[i / 4][i % 4] = result;';
+            default:
+              throw new Error(`${aComponents}-component is not supported.`);
+          }
+        })()}
+            offset += count;
+          }
+          return quantized;
+        }`;
 
         const updateZeroPointIndex = zeroPoints ? `
           zero_point_offset += 4;
@@ -153,23 +158,8 @@ export const createMatMulNBitsProgramInfo =
                                                   '';
 
         return `
-        fn ortUnpack8x4snorm(value: u32) -> array<${dataType}, 8> {
-          var result = array<${dataType}, 8>();
-          var offset: u32 = 0;
-          let count: u32 = 4;
-          for (var i: u32 = 0; i < 8u; i++) {
-            result[i] = ${dataType}(extractBits(value, offset, count));
-            offset += count;
-          }
-          return result;
-        }
-
-        fn dequantize(value: ${dataType}, zero_point: ${dataType}, scale: ${dataType}) -> ${dataType} {
-          return (value - zero_point) * scale;
-        }
-
-        ${dequantizeArrayImpl};
-
+        ${dequantizeImpl};
+        ${ortUnpack8x4snormImpl};
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
@@ -204,8 +194,8 @@ export const createMatMulNBitsProgramInfo =
                 let b_data = ${b.getByIndices('b_indices')};
                 for (var i: u32 = 0; i < ${bComponents}; i++) {
                   let b_value = ${bComponents === 1 ? 'b_data' : 'b_data[word + i]'};
-                  let b_quantized_values: array<${dataType}, 8> = ortUnpack8x4snorm(b_value);
-                  let b_dequantized_values = dequantize_array(b_quantized_values, zero_point, scale);
+                  let b_quantized_values: ${qDqDataType} = ortUnpack8x4snorm(b_value);
+                  let b_dequantized_values = dequantize(b_quantized_values, zero_point, scale);
                   // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
                   var offset: u32 = word_offset;
                   for (var j: u32 = 0; j < 8/${aComponents}; j++) {
@@ -225,7 +215,7 @@ export const createMatMulNBitsProgramInfo =
               ${updateZeroPointIndex}
               block_offset += uniforms.block_size;
             }
-            // Drop the trailing 4 bits if the zero_poit_offset is not byte boundary.
+            // Drop the trailing 4 bits if the zero_poit_offset is not a byte boundary to align with the next byte.
             ${
             zeroPoints ? `if (zero_point_offset % 8 > 0) {
                 ${updateZeroPointIndex}
