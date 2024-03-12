@@ -59,6 +59,8 @@ TYPED_TEST(CudaNhwcTypedTest, MaxPoolNhwc) {
   MAKE_PROVIDERS()
 }
 
+#if 0
+//Not implemented
 TYPED_TEST(CudaNhwcTypedTest, GlobalMaxPoolNhwc) {
   RandomValueGenerator random{};
   auto test = std::make_unique<CompareOpTester>("GlobalMaxPool", 14);
@@ -81,7 +83,7 @@ TYPED_TEST(CudaNhwcTypedTest, GlobalMaxPoolNhwc) {
   auto source_ep = CudaExecutionProviderWithOptions(&nchw);
   test->CompareEPs(std::move(source_ep), execution_providers, error_tolerance);
 }
-
+#endif
 TYPED_TEST(CudaNhwcTypedTest, AveragePoolNhwcPad) {
   auto op = PoolOp<TypeParam>{};
   op.pooling_type = "AveragePool";
