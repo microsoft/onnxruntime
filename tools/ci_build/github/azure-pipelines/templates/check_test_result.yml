@@ -1,0 +1,13 @@
+parameters:
+- name: FileName
+  type: string
+
+steps:
+  - task: PythonScript@0
+  inputs:
+    scriptSource: 'inline'
+    script: |
+      with open('${{parameters.FileName}}', 'r') as file:
+        content = file.read()
+      assert 'data_onnx_opset' in content, "operator test not found in test result file"
+      assert 'models_zoo_opset' in content, "models_zoo model not found in test reuslt file"
