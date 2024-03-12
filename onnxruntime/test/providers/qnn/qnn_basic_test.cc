@@ -815,6 +815,25 @@ TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
                   ExpectedEPNodeAssignment::All);
 }
 
+// Test float32 model with FP16 precision
+TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "QnnHtp.so";
+#endif
+  provider_options["enable_htp_fp16_precision"] = "1";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.004f);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

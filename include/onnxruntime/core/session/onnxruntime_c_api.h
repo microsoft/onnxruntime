@@ -3619,8 +3619,8 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-       "enable_htp_fp16_precision": Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision.
-         Otherwise, it will be fp32 precision. Only works for float32 model.
+       "enable_htp_fp16_precision": Only used for float32 model.
+       Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision. 
          - "0": Default. With fp32 precision.
          - "1": With fp16 precision.
    *
