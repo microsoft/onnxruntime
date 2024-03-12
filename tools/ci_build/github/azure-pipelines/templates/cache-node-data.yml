@@ -18,8 +18,10 @@ steps:
         rm -rf $(Agent.TempDirectory)/data/onnx
         cd $(Build.SourcesDirectory)/js/
         npm install
-        npm run prepare-onnx-node-tests
+        npm run prepare-node-tests
+        cp -r test/data/node/. $(Agent.TempDirectory)/data/onnx
         find . $(Agent.TempDirectory)/data/onnx
+        rm -rf test/data
      fi
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
     displayName: 'Download ONNX node test data'
