@@ -106,16 +106,10 @@ class AdapterInfoImpl implements AdapterInfo {
   }
 
   isArchitecture(architecture: GpuArchitecture): boolean {
-    if (typeof this.architecture === 'undefined') {
-      return false;
-    }
     return this.architecture === architecture;
   }
 
   isVendor(vendor: GpuVendor): boolean {
-    if (typeof this.vendor === 'undefined') {
-      return false;
-    }
     return this.vendor === vendor;
   }
 }
