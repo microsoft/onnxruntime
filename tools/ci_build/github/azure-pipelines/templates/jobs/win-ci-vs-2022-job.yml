@@ -84,7 +84,7 @@ jobs:
     submodules: none
 
   - script: |
-      dir /s /b "c:\\local\\data\\onnx"
+      dir /s /b "c:\local\data\onnx"
     displayName: 'List files in onnx directory'
 
   - template: win-ci-prebuild-steps.yml
