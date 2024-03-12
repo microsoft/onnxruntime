@@ -147,8 +147,12 @@ namespace Dml::GraphDescBuilder
                 if (pos != 0)
                 {
                     intermediateEdge.Name = intermediateEdge.Name.substr(0, pos);
+                    intermediateEdge.Name += "nodeIdx:" + std::to_string(intermediateEdge.FromNodeIndex) + "-outputIdx:" + std::to_string(intermediateEdge.FromNodeOutputIndex);
                 }
-                intermediateEdge.Name += "nodeIdx:" + std::to_string(intermediateEdge.FromNodeIndex) + "-outputIdx:" + std::to_string(intermediateEdge.FromNodeOutputIndex);
+                else
+                {
+                    intermediateEdge.Name = "nodeIdx:" + std::to_string(intermediateEdge.FromNodeIndex) + "-outputIdx:" + std::to_string(intermediateEdge.FromNodeOutputIndex);
+                }
             }
         }
     }
