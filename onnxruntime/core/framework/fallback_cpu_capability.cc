@@ -171,7 +171,8 @@ bool IsAggressiveCpuFallbackEnabled() {
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes) {
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const bool aggressive_cpu_fallback) {
   // automatic conversion from const std::vector&
   const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();
   InlinedVector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
@@ -301,7 +302,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     }
   }
 
-  if (IsAggressiveCpuFallbackEnabled()) {
+  if (aggressive_cpu_fallback) {
     auto shape_related_node_indices = GetShapeRelatedNodes(graph);
     cpu_nodes.insert(shape_related_node_indices.begin(), shape_related_node_indices.end());
   }

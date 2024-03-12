@@ -880,7 +880,13 @@ namespace Dml
         }
 
         // Get the list of nodes that should stay on the CPU
-        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes);
+        auto p_session_options = GetSessionOptions();
+        bool aggressive_cpu_fallback = false;
+        if (p_session_options) {
+          aggressive_cpu_fallback = p_session_options->config_options.GetConfigOrDefault(
+            kOrtSessionOptionsAggressiveCpuFallback, "0") == "1";
+        }
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes, aggressive_cpu_fallback);
 
         for (size_t nodeIndex : toplogicalOrder)
         {

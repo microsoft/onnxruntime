@@ -188,7 +188,8 @@ struct ProviderHost {
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                             gsl::span<const NodeIndex> tentative_nodes) = 0;
+                                                             gsl::span<const NodeIndex> tentative_nodes,
+                                                             const bool aggressive_cpu_fallback) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) = 0;
@@ -902,6 +903,8 @@ struct ProviderHost {
 
   // SessionState
   virtual const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) = 0;
+
+  virtual const ConfigOptions& SessionOptions__GetConfigOptions(const SessionOptions* p) = 0;
 
   // Tensor
   virtual std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) = 0;

@@ -1296,7 +1296,13 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
       candidates.push_back(node.Index());
     }
 
-    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates);
+    auto p_session_options = GetSessionOptions();
+    bool aggressive_cpu_fallback = false;
+    if (p_session_options) {
+      aggressive_cpu_fallback = p_session_options->config_options.GetConfigOrDefault(
+                                    kOrtSessionOptionsAggressiveCpuFallback, "0") == "1";
+    }
+    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates, aggressive_cpu_fallback);
     for (auto& node_index : candidates) {
       if (cpu_nodes.count(node_index) > 0)
         continue;

@@ -16,9 +16,11 @@ namespace onnxruntime {
   @param graph Graph viewer
   @param kernel_lookup The kernel lookup for the target execution provider
   @param tentative_nodes Nodes that are tentative to be placed on on target EP
+  @param aggressive_cpu_fallback This is the set by kOrtSessionOptionsAggressiveCpuFallback option.
   */
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const bool aggressive_cpu_fallback);
 
 }  // namespace onnxruntime
