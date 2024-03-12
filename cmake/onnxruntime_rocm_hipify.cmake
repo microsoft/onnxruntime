@@ -3,7 +3,8 @@
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-# GLOB pattern of file to be excluded
+# Those are string patterns to exclude. Do NOT use stars such as
+# moe/*
 set(contrib_ops_excluded_files
   "bert/attention.cc"
   "bert/attention.h"
@@ -45,7 +46,25 @@ set(contrib_ops_excluded_files
   "math/gemm_float8.cc"
   "math/gemm_float8.cu"
   "math/gemm_float8.h"
-  "moe/*"
+  "moe/moe.cc"
+  "moe/moe.h"
+  "moe/moe_base.h"
+  "moe/ft_moe/compute_occupancy.h"
+  "moe/ft_moe/cutlass_heuristic.cc"
+  "moe/ft_moe/cutlass_heuristic.h"
+  "moe/ft_moe/epilogue_helpers.h"
+  "moe/ft_moe/ft_gemm_configs.h"
+  "moe/ft_moe/gemm_moe_problem_visitor.h"
+  "moe/ft_moe/layout_traits_helper.h"
+  "moe/ft_moe/moe_cutlass_kernel.h"
+  "moe/ft_moe/moe_gemm_kernels.h"
+  "moe/ft_moe/moe_gemm_kernels_fp16_fp16.cu"
+  "moe/ft_moe/moe_gemm_kernels_fp32_fp32.cu"
+  "moe/ft_moe/moe_gemm_kernels_template.h"
+  "moe/ft_moe/moe_kernel.cu"
+  "moe/ft_moe/moe_kernel.h"
+  "moe/ft_moe/moe_problem_visitor.h"
+  "moe/ft_moe/tile_interleaved_layout.h"
   "quantization/attention_quantization.cc"
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"
@@ -114,6 +133,9 @@ if (NOT onnxruntime_USE_NCCL)
   list(APPEND contrib_ops_excluded_files "collective/distributed_reduce.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_unsqueeze.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_squeeze.cc")
+else()
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.h")
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.cc")
 endif()
 
 set(provider_excluded_files
