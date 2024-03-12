@@ -438,6 +438,157 @@ __device__ __inline__ BFloat16 _Fmod(BFloat16 a, BFloat16 b) {
   return fmodf((float)a, (float)b);
 }
 
+namespace isinf_details {
+template <typename T>
+struct IsInfTyped {
+  static __device__ __inline__ bool IsInf(T a) {
+    // cast is needed because on non MS compilers,
+    // because there isinf() returns int
+    // and we want to avoid stupid warnings
+    return static_cast<bool>(isinf(a));
+  }
+  static __device__ __inline__ bool IsInfPos(T a) {
+    return a == std::numeric_limits<T>::infinity();
+  }
+  static __device__ __inline__ bool IsInfNeg(T a) {
+    return a == -std::numeric_limits<T>::infinity();
+  }
+};
+
+template <>
+struct IsInfTyped<half> {
+  static __device__ __inline__ bool IsInf(half a) {
+    return MLFloat16::kPositiveInfinityBits ==
+           static_cast<uint16_t>(*reinterpret_cast<uint16_t*>(&a) & ~MLFloat16::kSignMask);
+  }
+  static __device__ __inline__ bool IsInfPos(half a) {
+    return MLFloat16::kPositiveInfinityBits == *reinterpret_cast<uint16_t*>(&a);
+  }
+  static __device__ __inline__ bool IsInfNeg(half a) {
+    return MLFloat16::kNegativeInfinityBits == *reinterpret_cast<uint16_t*>(&a);
+  }
+};
+
+template <>
+struct IsInfTyped<BFloat16> {
+  static __device__ __inline__ bool IsInf(BFloat16 a) {
+    return BFloat16::kPositiveInfinityBits ==
+           static_cast<uint16_t>(*reinterpret_cast<uint16_t*>(&a) & ~BFloat16::kSignMask);
+  }
+  static __device__ __inline__ bool IsInfPos(BFloat16 a) {
+    return BFloat16::kPositiveInfinityBits == *reinterpret_cast<uint16_t*>(&a);
+  }
+  static __device__ __inline__ bool IsInfNeg(BFloat16 a) {
+    return BFloat16::kNegativeInfinityBits == *reinterpret_cast<uint16_t*>(&a);
+  }
+};
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <typename T>
+struct ReturnFalse {
+  constexpr static bool __device__ __inline__ IsInf(T) { return false; }
+  constexpr static bool __device__ __inline__ IsInfPos(T) { return false; }
+  constexpr static bool __device__ __inline__ IsInfNeg(T) { return false; }
+};
+
+template <>
+struct IsInfTyped<Float8E4M3FN> : ReturnFalse<Float8E4M3FN> {};
+
+template <>
+struct IsInfTyped<Float8E4M3FNUZ> : ReturnFalse<Float8E4M3FNUZ> {};
+
+template <>
+struct IsInfTyped<Float8E5M2> {
+  static __device__ __inline__ bool IsInf(Float8E5M2 a) {
+    return a.val == 0b01111100 || a.val == 0b11111100;
+  }
+  static __device__ __inline__ bool IsInfPos(Float8E5M2 a) {
+    return a.val == 0b01111100;
+  }
+  static __device__ __inline__ bool IsInfNeg(Float8E5M2 a) {
+    return a.val == 0b11111100;
+  }
+};
+
+template <>
+struct IsInfTyped<Float8E5M2FNUZ> : ReturnFalse<Float8E5M2FNUZ> {};
+
+#endif
+}  // namespace isinf_details
+
+template <typename T, bool detect_positive, bool detect_negative>
+struct _IsInf {
+  __device__ __inline__ bool operator()(T a) const {
+    if constexpr (detect_positive && detect_negative) {
+      return isinf_details::IsInfTyped<T>::IsInf(a);
+    } else if constexpr (detect_positive) {
+      return isinf_details::IsInfTyped<T>::IsInfPos(a);
+    } else if constexpr (detect_negative) {
+      return isinf_details::IsInfTyped<T>::IsInfNeg(a);
+    } else {
+      return false;
+    }
+  }
+};
+
+// float and double
+template <typename T>
+struct _IsNan {
+  __device__ __inline__ bool operator()(T a) const {
+    return isnan(a);
+  }
+};
+
+template <>
+struct _IsNan<half> {
+  __device__ __inline__ bool operator()(half a) const {
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask) 
+           > MLFloat16::kPositiveInfinityBits;
+  }
+};
+
+template <>
+struct _IsNan<BFloat16> {
+  __device__ __inline__ bool operator()(BFloat16 a) const {
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask) 
+           > BFloat16::kPositiveInfinityBits;
+  }
+};
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template<>
+struct _IsNan<Float8E4M3FN> {
+  __device__ __inline__ bool operator()(Float8E4M3FN a) const {
+    return (*reinterpret_cast<const uint8_t*>(&a) & 0x7f) == 0x7f;
+  }
+};
+
+template<>
+struct _IsNan<Float8E4M3FNUZ> {
+  __device__ __inline__ bool operator()(Float8E4M3FNUZ a) const {
+    return *reinterpret_cast<const uint8_t*>(&a) == 0x80;
+  }
+};
+
+template<>
+struct _IsNan<Float8E5M2> {
+  __device__ __inline__ bool operator()(Float8E5M2 a) const {
+    uint8_t c = *reinterpret_cast<const uint8_t*>(&a);
+    return ((c & 0x7c) == 0x7c) && ((c & 0x03) != 0x00);
+  }
+};
+
+template<>
+struct _IsNan<Float8E5M2FNUZ> {
+  __device__ __inline__ bool operator()(Float8E5M2FNUZ a) const {
+    return *reinterpret_cast<const uint8_t*>(&a) == 0x80;
+  }
+};
+
+#endif
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 #ifndef CUDA_LONG

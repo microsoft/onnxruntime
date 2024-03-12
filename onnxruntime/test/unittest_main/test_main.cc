@@ -32,17 +32,30 @@ void ortenv_setup() {
 }
 
 #ifdef USE_TENSORRT
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced format parameter.
+#endif
+
 // TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for
 // every single unit test, which leads to excessive test execution time due to that overhead.
 // Nvidia suggests to keep a placeholder builder object around to avoid this.
 #include "NvInfer.h"
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
 class DummyLogger : public nvinfer1::ILogger {
  public:
-  DummyLogger(Severity verbosity) {}
-  void log(Severity severity, const char* msg) noexcept override {}
+  DummyLogger(Severity /*verbosity*/) {}
+  void log(Severity /*severity*/, const char* /*msg*/) noexcept override {}
 };
 DummyLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+
 auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+
 #endif
 
 #define TEST_MAIN main
