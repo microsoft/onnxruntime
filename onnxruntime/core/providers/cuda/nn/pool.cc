@@ -153,25 +153,37 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.GetDims();
 
-  if constexpr (NHWC) {
-    if (kernel_shape.size() < 2)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "1D pooling for NHWC is not implemented yet");
-    if (x_shape.NumDimensions() < 4)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 4.");
-  } else if (x_shape.NumDimensions() < 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
-  }
-
   auto kernel_shape = pool_attrs_.kernel_shape;
   auto pads = pool_attrs_.pads;
   auto strides = pool_attrs_.strides;
-
-  if (pool_attrs_.global_pooling) {
-    kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
-    pads.assign(kernel_shape.size(), 0);
-    strides.assign(kernel_shape.size(), 1);
+  if (x_shape.NumDimensions() < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
-  auto out_channel = NHWC ? x_shape[3] : x_shape[1];
+  if constexpr (NHWC) {
+    if (pool_attrs_.global_pooling) {
+      // Set kernel size to the spatial dimension of input tensor.
+      // The first dim of x_dims is batch size(N).
+      // The last dim of x_dims is channel(C).
+      // Put the other part in kernel_shape
+      kernel_shape.assign(x_dims.begin() + 1, x_dims.end() - 1);
+      pads.assign(kernel_shape.size(), 0);
+      strides.assign(kernel_shape.size(), 1);
+    }
+    if (kernel_shape.size() < 2)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "1D pooling for NHWC is not implemented yet");
+
+  } else {
+    if (pool_attrs_.global_pooling) {
+      // Set kernel size to the spatial dimension of input tensor.
+      // The first dim of x_dims is batch size(N).
+      // The second dim of x_dims is channel(C).
+      // Put the remaining part in kernel_shape
+      kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
+      pads.assign(kernel_shape.size(), 0);
+      strides.assign(kernel_shape.size(), 1);
+    }
+  }
+  auto out_channel = NHWC ? x_shape.back() : x_shape[1];
   auto y_dims = pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, NHWC);
   TensorShape y_shape(y_dims);
   Tensor* Y = context->Output(0, y_shape);
@@ -184,6 +196,7 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   TensorShapeVector x_dims_cudnn(x_dims.begin(), x_dims.end());
   TensorShapeVector y_dims_cudnn(y_dims);
   if (kernel_shape.size() < 2) {
+    // TODO: this code path is NCHW only
     // cudnn only takes 4D or 5D input, so pad dimensions if needed
     x_dims_cudnn.push_back(1);
     y_dims_cudnn.push_back(1);
