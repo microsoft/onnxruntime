@@ -150,7 +150,7 @@ jobs:
 
   - powershell: |
       Remove-Item "$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}" -Include "*.obj" -Recurse
-    displayName: 'Delete intermedia files from $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+    displayName: 'Delete intermediate files from $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
 
   - powershell: |
       Get-Volume $("$(Build.BinariesDirectory)")[0]
@@ -219,13 +219,17 @@ jobs:
         displayName: 'Run tests'
 
       - powershell: |
-          $testResultsFiles = Get-ChildItem -Path $(Build.BinariesDirectory)\${{ parameters.BuildConfig }} -Recurse -Filter *.results.xml
-          $testResultsFilesPath = $testResultsFiles.FullName -join ";"
-          
-          Write-Host "Test results files: $testResultsFilesPath"
-          
-          Write-Host "##vso[results.publish type=JUnit;mergeResults=true;publishRunAttachments=true;resultFiles=$testResultsFilesPath;]Unit Test Run"
-        displayName: 'Publish unit test results'
+          $testResultsFiles = Get-ChildItem -Path "$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}" -Recurse -Filter *.results.xml -File
+          $testResultsFilesPath = $testResultsFiles -join ","
+          echo "##vso[task.setvariable variable=testResultsFilesPath;]$testResultsFilesPath"
+        displayName: 'List Test Result Files'
+
+      - task: PublishTestResults@2
+        displayName: 'Publish Unit Test Results'
+        inputs:
+          testResultsFiles: '$(testResultsFilesPath)'
+          testRunTitle: 'Unit Test Run'
+          searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
         condition: succeededOrFailed()
 
   - ${{ if eq(parameters.GenerateDocumentation, true) }}:
