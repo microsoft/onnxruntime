@@ -196,7 +196,7 @@ export const createMatMulNBitsProgramInfo =
               // The scale and zero points are computed per block.
               let scale = ${scales.getByOffset('scale_index')};
               // The default zero point is 8 for unsigned 4-bit quantization.
-              let zero_point = ${dataType}(${zeroPoints ? `extractBits(zero_point_word, zero_point_offset, 4)` : 8.0});
+              let zero_point = ${dataType}(${zeroPoints ? 'extractBits(zero_point_word, zero_point_offset, 4)' : 8.0});
               ${b.indicesSet('b_indices', '1', 'block')};
               var word_offset: u32 = block_offset;
               for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
@@ -214,7 +214,7 @@ export const createMatMulNBitsProgramInfo =
                       ${a.indicesSet('a_indices', aRank - 2, `m * ${outputNumber} + k`)};
                       let a_data = ${a.getByIndices('a_indices')};
                       output_values[k]${components > 1 ? '[c]' : ''} += ${
-            aComponents === 1 ? 'a_data * b_dequantized_values[j]' : `dot(a_data, b_dequantized_values[j])`};
+            aComponents === 1 ? 'a_data * b_dequantized_values[j]' : 'dot(a_data, b_dequantized_values[j])'};
                     }
                     offset += ${aComponents};
                   }
