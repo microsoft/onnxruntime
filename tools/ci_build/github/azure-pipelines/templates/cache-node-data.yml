@@ -1,7 +1,7 @@
 steps:
-    - task: NodeTool@0
-      inputs:
-        versionSpec: '18.x'
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '18.x'
 
   - task: Cache@2
     inputs:
