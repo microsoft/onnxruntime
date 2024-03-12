@@ -3619,6 +3619,10 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
+       "disable_htp_fp16_precision": Disable the HTP_FP16 precision so that the float32 model will be inferenced with fp32 precision. 
+         Otherwise, it will be fp16 precision. Only works for float32 model.
+         - "0": Default. With fp16 precision.
+         - "1": With fp32 precision.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
