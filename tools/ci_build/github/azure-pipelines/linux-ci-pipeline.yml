@@ -287,6 +287,10 @@ stages:
               "
         displayName: 'Run Release tests and symbolic shape infer test'
 
+      - template: templates/check_test_result.yml
+        parameters:
+          FileName: '$(Build.BinariesDirectory)/Release/onnxruntime_test_all.Release.results.xml'
+
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'
         inputs:
