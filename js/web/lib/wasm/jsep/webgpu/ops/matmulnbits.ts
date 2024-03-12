@@ -58,17 +58,16 @@ export const createMatMulNBitsProgramInfo =
       const blobSize = attributes.blockSize / 8 * attributes.bits;
       const blobSizeInWords = blobSize / 4;
       const outputNumber = getMaxComponents(M);
-      const components = 1;  // getMaxComponents(attributes.n);
+      const components = getMaxComponents(attributes.N);
       const aComponents = getMaxComponents(attributes.K);
       const bComponents = getMaxComponents(blobSizeInWords);
-      const zComponents = 1;  // getMaxComponents(attributes.N / 8);
       const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: attributes.K},
         {type: DataType.uint32, data: attributes.N}, {type: DataType.uint32, data: attributes.accuracyLevel},
         {type: DataType.uint32, data: attributes.bits}, {type: DataType.uint32, data: attributes.blockSize}
       ];
-      const aShape = inputs[0].dims.slice();
+      const aShape = inputShape.slice();
       aShape.splice(-1, 1, attributes.K / aComponents);
       const bShape = ShapeUtil.convertShape(inputs[1].dims).slice();
       bShape.splice(-1, 1, blobSizeInWords / bComponents);
@@ -78,15 +77,16 @@ export const createMatMulNBitsProgramInfo =
       if (inputs.length === 4) {
         programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(inputs[3].dims)));
       }
-      programUniforms.push(...createTensorShapeVariables(outputShape));
+      const oShape = outputShape.slice();
+      oShape.splice(-1, 1, attributes.N / components);
+      programUniforms.push(...createTensorShapeVariables(oShape));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
         const b = inputVariable('b', DataType.uint32, bShape.length, bComponents);
-        const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length, components);
+        const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
         const inputVariables = [a, b, scales];
-        const zeroPoints = inputs.length === 4 ?
-            inputVariable('zero_points', DataType.uint32, inputs[3].dims.length, zComponents) :
-            undefined;
+        const zeroPoints =
+            inputs.length === 4 ? inputVariable('zero_points', DataType.uint32, inputs[3].dims.length) : undefined;
         if (zeroPoints) {
           inputVariables.push(zeroPoints);
         }
@@ -143,8 +143,16 @@ export const createMatMulNBitsProgramInfo =
           return result;
         }`)();
 
+        const updateZeroPointIndex = zeroPoints ? `
+          zero_point_offset += 4;
+          if (zero_point_offset == 32) {
+            zero_point_offset = 0;
+            zero_point_index++;
+            zero_point_word = ${zeroPoints.getByOffset('zero_point_index')};
+          }` : '';
+
         return `
-        fn ortUnpack8x4snorm(value: u32) -> array<${dataType}, 8>{
+        fn ortUnpack8x4snorm(value: u32) -> array<${dataType}, 8> {
           var result = array<${dataType}, 8>();
           var offset: u32 = 0;
           let count: u32 = 4;
@@ -172,65 +180,58 @@ export const createMatMulNBitsProgramInfo =
           // Two zero points are packed into one byte because uniforms.bits <= 4.
           // zero_point_offset is either 0 or 4. It is bit offset within one byte.
           // TODO support zero_point_offset for bits > 4
-          ${
-            zeroPoints ? `
-            var zero_point_index: u32 = n * ((${nBlocksPerCol} + 1) / 2) / 4;
-            var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_index')};
-            var zero_point_offset: u32 = 0;` :
-                         ''}
-          var scale_index = n * ${nBlocksPerCol};
+          ${zeroPoints ? `
+          var zero_point_index: u32 = n * ${components} * ((${nBlocksPerCol} + 1) / 2) / 4;
+          var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_index')};
+          var zero_point_offset: u32 = 0;` : ''}
+          var scale_index = n * ${nBlocksPerCol * components};
           var b_indices: ${b.type.indices};
-          ${b.indicesSet('b_indices', '0', 'n')};
-          var block_offset: u32 = 0;
-          for (var block: u32 = 0; block < ${nBlocksPerCol}; block++) {
-            // The scale and zero points are computed per block.
-            let scale = ${scales.getByOffset('scale_index')};
-            // The default zero point is 8 for unsigned 4-bit quantization.
-            let zero_point: ${dataType} = ${
-            zeroPoints ? `${dataType}(extractBits(zero_point_word, zero_point_offset, 4))` : 8.0};
-            ${b.indicesSet('b_indices', '1', 'block')};
-            var word_offset: u32 = block_offset;
-            for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
-              ${b.indicesSet('b_indices', '2', 'word')};
-              let b_data = ${b.getByIndices('b_indices')};
-              for (var i: u32 = 0; i < ${bComponents}; i++) {
-                let b_value = ${bComponents === 1 ? 'b_data' : 'b_data[word + i]'};
-                let b_quantized_values: array<${dataType}, 8> = ortUnpack8x4snorm(b_value);
-                let b_dequantized_values = dequantize_array(b_quantized_values, zero_point, scale);
-                // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
-                var offset: u32 = word_offset;
-                for (var j: u32 = 0; j < 8/${aComponents}; j++) {
-                  ${a.indicesSet('a_indices', aRank - 1, `offset/${aComponents}`)};
-                  for (var k: u32 = 0; k < ${outputNumber}; k++) {
-                    ${a.indicesSet('a_indices', aRank - 2, `m * ${outputNumber} + k`)};
-                    let a_data = ${a.getByIndices('a_indices')};
-                    output_values[k] += ${
-            aComponents === 1 ? 'a_data * b_dequantized_values[j]' : `dot(a_data, b_dequantized_values[j])`};
+          for (var c: u32 = 0; c < ${components}; c++) {
+            ${b.indicesSet('b_indices', '0', `n * ${components} + c`)};
+            var block_offset: u32 = 0;
+            for (var block: u32 = 0; block < ${nBlocksPerCol}; block++) {
+              // The scale and zero points are computed per block.
+              let scale = ${scales.getByOffset('scale_index')};
+              // The default zero point is 8 for unsigned 4-bit quantization.
+              let zero_point = ${dataType}(${zeroPoints ? `extractBits(zero_point_word, zero_point_offset, 4)` : 8.0});
+              ${b.indicesSet('b_indices', '1', 'block')};
+              var word_offset: u32 = block_offset;
+              for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
+                ${b.indicesSet('b_indices', '2', 'word')};
+                let b_data = ${b.getByIndices('b_indices')};
+                for (var i: u32 = 0; i < ${bComponents}; i++) {
+                  let b_value = ${bComponents === 1 ? 'b_data' : 'b_data[word + i]'};
+                  let b_quantized_values: array<${dataType}, 8> = ortUnpack8x4snorm(b_value);
+                  let b_dequantized_values = dequantize_array(b_quantized_values, zero_point, scale);
+                  // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
+                  var offset: u32 = word_offset;
+                  for (var j: u32 = 0; j < 8/${aComponents}; j++) {
+                    ${a.indicesSet('a_indices', aRank - 1, `offset/${aComponents}`)};
+                    for (var k: u32 = 0; k < ${outputNumber}u; k++) {
+                      ${a.indicesSet('a_indices', aRank - 2, `m * ${outputNumber} + k`)};
+                      let a_data = ${a.getByIndices('a_indices')};
+                      output_values[k]${components > 1 ? '[c]' : ''} += ${
+                aComponents === 1 ? 'a_data * b_dequantized_values[j]' : `dot(a_data, b_dequantized_values[j])`};
+                    }
+                    offset += ${aComponents};
                   }
-                  offset += ${aComponents};
+                  word_offset += 8;
                 }
-                word_offset += 8;
               }
+              scale_index++;
+              ${updateZeroPointIndex}
+              block_offset += uniforms.block_size;
             }
-            scale_index++;
-            ${
-            zeroPoints ? `
-            if (zero_point_offset == 28) {
-              zero_point_offset = 0;
-              zero_point_index++;
-              zero_point_word = ${zeroPoints.getByOffset('zero_point_index')};
-            } else {
-              zero_point_offset += 4;
-            }` :
-                         ''}
-            block_offset += uniforms.block_size;
-          }
-          for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
-            ${output.indicesSet('output_indices', aRank - 2, `${outputNumber + ' * m + k'}`)};
-            ${output.setByIndices('output_indices', 'output_values[k]')}
-          }
-        }
-        `;
+            // Drop the trailing 4 bits if the zero_poit_offset is not byte boundary.
+            ${zeroPoints ? `if (zero_point_offset % 8 > 0) {
+                ${updateZeroPointIndex}
+              }` : ''}
+            }
+            for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
+              ${output.indicesSet('output_indices', aRank - 2, `${outputNumber + ' * m + k'}`)};
+              ${output.setByIndices('output_indices', 'output_values[k]')}
+            }
+        }`;
       };
       return {
         name: 'MatMulNBits',
