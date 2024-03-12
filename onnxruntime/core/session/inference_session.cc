@@ -60,6 +60,7 @@
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
+#include "core/optimizer/stft_decomposition.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/user_logging_sink.h"
@@ -1760,6 +1761,14 @@ common::Status InferenceSession::Initialize() {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
           }
           ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
+        }
+
+        const auto dml_ep_impl = static_cast<const Dml::ExecutionProvider*>(dmlExecutionProvider);
+        auto is_mcdm_device = dml_ep_impl->GetImpl()->IsMcdmDevice();
+        if (is_mcdm_device) {
+          const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
+          auto stft_decomposition_transformer = std::make_unique<STFTDecomposition>(dml_ep);
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(stft_decomposition_transformer), onnxruntime::TransformerLevel::Level1));
         }
       }
 #endif
