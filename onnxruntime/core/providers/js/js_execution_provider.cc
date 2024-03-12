@@ -21,7 +21,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "data_transfer.h"
 
 namespace onnxruntime {
