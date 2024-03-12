@@ -117,10 +117,10 @@ export const createMatMulNBitsProgramInfo =
           if (aComponents === 1) {
             return `var dequantized = ${qDqDataType}(${
                 Array.from({length: 8}, (_, i) => `(quantized[${i}] - zero_point) * scale`).join(', ')});
-              return dequantized;`
+              return dequantized;`;
           } else {
             return `var zero_points: ${qDqDataType} = ${qDqDataType}(${Array(8).fill('zero_point').join(',')});
-              return (quantized - zero_points) * scale;`
+              return (quantized - zero_points) * scale;`;
           }
         })()}
         }`;
