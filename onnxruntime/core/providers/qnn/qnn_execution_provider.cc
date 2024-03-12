@@ -298,6 +298,19 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  static const std::string QNN_HTP_FP16_MODE = "disable_htp_fp16_precision";
+  auto htp_fp16_mode_pos = provider_options_map.find(QNN_HTP_FP16_MODE);
+  if (htp_fp16_mode_pos != provider_options_map.end()) {
+    if ("1" == htp_fp16_mode_pos->second) {
+      disable_HTP_FP16_mode_ = true;
+    } else if ("0" == htp_fp16_mode_pos->second) {
+      disable_HTP_FP16_mode_ = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid DISABLE_HTP_FP16_MODE: " << disable_HTP_FP16_mode_ << " only 0 or 1 allowed. Set to 0.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified DISABLE_HTP_FP16_MODE: " << disable_HTP_FP16_mode_;
+  }
+
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level,
@@ -639,6 +652,16 @@ void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_C
       QnnGraph_Config_t& graph_opt_config_vtcm = configs_builder.PushConfig();
       graph_opt_config_vtcm.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
       graph_opt_config_vtcm.customConfig = &htp_graph_opt_config_vtcm;
+    }
+
+    if (!disable_HTP_FP16_mode_) {
+      QnnHtpGraph_CustomConfig_t& htp_graph_precision_config = configs_builder.PushCustomConfig();
+      htp_graph_precision_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_PRECISION;
+      htp_graph_precision_config.precision = QNN_PRECISION_FLOAT16;
+
+      QnnGraph_Config_t& graph_precision_config = configs_builder.PushConfig();
+      graph_precision_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_precision_config.customConfig = &htp_graph_precision_config;
     }
   }
 }
