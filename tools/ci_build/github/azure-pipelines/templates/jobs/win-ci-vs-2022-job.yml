@@ -83,6 +83,10 @@ jobs:
     clean: true
     submodules: none
 
+  - script: |
+      dir /s /b c:\localdata\onnx
+    displayName: 'List files in onnx directory'
+
   - template: win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: ${{parameters.EnvSetupScript}}
