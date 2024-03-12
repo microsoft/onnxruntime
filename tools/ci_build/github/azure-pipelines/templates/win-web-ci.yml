@@ -145,6 +145,21 @@ jobs:
       cacheHitVar: CACHE_RESTORED
     displayName: 'Cache ONNX node test data'
 
+  - powershell: |
+      $check_file="$(Build.SourcesDirectory)/js/test/__generated_onnx_node_tests"
+      if !(Test-Path $check_file) {
+        Remove-Item $(Build.SourcesDirectory)/js/test -Recurse -Force
+      }
+     if [[ ! -e "$(Build.SourcesDirectory)/js/test/__generated_onnx_node_tests" ]]; then
+        rm -rf $(Agent.TempDirectory)/data/onnx
+        Set-Location -Path $(Build.SourcesDirectory)/js/
+        npm install
+        npm run prepare-node-tests
+        Get-ChildItem -Path . $(Build.SourcesDirectory)/js/
+     fi
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Download ONNX node test data'
+
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
