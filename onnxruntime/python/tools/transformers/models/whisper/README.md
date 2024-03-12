@@ -10,6 +10,7 @@ Please note the package versions needed for using Whisper in the `requirements.t
   - Note that `torch` with CUDA enabled is not installed automatically. This is because `torch` should be installed with the CUDA version used on your machine. Please visit [the PyTorch website](https://pytorch.org/get-started/locally/) to download the `torch` version that is used with the CUDA version installed on your machine and satisfies the requirement listed in the file.
 - `requirements.txt`
   - Package versions needed in each of the above files
+- ffmpeg-python is also required, but please install it by source code with allowed codecs to avoid any patent risks.
 
 In addition to the above packages, you will need to install `ffmpeg` on your machine. Visit the [FFmpeg website](https://ffmpeg.org/) for details. You can also install it natively using package managers.
 
