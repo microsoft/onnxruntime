@@ -32,7 +32,7 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
-#if defined(_M_X64) && !defined(_M_ARM64EC) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
 #include "core/platform/windows/hardware_core_enumerator.h"
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -252,7 +252,7 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
 }
 
 // EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
-#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && !defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
 static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
 #endif
 int WindowsEnv::DefaultNumCores() {
@@ -261,7 +261,7 @@ int WindowsEnv::DefaultNumCores() {
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
 // EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
-#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && !defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
   // The following code is a temporary fix for a perf problem on Intel's Meteor Lake CPUs. The Intel compute platform has
   // a hybrid architecture that some CPU cores runs significant slower than the others. If we distribute our compute work
   // evenly to all CPU cores, the slowest CPU core will drag the performance down. So, instead, we reduce the total number
