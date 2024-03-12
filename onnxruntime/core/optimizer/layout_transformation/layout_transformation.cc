@@ -44,7 +44,8 @@ const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
         "AveragePool",
         "GridSample",
         "DepthToSpace",
-        "SpaceToDepth"};
+        "SpaceToDepth",
+        "LRN"};
   }();
   return cuda_nhwc_ops;
 }
