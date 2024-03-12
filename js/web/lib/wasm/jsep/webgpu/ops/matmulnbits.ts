@@ -11,8 +11,8 @@ import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVaria
 
 //  TODO support quantization bits not equal to 4
 export interface MatMulNBitsAttributes extends AttributeWithCacheKey {
-  K: number;
-  N: number;
+  k: number;
+  n: number;
   accuracyLevel: number;
   bits: number;
   blockSize: number;
@@ -24,25 +24,25 @@ const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAt
   }
   const a = inputs[0];
   const aRank = a.dims.length;
-  if (a.dims[aRank - 1] !== attributes.K) {
+  if (a.dims[aRank - 1] !== attributes.k) {
     throw new Error('The last dim of input shape does not match the k value');
   }
-  const nBlocksPerCol = Math.floor((attributes.K + attributes.blockSize - 1) / attributes.blockSize);
+  const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
   const blobSize = attributes.blockSize / 8 * attributes.bits;
   const b = inputs[1];
-  if (!ShapeUtil.areEqual(b.dims, [attributes.N, nBlocksPerCol, blobSize])) {
+  if (!ShapeUtil.areEqual(b.dims, [attributes.n, nBlocksPerCol, blobSize])) {
     throw new Error('The second inputs must be 3D tensor with shape N X nBlocksPerCol X blobSize');
   }
   const scales = inputs[2];
   const scalesShape = scales.dims;
-  if (ShapeUtil.size(scalesShape) !== attributes.N * nBlocksPerCol) {
+  if (ShapeUtil.size(scalesShape) !== attributes.n * nBlocksPerCol) {
     throw new Error('scales input size error.');
   }
   if (inputs.length === 4) {
     const zeroPoints = inputs[3];
     const zeroPointsShape = zeroPoints.dims;
     const expectedZeroPointsSize =
-        attributes.bits > 4 ? (attributes.N * nBlocksPerCol) : attributes.N * Math.floor((nBlocksPerCol + 1) / 2);
+        attributes.bits > 4 ? (attributes.n * nBlocksPerCol) : attributes.n * Math.floor((nBlocksPerCol + 1) / 2);
     if (ShapeUtil.size(zeroPointsShape) !== expectedZeroPointsSize) {
       throw new Error('zeroPoints input size error.');
     }
@@ -53,18 +53,18 @@ export const createMatMulNBitsProgramInfo =
     (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes): ProgramInfo => {
       const inputShape = inputs[0].dims;
       const aRank = inputShape.length;
-      const outputShape = inputShape.slice(0, aRank - 1).concat(attributes.N);
-      const M = inputShape[aRank - 2];
+      const outputShape = inputShape.slice(0, aRank - 1).concat(attributes.n);
+      const m = inputShape[aRank - 2];
       const blobSize = attributes.blockSize / 8 * attributes.bits;
       const blobSizeInWords = blobSize / 4;
-      const outputNumber = getMaxComponents(M);
-      const components = getMaxComponents(attributes.N);
-      const aComponents = getMaxComponents(attributes.K);
+      const outputNumber = getMaxComponents(m);
+      const components = getMaxComponents(attributes.n);
+      const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
       const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
       const programUniforms: ProgramUniform[] = [
-        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: attributes.K},
-        {type: DataType.uint32, data: attributes.N}, {type: DataType.uint32, data: attributes.accuracyLevel},
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: attributes.k},
+        {type: DataType.uint32, data: attributes.n}, {type: DataType.uint32, data: attributes.accuracyLevel},
         {type: DataType.uint32, data: attributes.bits}, {type: DataType.uint32, data: attributes.blockSize}
       ];
       const aShape = inputShape.slice();
@@ -95,7 +95,7 @@ export const createMatMulNBitsProgramInfo =
           {name: 'output_size', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
           {name: 'accuracy_level', type: 'u32'}, {name: 'bits', type: 'u32'}, {name: 'block_size', type: 'u32'}
         ];
-        const nBlocksPerCol = Math.floor((attributes.K + attributes.blockSize - 1) / attributes.blockSize);
+        const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
         const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
         const dequantizeArrayReturnType = (() => {
           switch (aComponents) {
@@ -149,7 +149,8 @@ export const createMatMulNBitsProgramInfo =
             zero_point_offset = 0;
             zero_point_index++;
             zero_point_word = ${zeroPoints.getByOffset('zero_point_index')};
-          }` : '';
+          }` :
+                                                  '';
 
         return `
         fn ortUnpack8x4snorm(value: u32) -> array<${dataType}, 8> {
@@ -180,10 +181,12 @@ export const createMatMulNBitsProgramInfo =
           // Two zero points are packed into one byte because uniforms.bits <= 4.
           // zero_point_offset is either 0 or 4. It is bit offset within one byte.
           // TODO support zero_point_offset for bits > 4
-          ${zeroPoints ? `
+          ${
+            zeroPoints ? `
           var zero_point_index: u32 = n * ${components} * ((${nBlocksPerCol} + 1) / 2) / 4;
           var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_index')};
-          var zero_point_offset: u32 = 0;` : ''}
+          var zero_point_offset: u32 = 0;` :
+                         ''}
           var scale_index = n * ${nBlocksPerCol * components};
           var b_indices: ${b.type.indices};
           for (var c: u32 = 0; c < ${components}; c++) {
@@ -211,7 +214,7 @@ export const createMatMulNBitsProgramInfo =
                       ${a.indicesSet('a_indices', aRank - 2, `m * ${outputNumber} + k`)};
                       let a_data = ${a.getByIndices('a_indices')};
                       output_values[k]${components > 1 ? '[c]' : ''} += ${
-                aComponents === 1 ? 'a_data * b_dequantized_values[j]' : `dot(a_data, b_dequantized_values[j])`};
+            aComponents === 1 ? 'a_data * b_dequantized_values[j]' : `dot(a_data, b_dequantized_values[j])`};
                     }
                     offset += ${aComponents};
                   }
@@ -223,9 +226,11 @@ export const createMatMulNBitsProgramInfo =
               block_offset += uniforms.block_size;
             }
             // Drop the trailing 4 bits if the zero_poit_offset is not byte boundary.
-            ${zeroPoints ? `if (zero_point_offset % 8 > 0) {
+            ${
+            zeroPoints ? `if (zero_point_offset % 8 > 0) {
                 ${updateZeroPointIndex}
-              }` : ''}
+              }` :
+                         ''}
             }
             for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
               ${output.indicesSet('output_indices', aRank - 2, `${outputNumber + ' * m + k'}`)};

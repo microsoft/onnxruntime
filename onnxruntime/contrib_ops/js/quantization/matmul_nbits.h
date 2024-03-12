@@ -22,8 +22,8 @@ class MatMulNBits final : public JsKernel {
     ORT_ENFORCE(block_size_ >= 16 && !(block_size_ & (block_size_ - 1)),
                 "Block size must be a power of 2 and greater than or equal to 16.");
     JSEP_INIT_KERNEL_ATTRIBUTE(MatMulNBits, ({
-                                 "K" : $1,
-                                 "N" : $2,
+                                 "k" : $1,
+                                 "n" : $2,
                                  "accuracyLevel" : $3,
                                  "bits" : $4,
                                  "blockSize" : $5
