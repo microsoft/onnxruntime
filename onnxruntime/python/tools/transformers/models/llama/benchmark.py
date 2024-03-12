@@ -243,7 +243,7 @@ def get_model(args: argparse.Namespace):
             decoder_file_name=decoder_file_name,
             decoder_with_past_file_name=decoder_with_past_file_name,
             use_auth_token=args.auth,
-            use_io_binding=(args.device != "cpu"),
+            use_io_binding=True,  # Large perf gain even for cpu due to avoiding output copy.
             use_merged=(True if decoder_file_name == "model.onnx" else None),
             provider=provider,
             provider_options=provider_options,
