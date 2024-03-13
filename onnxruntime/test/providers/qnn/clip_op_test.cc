@@ -182,6 +182,44 @@ TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
                   ExpectedEPNodeAssignment::All);
 }
 
+// Test FP16 Clip with min (FP16)
+TEST_F(QnnHTPBackendTests, Clip_FP16) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto f32_input = TestInputDef<float>({1, 3, 2, 2}, false,
+                                       {-10.0f, -8.0f, -3.5f, 2.2f,
+                                        1.3f, 1.5f, 3.2f, 5.8f,
+                                        5.8f, 9.7f, 8.5f, 8.9f});
+  std::vector<MLFloat16> f16_data;
+  std::for_each(f32_input.GetRawData().begin(), f32_input.GetRawData().end(),
+                [&f16_data](const float data) {
+                  f16_data.push_back(static_cast<MLFloat16>(data));
+                });
+  auto f16_input = TestInputDef<MLFloat16>({1, 3, 2, 2}, false, f16_data);
+
+  const float min_f32 = 1.2f;
+  const MLFloat16 min_f16 = static_cast<MLFloat16>(min_f32);
+  auto f32_min_input = TestInputDef<float>({}, true, {min_f32});
+  auto f16_min_input = TestInputDef<MLFloat16>({}, true, {min_f16});
+
+  auto f32_model_builder = BuildOpTestCase<float, float>("Clip", {f32_input}, {f32_min_input}, {});
+  auto f16_model_builder = BuildOpTestCase<MLFloat16, MLFloat16>("Clip", {f16_input}, {f16_min_input}, {});
+  int opset = 13;
+  ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All;
+
+  TestFp16ModelAccuracy(f32_model_builder,
+                        f16_model_builder,
+                        provider_options,
+                        opset,
+                        expected_ep_assignment);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime

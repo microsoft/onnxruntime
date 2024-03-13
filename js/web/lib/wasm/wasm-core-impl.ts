@@ -93,7 +93,15 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
       if (typeof navigator === 'undefined' || !navigator.gpu) {
         throw new Error('WebGPU is not supported in current environment');
       }
-      const adapter = await navigator.gpu.requestAdapter();
+      const powerPreference = env.webgpu?.powerPreference;
+      if (powerPreference !== undefined && powerPreference !== 'low-power' && powerPreference !== 'high-performance') {
+        throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
+      }
+      const forceFallbackAdapter = env.webgpu?.forceFallbackAdapter;
+      if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
+        throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
+      }
+      const adapter = await navigator.gpu.requestAdapter({powerPreference, forceFallbackAdapter});
       if (!adapter) {
         throw new Error(
             'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
