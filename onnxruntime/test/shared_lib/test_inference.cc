@@ -2861,6 +2861,17 @@ TEST(CApiTest, TestSharedAllocators) {
                         expected_dims_y,
                         expected_values_y,
                         nullptr);
+
+      // create session 3 to test separate allocation for initializers
+      session_options.AddConfigEntry("session.use_device_allocator_for_initializers", "1");
+      Ort::Session session3(*ort_env, MODEL_URI, session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session3,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
     }
 
     // Remove the registered shared allocator from the global environment
@@ -2871,7 +2882,10 @@ TEST(CApiTest, TestSharedAllocators) {
     // We should have seen 2 allocations per session (one for the sole initializer
     // and one for the output). So, for two sessions, we should have seen 4 allocations.
     size_t num_allocations = custom_allocator.NumAllocations();
-    ASSERT_TRUE(num_allocations == 4);
+    ASSERT_TRUE(num_allocations == 6);
+
+    size_t num_reserve_allocations = custom_allocator.NumReserveAllocations();
+    ASSERT_TRUE(num_reserve_allocations == 1);
 
     // Ensure that there was no leak
     custom_allocator.LeakCheck();
