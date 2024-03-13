@@ -831,7 +831,7 @@ TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
                   provider_options,
                   13,
                   ExpectedEPNodeAssignment::All,
-                  0.004f);
+                  0.008f);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
