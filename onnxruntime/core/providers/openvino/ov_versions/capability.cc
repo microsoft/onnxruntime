@@ -34,10 +34,15 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
     data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_, device_precision_);
   } else if (version_param == "V_2023_2") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_, device_precision_);
+<<<<<<< HEAD
   } else if (version_param == "V_2023_3") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, device_precision_);
   } else {
     data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, device_precision_);
+=======
+  } else {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_, device_precision_);
+>>>>>>> Add device_precision access for UnsupportedOpModes
   }
 }
 
