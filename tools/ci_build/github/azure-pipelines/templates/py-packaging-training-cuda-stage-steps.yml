@@ -186,6 +186,7 @@ stages:
               set -ex ; \
               whlfilename=$(ls $(Build.ArtifactStagingDirectory)/Release/dist/*.whl | head -n 1) ; \
               echo $whlfilename ; \
+              basefilename=$(basename $whlfilename) ; \
               docker run --rm \
                 --gpus all \
                 -e NVIDIA_VISIBLE_DEVICES=all \
@@ -194,7 +195,7 @@ stages:
                 --volume /bert_data:/bert_data \
                 --volume /hf_models_cache:/hf_models_cache \
                 onnxruntimetraininggpubuild \
-                  bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
+                  bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)
 
         # if the wheel size bigger than 300M, fail the UploadWheel step
@@ -204,7 +205,7 @@ stages:
           inputs:
             script: |
               set -e -x
-              whlfilename=$(ls $(Build.ArtifactStagingDirectory)/*.whl | head -n 1)  && \
+              whlfilename=$(ls $(Build.ArtifactStagingDirectory)/Release/dist/*.whl | head -n 1)  && \
               echo $whlfilename && du -sh $whlfilename &&\
               (( $(wc -c < "$whlfilename") -  300*1024*1024 < 0 )) ||  (exit 1) && \
               python3 tools/ci_build/upload_python_package_to_azure_storage.py \
