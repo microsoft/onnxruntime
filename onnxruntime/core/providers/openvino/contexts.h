@@ -31,7 +31,7 @@ struct GlobalContext {
   int onnx_opset_version;
   void* context = 0;
   bool use_api_2;
-  std::vector<int> OpenVINO_Version = {}; // Ov Major and OV minor version from OV headers
+  std::vector<int> OpenVINO_Version = {};  // Ov Major and OV minor version from OV headers
 };
 
 // Holds context specific to subgraph.

@@ -195,8 +195,8 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         input_name = onnx_input_name;
       } else {
         ORT_THROW(log_tag +
-              "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name +
-              " doesn't exist in the list of OpenVINO input tensor names");
+                  "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name +
+                  " doesn't exist in the list of OpenVINO input tensor names");
       }
       size_t batch_slice_idx = 0;
       if (subgraph_context_.has_dynamic_input_shape &&
@@ -271,9 +271,9 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
         input_name = onnx_input_name;
       } else {
         ORT_THROW(log_tag +
-              "Input names mismatch between OpenVINO and ONNX. " +
-              onnx_input_name +
-              " doesn't exist in the list of OpenVINO input tensor names");
+                  "Input names mismatch between OpenVINO and ONNX. " +
+                  onnx_input_name +
+                  " doesn't exist in the list of OpenVINO input tensor names");
       }
       input_idx++;
       // Kernel Context Input Buffer

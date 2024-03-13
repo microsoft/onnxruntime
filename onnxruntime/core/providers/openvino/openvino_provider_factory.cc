@@ -145,11 +145,11 @@ struct OpenVINO_Provider : Provider {
         enable_opencl_throttling = false;
       bool_flag = "";
     }
-    
+
     // [disable_dynamic_shapes]:  Rewrite dynamic shaped models to static shape at runtime and execute.
     // Always true for NPU plugin.
-    bool disable_dynamic_shapes = false;    
-    if (device_type.find("NPU")!=std::string::npos) {
+    bool disable_dynamic_shapes = false;
+    if (device_type.find("NPU") != std::string::npos) {
       disable_dynamic_shapes = true;
     }
     if (provider_options_map.find("disable_dynamic_shapes") != provider_options_map.end()) {
@@ -157,7 +157,7 @@ struct OpenVINO_Provider : Provider {
       if (bool_flag == "true" || bool_flag == "True")
         disable_dynamic_shapes = true;
       else if (bool_flag == "false" || bool_flag == "False") {
-        if (device_type.find("NPU")!=std::string::npos) {
+        if (device_type.find("NPU") != std::string::npos) {
           disable_dynamic_shapes = true;
           LOGS_DEFAULT(INFO) << "[OpenVINO-EP] The value for the key 'disable_dynamic_shapes' will be set to TRUE for NPU backend.\n ";
         } else {

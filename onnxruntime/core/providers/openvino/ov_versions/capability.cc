@@ -28,7 +28,7 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
                              const std::string device_type_param,
                              const std::string device_precision)
     : graph_viewer_(graph_viewer_param), device_type_(device_type_param), device_precision_(device_precision) {
-  if(device_type_.find("NPU")!=std::string::npos){
+  if (device_type_.find("NPU") != std::string::npos) {
     device_type_ = "CPU_FP32";
   }
 #if OPENVINO_VERSION_MAJOR == 2023 && OPENVINO_VERSION_MINOR == 0

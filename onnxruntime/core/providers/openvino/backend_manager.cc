@@ -95,7 +95,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                       GetGlobalContext(),
                                                       subgraph_context_);
     } catch (std::string const& msg) {
-      if (device_type.find("NPU")!= std::string::npos) {
+      if (device_type.find("NPU") != std::string::npos) {
         LOGS_DEFAULT(WARNING) << msg;
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
@@ -299,7 +299,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                       GetGlobalContext(),
                                                       subgraph_context_);
       } catch (std::string const& msg) {
-          if (GetGlobalContext().device_type.find("NPU")!= std::string::npos) {
+        if (GetGlobalContext().device_type.find("NPU") != std::string::npos) {
           LOGS_DEFAULT(WARNING) << msg;
           LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                                 << "Falling back to OV CPU for execution";
