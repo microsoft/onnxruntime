@@ -218,20 +218,6 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Run tests'
 
-      - powershell: |
-          $testResultsFiles = Get-ChildItem -Path "$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}" -Recurse -Filter *.results.xml -File
-          $testResultsFilesPath = $testResultsFiles -join ","
-          echo "##vso[task.setvariable variable=testResultsFilesPath;]$testResultsFilesPath"
-        displayName: 'List Test Result Files'
-
-      - task: PublishTestResults@2
-        displayName: 'Publish Unit Test Results'
-        inputs:
-          testResultsFiles: '$(testResultsFilesPath)'
-          testRunTitle: 'Unit Test Run'
-          searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
-        condition: succeededOrFailed()
-
   - ${{ if eq(parameters.GenerateDocumentation, true) }}:
     - task: PythonScript@0
       displayName: 'Generate documentation'

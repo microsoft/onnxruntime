@@ -104,7 +104,7 @@ FetchContent_Declare(
     URL ${DEP_URL_flatbuffers}
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
     PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
-    FIND_PACKAGE_ARGS 23.5.26...<24.0.0 NAMES Flatbuffers
+    FIND_PACKAGE_ARGS 23.5.9 NAMES Flatbuffers
 )
 
 # Download a protoc binary from Internet if needed
