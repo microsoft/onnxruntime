@@ -11,7 +11,9 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
+    - 'js/common/lib'
     - 'onnxruntime/core/providers/js'
+    - 'onnxruntime/wasm/js_internal_api.js'
 pr:
   branches:
     include:
@@ -24,7 +26,9 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
+    - 'js/common/lib'
     - 'onnxruntime/core/providers/js'
+    - 'onnxruntime/wasm/js_internal_api.js'
 #### end trigger ####
 
 # Known Limits
