@@ -114,6 +114,10 @@ if (NOT onnxruntime_USE_NCCL)
   list(APPEND contrib_ops_excluded_files "collective/distributed_reduce.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_unsqueeze.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_squeeze.cc")
+else()
+  # moe not supported for ROCm EP
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.h")
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.cc")
 endif()
 
 set(provider_excluded_files
