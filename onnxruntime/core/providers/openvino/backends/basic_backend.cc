@@ -125,6 +125,11 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   if (global_context_.device_type.find("NPU") != std::string::npos) {
     std::pair<std::string, ov::Any> device_property;
     device_property = std::make_pair("NPU_COMPILER_TYPE", "DRIVER");
+
+    const std::string env_npu_compiler_type = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_NPU_COMPILER_TYPE");
+    if (!env_npu_compiler_type.empty()) {
+      device_property = std::make_pair("NPU_COMPILER_TYPE", env_npu_compiler_type);
+    }
     device_config.emplace(ov::device::properties("NPU", device_property));
   }
 }

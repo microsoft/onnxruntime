@@ -109,11 +109,7 @@ def _openvino_verify_device_type(device_read):
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-<<<<<<< HEAD
-        print("are ['CPU','GPU', 'NPU'] \n")
-=======
         print("are ['CPU','GPU','NPU'] \n")
->>>>>>> Add NPU device; Revert num_of_threads to 1 to be default
         print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU \n")
         print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU \n")
         print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU \n")
