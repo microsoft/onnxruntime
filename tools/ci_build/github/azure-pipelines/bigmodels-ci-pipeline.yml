@@ -11,9 +11,7 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/common/lib'
     - 'onnxruntime/core/providers/js'
-    - 'onnxruntime/wasm/js_internal_api.js'
 pr:
   branches:
     include:
@@ -26,9 +24,7 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/common/lib'
     - 'onnxruntime/core/providers/js'
-    - 'onnxruntime/wasm/js_internal_api.js'
 #### end trigger ####
 
 # reference: https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/README.md
@@ -218,7 +214,7 @@ stages:
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements-cuda11.txt; \
-            python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
+            python3 -m pip install --upgrade polygraphy onnx-graphsurgeon ;\
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
             find $(pwd)/ORT_CUDA -name "*.png" -exec cp {} /images/ \; ; \
