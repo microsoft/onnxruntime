@@ -6,6 +6,13 @@
 
 #include "flatbuffers/flatbuffers.h"
 
+// Ensure the included flatbuffers.h is the same version as when this file was
+// generated, otherwise it may not be compatible.
+static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
+              FLATBUFFERS_VERSION_MINOR == 5 &&
+              FLATBUFFERS_VERSION_REVISION == 26,
+             "Non-compatible flatbuffers version included");
+
 namespace dml {
 namespace ir {
 namespace operatorFieldTypes {
@@ -59,7 +66,7 @@ struct ScalarUnionDataBuilder;
 
 struct Bool;
 
-enum AttributeFieldVariant {
+enum AttributeFieldVariant : uint8_t {
   AttributeFieldVariant_NONE = 0,
   AttributeFieldVariant_Activation = 1,
   AttributeFieldVariant_ActivationArray = 2,
@@ -120,7 +127,7 @@ inline const char * const *EnumNamesAttributeFieldVariant() {
 }
 
 inline const char *EnumNameAttributeFieldVariant(AttributeFieldVariant e) {
-  if (flatbuffers::IsOutRange(e, AttributeFieldVariant_NONE, AttributeFieldVariant_Bool)) return "";
+  if (::flatbuffers::IsOutRange(e, AttributeFieldVariant_NONE, AttributeFieldVariant_Bool)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesAttributeFieldVariant()[index];
 }
@@ -181,10 +188,10 @@ template<> struct AttributeFieldVariantTraits<dml::ir::operatorFieldTypes::Bool>
   static const AttributeFieldVariant enum_value = AttributeFieldVariant_Bool;
 };
 
-bool VerifyAttributeFieldVariant(flatbuffers::Verifier &verifier, const void *obj, AttributeFieldVariant type);
-bool VerifyAttributeFieldVariantVector(flatbuffers::Verifier &verifier, const flatbuffers::Vector<flatbuffers::Offset<void>> *values, const flatbuffers::Vector<uint8_t> *types);
+bool VerifyAttributeFieldVariant(::flatbuffers::Verifier &verifier, const void *obj, AttributeFieldVariant type);
+bool VerifyAttributeFieldVariantVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types);
 
-enum ScalarVariant {
+enum ScalarVariant : uint8_t {
   ScalarVariant_NONE = 0,
   ScalarVariant_ByteArray = 1,
   ScalarVariant_Int8 = 2,
@@ -239,7 +246,7 @@ inline const char * const *EnumNamesScalarVariant() {
 }
 
 inline const char *EnumNameScalarVariant(ScalarVariant e) {
-  if (flatbuffers::IsOutRange(e, ScalarVariant_NONE, ScalarVariant_Float64)) return "";
+  if (::flatbuffers::IsOutRange(e, ScalarVariant_NONE, ScalarVariant_Float64)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesScalarVariant()[index];
 }
@@ -292,25 +299,25 @@ template<> struct ScalarVariantTraits<dml::ir::operatorFieldTypes::Float64> {
   static const ScalarVariant enum_value = ScalarVariant_Float64;
 };
 
-bool VerifyScalarVariant(flatbuffers::Verifier &verifier, const void *obj, ScalarVariant type);
-bool VerifyScalarVariantVector(flatbuffers::Verifier &verifier, const flatbuffers::Vector<flatbuffers::Offset<void>> *values, const flatbuffers::Vector<uint8_t> *types);
+bool VerifyScalarVariant(::flatbuffers::Verifier &verifier, const void *obj, ScalarVariant type);
+bool VerifyScalarVariantVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types);
 
 FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(1) UInt8 FLATBUFFERS_FINAL_CLASS {
  private:
   uint8_t data_;
 
  public:
-  UInt8() {
-    memset(static_cast<void *>(this), 0, sizeof(UInt8));
+  UInt8()
+      : data_(0) {
   }
   UInt8(uint8_t _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   uint8_t data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(uint8_t _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(UInt8, 1);
@@ -320,17 +327,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(2) UInt16 FLATBUFFERS_FINAL_CLASS {
   uint16_t data_;
 
  public:
-  UInt16() {
-    memset(static_cast<void *>(this), 0, sizeof(UInt16));
+  UInt16()
+      : data_(0) {
   }
   UInt16(uint16_t _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   uint16_t data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(uint16_t _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(UInt16, 2);
@@ -340,17 +347,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) UInt32 FLATBUFFERS_FINAL_CLASS {
   uint32_t data_;
 
  public:
-  UInt32() {
-    memset(static_cast<void *>(this), 0, sizeof(UInt32));
+  UInt32()
+      : data_(0) {
   }
   UInt32(uint32_t _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   uint32_t data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(uint32_t _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(UInt32, 4);
@@ -360,17 +367,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(8) UInt64 FLATBUFFERS_FINAL_CLASS {
   uint64_t data_;
 
  public:
-  UInt64() {
-    memset(static_cast<void *>(this), 0, sizeof(UInt64));
+  UInt64()
+      : data_(0) {
   }
   UInt64(uint64_t _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   uint64_t data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(uint64_t _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(UInt64, 8);
@@ -380,17 +387,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(1) Int8 FLATBUFFERS_FINAL_CLASS {
   int8_t data_;
 
  public:
-  Int8() {
-    memset(static_cast<void *>(this), 0, sizeof(Int8));
+  Int8()
+      : data_(0) {
   }
   Int8(int8_t _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   int8_t data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(int8_t _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Int8, 1);
@@ -400,17 +407,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(2) Int16 FLATBUFFERS_FINAL_CLASS {
   int16_t data_;
 
  public:
-  Int16() {
-    memset(static_cast<void *>(this), 0, sizeof(Int16));
+  Int16()
+      : data_(0) {
   }
   Int16(int16_t _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   int16_t data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(int16_t _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Int16, 2);
@@ -420,17 +427,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) Int32 FLATBUFFERS_FINAL_CLASS {
   int32_t data_;
 
  public:
-  Int32() {
-    memset(static_cast<void *>(this), 0, sizeof(Int32));
+  Int32()
+      : data_(0) {
   }
   Int32(int32_t _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   int32_t data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(int32_t _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Int32, 4);
@@ -440,17 +447,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(8) Int64 FLATBUFFERS_FINAL_CLASS {
   int64_t data_;
 
  public:
-  Int64() {
-    memset(static_cast<void *>(this), 0, sizeof(Int64));
+  Int64()
+      : data_(0) {
   }
   Int64(int64_t _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   int64_t data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(int64_t _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Int64, 8);
@@ -460,17 +467,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) Float32 FLATBUFFERS_FINAL_CLASS {
   float data_;
 
  public:
-  Float32() {
-    memset(static_cast<void *>(this), 0, sizeof(Float32));
+  Float32()
+      : data_(0) {
   }
   Float32(float _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   float data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(float _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Float32, 4);
@@ -480,17 +487,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(8) Float64 FLATBUFFERS_FINAL_CLASS {
   double data_;
 
  public:
-  Float64() {
-    memset(static_cast<void *>(this), 0, sizeof(Float64));
+  Float64()
+      : data_(0) {
   }
   Float64(double _data)
-      : data_(flatbuffers::EndianScalar(_data)) {
+      : data_(::flatbuffers::EndianScalar(_data)) {
   }
   double data() const {
-    return flatbuffers::EndianScalar(data_);
+    return ::flatbuffers::EndianScalar(data_);
   }
   void mutate_data(double _data) {
-    flatbuffers::WriteScalar(&data_, _data);
+    ::flatbuffers::WriteScalar(&data_, _data);
   }
 };
 FLATBUFFERS_STRUCT_END(Float64, 8);
@@ -501,24 +508,25 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) ScaleBias FLATBUFFERS_FINAL_CLASS {
   float bias_;
 
  public:
-  ScaleBias() {
-    memset(static_cast<void *>(this), 0, sizeof(ScaleBias));
+  ScaleBias()
+      : scale_(0),
+        bias_(0) {
   }
   ScaleBias(float _scale, float _bias)
-      : scale_(flatbuffers::EndianScalar(_scale)),
-        bias_(flatbuffers::EndianScalar(_bias)) {
+      : scale_(::flatbuffers::EndianScalar(_scale)),
+        bias_(::flatbuffers::EndianScalar(_bias)) {
   }
   float scale() const {
-    return flatbuffers::EndianScalar(scale_);
+    return ::flatbuffers::EndianScalar(scale_);
   }
   void mutate_scale(float _scale) {
-    flatbuffers::WriteScalar(&scale_, _scale);
+    ::flatbuffers::WriteScalar(&scale_, _scale);
   }
   float bias() const {
-    return flatbuffers::EndianScalar(bias_);
+    return ::flatbuffers::EndianScalar(bias_);
   }
   void mutate_bias(float _bias) {
-    flatbuffers::WriteScalar(&bias_, _bias);
+    ::flatbuffers::WriteScalar(&bias_, _bias);
   }
 };
 FLATBUFFERS_STRUCT_END(ScaleBias, 8);
@@ -529,24 +537,25 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) Size2D FLATBUFFERS_FINAL_CLASS {
   uint32_t height_;
 
  public:
-  Size2D() {
-    memset(static_cast<void *>(this), 0, sizeof(Size2D));
+  Size2D()
+      : width_(0),
+        height_(0) {
   }
   Size2D(uint32_t _width, uint32_t _height)
-      : width_(flatbuffers::EndianScalar(_width)),
-        height_(flatbuffers::EndianScalar(_height)) {
+      : width_(::flatbuffers::EndianScalar(_width)),
+        height_(::flatbuffers::EndianScalar(_height)) {
   }
   uint32_t width() const {
-    return flatbuffers::EndianScalar(width_);
+    return ::flatbuffers::EndianScalar(width_);
   }
   void mutate_width(uint32_t _width) {
-    flatbuffers::WriteScalar(&width_, _width);
+    ::flatbuffers::WriteScalar(&width_, _width);
   }
   uint32_t height() const {
-    return flatbuffers::EndianScalar(height_);
+    return ::flatbuffers::EndianScalar(height_);
   }
   void mutate_height(uint32_t _height) {
-    flatbuffers::WriteScalar(&height_, _height);
+    ::flatbuffers::WriteScalar(&height_, _height);
   }
 };
 FLATBUFFERS_STRUCT_END(Size2D, 8);
@@ -556,14 +565,17 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(1) ByteArray FLATBUFFERS_FINAL_CLASS {
   uint8_t data_[8];
 
  public:
-  ByteArray() {
-    memset(static_cast<void *>(this), 0, sizeof(ByteArray));
+  ByteArray()
+      : data_() {
   }
-  const flatbuffers::Array<uint8_t, 8> *data() const {
-    return reinterpret_cast<const flatbuffers::Array<uint8_t, 8> *>(data_);
+  ByteArray(::flatbuffers::span<const uint8_t, 8> _data) {
+    ::flatbuffers::CastToArray(data_).CopyFromSpan(_data);
   }
-  flatbuffers::Array<uint8_t, 8> *mutable_data() {
-    return reinterpret_cast<flatbuffers::Array<uint8_t, 8> *>(data_);
+  const ::flatbuffers::Array<uint8_t, 8> *data() const {
+    return &::flatbuffers::CastToArray(data_);
+  }
+  ::flatbuffers::Array<uint8_t, 8> *mutable_data() {
+    return &::flatbuffers::CastToArray(data_);
   }
 };
 FLATBUFFERS_STRUCT_END(ByteArray, 8);
@@ -573,33 +585,33 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(1) Bool FLATBUFFERS_FINAL_CLASS {
   uint8_t data_;
 
  public:
-  Bool() {
-    memset(static_cast<void *>(this), 0, sizeof(Bool));
+  Bool()
+      : data_(0) {
   }
   Bool(bool _data)
-      : data_(flatbuffers::EndianScalar(static_cast<uint8_t>(_data))) {
+      : data_(::flatbuffers::EndianScalar(static_cast<uint8_t>(_data))) {
   }
   bool data() const {
-    return flatbuffers::EndianScalar(data_) != 0;
+    return ::flatbuffers::EndianScalar(data_) != 0;
   }
   void mutate_data(bool _data) {
-    flatbuffers::WriteScalar(&data_, static_cast<uint8_t>(_data));
+    ::flatbuffers::WriteScalar(&data_, static_cast<uint8_t>(_data));
   }
 };
 FLATBUFFERS_STRUCT_END(Bool, 1);
 
-struct AttributeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct AttributeDesc FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef AttributeDescBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NAME = 4,
     VT_VAL_TYPE = 6,
     VT_VAL = 8
   };
-  const flatbuffers::String *name() const {
-    return GetPointer<const flatbuffers::String *>(VT_NAME);
+  const ::flatbuffers::String *name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NAME);
   }
-  flatbuffers::String *mutable_name() {
-    return GetPointer<flatbuffers::String *>(VT_NAME);
+  ::flatbuffers::String *mutable_name() {
+    return GetPointer<::flatbuffers::String *>(VT_NAME);
   }
   dml::ir::operatorFieldTypes::AttributeFieldVariant val_type() const {
     return static_cast<dml::ir::operatorFieldTypes::AttributeFieldVariant>(GetField<uint8_t>(VT_VAL_TYPE, 0));
@@ -650,7 +662,7 @@ struct AttributeDesc FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   void *mutable_val() {
     return GetPointer<void *>(VT_VAL);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
@@ -715,34 +727,33 @@ template<> inline const dml::ir::operatorFieldTypes::Bool *AttributeDesc::val_as
 
 struct AttributeDescBuilder {
   typedef AttributeDesc Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_name(flatbuffers::Offset<flatbuffers::String> name) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_name(::flatbuffers::Offset<::flatbuffers::String> name) {
     fbb_.AddOffset(AttributeDesc::VT_NAME, name);
   }
   void add_val_type(dml::ir::operatorFieldTypes::AttributeFieldVariant val_type) {
     fbb_.AddElement<uint8_t>(AttributeDesc::VT_VAL_TYPE, static_cast<uint8_t>(val_type), 0);
   }
-  void add_val(flatbuffers::Offset<void> val) {
+  void add_val(::flatbuffers::Offset<void> val) {
     fbb_.AddOffset(AttributeDesc::VT_VAL, val);
   }
-  explicit AttributeDescBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit AttributeDescBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  AttributeDescBuilder &operator=(const AttributeDescBuilder &);
-  flatbuffers::Offset<AttributeDesc> Finish() {
+  ::flatbuffers::Offset<AttributeDesc> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<AttributeDesc>(end);
+    auto o = ::flatbuffers::Offset<AttributeDesc>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<AttributeDesc> CreateAttributeDesc(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> name = 0,
+inline ::flatbuffers::Offset<AttributeDesc> CreateAttributeDesc(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> name = 0,
     dml::ir::operatorFieldTypes::AttributeFieldVariant val_type = dml::ir::operatorFieldTypes::AttributeFieldVariant_NONE,
-    flatbuffers::Offset<void> val = 0) {
+    ::flatbuffers::Offset<void> val = 0) {
   AttributeDescBuilder builder_(_fbb);
   builder_.add_val(val);
   builder_.add_name(name);
@@ -750,11 +761,11 @@ inline flatbuffers::Offset<AttributeDesc> CreateAttributeDesc(
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<AttributeDesc> CreateAttributeDescDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<AttributeDesc> CreateAttributeDescDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *name = nullptr,
     dml::ir::operatorFieldTypes::AttributeFieldVariant val_type = dml::ir::operatorFieldTypes::AttributeFieldVariant_NONE,
-    flatbuffers::Offset<void> val = 0) {
+    ::flatbuffers::Offset<void> val = 0) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
   return dml::ir::operatorFieldTypes::CreateAttributeDesc(
       _fbb,
@@ -763,25 +774,25 @@ inline flatbuffers::Offset<AttributeDesc> CreateAttributeDescDirect(
       val);
 }
 
-struct Activation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct Activation FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ActivationBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_TYPE = 4,
     VT_ATTRIBUTES = 6
   };
-  const flatbuffers::String *type() const {
-    return GetPointer<const flatbuffers::String *>(VT_TYPE);
+  const ::flatbuffers::String *type() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_TYPE);
   }
-  flatbuffers::String *mutable_type() {
-    return GetPointer<flatbuffers::String *>(VT_TYPE);
+  ::flatbuffers::String *mutable_type() {
+    return GetPointer<::flatbuffers::String *>(VT_TYPE);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *>(VT_ATTRIBUTES);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *>(VT_ATTRIBUTES);
   }
-  flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *mutable_attributes() {
-    return GetPointer<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *>(VT_ATTRIBUTES);
+  ::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *mutable_attributes() {
+    return GetPointer<::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *>(VT_ATTRIBUTES);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_TYPE) &&
            verifier.VerifyString(type()) &&
@@ -794,60 +805,59 @@ struct Activation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct ActivationBuilder {
   typedef Activation Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_type(flatbuffers::Offset<flatbuffers::String> type) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_type(::flatbuffers::Offset<::flatbuffers::String> type) {
     fbb_.AddOffset(Activation::VT_TYPE, type);
   }
-  void add_attributes(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>> attributes) {
+  void add_attributes(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>> attributes) {
     fbb_.AddOffset(Activation::VT_ATTRIBUTES, attributes);
   }
-  explicit ActivationBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit ActivationBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ActivationBuilder &operator=(const ActivationBuilder &);
-  flatbuffers::Offset<Activation> Finish() {
+  ::flatbuffers::Offset<Activation> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<Activation>(end);
+    auto o = ::flatbuffers::Offset<Activation>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<Activation> CreateActivation(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> type = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>> attributes = 0) {
+inline ::flatbuffers::Offset<Activation> CreateActivation(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> type = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>> attributes = 0) {
   ActivationBuilder builder_(_fbb);
   builder_.add_attributes(attributes);
   builder_.add_type(type);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<Activation> CreateActivationDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<Activation> CreateActivationDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *type = nullptr,
-    const std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes = nullptr) {
+    const std::vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>> *attributes = nullptr) {
   auto type__ = type ? _fbb.CreateString(type) : 0;
-  auto attributes__ = attributes ? _fbb.CreateVector<flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>(*attributes) : 0;
+  auto attributes__ = attributes ? _fbb.CreateVector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::AttributeDesc>>(*attributes) : 0;
   return dml::ir::operatorFieldTypes::CreateActivation(
       _fbb,
       type__,
       attributes__);
 }
 
-struct ActivationArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct ActivationArray FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ActivationArrayBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DATA = 4
   };
-  const flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *data() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *>(VT_DATA);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *data() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *>(VT_DATA);
   }
-  flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *mutable_data() {
-    return GetPointer<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *>(VT_DATA);
+  ::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *mutable_data() {
+    return GetPointer<::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *>(VT_DATA);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DATA) &&
            verifier.VerifyVector(data()) &&
@@ -858,52 +868,51 @@ struct ActivationArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct ActivationArrayBuilder {
   typedef ActivationArray Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_data(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>> data) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_data(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>> data) {
     fbb_.AddOffset(ActivationArray::VT_DATA, data);
   }
-  explicit ActivationArrayBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit ActivationArrayBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ActivationArrayBuilder &operator=(const ActivationArrayBuilder &);
-  flatbuffers::Offset<ActivationArray> Finish() {
+  ::flatbuffers::Offset<ActivationArray> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<ActivationArray>(end);
+    auto o = ::flatbuffers::Offset<ActivationArray>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<ActivationArray> CreateActivationArray(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>> data = 0) {
+inline ::flatbuffers::Offset<ActivationArray> CreateActivationArray(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>> data = 0) {
   ActivationArrayBuilder builder_(_fbb);
   builder_.add_data(data);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<ActivationArray> CreateActivationArrayDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *data = nullptr) {
-  auto data__ = data ? _fbb.CreateVector<flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>(*data) : 0;
+inline ::flatbuffers::Offset<ActivationArray> CreateActivationArrayDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>> *data = nullptr) {
+  auto data__ = data ? _fbb.CreateVector<::flatbuffers::Offset<dml::ir::operatorFieldTypes::Activation>>(*data) : 0;
   return dml::ir::operatorFieldTypes::CreateActivationArray(
       _fbb,
       data__);
 }
 
-struct UIntArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct UIntArray FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef UIntArrayBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DATA = 4
   };
-  const flatbuffers::Vector<uint32_t> *data() const {
-    return GetPointer<const flatbuffers::Vector<uint32_t> *>(VT_DATA);
+  const ::flatbuffers::Vector<uint32_t> *data() const {
+    return GetPointer<const ::flatbuffers::Vector<uint32_t> *>(VT_DATA);
   }
-  flatbuffers::Vector<uint32_t> *mutable_data() {
-    return GetPointer<flatbuffers::Vector<uint32_t> *>(VT_DATA);
+  ::flatbuffers::Vector<uint32_t> *mutable_data() {
+    return GetPointer<::flatbuffers::Vector<uint32_t> *>(VT_DATA);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DATA) &&
            verifier.VerifyVector(data()) &&
@@ -913,33 +922,32 @@ struct UIntArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct UIntArrayBuilder {
   typedef UIntArray Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_data(flatbuffers::Offset<flatbuffers::Vector<uint32_t>> data) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_data(::flatbuffers::Offset<::flatbuffers::Vector<uint32_t>> data) {
     fbb_.AddOffset(UIntArray::VT_DATA, data);
   }
-  explicit UIntArrayBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit UIntArrayBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  UIntArrayBuilder &operator=(const UIntArrayBuilder &);
-  flatbuffers::Offset<UIntArray> Finish() {
+  ::flatbuffers::Offset<UIntArray> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<UIntArray>(end);
+    auto o = ::flatbuffers::Offset<UIntArray>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<UIntArray> CreateUIntArray(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<uint32_t>> data = 0) {
+inline ::flatbuffers::Offset<UIntArray> CreateUIntArray(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<uint32_t>> data = 0) {
   UIntArrayBuilder builder_(_fbb);
   builder_.add_data(data);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<UIntArray> CreateUIntArrayDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<UIntArray> CreateUIntArrayDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<uint32_t> *data = nullptr) {
   auto data__ = data ? _fbb.CreateVector<uint32_t>(*data) : 0;
   return dml::ir::operatorFieldTypes::CreateUIntArray(
@@ -947,18 +955,18 @@ inline flatbuffers::Offset<UIntArray> CreateUIntArrayDirect(
       data__);
 }
 
-struct IntArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct IntArray FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef IntArrayBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DATA = 4
   };
-  const flatbuffers::Vector<int32_t> *data() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_DATA);
+  const ::flatbuffers::Vector<int32_t> *data() const {
+    return GetPointer<const ::flatbuffers::Vector<int32_t> *>(VT_DATA);
   }
-  flatbuffers::Vector<int32_t> *mutable_data() {
-    return GetPointer<flatbuffers::Vector<int32_t> *>(VT_DATA);
+  ::flatbuffers::Vector<int32_t> *mutable_data() {
+    return GetPointer<::flatbuffers::Vector<int32_t> *>(VT_DATA);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DATA) &&
            verifier.VerifyVector(data()) &&
@@ -968,33 +976,32 @@ struct IntArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct IntArrayBuilder {
   typedef IntArray Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_data(flatbuffers::Offset<flatbuffers::Vector<int32_t>> data) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_data(::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> data) {
     fbb_.AddOffset(IntArray::VT_DATA, data);
   }
-  explicit IntArrayBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit IntArrayBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  IntArrayBuilder &operator=(const IntArrayBuilder &);
-  flatbuffers::Offset<IntArray> Finish() {
+  ::flatbuffers::Offset<IntArray> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<IntArray>(end);
+    auto o = ::flatbuffers::Offset<IntArray>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<IntArray> CreateIntArray(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> data = 0) {
+inline ::flatbuffers::Offset<IntArray> CreateIntArray(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> data = 0) {
   IntArrayBuilder builder_(_fbb);
   builder_.add_data(data);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<IntArray> CreateIntArrayDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<IntArray> CreateIntArrayDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<int32_t> *data = nullptr) {
   auto data__ = data ? _fbb.CreateVector<int32_t>(*data) : 0;
   return dml::ir::operatorFieldTypes::CreateIntArray(
@@ -1002,18 +1009,18 @@ inline flatbuffers::Offset<IntArray> CreateIntArrayDirect(
       data__);
 }
 
-struct FloatArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct FloatArray FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef FloatArrayBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DATA = 4
   };
-  const flatbuffers::Vector<float> *data() const {
-    return GetPointer<const flatbuffers::Vector<float> *>(VT_DATA);
+  const ::flatbuffers::Vector<float> *data() const {
+    return GetPointer<const ::flatbuffers::Vector<float> *>(VT_DATA);
   }
-  flatbuffers::Vector<float> *mutable_data() {
-    return GetPointer<flatbuffers::Vector<float> *>(VT_DATA);
+  ::flatbuffers::Vector<float> *mutable_data() {
+    return GetPointer<::flatbuffers::Vector<float> *>(VT_DATA);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DATA) &&
            verifier.VerifyVector(data()) &&
@@ -1023,33 +1030,32 @@ struct FloatArray FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct FloatArrayBuilder {
   typedef FloatArray Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_data(flatbuffers::Offset<flatbuffers::Vector<float>> data) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_data(::flatbuffers::Offset<::flatbuffers::Vector<float>> data) {
     fbb_.AddOffset(FloatArray::VT_DATA, data);
   }
-  explicit FloatArrayBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit FloatArrayBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  FloatArrayBuilder &operator=(const FloatArrayBuilder &);
-  flatbuffers::Offset<FloatArray> Finish() {
+  ::flatbuffers::Offset<FloatArray> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<FloatArray>(end);
+    auto o = ::flatbuffers::Offset<FloatArray>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<FloatArray> CreateFloatArray(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<float>> data = 0) {
+inline ::flatbuffers::Offset<FloatArray> CreateFloatArray(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<float>> data = 0) {
   FloatArrayBuilder builder_(_fbb);
   builder_.add_data(data);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<FloatArray> CreateFloatArrayDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<FloatArray> CreateFloatArrayDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<float> *data = nullptr) {
   auto data__ = data ? _fbb.CreateVector<float>(*data) : 0;
   return dml::ir::operatorFieldTypes::CreateFloatArray(
@@ -1057,7 +1063,7 @@ inline flatbuffers::Offset<FloatArray> CreateFloatArrayDirect(
       data__);
 }
 
-struct ScalarUnionData FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct ScalarUnionData FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ScalarUnionDataBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DATA_TYPE = 4,
@@ -1106,7 +1112,7 @@ struct ScalarUnionData FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   void *mutable_data() {
     return GetPointer<void *>(VT_DATA);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_DATA_TYPE, 1) &&
            VerifyOffset(verifier, VT_DATA) &&
@@ -1161,37 +1167,36 @@ template<> inline const dml::ir::operatorFieldTypes::Float64 *ScalarUnionData::d
 
 struct ScalarUnionDataBuilder {
   typedef ScalarUnionData Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
   void add_data_type(dml::ir::operatorFieldTypes::ScalarVariant data_type) {
     fbb_.AddElement<uint8_t>(ScalarUnionData::VT_DATA_TYPE, static_cast<uint8_t>(data_type), 0);
   }
-  void add_data(flatbuffers::Offset<void> data) {
+  void add_data(::flatbuffers::Offset<void> data) {
     fbb_.AddOffset(ScalarUnionData::VT_DATA, data);
   }
-  explicit ScalarUnionDataBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit ScalarUnionDataBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ScalarUnionDataBuilder &operator=(const ScalarUnionDataBuilder &);
-  flatbuffers::Offset<ScalarUnionData> Finish() {
+  ::flatbuffers::Offset<ScalarUnionData> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<ScalarUnionData>(end);
+    auto o = ::flatbuffers::Offset<ScalarUnionData>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<ScalarUnionData> CreateScalarUnionData(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<ScalarUnionData> CreateScalarUnionData(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     dml::ir::operatorFieldTypes::ScalarVariant data_type = dml::ir::operatorFieldTypes::ScalarVariant_NONE,
-    flatbuffers::Offset<void> data = 0) {
+    ::flatbuffers::Offset<void> data = 0) {
   ScalarUnionDataBuilder builder_(_fbb);
   builder_.add_data(data);
   builder_.add_data_type(data_type);
   return builder_.Finish();
 }
 
-inline bool VerifyAttributeFieldVariant(flatbuffers::Verifier &verifier, const void *obj, AttributeFieldVariant type) {
+inline bool VerifyAttributeFieldVariant(::flatbuffers::Verifier &verifier, const void *obj, AttributeFieldVariant type) {
   switch (type) {
     case AttributeFieldVariant_NONE: {
       return true;
@@ -1205,16 +1210,16 @@ inline bool VerifyAttributeFieldVariant(flatbuffers::Verifier &verifier, const v
       return verifier.VerifyTable(ptr);
     }
     case AttributeFieldVariant_UInt32: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::UInt32));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::UInt32>(static_cast<const uint8_t *>(obj), 0, 4);
     }
     case AttributeFieldVariant_UInt64: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::UInt64));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::UInt64>(static_cast<const uint8_t *>(obj), 0, 8);
     }
     case AttributeFieldVariant_Int32: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Int32));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Int32>(static_cast<const uint8_t *>(obj), 0, 4);
     }
     case AttributeFieldVariant_Float32: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Float32));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Float32>(static_cast<const uint8_t *>(obj), 0, 4);
     }
     case AttributeFieldVariant_UIntArray: {
       auto ptr = reinterpret_cast<const dml::ir::operatorFieldTypes::UIntArray *>(obj);
@@ -1229,26 +1234,26 @@ inline bool VerifyAttributeFieldVariant(flatbuffers::Verifier &verifier, const v
       return verifier.VerifyTable(ptr);
     }
     case AttributeFieldVariant_ScaleBias: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::ScaleBias));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::ScaleBias>(static_cast<const uint8_t *>(obj), 0, 4);
     }
     case AttributeFieldVariant_Size2D: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Size2D));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Size2D>(static_cast<const uint8_t *>(obj), 0, 4);
     }
     case AttributeFieldVariant_ScalarUnionData: {
       auto ptr = reinterpret_cast<const dml::ir::operatorFieldTypes::ScalarUnionData *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case AttributeFieldVariant_Bool: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Bool));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Bool>(static_cast<const uint8_t *>(obj), 0, 1);
     }
     default: return true;
   }
 }
 
-inline bool VerifyAttributeFieldVariantVector(flatbuffers::Verifier &verifier, const flatbuffers::Vector<flatbuffers::Offset<void>> *values, const flatbuffers::Vector<uint8_t> *types) {
+inline bool VerifyAttributeFieldVariantVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types) {
   if (!values || !types) return !values && !types;
   if (values->size() != types->size()) return false;
-  for (flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
+  for (::flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
     if (!VerifyAttributeFieldVariant(
         verifier,  values->Get(i), types->GetEnum<AttributeFieldVariant>(i))) {
       return false;
@@ -1257,52 +1262,52 @@ inline bool VerifyAttributeFieldVariantVector(flatbuffers::Verifier &verifier, c
   return true;
 }
 
-inline bool VerifyScalarVariant(flatbuffers::Verifier &verifier, const void *obj, ScalarVariant type) {
+inline bool VerifyScalarVariant(::flatbuffers::Verifier &verifier, const void *obj, ScalarVariant type) {
   switch (type) {
     case ScalarVariant_NONE: {
       return true;
     }
     case ScalarVariant_ByteArray: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::ByteArray));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::ByteArray>(static_cast<const uint8_t *>(obj), 0, 1);
     }
     case ScalarVariant_Int8: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Int8));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Int8>(static_cast<const uint8_t *>(obj), 0, 1);
     }
     case ScalarVariant_UInt8: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::UInt8));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::UInt8>(static_cast<const uint8_t *>(obj), 0, 1);
     }
     case ScalarVariant_Int16: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Int16));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Int16>(static_cast<const uint8_t *>(obj), 0, 2);
     }
     case ScalarVariant_UInt16: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::UInt16));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::UInt16>(static_cast<const uint8_t *>(obj), 0, 2);
     }
     case ScalarVariant_Int32: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Int32));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Int32>(static_cast<const uint8_t *>(obj), 0, 4);
     }
     case ScalarVariant_UInt32: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::UInt32));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::UInt32>(static_cast<const uint8_t *>(obj), 0, 4);
     }
     case ScalarVariant_Int64: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Int64));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Int64>(static_cast<const uint8_t *>(obj), 0, 8);
     }
     case ScalarVariant_UInt64: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::UInt64));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::UInt64>(static_cast<const uint8_t *>(obj), 0, 8);
     }
     case ScalarVariant_Float32: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Float32));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Float32>(static_cast<const uint8_t *>(obj), 0, 4);
     }
     case ScalarVariant_Float64: {
-      return verifier.Verify(*static_cast<const size_t*>(obj), sizeof(dml::ir::operatorFieldTypes::Float64));
+      return verifier.VerifyField<dml::ir::operatorFieldTypes::Float64>(static_cast<const uint8_t *>(obj), 0, 8);
     }
     default: return true;
   }
 }
 
-inline bool VerifyScalarVariantVector(flatbuffers::Verifier &verifier, const flatbuffers::Vector<flatbuffers::Offset<void>> *values, const flatbuffers::Vector<uint8_t> *types) {
+inline bool VerifyScalarVariantVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types) {
   if (!values || !types) return !values && !types;
   if (values->size() != types->size()) return false;
-  for (flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
+  for (::flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
     if (!VerifyScalarVariant(
         verifier,  values->Get(i), types->GetEnum<ScalarVariant>(i))) {
       return false;
