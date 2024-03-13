@@ -155,12 +155,12 @@ common::Status OpenVINOExecutionProvider::Compile(
         std::make_shared<openvino_ep::BackendManager>(*global_context_, fused_node, graph_body_viewer, *GetLogger());
 
     compute_info.create_state_func =
-        [this](ComputeContext* context, FunctionState* state) {
+        [backend_manager](ComputeContext* context, FunctionState* state) {
           OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
           p->allocate_func = context->allocate_func;
           p->destroy_func = context->release_func;
           p->allocator_handle = context->allocator_handle;
-          p->backend_manager = backend_manager_;
+          p->backend_manager = backend_manager;
           *state = static_cast<FunctionState>(p);
           return 0;
         };
