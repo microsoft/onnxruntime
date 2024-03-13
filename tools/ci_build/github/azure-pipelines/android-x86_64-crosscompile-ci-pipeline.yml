@@ -457,7 +457,7 @@ stages:
     - name: skipComponentGovernanceDetection
       value: true
     pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-#    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     dependsOn:
     - NNAPI_EP_MASTER
     steps:
