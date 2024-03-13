@@ -187,13 +187,13 @@ class BaseQuantizer:
 
         if opset_version == 10:
             logging.warning(
-                f"The original model opset version is {opset_version}, which does not support node fusions. Please update the model to opset >= 11 for better performance."  # noqa: G004
+                f"The original model opset version is {opset_version}, which does not support node fusions. Please update the model to opset >= 11 for better performance."
             )
             return 10
 
         if opset_version < 10:
             logging.warning(
-                f"The original model opset version is {opset_version}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model."  # noqa: G004
+                f"The original model opset version is {opset_version}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model."
             )
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
@@ -201,7 +201,7 @@ class BaseQuantizer:
 
         if opset_version < 19 and self.weight_qType == onnx.TensorProto.FLOAT8E4M3FN:
             logging.warning(
-                f"The original model opset version is {opset_version}, which does not support quantization to float 8. "  # noqa: G004
+                f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
                 "Please update the model to opset >= 19. Updating the model automatically to opset 19. "
                 "Please verify the quantized model."
             )
@@ -625,7 +625,7 @@ class BaseQuantizer:
 
         if use_scale is None or use_zeropoint is None:
             if self.quantization_params is None or param_name not in self.quantization_params:
-                logging.info(f'Quantization parameters for tensor:"{param_name}" not specified')  # noqa: G004
+                logging.info(f'Quantization parameters for tensor:"{param_name}" not specified')
                 return False, "", "", "", ""
 
             params = self.quantization_params[param_name]

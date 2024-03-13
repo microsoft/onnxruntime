@@ -74,6 +74,7 @@ select = [
 ignore = [
     "B028", # FIXME: Add stacklevel to warnings
     "E501", # Line length controlled by black
+    "G004", # FIXME: Enable when the rule can be autofixed
     "N803", # Argument casing
     "N812", # Allow import torch.nn.functional as F
     "N999", # Module names

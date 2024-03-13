@@ -312,19 +312,19 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
 
         num_heads = value[2]
         if num_heads != self.num_heads:
-            logger.info(f"Detected num_heads={num_heads}. Ignore user specified value {self.num_heads}")  # noqa: G004
+            logger.info(f"Detected num_heads={num_heads}. Ignore user specified value {self.num_heads}")
             self.num_heads = num_heads
 
         hidden_size_per_head = value[3]
         i, value = self.model.get_constant_input(div_k)
         expected_value = float(np.sqrt(np.sqrt(hidden_size_per_head)))
         if not is_close(value, expected_value):
-            logger.debug(f"fuse_attention: div_k value={value} expected={expected_value}")  # noqa: G004
+            logger.debug(f"fuse_attention: div_k value={value} expected={expected_value}")
             return
 
         i, value = self.model.get_constant_input(div_q)
         if not is_close(value, expected_value):
-            logger.debug(f"fuse_attention: div_q value={value} expected={expected_value}")  # noqa: G004
+            logger.debug(f"fuse_attention: div_q value={value} expected={expected_value}")
             return
 
         # Match past and present paths

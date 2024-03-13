@@ -298,7 +298,9 @@ def create_weight_matching(float_model_path: str, qdq_model_path: str) -> Dict[s
         if not weight_values:
             continue  # Only care about DQ node with const inputs
         if not weight_name.endswith(TENSOR_NAME_QUANT_SUFFIX):
-            logging.error(f"Model Error in '{qdq_model_path}': Dequantized tensor name '{weight_name}' not recognized!")  # noqa: G004
+            logging.error(
+                f"Model Error in '{qdq_model_path}': Dequantized tensor name '{weight_name}' not recognized!"
+            )  # noqa: G004
             continue
 
         axis = -1
@@ -325,12 +327,16 @@ def create_weight_matching(float_model_path: str, qdq_model_path: str) -> Dict[s
         weight_quant = _run_dequantize_linear(weight_tensor, weight_scale, weight_zp, channel_axis=axis)
         weight_name = weight_name[: -len(TENSOR_NAME_QUANT_SUFFIX)]
         if weight_quant is None:
-            logging.error(f"Model Error in '{qdq_model_path}': '{weight_name}' per-channel quantization on 0 channel")  # noqa: G004
+            logging.error(
+                f"Model Error in '{qdq_model_path}': '{weight_name}' per-channel quantization on 0 channel"
+            )  # noqa: G004
             continue
 
         float_values = find_by_name(weight_name, float_onnx_model.initializer())
         if not float_values:
-            logging.error(f"Model Error in '{float_model_path}': weight tensor '{weight_name}' not found!")  # noqa: G004
+            logging.error(
+                f"Model Error in '{float_model_path}': weight tensor '{weight_name}' not found!"
+            )  # noqa: G004
             continue
         weight_float = numpy_helper.to_array(float_values)
         matched_weights[weight_name] = {"float": weight_float, "dequantized": weight_quant}

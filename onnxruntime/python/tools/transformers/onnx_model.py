@@ -285,7 +285,7 @@ class OnnxModel:
                 if parent.op_type == parent_op_type and parent not in exclude:
                     return parent, i
                 else:
-                    logger.debug(f"To find first {parent_op_type}, current {parent.op_type}")  # noqa: G004
+                    logger.debug(f"To find first {parent_op_type}, current {parent.op_type}")
         return None, None
 
     def match_parent(
@@ -326,7 +326,7 @@ class OnnxModel:
             return parent
 
         if input_index >= len(node.input):
-            logger.debug(f"input_index {input_index} >= node inputs {len(node.input)}")  # noqa: G004
+            logger.debug(f"input_index {input_index} >= node inputs {len(node.input)}")
             return None
 
         parent = self.get_parent(node, input_index, output_name_to_node)
@@ -334,7 +334,7 @@ class OnnxModel:
             return parent
 
         if parent is not None:
-            logger.debug(f"Expect {parent_op_type}, Got {parent.op_type}")  # noqa: G004
+            logger.debug(f"Expect {parent_op_type}, Got {parent.op_type}")
 
         return None
 
@@ -403,11 +403,11 @@ class OnnxModel:
             if matched_parent is None:
                 if parent_input_index is not None:
                     logger.debug(
-                        f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",  # noqa: G004
+                        f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
                         stack_info=True,
                     )
                 else:
-                    logger.debug(f"Failed to match index={i} op_type={op_type}", stack_info=True)  # noqa: G004
+                    logger.debug(f"Failed to match index={i} op_type={op_type}", stack_info=True)
                 return None
 
             matched_parents.append(matched_parent)
@@ -465,13 +465,13 @@ class OnnxModel:
                 if child.op_type == op_type and child not in exclude:
                     if child_output_index is not None and child_output_index[i] != child_i:
                         logger.debug(
-                            f"Failed to match index={i} child_output_index={child_output_index[i]} op_type={op_type}",  # noqa: G004
+                            f"Failed to match index={i} child_output_index={child_output_index[i]} op_type={op_type}",
                             stack_info=True,
                         )
                         return None
                     matched_child = child
             if matched_child is None:
-                logger.debug(f"Failed to match child op_type={op_type}", stack_info=True)  # noqa: G004
+                logger.debug(f"Failed to match child op_type={op_type}", stack_info=True)
                 return None
 
             matched_children.append(matched_child)
@@ -528,11 +528,11 @@ class OnnxModel:
     def is_constant_with_specified_dimension(self, output_name, dimensions, description):
         value = self.get_constant_value(output_name)
         if value is None:
-            logger.debug(f"{description} {output_name} is not initializer.")  # noqa: G004
+            logger.debug(f"{description} {output_name} is not initializer.")
             return False
 
         if len(value.shape) != dimensions:
-            logger.debug(f"{description} {output_name} shall have {dimensions} dimensions. Got shape {value.shape}")  # noqa: G004
+            logger.debug(f"{description} {output_name} shall have {dimensions} dimensions. Got shape {value.shape}")
             return False
 
         return True
@@ -904,7 +904,7 @@ class OnnxModel:
         self.remove_nodes(unused_nodes)
 
         if len(unused_nodes) > 0:
-            logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")  # noqa: G004
+            logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
     def prune_graph(self, outputs=None, allow_remove_graph_inputs=True):
         """
@@ -1001,14 +1001,14 @@ class OnnxModel:
         for node in graph.node:
             if node.op_type in ["Loop", "Scan", "If"]:
                 # TODO: handle inner graph
-                logger.debug(f"Skip update_graph since graph has operator: {node.op_type}")  # noqa: G004
+                logger.debug(f"Skip update_graph since graph has operator: {node.op_type}")
                 return
             if node.op_type != "Constant":
                 for input_name in node.input:
                     if input_name not in remaining_input_names:
                         remaining_input_names.append(input_name)
         if verbose:
-            logger.debug(f"remaining input names: {remaining_input_names}")  # noqa: G004
+            logger.debug(f"remaining input names: {remaining_input_names}")
 
         # remove graph input that is not used
         inputs_to_remove = []
@@ -1020,7 +1020,7 @@ class OnnxModel:
                 graph.input.remove(input)
 
         names_to_remove = [input.name for input in inputs_to_remove]
-        logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")  # noqa: G004
+        logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
 
         # remove weights that are not used
         weights_to_remove = []
@@ -1034,9 +1034,9 @@ class OnnxModel:
             graph.initializer.remove(initializer)
 
         names_to_remove = [initializer.name for initializer in weights_to_remove]
-        logger.debug(f"remove {len(weights_to_remove)} unused initializers: {names_to_remove}")  # noqa: G004
+        logger.debug(f"remove {len(weights_to_remove)} unused initializers: {names_to_remove}")
         if verbose:
-            logger.debug(f"remaining initializers:{weights_to_keep}")  # noqa: G004
+            logger.debug(f"remaining initializers:{weights_to_keep}")
 
         self.remove_unused_constant()
 
@@ -1149,13 +1149,13 @@ class OnnxModel:
             location = Path(external_data_path).name if all_tensors_to_one_file else None
 
             if os.path.exists(output_path):
-                logger.info(f"Delete the existing onnx file: {output_path}")  # noqa: G004
+                logger.info(f"Delete the existing onnx file: {output_path}")
                 os.remove(output_path)
 
             if all_tensors_to_one_file:
                 if os.path.exists(external_data_path):
                     # Delete the external data file. Otherwise, data will be appended to existing file.
-                    logger.info(f"Delete the existing external data file: {external_data_path}")  # noqa: G004
+                    logger.info(f"Delete the existing external data file: {external_data_path}")
                     os.remove(external_data_path)
             else:
                 if os.listdir(output_dir):
@@ -1182,7 +1182,7 @@ class OnnxModel:
         #       It is because the base directory is not updated for self.model object so attempt to read tensor data
         #       might encounter error since external data cannot be located.
         OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
-        logger.info(f"Model saved to {output_path}")  # noqa: G004
+        logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):
         """
@@ -1218,7 +1218,7 @@ class OnnxModel:
             op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
 
         # Sorted by count in the descending order, then by key in alphabetical order.
-        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")  # noqa: G004
+        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")
 
         return op_count
 

@@ -102,7 +102,7 @@ def convert_tensor_to_sparse(
     logger.debug(
         f"initializer={tensor.name}, dtype={tensor_data.dtype}, \
                  data_len={data_len}, nnz={nnz_count}, sparsity={sparsity}, \
-                 max_indices_value={max_indices_value}, sparse_indices_type={ind_dtype}"  # noqa: G004
+                 max_indices_value={max_indices_value}, sparse_indices_type={ind_dtype}"
     )
 
     if sparsity < sparsity_threshold:
@@ -117,7 +117,7 @@ def convert_tensor_to_sparse(
 
     logger.debug(
         f"initializer={tensor.name}, initializer_bytes={tensor_data_bytes}, \
-                sparse_initializer_bytes={total_sparse_bytes}"  # noqa: G004
+                sparse_initializer_bytes={total_sparse_bytes}"
     )
 
     # This check is usually useful for sparsity_threshold=0.5 where much
@@ -127,7 +127,7 @@ def convert_tensor_to_sparse(
     # rather than winning.
     if tensor_data_bytes <= total_sparse_bytes:
         sparsity = 1.0 - float(tensor_data_bytes) / total_sparse_bytes
-        logger.debug(f"initializer={tensor.name}, adjusted_sparsity={sparsity}")  # noqa: G004
+        logger.debug(f"initializer={tensor.name}, adjusted_sparsity={sparsity}")
         return (object(), sparsity)
 
     values_tensor = onnx.helper.make_tensor(tensor.name, tensor.data_type, [len(values)], np_values.tobytes(), raw=True)
@@ -148,19 +148,19 @@ def convert_initializers(
     remaining_initializers = []
     for initializer in graph.initializer:
         if initializer.name in exclude_names:
-            logger.info(f"initializer={initializer.name} was excluded")  # noqa: G004
+            logger.info(f"initializer={initializer.name} was excluded")
             continue
         if initializer.data_type == TensorProto.BOOL:
-            logger.info(f"initializer={initializer.name} contains bool, not converted")  # noqa: G004
+            logger.info(f"initializer={initializer.name} contains bool, not converted")
             remaining_initializers.append(initializer)
             continue
         sparse_tensor, sparsity = convert_tensor_to_sparse(initializer, sparsity_threshold, tolerance)
         if sparsity >= sparsity_threshold:
-            logger.info(f"initializer={initializer.name} converted. sparsity={sparsity}")  # noqa: G004
+            logger.info(f"initializer={initializer.name} converted. sparsity={sparsity}")
             converted_sparse.append(sparse_tensor)
         else:
             remaining_initializers.append(initializer)
-            logger.info(f"initializer={initializer.name} is not converted. sparsity={sparsity}")  # noqa: G004
+            logger.info(f"initializer={initializer.name} is not converted. sparsity={sparsity}")
 
     graph.sparse_initializer.extend(converted_sparse)
     del graph.initializer[:]

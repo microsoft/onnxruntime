@@ -22,10 +22,10 @@ class FusionUtils:
         graph_input = self.model.find_graph_input(input_name)
         if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
             cast_output, cast_node = self.cast_input_to_int32(input_name)
-            logger.debug(f"Casted graph input {input_name} to int32")  # noqa: G004
+            logger.debug(f"Casted graph input {input_name} to int32")
             return True, cast_output
 
-        logger.debug(f"Did not cast graph input {input_name} to int32: found {graph_input is not None}")  # noqa: G004
+        logger.debug(f"Did not cast graph input {input_name} to int32: found {graph_input is not None}")
         return False, input_name
 
     def cast_input(self, input_name: str, target_type="int32"):
@@ -187,7 +187,7 @@ class FusionUtils:
             bool: whether the check is passed or not
         """
         if node.op_type not in {"QuantizeLinear", "DequantizeLinear"}:
-            logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")  # noqa: G004
+            logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
 
         scale = model.get_constant_value(node.input[1])
 
@@ -249,7 +249,7 @@ class FusionUtils:
 
         if nodes_to_remove:
             self.model.remove_nodes(nodes_to_remove)
-            logger.info(f"Removed {len(nodes_to_remove)} Identity nodes")  # noqa: G004
+            logger.info(f"Removed {len(nodes_to_remove)} Identity nodes")
 
     def remove_cascaded_cast_nodes(self):
         self.model.remove_cascaded_cast_nodes()
@@ -270,7 +270,7 @@ class FusionUtils:
                 output_shape = shape_infer.get_edge_shape(node.output[0])
                 if input_shape and output_shape and input_shape == output_shape:
                     logger.info(
-                        f"Remove reshape node {node.name} since its input shape is same as output: {input_shape}"  # noqa: G004
+                        f"Remove reshape node {node.name} since its input shape is same as output: {input_shape}"
                     )
                     nodes_to_remove.append(node)
 

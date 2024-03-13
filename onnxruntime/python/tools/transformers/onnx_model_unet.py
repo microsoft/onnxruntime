@@ -232,7 +232,7 @@ class UnetOnnxModel(BertOnnxModel):
         if progress_bar:
             progress_bar.update(1)
 
-        logger.info(f"opset version: {self.get_opset_version()}")  # noqa: G004
+        logger.info(f"opset version: {self.get_opset_version()}")
 
     def get_fused_operator_statistics(self):
         """
@@ -255,5 +255,5 @@ class UnetOnnxModel(BertOnnxModel):
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
 
-        logger.info(f"Optimized operators:{op_count}")  # noqa: G004
+        logger.info(f"Optimized operators:{op_count}")
         return op_count

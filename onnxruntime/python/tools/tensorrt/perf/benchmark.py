@@ -479,7 +479,7 @@ def get_acl_version():
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
-    logger.info(f"Parsing test data in {path} ...")  # noqa: G004
+    logger.info(f"Parsing test data in {path} ...")
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
     test_data_set_dir = split_and_sort_output(output)
     logger.info(test_data_set_dir)
@@ -517,7 +517,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                     all_inputs_shape.append(input_data_pb[-1].shape)
                 logger.info(all_inputs_shape[-1])
         inputs.append(input_data_pb)
-        logger.info(f"Loaded {len(inputs)} inputs successfully.")  # noqa: G004
+        logger.info(f"Loaded {len(inputs)} inputs successfully.")
 
         # load outputs
         output = get_output(["find", ".", "-name", "output*"])
@@ -539,7 +539,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
 
                     logger.info(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-            logger.info(f"Loaded {len(outputs)} outputs successfully.")  # noqa: G004
+            logger.info(f"Loaded {len(outputs)} outputs successfully.")
 
         os.chdir(pwd)
     return inputs, outputs
@@ -594,9 +594,9 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
         logger.info("No reference output provided.")
         return True, None
 
-    logger.info(f"Reference {len(all_ref_outputs)} results.")  # noqa: G004
-    logger.info(f"Predicted {len(all_outputs)} results.")  # noqa: G004
-    logger.info(f"rtol: {rtol}, atol: {atol}")  # noqa: G004
+    logger.info(f"Reference {len(all_ref_outputs)} results.")
+    logger.info(f"Predicted {len(all_outputs)} results.")
+    logger.info(f"rtol: {rtol}, atol: {atol}")
 
     for i in range(len(all_outputs)):
         ref_outputs = all_ref_outputs[i]
@@ -1502,7 +1502,7 @@ def output_latency(results, csv_filename):
             ]
             csv_writer.writerow(row)
 
-    logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")  # noqa: G004
+    logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
 
 def output_metrics(model_to_metrics, csv_filename):
@@ -1585,7 +1585,7 @@ def output_metrics(model_to_metrics, csv_filename):
             ]
             csv_writer.writerow(row)
 
-    logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")  # noqa: G004
+    logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
 
 
 def output_op_metrics(model_to_metrics, csv_filename):
@@ -1612,7 +1612,7 @@ def output_op_metrics(model_to_metrics, csv_filename):
                 csv_writer.writerow([model, trt_fp16, trt_fp16_data])
 
     logger.info(
-        f"op metrics for cuda/trt ep are saved to csv file: {csv_filename} and will be displayed at Perf Dashboard"  # noqa: G004
+        f"op metrics for cuda/trt ep are saved to csv file: {csv_filename} and will be displayed at Perf Dashboard"
     )
 
 
@@ -1624,7 +1624,7 @@ def output_system_info(result, csv_filename):
         csv_writer.writeheader()
         csv_writer.writerow(result)
 
-    logger.info(f"System information are saved to csv file: {csv_filename}")  # noqa: G004
+    logger.info(f"System information are saved to csv file: {csv_filename}")
 
 
 def str2bool(v):
@@ -2296,17 +2296,17 @@ def main():
     perf_end_time = datetime.now()
 
     logger.info("Done running the perf.")
-    logger.info(f"\nTotal time for benchmarking all models: {perf_end_time - perf_start_time}")  # noqa: G004
+    logger.info(f"\nTotal time for benchmarking all models: {perf_end_time - perf_start_time}")
     logger.info(list(models.keys()))
 
-    logger.info(f"\nTotal models: {len(models)}")  # noqa: G004
+    logger.info(f"\nTotal models: {len(models)}")
 
     fail_model_cnt = 0
     for key in models:
         if key in model_to_fail_ep:
             fail_model_cnt += 1
-    logger.info(f"Fail models: {fail_model_cnt}")  # noqa: G004
-    logger.info(f"Success models: {len(models) - fail_model_cnt}")  # noqa: G004
+    logger.info(f"Fail models: {fail_model_cnt}")
+    logger.info(f"Success models: {len(models) - fail_model_cnt}")
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):

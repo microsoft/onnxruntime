@@ -27,7 +27,9 @@ class QOpMatMul(QuantOperatorBase):
         # do not quantize non-constant B matrices for matmul
         if self.quantizer.q_matmul_const_b_only:
             if not self.quantizer.find_initializer_in_path(self.node.input[1]):
-                logging.info(f"Ignore MatMul due to non constant B: {self.quantizer.graph_scope}[{self.node.name}]")  # noqa: G004
+                logging.info(
+                    f"Ignore MatMul due to non constant B: {self.quantizer.graph_scope}[{self.node.name}]"
+                )  # noqa: G004
                 return False
         return True
 

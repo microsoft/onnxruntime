@@ -161,10 +161,10 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
                     exclude = True
                     reason = "Specific typed registration is not required."
         else:
-            log.warning(f"Keeping {registration_identifier} registration from unknown domain: {constant_for_domain}")  # noqa: G004
+            log.warning(f"Keeping {registration_identifier} registration from unknown domain: {constant_for_domain}")
 
         if exclude:
-            log.info(f"Disabling {registration_identifier} registration: {reason}")  # noqa: G004
+            log.info(f"Disabling {registration_identifier} registration: {reason}")
             for line in lines:
                 self._output_file.write("// " + line)
 
@@ -214,7 +214,7 @@ def _generate_provider_registrations(
         if not kernel_registration_file.is_file():
             raise ValueError(f"Kernel registration file does not exist: {kernel_registration_file}")
 
-        log.info(f"Processing {kernel_registration_file}")  # noqa: G004
+        log.info(f"Processing {kernel_registration_file}")
 
         reduced_path = _get_op_reduction_file_path(ort_root, build_dir, kernel_registration_file)
 
@@ -302,7 +302,7 @@ def reduce_ops(
     # delete any existing generated files first
     op_reduction_root = _get_op_reduction_root(build_dir_path)
     if op_reduction_root.is_dir():
-        log.info(f"Deleting existing op reduction file root directory: {op_reduction_root}")  # noqa: G004
+        log.info(f"Deleting existing op reduction file root directory: {op_reduction_root}")
         shutil.rmtree(op_reduction_root)
 
     _generate_provider_registrations(ORT_ROOT, build_dir_path, use_cuda, required_ops, op_type_impl_filter)

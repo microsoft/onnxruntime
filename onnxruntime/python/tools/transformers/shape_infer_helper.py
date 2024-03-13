@@ -49,7 +49,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
 
         count = 0
         while self.run_:
-            logger.debug(f"shape infer run {count}")  # noqa: G004
+            logger.debug(f"shape infer run {count}")
             self.all_shapes_inferred_ = self._infer_impl()
             count += 1
             if max_runs > 0 and count >= max_runs:

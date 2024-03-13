@@ -176,7 +176,7 @@ def export_onnx_models(
         )
 
         if overwrite or not os.path.exists(onnx_path):
-            logger.info(f"Exporting ONNX model to {onnx_path}")  # noqa: G004
+            logger.info(f"Exporting ONNX model to {onnx_path}")
             # We have to clone model before exporting onnx, otherwise verify_onnx will report large difference.
             cloned_model = copy.deepcopy(model).to(device)
             T5Helper.export_onnx(
@@ -189,7 +189,7 @@ def export_onnx_models(
                 use_int32_inputs=use_int32_inputs,
             )
         else:
-            logger.info(f"Skip exporting: existed ONNX model {onnx_path}")  # noqa: G004
+            logger.info(f"Skip exporting: existed ONNX model {onnx_path}")
 
         # Optimize ONNX graph. Note that we have not implemented graph optimization for T5 yet.
         if optimize_onnx or precision != Precision.FLOAT32:
@@ -201,7 +201,7 @@ def export_onnx_models(
             )
 
             if overwrite or not os.path.exists(output_path):
-                logger.info(f"Optimizing model to {output_path}")  # noqa: G004
+                logger.info(f"Optimizing model to {output_path}")
                 T5Helper.optimize_onnx(
                     onnx_path,
                     output_path,
@@ -213,7 +213,7 @@ def export_onnx_models(
                     use_gpu=use_gpu,
                 )
             else:
-                logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")  # noqa: G004
+                logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
         else:
             output_path = onnx_path
 
@@ -225,7 +225,7 @@ def export_onnx_models(
 
         with torch.no_grad():
             max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")  # noqa: G004
+        logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
         if max_diff > 1e-4:
             logger.warning("PyTorch and OnnxRuntime results are NOT close")
 
@@ -239,7 +239,7 @@ def main():
 
     setup_logger(args.verbose)
 
-    logger.info(f"Arguments:{args}")  # noqa: G004
+    logger.info(f"Arguments:{args}")
 
     cache_dir = args.cache_dir
     output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
@@ -271,7 +271,7 @@ def main():
         args.model_type,
     )
 
-    logger.info(f"Done! Outputs: {output_paths}")  # noqa: G004
+    logger.info(f"Done! Outputs: {output_paths}")
 
 
 if __name__ == "__main__":

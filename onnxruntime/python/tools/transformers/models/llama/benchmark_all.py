@@ -278,7 +278,7 @@ def save_results(results, filename):
 
     BenchmarkRecord.save_as_csv(filename, records)
     BenchmarkRecord.save_as_json(filename.replace(".csv", ".json"), records)
-    logger.info(f"Results saved in {filename}!")  # noqa: G004
+    logger.info(f"Results saved in {filename}!")
 
 
 def benchmark(args, benchmark_cmd, engine):

@@ -227,7 +227,7 @@ class WhisperHelper:
         op_full_set = set([node.op_type for node in onnx_model.nodes()])
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
-        logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")  # noqa: G004
+        logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
 
         # logits is the first output
         logits_output_name = onnx_model.graph().output[0].name
@@ -240,7 +240,7 @@ class WhisperHelper:
         last_matmul_node = None
         if node.op_type == "MatMul":
             last_matmul_node = node
-            logger.info(f"Found last MatMul node for logits: {node.name}")  # noqa: G004
+            logger.info(f"Found last MatMul node for logits: {node.name}")
             initializer = None
             for input in node.input:
                 initializer = onnx_model.get_initializer(input)
@@ -250,10 +250,10 @@ class WhisperHelper:
             # when the max difference of value after converting float to float16 is lower than a threshold (1e-6),
             # we can deduce that the weights are stored in float16 precision.
             max_diff = float_to_float16_max_diff(initializer)
-            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")  # noqa: G004
+            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
             is_weight_fp16_precision = max_diff < 1e-6
         else:
-            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")  # noqa: G004
+            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
 
         keep_io_types = []
         node_block_list = []
@@ -269,7 +269,7 @@ class WhisperHelper:
             "force_fp16_initializers": is_weight_fp16_precision,
         }
 
-        logger.info(f"auto_mixed_precision parameters: {parameters}")  # noqa: G004
+        logger.info(f"auto_mixed_precision parameters: {parameters}")
         onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
 
         return parameters
@@ -334,9 +334,9 @@ class WhisperHelper:
         try:
             from datasets import load_dataset
         except Exception as e:
-            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)  # noqa: G004, G201
+            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)  # noqa: G201
             install_cmd = "pip install datasets"
-            logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")  # noqa: G004
+            logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
 
         from datasets import load_dataset
@@ -430,7 +430,7 @@ class WhisperHelper:
             max_diff = max(diff.min(), diff.max(), key=abs)
 
         if max_diff != 0:
-            logger.warning(f"PyTorch outputs: {pt_transcription}")  # noqa: G004
-            logger.warning(f"ONNX Runtime outputs: {ort_transcription}")  # noqa: G004
+            logger.warning(f"PyTorch outputs: {pt_transcription}")
+            logger.warning(f"ONNX Runtime outputs: {ort_transcription}")
 
         return max_diff

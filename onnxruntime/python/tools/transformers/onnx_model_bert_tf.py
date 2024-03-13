@@ -25,7 +25,7 @@ class BertOnnxModelTF(BertOnnxModel):
                     self.replace_input_of_all_nodes(node.output[0], node.input[0])
                     nodes_to_remove.append(node)
         self.remove_nodes(nodes_to_remove)
-        logger.info(f"Removed Identity count: {len(nodes_to_remove)}")  # noqa: G004
+        logger.info(f"Removed Identity count: {len(nodes_to_remove)}")
 
     def match_mask_path(self, add_or_sub_before_softmax):
         mask_nodes = self.match_parent_path(
@@ -300,10 +300,10 @@ class BertOnnxModelTF(BertOnnxModel):
 
             temp = numpy_helper.to_array(initializer)
             if len(temp.shape) == 2:
-                logger.info(f"Found position embedding. name:{initializer.name}, shape:{temp.shape}")  # noqa: G004
+                logger.info(f"Found position embedding. name:{initializer.name}, shape:{temp.shape}")
                 position_embedding = initializer.name
             else:
-                logger.info(f"Failed to find position embedding. name:{initializer.name}, shape:{temp.shape}")  # noqa: G004
+                logger.info(f"Failed to find position embedding. name:{initializer.name}, shape:{temp.shape}")
                 return
 
             first_parent = self.get_parent(add_node, 0, output_name_to_node)
@@ -311,7 +311,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 embeddings = self.get_2d_initializers_from_parent_subgraphs(first_parent)
                 if len(embeddings) != 2:
                     logger.warning(
-                        f"Failed to find two embeddings (word and segment) from Add node. Found {embeddings}"  # noqa: G004
+                        f"Failed to find two embeddings (word and segment) from Add node. Found {embeddings}"
                     )
                     return
 
@@ -320,10 +320,10 @@ class BertOnnxModelTF(BertOnnxModel):
                 for name, shape in embeddings.items():
                     if shape[0] == 2:
                         segment_embedding = name
-                        logger.info(f"Found segment embedding. name:{name}, shape:{shape}")  # noqa: G004
+                        logger.info(f"Found segment embedding. name:{name}, shape:{shape}")
                     else:
                         word_embedding = name
-                        logger.info(f"Found words embedding. name:{name}, shape:{shape}")  # noqa: G004
+                        logger.info(f"Found words embedding. name:{name}, shape:{shape}")
 
                 if word_embedding is None or segment_embedding is None:
                     logger.info("Failed to find both word and segment embedding")
@@ -346,7 +346,7 @@ class BertOnnxModelTF(BertOnnxModel):
             root_node = output_name_to_node[root_input]
             if root_node == parent:
                 continue
-            logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")  # noqa: G004
+            logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")
             return False
 
         return True
@@ -553,7 +553,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 continue
         self.remove_nodes(nodes_to_remove)
         self.update_graph()
-        logger.info(f"Fused Attention count:{attention_count}")  # noqa: G004
+        logger.info(f"Fused Attention count:{attention_count}")
 
     def preprocess(self):
         self.remove_identity()
@@ -570,7 +570,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 count += 1
 
         if count > 0:
-            logger.info(f"Skip consequent Reshape count: {count}")  # noqa: G004
+            logger.info(f"Skip consequent Reshape count: {count}")
 
     def remove_reshape_before_first_attention(self):
         attention_nodes = self.get_nodes_by_op_type("Attention")

@@ -182,7 +182,7 @@ class BertOnnxModel(OnnxModel):
                 add_cast_count += 1
             remove_cast_count += len(removed_nodes)
         logger.info(
-            f"Graph inputs are changed to int32. Added {add_cast_count} Cast nodes, and removed {remove_cast_count} Cast nodes."  # noqa: G004
+            f"Graph inputs are changed to int32. Added {add_cast_count} Cast nodes, and removed {remove_cast_count} Cast nodes."
         )
 
     def use_dynamic_axes(self, dynamic_batch_dim="batch_size", dynamic_seq_len="max_seq_len"):
@@ -248,7 +248,7 @@ class BertOnnxModel(OnnxModel):
 
         if nodes_to_remove:
             self.remove_nodes(nodes_to_remove)
-            logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")  # noqa: G004
+            logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")
 
     def clean_graph(self):
         output_name_to_node = self.output_name_to_node()
@@ -399,7 +399,7 @@ class BertOnnxModel(OnnxModel):
         if add_dynamic_axes:
             self.use_dynamic_axes()
 
-        logger.info(f"opset version: {self.get_opset_version()}")  # noqa: G004
+        logger.info(f"opset version: {self.get_opset_version()}")
 
     def get_fused_operator_statistics(self):
         """
@@ -430,7 +430,7 @@ class BertOnnxModel(OnnxModel):
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
 
-        logger.info(f"Optimized operators: {op_count}")  # noqa: G004
+        logger.info(f"Optimized operators: {op_count}")
         return op_count
 
     def is_fully_optimized(self, fused_op_count=None):

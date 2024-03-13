@@ -70,13 +70,13 @@ class FusionAttentionClip(FusionAttention):
 
         if self.num_heads > 0 and num_heads != self.num_heads:
             if self.num_heads_warning:
-                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")  # noqa: G004
+                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
                 self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
             if self.hidden_size_warning:
                 logger.warning(
-                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."  # noqa: G004
+                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."
                 )
                 self.hidden_size_warning = False  # Do not show the warning more than once
 

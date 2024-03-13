@@ -137,7 +137,7 @@ def run_onnxruntime(
 
     if optimizer_info == OptimizerInfo.NOOPT:
         logger.warning(
-            f"OptimizerInfo is set to {optimizer_info}, graph optimizations specified in FusionOptions are not applied."  # noqa: G004
+            f"OptimizerInfo is set to {optimizer_info}, graph optimizations specified in FusionOptions are not applied."
         )
 
     for model_name in model_names:
@@ -264,10 +264,10 @@ def run_onnxruntime(
 
                     if config.model_type in ["vit", "swin"]:
                         logger.info(
-                            f"Run onnxruntime on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"  # noqa: G004
+                            f"Run onnxruntime on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"
                         )
                     else:
-                        logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")  # noqa: G004
+                        logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
 
                     if disable_ort_io_binding:
                         result = inference_ort(
@@ -350,8 +350,8 @@ def run_pytorch(
 
             max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
 
-        logger.debug(f"Model {model}")  # noqa: G004
-        logger.debug(f"Number of parameters {model.num_parameters()}")  # noqa: G004
+        logger.debug(f"Model {model}")
+        logger.debug(f"Number of parameters {model.num_parameters()}")
 
         if precision == Precision.FLOAT16:
             model.half()
@@ -369,7 +369,7 @@ def run_pytorch(
             for sequence_length in sequence_lengths:
                 if config.model_type in ["vit", "swin"]:
                     logger.info(
-                        f"Run PyTorch on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"  # noqa: G004
+                        f"Run PyTorch on {model_name} with input shape {[batch_size, 3, config.image_size, config.image_size]}"
                     )
                     input_ids = torch.randn(
                         size=(batch_size, 3, config.image_size, config.image_size),
@@ -380,7 +380,7 @@ def run_pytorch(
                     if max_input_size is not None and sequence_length > max_input_size:
                         continue
 
-                    logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")  # noqa: G004
+                    logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
                     input_ids = torch.randint(
                         low=0,
                         high=config.vocab_size - 1,
@@ -510,7 +510,7 @@ def run_tensorflow(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")  # noqa: G004
+                logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")
 
                 import random
 
@@ -796,7 +796,7 @@ def main():
 
     args.num_threads = sorted({cpu_count if x <= 0 else x for x in args.num_threads})
 
-    logger.info(f"Arguments: {args}")  # noqa: G004
+    logger.info(f"Arguments: {args}")
 
     if not os.path.exists(args.cache_dir):
         try:
@@ -811,7 +811,7 @@ def main():
     enable_tensorflow = "tensorflow" in args.engines
 
     if enable_torch2 and version.parse(torch.__version__) < version.parse("2.0.0"):
-        logger.error(f"PyTorch version must be >=2.0.0 and you are using {torch.__version__}")  # noqa: G004
+        logger.error(f"PyTorch version must be >=2.0.0 and you are using {torch.__version__}")
         return
 
     config_modifier = ConfigModifier(args.force_num_layers)

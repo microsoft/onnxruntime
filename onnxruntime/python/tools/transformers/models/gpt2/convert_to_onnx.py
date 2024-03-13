@@ -258,7 +258,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
     if args.tolerance == 0:
         args.tolerance = DEFAULT_TOLERANCE[args.precision]
 
-    logger.info(f"Arguments:{args}")  # noqa: G004
+    logger.info(f"Arguments:{args}")
 
     cache_dir = args.cache_dir
     output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
@@ -299,9 +299,9 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
     int_data_type = torch.int64 if args.use_int64_inputs else torch.int32
 
     if os.path.exists(raw_onnx_model) and not args.overwrite:
-        logger.warning(f"Skip exporting ONNX model since it existed: {raw_onnx_model}")  # noqa: G004
+        logger.warning(f"Skip exporting ONNX model since it existed: {raw_onnx_model}")
     else:
-        logger.info(f"Exporting ONNX model to {raw_onnx_model}")  # noqa: G004
+        logger.info(f"Exporting ONNX model to {raw_onnx_model}")
         gpt2helper.export_onnx(
             model,
             device,
@@ -332,7 +332,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else "fp32"]
 
-        logger.info(f"Optimizing model to {output_path}")  # noqa: G004
+        logger.info(f"Optimizing model to {output_path}")
         m = gpt2helper.optimize_onnx(
             raw_onnx_model,
             output_path,
@@ -367,7 +367,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         shutil.move(output_path, args.output)
         output_path = args.output
 
-    logger.info(f"Output path: {output_path}")  # noqa: G004
+    logger.info(f"Output path: {output_path}")
     model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)  # noqa: N806
 
     session = create_onnxruntime_session(
@@ -417,7 +417,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         )
 
         if args.precision == Precision.FLOAT16:
-            logger.info(f"fp16 conversion parameters:{fp16_params}")  # noqa: G004
+            logger.info(f"fp16 conversion parameters:{fp16_params}")
 
         # Write results to file
         latency_name = get_latency_name(batch_size, sequence_length, past_sequence_length)
@@ -490,7 +490,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
                 "top1_match_rate_per_run": parity_result["top1_match_rate_per_run"],
                 "onnx_size_in_MB": f"{model_size_in_MB}",
             }
-            logger.info(f"result: {row}")  # noqa: G004
+            logger.info(f"result: {row}")
             result.update(row)
             csv_writer.writerow(row)
 
@@ -549,7 +549,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
             save_test_data_dir=Path(output_path).parent,
         )
 
-    logger.info(f"Done. Output model: {output_path}")  # noqa: G004
+    logger.info(f"Done. Output model: {output_path}")
     return result
 
 

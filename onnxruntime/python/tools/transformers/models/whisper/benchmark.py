@@ -64,7 +64,7 @@ def get_inputs(args: argparse.Namespace):
             inputs["temperature"] = np.array([args.temperature], dtype=np.float32)
 
     # Measure time taken to load audio file
-    logger.info(f"Load audio: {args.audio_path}")  # noqa: G004
+    logger.info(f"Load audio: {args.audio_path}")
     load_audio_fn = lambda onnx_e2e: load_via_numpy() if onnx_e2e else load_via_ffmpeg()  # noqa: E731
     time_fn(args, load_audio_fn, args.has_audio_stream)
     audio_data = load_audio_fn(args.has_audio_stream)
@@ -154,7 +154,7 @@ def get_model(args: argparse.Namespace):
 
     if args.benchmark_type == "ort":
         # convert_to_onnx.py export
-        logger.info(f"Loading model from {args.ort_model_path}")  # noqa: G004
+        logger.info(f"Loading model from {args.ort_model_path}")
         start_time = time.time()
         model = ort.InferenceSession(
             args.ort_model_path,
@@ -163,7 +163,7 @@ def get_model(args: argparse.Namespace):
         )
         end_time = time.time()
 
-    logger.info(f"Loaded model in {end_time - start_time} s")  # noqa: G004
+    logger.info(f"Loaded model in {end_time - start_time} s")
 
     return model
 
@@ -212,8 +212,8 @@ def time_fn(args, fn, inputs):
     latency = (end_time - start_time) / args.num_runs
     throughput = batch_size / latency
 
-    logger.info(f"Latency: {latency} s")  # noqa: G004
-    logger.info(f"Throughput: {throughput} qps")  # noqa: G004
+    logger.info(f"Latency: {latency} s")
+    logger.info(f"Throughput: {throughput} qps")
     return
 
 
@@ -253,7 +253,7 @@ def measure_fn(args, fn, inputs):
     process.cpu_percent(interval=0.1)
 
     fn(inputs)
-    logger.info(f"CPU usage: {process.cpu_percent(interval=None)}%")  # noqa: G004
+    logger.info(f"CPU usage: {process.cpu_percent(interval=None)}%")
 
     # Measure memory usage
     gc.collect()
@@ -302,19 +302,19 @@ def run_hf_inference(args, inputs, model):
             old_logname = model.encoder.session.end_profiling()
             new_logname = new_prefix + "-encoder.json"
             if os.path.isfile(old_logname):
-                logger.warning(f"Renaming {old_logname} to {new_logname}")  # noqa: G004
+                logger.warning(f"Renaming {old_logname} to {new_logname}")
                 os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
             old_logname = model.decoder.session.end_profiling()
             new_logname = new_prefix + "-decoder.json"
             if os.path.isfile(old_logname):
-                logger.warning(f"Renaming {old_logname} to {new_logname}")  # noqa: G004
+                logger.warning(f"Renaming {old_logname} to {new_logname}")
                 os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
             old_logname = model.decoder_with_past.session.end_profiling()
             new_logname = new_prefix + "-decoder-with-past.json"
             if os.path.isfile(old_logname):
-                logger.warning(f"Renaming {old_logname} to {new_logname}")  # noqa: G004
+                logger.warning(f"Renaming {old_logname} to {new_logname}")
                 os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
         return
@@ -323,8 +323,8 @@ def run_hf_inference(args, inputs, model):
     logger.info("\nEvaluating PyTorch...")
     time_fn(args, generate_fn, inputs)
     predicted_ids, transcription = generate_fn(inputs)
-    logger.info(f"Generated token length: {len(predicted_ids[0])} tokens")  # noqa: G004
-    logger.info(f"Transcription: {transcription[0]}")  # noqa: G004
+    logger.info(f"Generated token length: {len(predicted_ids[0])} tokens")
+    logger.info(f"Transcription: {transcription[0]}")
     measure_fn(args, generate_fn, inputs)
 
 
@@ -335,7 +335,7 @@ def run_ort_inference(args, inputs, model):
         user_inputs = set(inputs.keys())
         missing_inputs = model_inputs - user_inputs
         if len(missing_inputs):
-            logger.error(f"The following model inputs are missing: {missing_inputs}")  # noqa: G004
+            logger.error(f"The following model inputs are missing: {missing_inputs}")
             raise Exception("There are missing inputs to the model. Please add them and try again.")
 
         if warmup and args.tune:
@@ -345,7 +345,7 @@ def run_ort_inference(args, inputs, model):
         unnecessary_inputs = user_inputs - model_inputs
         if len(unnecessary_inputs):
             for unnecessary_input in unnecessary_inputs:
-                logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")  # noqa: G004
+                logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
                 del inputs[unnecessary_input]
 
         # Add IO bindings for non-CPU execution providers
@@ -384,7 +384,7 @@ def run_ort_inference(args, inputs, model):
 
         # Turn profiling off to stop appending to log file
         old_logname = model.end_profiling()
-        logger.warning(f"Renaming {old_logname} to {new_logname}")  # noqa: G004
+        logger.warning(f"Renaming {old_logname} to {new_logname}")
         os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
         return
@@ -404,11 +404,11 @@ def run_ort_inference(args, inputs, model):
 
     if args.has_audio_stream:
         # ONNX E2E model from Olive produces transcribed output
-        logger.info(f"Transcription: {ort_outputs[0][0]}")  # noqa: G004
+        logger.info(f"Transcription: {ort_outputs[0][0]}")
     else:
         # convert_to_onnx model produces generated ids
         actual_output = handle_output(ort_outputs[0][0])
-        logger.info(f"Generated token length: {len(actual_output)} tokens")  # noqa: G004
+        logger.info(f"Generated token length: {len(actual_output)} tokens")
         transcription = args.processor.batch_decode(ort_outputs[0], skip_special_tokens=True)[0]
         # print to stdout as the output for comparison
         print(f"{transcription}")
@@ -587,7 +587,7 @@ def main():
     setattr(args, "has_audio_stream", False)  # noqa: B010
     setattr(args, "eos_token_id", config.eos_token_id)  # noqa: B010
 
-    logger.info(f"Forced decoder prompt ids: {args.decoder_input_ids}")  # noqa: G004
+    logger.info(f"Forced decoder prompt ids: {args.decoder_input_ids}")
 
     # Measure cost to transcribe audio
     model = get_model(args)

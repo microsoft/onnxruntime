@@ -57,11 +57,11 @@ class ConvertPhi2ToONNX:
             if initializer.data_location == 1 and initializer.external_data[0].key == "location":
                 onnx_data_path = "./" + initializer.external_data[0].value
                 break
-        logging.info(f"Erasing {onnx_path}...")  # noqa: G004
+        logging.info(f"Erasing {onnx_path}...")
         os.remove(onnx_path)
         if onnx_data_path is not None:
             onnx_data_path = os.path.join(Path(onnx_path).parent, onnx_data_path)
-            logging.info(f"Erasing {onnx_data_path}...")  # noqa: G004
+            logging.info(f"Erasing {onnx_data_path}...")
             os.remove(onnx_data_path)
 
     def get_phi2_torch_model(self):

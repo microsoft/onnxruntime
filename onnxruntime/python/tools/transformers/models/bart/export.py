@@ -28,7 +28,7 @@ logger = logging.getLogger("generate")
 
 def print_args(args):
     for arg in vars(args):
-        logger.info(f"{arg}: {getattr(args, arg)}")  # noqa: G004
+        logger.info(f"{arg}: {getattr(args, arg)}")
 
 
 def user_command():

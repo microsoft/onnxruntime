@@ -157,5 +157,5 @@ class QDQGemm(QDQOperatorBase):
                 set_default_beta(self.node)
             else:
                 logging.warning(
-                    f"Bias of Gemm node '{self.node.name}' is not constant. Please exclude this node for better performance."  # noqa: G004
+                    f"Bias of Gemm node '{self.node.name}' is not constant. Please exclude this node for better performance."
                 )

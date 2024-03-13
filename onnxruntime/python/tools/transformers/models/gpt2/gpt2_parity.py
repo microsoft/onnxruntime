@@ -117,7 +117,7 @@ class ParityTask:
             if result:
                 self.results.append(result)
         except Exception:
-            logger.exception(f"Failed to run experiment {experiment_name}")  # noqa: G004
+            logger.exception(f"Failed to run experiment {experiment_name}")
             result = None
 
         return result
@@ -166,8 +166,8 @@ def print_wins(wins, rows, test_name):
             reverse=True,
         )
     )
-    logger.debug(f"{test_name} Wins:{sorted_wins}")  # noqa: G004
-    logger.info(f"Based on {test_name} wins and a scoring function, the ranking:")  # noqa: G004
+    logger.debug(f"{test_name} Wins:{sorted_wins}")
+    logger.info(f"Based on {test_name} wins and a scoring function, the ranking:")
 
     rank = 0
     previous_value = -1
@@ -282,7 +282,7 @@ def run_significance_test(rows, output_csv_path):
                 }
 
                 writer.writerow(row)
-    logger.info(f"U-Test and T-Test results are output to {output_csv_path}")  # noqa: G004
+    logger.info(f"U-Test and T-Test results are output to {output_csv_path}")
     print_wins(utest_wins, rows, "U-Test")
     print_wins(ttest_wins, rows, "T-Test")
 
@@ -295,10 +295,10 @@ def get_last_matmul_node_name(raw_onnx_model: str):
     assert model.graph.output[0].name in output_name_to_node
     node = output_name_to_node[model.graph.output[0].name]
     if node.op_type == "MatMul":
-        logger.info(f"Found last MatMul node for logits: {node.name}")  # noqa: G004
+        logger.info(f"Found last MatMul node for logits: {node.name}")
         return node.name
 
-    logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")  # noqa: G004
+    logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
     return None
 
 
@@ -505,7 +505,7 @@ if __name__ == "__main__":
     try:
         rows = load_results_from_csv(task.csv_path)
     except Exception:
-        logger.exception(f"Failed to load csv {task.csv_path}")  # noqa: G004
+        logger.exception(f"Failed to load csv {task.csv_path}")
         rows = task.results
 
     logger.info("Start running significance tests...")

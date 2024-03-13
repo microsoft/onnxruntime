@@ -10,7 +10,7 @@ logger = logging.getLogger("")
 
 def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32, device=None):
     world_size = get_size()
-    logger.info(f"world_size: {world_size}")  # noqa: G004
+    logger.info(f"world_size: {world_size}")
     rank = get_rank()
     barrier()
 

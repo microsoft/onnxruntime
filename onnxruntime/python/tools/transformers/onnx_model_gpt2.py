@@ -98,4 +98,4 @@ class Gpt2OnnxModel(BertOnnxModel):
             reshape_count += 2
 
         self.prune_graph()
-        logger.info(f"postprocess: remove Reshape count: {reshape_count}")  # noqa: G004
+        logger.info(f"postprocess: remove Reshape count: {reshape_count}")

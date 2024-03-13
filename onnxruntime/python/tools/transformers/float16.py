@@ -52,17 +52,17 @@ def convert_np_to_float16(np_array, min_positive_val=5.96e-08, max_finite_val=65
         positive_max = np_array[np.where(np_array > 0)].max()
         positive_min = np_array[np.where(np_array > 0)].min()
         if positive_max >= max_finite_val:
-            logger.debug(f"the float32 number {positive_max} will be truncated to {max_finite_val}")  # noqa: G004
+            logger.debug(f"the float32 number {positive_max} will be truncated to {max_finite_val}")
         if positive_min <= min_positive_val:
-            logger.debug(f"the float32 number {positive_min} will be truncated to {min_positive_val}")  # noqa: G004
+            logger.debug(f"the float32 number {positive_min} will be truncated to {min_positive_val}")
 
     if np_array[np.where(np_array < 0)].shape[0] > 0:
         negative_max = np_array[np.where(np_array < 0)].max()
         negative_min = np_array[np.where(np_array < 0)].min()
         if negative_min <= -max_finite_val:
-            logger.debug(f"the float32 number {negative_min} will be truncated to {-max_finite_val}")  # noqa: G004
+            logger.debug(f"the float32 number {negative_min} will be truncated to {-max_finite_val}")
         if negative_max >= -min_positive_val:
-            logger.debug(f"the float32 number {negative_max} will be truncated to {-min_positive_val}")  # noqa: G004
+            logger.debug(f"the float32 number {negative_max} will be truncated to {-min_positive_val}")
 
     np_array = np.where(between(0, np_array, min_positive_val), min_positive_val, np_array)
     np_array = np.where(between(-min_positive_val, np_array, 0), -min_positive_val, np_array)
@@ -239,7 +239,7 @@ def convert_float_to_float16(
     node_block_list = set(node_block_list)
 
     logger.debug(
-        f"fp16 parameters: min_positive_val={min_positive_val} max_finite_val={max_finite_val} keep_io_types={keep_io_types} disable_shape_infer={disable_shape_infer} op_block_list={op_block_list} node_block_list={node_block_list} force_fp16_initializers={force_fp16_initializers}"  # noqa: G004
+        f"fp16 parameters: min_positive_val={min_positive_val} max_finite_val={max_finite_val} keep_io_types={keep_io_types} disable_shape_infer={disable_shape_infer} op_block_list={op_block_list} node_block_list={node_block_list} force_fp16_initializers={force_fp16_initializers}"
     )
 
     # create a queue for BFS
@@ -411,7 +411,7 @@ def convert_float_to_float16(
             value_info_list.append(make_value_info_from_tensor(value.initializer))
             if value.fp32_nodes and not force_fp16_initializers:
                 logger.info(
-                    f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{value.fp16_nodes}"  # noqa: G004
+                    f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{value.fp16_nodes}"
                 )
 
     # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.

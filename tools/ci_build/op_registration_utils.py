@@ -229,7 +229,7 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
         )
 
     else:
-        log.warning(f"Ignoring unhandled kernel registration variant: {code_line}")  # noqa: G004
+        log.warning(f"Ignoring unhandled kernel registration variant: {code_line}")
         for line in lines_to_process:
             registration_processor.process_other_line(line)
 
@@ -247,7 +247,7 @@ def process_kernel_registration_file(
     """
 
     if not os.path.isfile(filename):
-        log.error(f"File not found: {filename}")  # noqa: G004
+        log.error(f"File not found: {filename}")
         return False
 
     lines = []

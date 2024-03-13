@@ -299,7 +299,7 @@ def chain_model(args):
     verify_inputs(beam_inputs, graph_inputs)
 
     assert decoder_model.ir_version == encoder_model.ir_version
-    logger.info(f"Using IR version {decoder_model.ir_version} for chained model")  # noqa: G004
+    logger.info(f"Using IR version {decoder_model.ir_version} for chained model")
 
     # Set IR version of chained model to IR version of subgraphs in order to generate a working E2E model
     beam_model = helper.make_model_gen_version(
@@ -311,7 +311,7 @@ def chain_model(args):
 
     # Save WhisperBeamSearch graph and external data
     if os.path.isfile(args.beam_model_output_dir):
-        logger.info(f"Overwriting {args.beam_model_output_dir} and {args.beam_model_output_dir + '.data'}")  # noqa: G004
+        logger.info(f"Overwriting {args.beam_model_output_dir} and {args.beam_model_output_dir + '.data'}")
         os.remove(args.beam_model_output_dir)
         os.remove(args.beam_model_output_dir + ".data")
 

@@ -678,7 +678,7 @@ class FissionTransformerBlockPhi(Fission):
     ):
         logger.info("Optimizing %s...", node.name)
 
-        logger.info(f"AttentionOpType: {self.attn_op_type}")  # noqa: G004
+        logger.info(f"AttentionOpType: {self.attn_op_type}")
 
         layer_id = self.get_layer_id(node)
 
@@ -894,7 +894,7 @@ class PhiOnnxModel(OnnxModel):
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
 
-        logger.info(f"Optimized operators: {op_count}")  # noqa: G004
+        logger.info(f"Optimized operators: {op_count}")
         return op_count
 
     def is_fully_optimized(self, fused_op_count=None):

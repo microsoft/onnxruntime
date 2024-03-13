@@ -178,12 +178,12 @@ class FusionAttention(Fusion):
             concat = self.model.get_parent(reshape_q, 1)
             if concat is not None and concat.op_type == "Concat":
                 return self.get_num_heads_and_hidden_size_from_concat(concat)
-            logger.debug(f"{reshape_q.input[1]} is not initializer.")  # noqa: G004
+            logger.debug(f"{reshape_q.input[1]} is not initializer.")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
         q_shape_value = NumpyHelper.to_array(q_shape)
         if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
-            logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")  # noqa: G004
+            logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
         num_heads = q_shape_value[2]
@@ -192,13 +192,13 @@ class FusionAttention(Fusion):
 
         if self.num_heads > 0 and num_heads != self.num_heads:
             if self.num_heads_warning:
-                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")  # noqa: G004
+                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
                 self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
             if self.hidden_size_warning:
                 logger.warning(
-                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."  # noqa: G004
+                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."
                 )
                 self.hidden_size_warning = False  # Do not show the warning more than once
 
@@ -216,11 +216,11 @@ class FusionAttention(Fusion):
         input_1_shape = self.shape_infer.get_edge_shape(add_qk.input[1])
 
         if input_0_shape is None or input_1_shape is None:
-            logger.debug(f"one of the inputs of {add_qk} is None")  # noqa: G004
+            logger.debug(f"one of the inputs of {add_qk} is None")
             return None
 
         if input_0_shape != input_1_shape:
-            logger.debug(f"the shape of two inputs of {add_qk} is not same")  # noqa: G004
+            logger.debug(f"the shape of two inputs of {add_qk} is not same")
             return None
 
         return add_qk.input[1]
@@ -659,7 +659,7 @@ class FusionAttention(Fusion):
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")  # noqa: G004
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
             return None
 
         graph_input_names = set([node.name for node in self.model.graph().input])
@@ -768,7 +768,7 @@ class FusionAttention(Fusion):
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")  # noqa: G004
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
             return None
 
         has_bias = True
@@ -810,7 +810,7 @@ class FusionAttention(Fusion):
 
         if hidden_size > 0 and hidden_size != qw_in_size:
             logger.warning(
-                f"Input hidden size ({hidden_size}) is not same as weight matrix dimension of q,k,v ({qw_in_size}). "  # noqa: G004
+                f"Input hidden size ({hidden_size}) is not same as weight matrix dimension of q,k,v ({qw_in_size}). "
                 "Please provide a correct input hidden size or pass in 0"
             )
 
@@ -1137,7 +1137,7 @@ class FusionAttention(Fusion):
             if add_qk is not None:
                 add_qk_str = self.get_add_qk_str(add_qk)
                 if add_qk_str is None:
-                    logger.debug(f"fuse_attention: failed to verify shape inference of {add_qk}")  # noqa: G004
+                    logger.debug(f"fuse_attention: failed to verify shape inference of {add_qk}")
                     return
         elif is_no_mask_attention:
             pass

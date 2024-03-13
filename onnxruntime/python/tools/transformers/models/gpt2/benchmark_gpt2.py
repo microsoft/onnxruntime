@@ -171,7 +171,7 @@ def main(args):
     ):  # past_key_values name does not exist in 3.0.2 or older
         raise RuntimeError("This tool requires transformers 3.1.0 or later.")
 
-    logger.info(f"Arguments:{args}")  # noqa: G004
+    logger.info(f"Arguments:{args}")
     if args.precision == Precision.FLOAT16:
         assert args.optimize_onnx and args.use_gpu, "fp16 requires --optimize_onnx --use_gpu"
 
@@ -330,10 +330,10 @@ def main(args):
                             for i, value in enumerate(outputs):
                                 if isinstance(value, tuple):
                                     logger.debug(
-                                        f"torch output {i} is tuple of size {len(value)}, shape {value[0].shape}"  # noqa: G004
+                                        f"torch output {i} is tuple of size {len(value)}, shape {value[0].shape}"
                                     )
                                 else:
-                                    logger.debug(f"torch output {i} shape {value.shape}")  # noqa: G004
+                                    logger.debug(f"torch output {i} shape {value.shape}")
                         else:
                             outputs = None
                             torch_latency = None
@@ -369,7 +369,7 @@ def main(args):
                                 atol=DEFAULT_TOLERANCE[args.precision],
                             ):
                                 logger.info(
-                                    f"Pytorch and ONNX Runtime outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]})."  # noqa: G004
+                                    f"Pytorch and ONNX Runtime outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]})."
                                 )
 
                         logger.info(
@@ -403,7 +403,7 @@ def main(args):
                         logger.error("Exception", exc_info=True)  # noqa: G201
                         return None
 
-    logger.info(f"Results are saved to file {csv_filename}")  # noqa: G004
+    logger.info(f"Results are saved to file {csv_filename}")
     return csv_filename
 
 

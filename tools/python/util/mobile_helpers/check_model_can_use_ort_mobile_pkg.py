@@ -60,11 +60,11 @@ def check_graph(graph, opsets, required_ops, global_types, special_types, unsupp
             t = value_info.type.tensor_type.elem_type
             if t not in global_types and t not in special_types:
                 cpp_type = tensorproto_type_to_cpp[t]
-                logger.debug(f"Element type {cpp_type} of {description} is not supported.")  # noqa: G004
+                logger.debug(f"Element type {cpp_type} of {description} is not supported.")
                 is_supported = False
         else:
             # we don't support sequences, map, sparse tensors, or optional types in the pre-built package
-            logger.debug(f"Data type {type_name} of {description} is not supported.")  # noqa: G004
+            logger.debug(f"Data type {type_name} of {description} is not supported.")
             is_supported = False
 
         return is_supported
@@ -142,7 +142,7 @@ def _get_global_tensorproto_types(op_type_impl_filter, logger: logging.Logger):
         if t in cpp_to_tensorproto_type:
             global_onnx_tensorproto_types.add(cpp_to_tensorproto_type[t])
         else:
-            logger.error(f"Error: Unexpected data type of {t} in package build config's globally enabled types.")  # noqa: G004
+            logger.error(f"Error: Unexpected data type of {t} in package build config's globally enabled types.")
             sys.exit(-1)
 
     # a subset of operators require int32 and int64 to always be enabled, as those types are used for dimensions in
@@ -204,8 +204,8 @@ def run_check_with_model(
     supported_onnx_opsets.remove(1)
     onnx_opset_model_uses = opsets["ai.onnx"]
     if onnx_opset_model_uses not in supported_onnx_opsets:
-        logger.info(f"Model uses ONNX opset {onnx_opset_model_uses}.")  # noqa: G004
-        logger.info(f"The pre-built package only supports ONNX opsets {sorted(supported_onnx_opsets)}.")  # noqa: G004
+        logger.info(f"Model uses ONNX opset {onnx_opset_model_uses}.")
+        logger.info(f"The pre-built package only supports ONNX opsets {sorted(supported_onnx_opsets)}.")
         logger.info(
             "Please try updating the ONNX model opset to a supported version using "
             "python -m onnxruntime.tools.onnx_model_utils.update_onnx_opset ..."
@@ -259,7 +259,7 @@ def run_check(model_path: pathlib.Path, mobile_pkg_build_config: pathlib.Path, l
     :return: True if supported
     """
     logger.info(
-        f"Checking if pre-built ORT Mobile package can be used with {model_path} once model is "  # noqa: G004
+        f"Checking if pre-built ORT Mobile package can be used with {model_path} once model is "
         "converted from ONNX to ORT format using onnxruntime.tools.convert_onnx_models_to_ort..."
     )
 

@@ -71,7 +71,7 @@ def test_torch_latency(
     for batch_size in batch_sizes:
         for sequence_length in sequence_lengths:
             for global_length in global_lengths:
-                logger.info(f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}")  # noqa: G004
+                logger.info(f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}")
                 inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
                     batch_size, sequence_length, global_length, device
                 )
@@ -109,7 +109,7 @@ def test_torch_latency(
 
 def test_parity(device, model, ort_session, batch_size, sequence_length, global_length, verbose=True):
     parameters = f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}"
-    logger.info(f"Comparing Torch and ORT outputs for {parameters}...")  # noqa: G004
+    logger.info(f"Comparing Torch and ORT outputs for {parameters}...")
     dummy_inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
         batch_size, sequence_length, global_length, device
     )
@@ -118,7 +118,7 @@ def test_parity(device, model, ort_session, batch_size, sequence_length, global_
     input_list = dummy_inputs.to_list()
     torch_outputs = model(*input_list)
     max_diff = np.amax(torch_outputs[0].cpu().numpy() - ort_outputs[0])
-    logger.info(f"last_state max diff = {max_diff}")  # noqa: G004
+    logger.info(f"last_state max diff = {max_diff}")
     if verbose and (math.isnan(max_diff) or max_diff > 0.001):
         print("torch last_state:", torch_outputs[0])
         print("ort last_state:", ort_outputs[0])
@@ -153,7 +153,7 @@ def test_ort_latency(
                 ), "Limitation of current implementation: number of global token <= attention_window"
 
                 logger.info(
-                    f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} "  # noqa: G004
+                    f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} "
                     f"optimizer={optimizer}, precision={precision} io_binding={not disable_io_binding}..."
                 )
                 dummy_inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
@@ -252,7 +252,7 @@ def test_ort_memory(
     num_threads,
 ) -> Dict[str, Any]:
     logger.info(
-        f"Testing memory for model={onnx_model_path}, batch_size={batch_size}, sequence_length={sequence_length}, "  # noqa: G004
+        f"Testing memory for model={onnx_model_path}, batch_size={batch_size}, sequence_length={sequence_length}, "
         f"global_length={global_length}, test_times={test_times}, num_threads={num_threads}"
     )
 
@@ -587,7 +587,7 @@ def run_tests(
 ):
     compact_memory = "1" if use_compact_memory else "0"
     os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
-    logger.info(f"ORT_LONGFORMER_COMPACT_MEMORY={compact_memory}")  # noqa: G004
+    logger.info(f"ORT_LONGFORMER_COMPACT_MEMORY={compact_memory}")
 
     os.environ["ORT_LONGFORMER_USE_HALF4"] = "1" if use_half4 else "0"
     logger.info("ORT_LONGFORMER_USE_HALF4={}".format("1" if use_half4 else "0"))  # noqa: G001
@@ -794,7 +794,7 @@ def main():
     is_baseline = os.environ.get("ORT_LONGFORMER_BASELINE", "0") == "1"
     experiment_name = f"longformer_base_{gpu_name}" + ("_baseline" if is_baseline else "")
     logger.info(
-        f"experiment_name={experiment_name}, fp16_batch_sizes={fp16_batch_sizes}, fp32_batch_sizes={fp32_batch_sizes}"  # noqa: G004
+        f"experiment_name={experiment_name}, fp16_batch_sizes={fp16_batch_sizes}, fp32_batch_sizes={fp32_batch_sizes}"
     )
 
     total_runs = 1

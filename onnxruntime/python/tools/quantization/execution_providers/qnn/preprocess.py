@@ -133,7 +133,9 @@ def qnn_preprocess_model(
             available_suffix += 1
             node.name = new_node_name
             modified = True
-            logging.warning(f"Node of type {node.op_type} does not have a name. Renamed to {new_node_name}.")  # noqa: G004
+            logging.warning(
+                f"Node of type {node.op_type} does not have a name. Renamed to {new_node_name}."
+            )  # noqa: G004
 
     if modified:
         onnx_model.topological_sort()

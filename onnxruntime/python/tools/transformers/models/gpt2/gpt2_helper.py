@@ -307,7 +307,7 @@ class Gpt2Helper:
         Note: need kwargs since Gpt2BeamSearchHelper.compare_outputs has an extra parameter model_class
         """
         is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu().numpy(), rtol=rtol, atol=atol)
-        logger.debug(f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}")  # noqa: G004
+        logger.debug(f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}")
 
         is_all_close = is_close
         num_layers = len(ort_outputs) - 1
@@ -319,12 +319,12 @@ class Gpt2Helper:
                 rtol=rtol,
                 atol=atol,
             )
-            logger.debug(f"PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}")  # noqa: G004
+            logger.debug(f"PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}")
             is_all_close = is_all_close and is_close
 
         if not is_all_close:
             max_abs_diff = Gpt2Helper.diff_outputs(torch_outputs, ort_outputs)
-            logger.info(f"PyTorch and OnnxRuntime results are not all close: max_abs_diff={max_abs_diff:.5f}")  # noqa: G004
+            logger.info(f"PyTorch and OnnxRuntime results are not all close: max_abs_diff={max_abs_diff:.5f}")
 
         return is_all_close
 
@@ -354,13 +354,13 @@ class Gpt2Helper:
             is_all_close = is_all_close and is_close
 
             if numpy.isnan(torch_output).any():
-                logger.debug(f"PyTorch output {i} has nan")  # noqa: G004
+                logger.debug(f"PyTorch output {i} has nan")
             if numpy.isinf(torch_output).any():
-                logger.debug(f"PyTorch output {i} has inf")  # noqa: G004
+                logger.debug(f"PyTorch output {i} has inf")
             if numpy.isnan(ort_output).any():
-                logger.debug(f"ORT output {i} has nan")  # noqa: G004
+                logger.debug(f"ORT output {i} has nan")
             if numpy.isinf(ort_output).any():
-                logger.debug(f"ORT output {i} has inf")  # noqa: G004
+                logger.debug(f"ORT output {i} has inf")
 
             diff = numpy.fabs(ort_output - torch_output)
             idx = numpy.unravel_index(diff.argmax(), diff.shape)
@@ -455,7 +455,7 @@ class Gpt2Helper:
         assert len(outputs) == 2 and len(outputs[1]) == num_layer
 
         logger.info(
-            f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"  # noqa: G004
+            f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
         )
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
@@ -561,7 +561,7 @@ class Gpt2Helper:
         op_full_set = {node.op_type for node in onnx_model.nodes()}
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
-        logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")  # noqa: G004
+        logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
 
         # logits is the first output
         logits_output_name = onnx_model.graph().output[0].name
@@ -574,7 +574,7 @@ class Gpt2Helper:
         last_matmul_node = None
         if node.op_type == "MatMul":
             last_matmul_node = node
-            logger.info(f"Found last MatMul node for logits: {node.name}")  # noqa: G004
+            logger.info(f"Found last MatMul node for logits: {node.name}")
             initializer = None
             for input in node.input:
                 initializer = onnx_model.get_initializer(input)
@@ -584,10 +584,10 @@ class Gpt2Helper:
             # when the max difference of value after converting float to float16 is lower than a threshold (1e-6),
             # we can deduce that the weights are stored in float16 precision.
             max_diff = float_to_float16_max_diff(initializer)
-            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")  # noqa: G004
+            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
             is_weight_fp16_precision = max_diff < 1e-6
         else:
-            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")  # noqa: G004
+            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
 
         keep_io_types = []
         node_block_list = []
@@ -603,7 +603,7 @@ class Gpt2Helper:
             "force_fp16_initializers": is_weight_fp16_precision,
         }
 
-        logger.info(f"auto_mixed_precision parameters: {parameters}")  # noqa: G004
+        logger.info(f"auto_mixed_precision parameters: {parameters}")
         onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
 
         return parameters
@@ -741,7 +741,9 @@ class Gpt2Helper:
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug("OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, ".2f")))  # noqa: G001
+        logger.debug(
+            "OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, ".2f"))
+        )  # noqa: G001
 
         return ort_outputs, average_latency
 
@@ -749,17 +751,17 @@ class Gpt2Helper:
     def save_outputs(i, ort_outputs, torch_outputs):
         with open(f"ort_outputs_{i}.pickle", "wb") as f:
             pickle.dump(ort_outputs, f)
-        logger.info(f"ORT output are saved to ort_outputs_{i}.pickle")  # noqa: G004
+        logger.info(f"ORT output are saved to ort_outputs_{i}.pickle")
 
         with open(f"torch_outputs_{i}.pickle", "wb") as f:
             pickle.dump(torch_outputs, f)
-        logger.info(f"Torch output are saved to torch_outputs_{i}.pickle")  # noqa: G004
+        logger.info(f"Torch output are saved to torch_outputs_{i}.pickle")
 
     @staticmethod
     def save_inputs(i, dummy_inputs, ort_outputs, torch_outputs):
         with open(f"dummy_inputs_{i}.pickle", "wb") as f:
             pickle.dump(dummy_inputs, f)
-        logger.info(f"inputs are saved to dummy_inputs_{i}.pickle")  # noqa: G004
+        logger.info(f"inputs are saved to dummy_inputs_{i}.pickle")
 
     @staticmethod
     def test_parity(
@@ -787,7 +789,7 @@ class Gpt2Helper:
         config: GPT2Config = model.config
 
         logger.info(
-            f"Running parity test (atol={atol}, test_cases={test_cases_per_run}, runs={total_runs}, use_io_binding={use_io_binding}, model_class={model_class}, is_float16={is_float16}) ..."  # noqa: G004
+            f"Running parity test (atol={atol}, test_cases={test_cases_per_run}, runs={total_runs}, use_io_binding={use_io_binding}, model_class={model_class}, is_float16={is_float16}) ..."
         )
 
         max_batch_size = 8
@@ -814,7 +816,7 @@ class Gpt2Helper:
             batch_size = random.randint(1, max_batch_size)
 
             logger.debug(
-                f"Running parity test for batch_size={batch_size} past_sequence_length={past_sequence_length}..."  # noqa: G004
+                f"Running parity test for batch_size={batch_size} past_sequence_length={past_sequence_length}..."
             )
             dummy_inputs = Gpt2Helper.get_dummy_inputs(
                 batch_size,
@@ -866,10 +868,10 @@ class Gpt2Helper:
 
             if verbose and not is_all_close:
                 logger.info(
-                    f"test_case={i} batch_size={batch_size} past_sequence_length={past_sequence_length} sequence_length={sequence_length} MaxDiff={max_abs_diff}"  # noqa: G004
+                    f"test_case={i} batch_size={batch_size} past_sequence_length={past_sequence_length} sequence_length={sequence_length} MaxDiff={max_abs_diff}"
                 )
                 for i, message in enumerate(messages):  # noqa: PLW2901
-                    logger.info(f"\t{i}: Name={ort_session.get_outputs()[i].name}, {message}")  # noqa: G004
+                    logger.info(f"\t{i}: Name={ort_session.get_outputs()[i].name}, {message}")
 
             # Collect data for debugging
             if enable_pickle_output and (numpy.isnan(max_abs_diff) or max_abs_diff > 100 * atol):
@@ -889,11 +891,11 @@ class Gpt2Helper:
         result["nan_rate"] = (total_test_cases - len(max_abs_diff_list)) * 1.0 / total_test_cases
 
         logger.info(
-            f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}; Nan={total_test_cases-len(max_abs_diff_list)}; Top1_Matched={top1_matched_cases}"  # noqa: G004
+            f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}; Nan={total_test_cases-len(max_abs_diff_list)}; Top1_Matched={top1_matched_cases}"
         )
 
         if passed_test_cases > 0.95 * total_test_cases:
-            logger.info(f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%")  # noqa: G004
+            logger.info(f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%")
 
         return result
 
@@ -1001,11 +1003,11 @@ class Gpt2Helper:
                     if model_type in remove_existing:
                         try:
                             shutil.rmtree(new_dir)
-                            logger.info(f"Removed the existed directory: {new_dir}")  # noqa: G004
+                            logger.info(f"Removed the existed directory: {new_dir}")
                         except OSError as e:
-                            logger.info(f"Failed to remove the directory {new_dir}: {e.strerror}")  # noqa: G004
+                            logger.info(f"Failed to remove the directory {new_dir}: {e.strerror}")
                     else:
-                        logger.info(f"Directory for {model_type} existed: {new_dir}")  # noqa: G004
+                        logger.info(f"Directory for {model_type} existed: {new_dir}")
 
             # store each model to its own directory (for external data format).
             return {

@@ -370,7 +370,7 @@ def export_onnx_models(
         )
 
         if overwrite or not os.path.exists(onnx_path):
-            logger.info(f"Exporting ONNX model to {onnx_path}")  # noqa: G004
+            logger.info(f"Exporting ONNX model to {onnx_path}")
             # We have to clone model before exporting onnx, otherwise verify_onnx will report large difference.
             device_to_export = torch.device("cpu")
             cloned_model = copy.deepcopy(model).to(device_to_export)
@@ -383,7 +383,7 @@ def export_onnx_models(
                 use_int32_inputs=use_int32_inputs,
             )
         else:
-            logger.info(f"Skip exporting: existed ONNX model {onnx_path}")  # noqa: G004
+            logger.info(f"Skip exporting: existed ONNX model {onnx_path}")
 
         # Optimize ONNX graph. Note that we have not implemented graph optimization for Whisper yet.
         if optimize_onnx or precision != Precision.FLOAT32:
@@ -396,7 +396,7 @@ def export_onnx_models(
 
             if overwrite or not os.path.exists(output_path):
                 if optimize_onnx:
-                    logger.info(f"Optimizing model to {output_path}")  # noqa: G004
+                    logger.info(f"Optimizing model to {output_path}")
                     WhisperHelper.optimize_onnx(
                         onnx_path,
                         output_path,
@@ -423,7 +423,7 @@ def export_onnx_models(
                         extra_options={"MatMulConstBOnly": True},
                     )
             else:
-                logger.info(f"Skip optimizing: existing ONNX model {onnx_path}")  # noqa: G004
+                logger.info(f"Skip optimizing: existing ONNX model {onnx_path}")
         else:
             output_path = onnx_path
 
@@ -444,7 +444,7 @@ def main(argv=None):
 
     setup_logger(args.verbose)
 
-    logger.info(f"Arguments:{args}")  # noqa: G004
+    logger.info(f"Arguments:{args}")
 
     cache_dir = args.cache_dir
     output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
@@ -513,7 +513,7 @@ def main(argv=None):
                 logger.info("PyTorch and ONNX Runtime results are close")
         except Exception as e:
             logger.warning(
-                f"An error occurred while trying to verify parity between PyTorch and ONNX Runtime: {e}", exc_info=True  # noqa: G004
+                f"An error occurred while trying to verify parity between PyTorch and ONNX Runtime: {e}", exc_info=True
             )
 
         # Remove extra ONNX models saved in output directory
@@ -522,7 +522,7 @@ def main(argv=None):
                 os.remove(os.path.join(output_dir, fle))
         output_paths = [args.beam_model_output_dir]
 
-    logger.info(f"Done! Outputs: {output_paths}")  # noqa: G004
+    logger.info(f"Done! Outputs: {output_paths}")
     return max_diff
 
 

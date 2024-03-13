@@ -209,17 +209,17 @@ def optimize_by_fusion(
         object of an optimizer class.
     """
     if model_type not in ["bert", "swin", "unet", "vae", "clip"] and (num_heads == 0 or hidden_size == 0):
-        logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")  # noqa: G004
+        logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
 
     if model_type not in MODEL_TYPES:
-        logger.warning(f"Unsupported model type: {model_type} for graph fusion, directly return model.")  # noqa: G004
+        logger.warning(f"Unsupported model type: {model_type} for graph fusion, directly return model.")
         return OnnxModel(model)
 
     (optimizer_class, producer, _) = MODEL_TYPES[model_type]
 
     if model.producer_name and producer != model.producer_name:
         logger.warning(
-            f'Model producer not matched: Expected "{producer}", Got "{model.producer_name}".'  # noqa: G004
+            f'Model producer not matched: Expected "{producer}", Got "{model.producer_name}".'
             "Please specify correct --model_type parameter."
         )
 
@@ -297,7 +297,7 @@ def optimize_model(
     assert opt_level is None or opt_level in [0, 1, 2, 99]
 
     if model_type not in MODEL_TYPES:
-        logger.warning(f"Unsupported model type: {model_type} for optimization, directly return model.")  # noqa: G004
+        logger.warning(f"Unsupported model type: {model_type} for optimization, directly return model.")
         return OnnxModel(load_model(input))
 
     (optimizer_class, _producer, default_opt_level) = MODEL_TYPES[model_type]
@@ -533,7 +533,7 @@ def main():
 
     _setup_logger(args.verbose)
 
-    logger.debug(f"arguments:{args}")  # noqa: G004
+    logger.debug(f"arguments:{args}")
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
         logger.warning("Specified the same input and output path. Note that this may overwrite the original model")

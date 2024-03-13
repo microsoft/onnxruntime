@@ -81,7 +81,7 @@ class OrtStableDiffusionOptimizer:
         tmp_dir=None,
     ):
         """Optimize onnx model using ONNX Runtime transformers optimizer"""
-        logger.info(f"Optimize {input_fp32_onnx_path}...")  # noqa: G004
+        logger.info(f"Optimize {input_fp32_onnx_path}...")
 
         if optimize_by_fusion:
             fusion_options = FusionOptions(self.model_type)

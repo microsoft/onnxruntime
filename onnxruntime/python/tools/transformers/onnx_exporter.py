@@ -123,24 +123,24 @@ def validate_onnx_model(
 ):
     test_session = create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=False)
     if test_session is None:
-        logger.error(f"{onnx_model_path} is an invalid ONNX model")  # noqa: G004
+        logger.error(f"{onnx_model_path} is an invalid ONNX model")
         return False
 
-    logger.info(f"{onnx_model_path} is a valid ONNX model")  # noqa: G004
+    logger.info(f"{onnx_model_path} is a valid ONNX model")
 
     # Compare the inference result with PyTorch or Tensorflow
     example_ort_inputs = {k: t.numpy() for k, t in example_inputs.items()}
     example_ort_outputs = test_session.run(output_names, example_ort_inputs)
     if len(example_outputs_flatten) != len(example_ort_outputs):
         logger.error(
-            f"Number of output tensors expected {len(example_outputs_flatten)}, got {len(example_ort_outputs)}"  # noqa: G004
+            f"Number of output tensors expected {len(example_outputs_flatten)}, got {len(example_ort_outputs)}"
         )
         return False
 
     for i in range(len(example_outputs_flatten)):
         abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu().numpy()))
         if abs_diff > 1e-4:
-            logger.info(f"Max absolute diff={abs_diff} for output tensor {i}")  # noqa: G004
+            logger.info(f"Max absolute diff={abs_diff} for output tensor {i}")
 
         rtol = 5e-02 if fp16 else 1e-4
         atol = 1e-01 if fp16 else 1e-4
@@ -150,10 +150,10 @@ def validate_onnx_model(
             rtol=rtol,
             atol=atol,
         ):
-            logger.error(f"Output tensor {i} is not close: rtol={rtol}, atol={atol}")  # noqa: G004
+            logger.error(f"Output tensor {i} is not close: rtol={rtol}, atol={atol}")
             return False
 
-    logger.info(f"inference result of onnxruntime is validated on {onnx_model_path}")  # noqa: G004
+    logger.info(f"inference result of onnxruntime is validated on {onnx_model_path}")
     return True
 
 
@@ -216,7 +216,7 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
         )
         model_fusion_statistics[ort_model_path] = get_fusion_statistics(ort_model_path)
     else:
-        logger.info(f"Skip optimization since model existed: {ort_model_path}")  # noqa: G004
+        logger.info(f"Skip optimization since model existed: {ort_model_path}")
 
 
 def optimize_onnx_model(
@@ -275,7 +275,7 @@ def optimize_onnx_model(
 
         opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:
-        logger.info(f"Skip optimization since model existed: {optimized_model_path}")  # noqa: G004
+        logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
 
 def modelclass_dispatcher(model_name, custom_model_class):
@@ -313,7 +313,7 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
         model_class_name = "TF" + model_class_name
 
     transformers_module = __import__("transformers", fromlist=[model_class_name])
-    logger.info(f"Model class name: {model_class_name}")  # noqa: G004
+    logger.info(f"Model class name: {model_class_name}")
     model_class = getattr(transformers_module, model_class_name)
 
     return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
@@ -435,9 +435,9 @@ def validate_and_optimize_onnx(
             )
 
         if precision == Precision.INT8:
-            logger.info(f"Quantizing model: {onnx_model_path}")  # noqa: G004
+            logger.info(f"Quantizing model: {onnx_model_path}")
             QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
-            logger.info(f"Finished quantizing model: {onnx_model_path}")  # noqa: G004
+            logger.info(f"Finished quantizing model: {onnx_model_path}")
 
     if optimize_info == OptimizerInfo.BYORT:  # Use OnnxRuntime to optimize
         if is_valid_onnx_model:
@@ -517,7 +517,7 @@ def export_onnx_model_from_pt(
     )
 
     if overwrite or not os.path.exists(onnx_model_path):
-        logger.info(f"Exporting ONNX model to {onnx_model_path}")  # noqa: G004
+        logger.info(f"Exporting ONNX model to {onnx_model_path}")
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         dynamic_axes = None
@@ -542,7 +542,7 @@ def export_onnx_model_from_pt(
         )
         restore_torch_functions()
     else:
-        logger.info(f"Skip export since model existed: {onnx_model_path}")  # noqa: G004
+        logger.info(f"Skip export since model existed: {onnx_model_path}")
 
     onnx_model_file, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(
         model_name,
@@ -655,7 +655,7 @@ def export_onnx_model_from_tf(
     tf_internal_model_path = onnx_model_path[:-5] if use_external_data_format else onnx_model_path
 
     if overwrite or not os.path.exists(tf_internal_model_path):
-        logger.info(f"Exporting ONNX model to {onnx_model_path}")  # noqa: G004
+        logger.info(f"Exporting ONNX model to {onnx_model_path}")
         if not use_external_data_format:
             Path(tf_internal_model_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -685,7 +685,7 @@ def export_onnx_model_from_tf(
             os.rename(tf_internal_model_path, onnx_model_path)
 
     else:
-        logger.info(f"Skip export since model existed: {onnx_model_path}")  # noqa: G004
+        logger.info(f"Skip export since model existed: {onnx_model_path}")
 
     model_type = model_type + "_tf"
     optimized_onnx_path, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(

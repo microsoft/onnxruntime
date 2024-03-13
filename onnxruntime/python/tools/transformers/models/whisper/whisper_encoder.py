@@ -159,6 +159,6 @@ class WhisperEncoderHelper:
 
         max_diff = numpy.amax(numpy.abs(torch_outputs.cpu().numpy() - ort_outputs[0]))
 
-        logger.info(f"max_diff={max_diff}")  # noqa: G004
+        logger.info(f"max_diff={max_diff}")
 
         return max_diff

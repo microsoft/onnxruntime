@@ -189,7 +189,7 @@ def run_dynamo_export(
         f"rm {os.path.join(temp_dir, 'model.*')} && rm {os.path.join(temp_dir, '*.weight')} && rm {temp_path}"
     )  # temp_dir.cleanup()
 
-    logger.info(f"The {args.model_name} ONNX model has been successfully created with the Dynamo exporter!")  # noqa: G004
+    logger.info(f"The {args.model_name} ONNX model has been successfully created with the Dynamo exporter!")
 
 
 def _prepare_dir(dir_path):
@@ -312,7 +312,7 @@ def run_torchscript_separate_export(
     shutil.rmtree(temp_dir)
 
     logger.info(
-        f"The {args.model_name} separate ONNX model has been successfully created with the TorchScript exporter!"  # noqa: G004
+        f"The {args.model_name} separate ONNX model has been successfully created with the TorchScript exporter!"
     )
 
 
@@ -391,7 +391,7 @@ def run_torchscript_merged_export(
     del onnx_model
     shutil.rmtree(temp_dir)
 
-    logger.info(f"The {args.model_name} merged ONNX model has been successfully created with the TorchScript exporter!")  # noqa: G004
+    logger.info(f"The {args.model_name} merged ONNX model has been successfully created with the TorchScript exporter!")
 
 
 # Optimize the model as FP32
@@ -435,7 +435,7 @@ def optimize_export(config: AutoConfig, input_path: str, output_path: str, remov
         main_cmd = source_cmd
     subprocess.run(main_cmd + symbolic_shape_infer_args)  # noqa: PLW1510
 
-    logger.info(f"The ONNX model at {input_path} has been successfully optimized and saved at {output_path}!")  # noqa: G004
+    logger.info(f"The ONNX model at {input_path} has been successfully optimized and saved at {output_path}!")
     if remove_model:
         remove_existing_model(input_path)
 
@@ -461,10 +461,10 @@ def convert_to_float16(
                 model = use_group_query_attention(config, model, world_size)
             model.save_model_to_file(fp16_path, use_external_data_format=True)
             del model
-            logger.info(f"The ONNX model at {fp32_path} has been converted to float16 and saved at {fp16_path}!")  # noqa: G004
+            logger.info(f"The ONNX model at {fp32_path} has been converted to float16 and saved at {fp16_path}!")
             remove_existing_model(fp32_path)
 
-    logger.info(f"The {args.model_name} ONNX model has been successfully converted to float16!")  # noqa: G004
+    logger.info(f"The {args.model_name} ONNX model has been successfully converted to float16!")
     return new_paths
 
 
@@ -522,7 +522,7 @@ def smooth_quant(
     )
     del decoder_model_int8
     logger.info(
-        f"The ONNX model at {decoder_model_fp32_path} has been quantized to int8 and saved at {decoder_model_int8_path}!"  # noqa: G004
+        f"The ONNX model at {decoder_model_fp32_path} has been quantized to int8 and saved at {decoder_model_int8_path}!"
     )
     remove_existing_model(decoder_model_fp32_path)
 
@@ -543,13 +543,13 @@ def smooth_quant(
     )
     del decoder_with_past_model_int8
     logger.info(
-        f"The ONNX model at {decoder_with_past_model_fp32_path} has been quantized to int8 and saved at {decoder_with_past_model_int8_path}!"  # noqa: G004
+        f"The ONNX model at {decoder_with_past_model_fp32_path} has been quantized to int8 and saved at {decoder_with_past_model_int8_path}!"
     )
     remove_existing_model(decoder_with_past_model_fp32_path)
 
-    logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")  # noqa: G004
+    logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
 
-    logger.warning(f"Removing {args.nc_workspace}")  # noqa: G004
+    logger.warning(f"Removing {args.nc_workspace}")
     shutil.rmtree(args.nc_workspace)
 
 
@@ -558,7 +558,7 @@ def remove_existing_model(model_path: str):
     data_path = os.path.join(model_path + ".data")
     os.remove(model_path)
     os.remove(data_path)
-    logger.warning(f"Removed {model_path} and {data_path}")  # noqa: G004
+    logger.warning(f"Removed {model_path} and {data_path}")
 
 
 def remove_existing_files(output_path: str):
@@ -566,14 +566,14 @@ def remove_existing_files(output_path: str):
         filepath = os.path.join(output_path, filename)
         if ".onnx" in filename or ".onnx.data" in filename:
             os.remove(filepath)
-            logger.warning(f"Removed {filepath}")  # noqa: G004
+            logger.warning(f"Removed {filepath}")
 
 
 def optimize_optimum(config: AutoConfig, args: argparse.Namespace):
     tmp_file = os.path.join(args.output, args.model_name + ".tmp.onnx")
     output_file = os.path.join(args.output, args.model_name + ".onnx")
     optimize_export(config, args.input, tmp_file, remove_model=False)
-    logger.info(f"Model successfully optimized to {tmp_file}")  # noqa: G004
+    logger.info(f"Model successfully optimized to {tmp_file}")
     opt_model = OnnxModel(onnx.load_model(tmp_file, load_external_data=True))
     if args.precision == Precision.FLOAT16:
         opt_model.convert_float_to_float16(keep_io_types=False)
@@ -581,8 +581,8 @@ def optimize_optimum(config: AutoConfig, args: argparse.Namespace):
         opt_model = use_group_query_attention(config, opt_model, args.world_size, window_size)
         logger.info("Model successfully fused and quantized to FP16!")
     opt_model.save_model_to_file(output_file, use_external_data_format=True)
-    logger.info(f"Output model successfully saved to {output_file}")  # noqa: G004
-    logger.info(f"Removing {tmp_file}")  # noqa: G004
+    logger.info(f"Output model successfully saved to {output_file}")
+    logger.info(f"Removing {tmp_file}")
     remove_existing_model(tmp_file)
 
 
@@ -796,7 +796,7 @@ def get_args():
 
 def main():
     if version.parse(torch.__version__) < version.parse("2.2.0"):
-        logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")  # noqa: G004
+        logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
         return
 
     args = get_args()
@@ -804,7 +804,7 @@ def main():
     prepare_environment(args.input, args.output, args.execution_provider != "cpu")
     if args.reexport:
         remove_existing_files(args.output)
-    logger.info(f"Arguments: {args}")  # noqa: G004
+    logger.info(f"Arguments: {args}")
 
     world_size = get_size()
     rank = get_rank()
@@ -905,7 +905,7 @@ def main():
             old_paths = [decoder_model_fp32_path, decoder_with_past_model_fp32_path, decoder_merged_model_fp32_path]
 
             logger.info(
-                f"The {args.model_name} ONNX model has been successfully optimized with the ORT transformer optimizer script!"  # noqa: G004
+                f"The {args.model_name} ONNX model has been successfully optimized with the ORT transformer optimizer script!"
             )
 
             # Change precision of exported models from FP32
@@ -929,7 +929,7 @@ def main():
                         logger.error("SmoothQuant must be used on separately exported models")
                     else:
                         logger.info(
-                            f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8"  # noqa: G004
+                            f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8"
                         )
                         smooth_quant(args, old_paths[0], old_paths[1], new_paths[0], new_paths[1])
 
@@ -955,11 +955,11 @@ def main():
                                 extra_options={"MatMulConstBOnly": True},
                             )
                             logger.info(
-                                f"The ONNX model at {fp32_path} has been quantized to int8 and saved at {int8_path}!"  # noqa: G004
+                                f"The ONNX model at {fp32_path} has been quantized to int8 and saved at {int8_path}!"
                             )
                             remove_existing_model(decoder_model_fp32_path)
 
-                    logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")  # noqa: G004
+                    logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
 
                 else:
                     raise Exception(f"Could not recognize {args.quantization_method} as a quantization method")
@@ -993,7 +993,7 @@ def main():
                         quant.model.save_model_to_file(int4_path, use_external_data_format=True)
                         del model
                         del quant
-                        logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")  # noqa: G004
+                        logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")
                         remove_existing_model(fp_path)
         barrier()
 
@@ -1041,10 +1041,10 @@ def main():
             parity_cmd.append("--use_gqa")
 
         try:
-            logger.info(f"check parity with cmd: {parity_cmd}")  # noqa: G004
+            logger.info(f"check parity with cmd: {parity_cmd}")
             parity_check(parity_cmd)
         except Exception as e:
-            logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)  # noqa: G004
+            logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
