@@ -184,7 +184,7 @@ stages:
           inputs:
             script: |
               set -ex ; \
-              whlfilename=$(ls $(Build.ArtifactStagingDirectory)/*.whl | head -n 1) ; \
+              whlfilename=$(ls $(Build.ArtifactStagingDirectory)/Release/dist/*.whl | head -n 1) ; \
               echo $whlfilename ; \
               docker run --rm \
                 --gpus all \
