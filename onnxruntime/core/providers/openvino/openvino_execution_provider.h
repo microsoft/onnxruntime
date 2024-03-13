@@ -20,7 +20,7 @@ static void print_build_options() {
             << "you want to build"
             << std::endl;
   std::cout << "The different hardware devices that can be added with HETERO/MULTI/AUTO build "
-            << "are ['CPU','GPU', 'NPU']"
+            << "are ['CPU','GPU','NPU']"
             << std::endl;
   std::cout << "An example of how to specify the HETERO or MULTI or AUTO build type. "
             << "Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU"
