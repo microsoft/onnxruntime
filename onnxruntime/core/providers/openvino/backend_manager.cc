@@ -299,23 +299,23 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                       GetGlobalContext(),
                                                       subgraph_context_);
       } catch (std::string const& msg) {
-        if (GetGlobalContext().device_type.find("NPU")!= std::string::npos){
-        LOGS_DEFAULT(WARNING) << msg;
-        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
-                              << "Falling back to OV CPU for execution";
-        GetGlobalContext().device_type = "CPU";
-        GetGlobalContext().precision_str = "FP32";
-        key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
-        try {
-          dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
-                                                      GetGlobalContext(),
-                                                      subgraph_context_);
-        }catch (std::string const& msg) {
-          throw msg;
+          if (GetGlobalContext().device_type.find("NPU")!= std::string::npos){
+          LOGS_DEFAULT(WARNING) << msg;
+          LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
+                                << "Falling back to OV CPU for execution";
+          GetGlobalContext().device_type = "CPU";
+          GetGlobalContext().precision_str = "FP32";
+          key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
+          try {
+            dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
+                                                        GetGlobalContext(),
+                                                        subgraph_context_);
+          }catch (std::string const& msg) {
+            throw msg;
+          }
         }
       }
       backend_map_.insert({key, dynamic_backend});
-      }
     }else {
       dynamic_backend = search->second;
     }
