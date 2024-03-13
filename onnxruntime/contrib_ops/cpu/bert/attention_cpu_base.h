@@ -170,23 +170,6 @@ class AttentionCPUBase : public AttentionBase {
           } else if (nullptr != present_key) {
             k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i);
           }
-
-#if 0
-          // Compute Q*K' + AttentionMask
-          //                     original                 transposed             each iteration
-          // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
-          // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
-          // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
-          math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
-                                    Q + q_input_chunk_length * i, k, mask_data != nullptr ? 1.0f : 0.0f,
-                                    output, nullptr);
-
-          if (relative_position_bias_data != nullptr) {
-            for (int j = 0; j < sequence_length * total_sequence_length; j++) {
-              output[j] += relative_position_bias_data[output_offset + j];
-            }
-          }
-#endif
         }
       });
 
@@ -215,62 +198,13 @@ class AttentionCPUBase : public AttentionBase {
       });
 #endif
 
-#if 0
-void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
-                             ptrdiff_t N, ptrdiff_t K, float alpha, const float* A, const float* B, float beta,
-                             float* C, ThreadPool* threadpool) {
-  int lda = head_size;
-  int ldb = head_size;
-  MlasGemm(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size,
-  alpha, Q, head_size, K, head_size, mask_data != nullptr ? 1.0f : 0.0f, attention_probs,
-  total_sequence_length, threadpool);
-}
-inline
-void
-MlasGemm(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const float* A,
-    size_t lda,
-    const float* B,
-    size_t ldb,
-    float beta,
-    float* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    )
-{
-
-       MLAS_SGEMM_DATA_PARAMS Data;
-       Data.alpha = alpha;
-       Data.A = Q;
-       Data.lda = head_size;
-       Data.B = K;
-       Data.ldb = head_size;
-       Data.beta = mask_data != nullptr ? 1.0f : 0.0f;
-       Data.C = attention_probs;
-       Data.ldc = total_sequence_length;
-
-       MlasGemm(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, Data, tp);
-}
-MlasGemm(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS& Data,
-    MLAS_THREADPOOL* ThreadPool
-    )
-{
-#endif
-
-#if 1
       {
+        // Compute Q*K' + AttentionMask
+        //                     original                 transposed             each iteration
+        // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
+        // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
+        // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
+
         std::vector<MLAS_SGEMM_DATA_PARAMS> data(loop_len);
         for (int i = 0; i < loop_len; i++) {
           data[i].BIsPacked = false;
@@ -288,30 +222,8 @@ MlasGemm(
           data[i].alpha = alpha;
           data[i].beta = mask_data != nullptr ? 1.0f : 0.0f;
         }
-
-#if 0
-        MLAS_SGEMM_DATA_PARAMS Data;
-        Data.alpha = alpha;
-        Data.A = Q;
-        Data.lda = head_size;
-        Data.B = K;
-        if (nullptr != present) {
-          Data.B = present;
-        } else if (nullptr != present_key) {
-          Data.B = present_key;
-        }
-        Data.ldb = total_sequence_length; //head_size;
-        Data.beta = mask_data != nullptr ? 1.0f : 0.0f;
-        Data.C = attention_probs;
-        Data.ldc = total_sequence_length;
-#endif
-
         MlasGemmBatch(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, data.data(), loop_len, tp);
       }
-#endif
-
-//}
-
 
        ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
@@ -325,7 +237,6 @@ MlasGemm(
           }
         }
       });
-
     }
 
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
