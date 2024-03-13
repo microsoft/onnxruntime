@@ -28,7 +28,7 @@ using onnxruntime::contrib::rocm::blas::GemmFastGeluParams;
 
 // For large K and small M/N, K dim will be split to multiple workgroups and buffers,
 // which will require additional workspace. Here we set the max workspace size to 32MB.
-constexpr const size_t kHipBlasLtMaxWorkSpaceSizeInBytes = 32 * 1024 * 1024;
+constexpr const size_t kHipBlasLtMaxWorkSpaceSizeInBytes = 76 * 1024 * 1024;
 
 enum ActivationType {
   NONE = 0,
@@ -225,12 +225,12 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != HIPBLAS_STATUS_SUCCESS,
-          "[hipBLASLt] Solution #", i, " failed: algo ", algo_index, " not supported");
+          "[hipBLASLt] Solution #", i, " failed: algo ", algo_index, " not supported", ". m=", params->m, ", n=", params->n, ", k=", params->k);
 
       IAllocatorUniquePtr<void> workspace_buffer;
       if (workspace_size > 0) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(workspace_size > kHipBlasLtMaxWorkSpaceSizeInBytes,
-                                                  "Workspace size exceeds limit (32M): ", workspace_size);
+                                                  "[hipBLASLt] Solution #", i, " failed: Workspace size exceeds limit (32M): ", workspace_size, ". m=", params->m, ", n=", params->n, ", k=", params->k);
         workspace_size = kHipBlasLtMaxWorkSpaceSizeInBytes;
         workspace_buffer = params->tuning_ctx->GetScratchBuffer(workspace_size, params->stream);
       }

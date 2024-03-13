@@ -250,15 +250,15 @@ class TunableOp {
   }
 
   int FindFastestImpl(const ParamsT* params, const std::vector<Op<ParamsT>>& candidates) {
-    ITuningContext* ctx = params->TuningContext();
+    // ITuningContext* ctx = params->TuningContext();
     auto op_sig = Signature();
     auto params_sig = params->Signature();
     LOGS_DEFAULT(VERBOSE) << "finding fastest for " << op_sig << '(' << params_sig << ')';
     auto min_duration_ms = std::numeric_limits<double>::infinity();
     int id = -1;
 
-    constexpr const int max_tuning_iter = 100;
-    constexpr const int approx_num_iter = 3;
+    constexpr const int max_tuning_iter = 3;
+    // constexpr const int approx_num_iter = 3;
 
     bool debug_skip_tuning = ParseEnvironmentVariableWithDefault<bool>("DEBUG_SKIP_TUNING", false);
 
@@ -276,12 +276,13 @@ class TunableOp {
 
       WarmUp(candidate, params);
 
-      auto approx_duration = Profile(candidate, params, approx_num_iter);
-      if (approx_duration > 2 * min_duration_ms) {
-        LOGS_DEFAULT(VERBOSE) << "├──skip slow instance id=" << i;
-        continue;
-      }
-      int tuning_iter = std::max(1, int(std::min(double(max_tuning_iter), ctx->GetMaxTuningDurationMs() / approx_duration)));
+      // auto approx_duration = Profile(candidate, params, approx_num_iter);
+      // if (approx_duration > 2 * min_duration_ms) {
+      //   LOGS_DEFAULT(VERBOSE) << "├──skip slow instance id=" << i;
+      //   continue;
+      // }
+      // int tuning_iter = std::max(1, int(std::min(double(max_tuning_iter), ctx->GetMaxTuningDurationMs() / approx_duration)));
+      int tuning_iter = std::max(1, max_tuning_iter);
 
       auto duration_ms = Profile(candidate, params, tuning_iter);
       if (duration_ms < min_duration_ms) {
