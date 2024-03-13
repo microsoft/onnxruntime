@@ -361,13 +361,20 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
 }
-
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes,
                                                    const bool aggressive_cpu_fallback) {
   return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, aggressive_cpu_fallback);
 }
+#else
+std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                   gsl::span<const NodeIndex> tentative_nodes) {
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+}
+#endif
 
 namespace profiling {
 

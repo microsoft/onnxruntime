@@ -18,9 +18,15 @@ namespace onnxruntime {
   @param tentative_nodes Nodes that are tentative to be placed on on target EP
   @param aggressive_cpu_fallback This is the set by kOrtSessionOptionsAggressiveCpuFallback option.
   */
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes,
                                                    const bool aggressive_cpu_fallback);
+#else
+std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                   gsl::span<const NodeIndex> tentative_nodes);
+#endif
 
 }  // namespace onnxruntime

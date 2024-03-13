@@ -260,13 +260,20 @@ struct ProviderHostImpl : ProviderHost {
 
   std::string demangle(const char* name) override { return onnxruntime::profiling::demangle(name); }
   std::string demangle(const std::string& name) override { return onnxruntime::profiling::demangle(name); }
-
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                      gsl::span<const NodeIndex> tentative_nodes,
                                                      const bool aggressive_cpu_fallback) override {
     return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, aggressive_cpu_fallback);
   }
+#else
+  std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                     const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                     gsl::span<const NodeIndex> tentative_nodes) override {
+    return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+  }
+#endif
 
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }

@@ -2413,6 +2413,7 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
   }
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
   // For ROCM EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
@@ -2423,6 +2424,9 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   kOrtSessionOptionsAggressiveCpuFallback, "0") == "1";
   }
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates, aggressive_cpu_fallback);
+#else
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
+#endif
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)

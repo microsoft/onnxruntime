@@ -300,4 +300,6 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // - "0": Disable reverse-traversing CPU fallback. [DEFAULT]
 // - "1": Enable reverse-traversing CPU fallback when calling GetCpuPreferredNodes(...).
 //        (i.e., adding nodes found by GetShapeRelatedNodes(...) to CPU node list internally).
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
 static const char* const kOrtSessionOptionsAggressiveCpuFallback = "session.aggressive_cpu_fallback";
+#endif
