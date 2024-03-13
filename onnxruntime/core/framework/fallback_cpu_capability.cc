@@ -8,7 +8,6 @@
 #include <cstring>
 #include <cstdlib>
 #include <queue>
-#include <unordered_map>
 
 #include "onnx/defs/data_type_utils.h"
 
@@ -43,17 +42,20 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 }
 }  // namespace
 
-std::unordered_set<NodeIndex> GetShapeRelatedNodes(const onnxruntime::GraphViewer& viewer) {
+static InlinedHashSet<NodeIndex> GetShapeRelatedNodes(const onnxruntime::GraphViewer& viewer) {
   // Conceptually, this function traverse from shape-consuming nodes
   // to fallback all its upstream nodes to CPU. Consider a graph
   //
   //
   // The traversal should stop when
   //  1. hitting Shape, Size nodes, graph inputs, or graph initializers.
-  //  2. hitting nodes with some large inputs or outputs.
-  LOGS_DEFAULT(INFO) << "Call GetShapeRelatedNodes to identify extra CPU nodes." << std::endl;
+  //  2. [TODO] hitting nodes with some large inputs or outputs. Before that,
+  //     we need shape inference to determine the size of the inputs and outputs.
+  //     Some graph transforms add nodes without shape information, so
+  //     checking shapes will make the algorithm more unstable now.
+  LOGS_DEFAULT(VERBOSE) << "Call GetShapeRelatedNodes to identify extra CPU nodes." << std::endl;
 
-  std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<size_t>>> shape_related_inputs_in_nodes = {
+  const static InlinedHashMap<std::string_view, InlinedHashMap<int64_t, std::vector<size_t>>> shape_related_inputs_in_nodes = {
       // 2nd input of Expand-13 is a shape-related input.
       {"Expand", {{13 /* since version */, {1} /* shape inputs' indices */}}},
       // 2nd input (indexed by 1) of Reshape-13, Reshape-14, Reshape-19, Reshape-21 is a shape-related input.
@@ -72,13 +74,13 @@ std::unordered_set<NodeIndex> GetShapeRelatedNodes(const onnxruntime::GraphViewe
   //  shape = onnx::Concat(s0, s1)
   //  reshaped = onnx::Reshape(x, shape)
   // Then, the shape-producing node is Concat.
-  std::unordered_set<const Node*> shape_producing_nodes;
+  InlinedHashSet<const Node*> shape_producing_nodes;
   // This loop collects all shape-producing nodes by finding
   // all nodes that produce tensors specified in shape_related_inputs_in_nodes.
   // E.g., for the above example, Concat is a shape-producing node because
   // "Reshape" has a shape-related input at index 1.
   for (auto& node : graph.Nodes()) {
-    LOGS_DEFAULT(INFO) << "Check if node " << node.Name() << " can be sink of shape sub-graph." << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "Check if node " << node.Name() << " can be sink of shape sub-graph." << std::endl;
     auto op_type_it = shape_related_inputs_in_nodes.find(node.OpType());
     if (op_type_it == shape_related_inputs_in_nodes.end()) {
       // This node doesn't consume tensor as shape,
@@ -119,19 +121,19 @@ std::unordered_set<NodeIndex> GetShapeRelatedNodes(const onnxruntime::GraphViewe
         // After this for-loop, we will reversely traverse all nodes from every shape-producing node
         // found here until hitting Shape, Size nodes, graph inputs, or graph initializers.
         // All nodes on the traversal path will be forced to run on CPU.
-        LOGS_DEFAULT(INFO) << "Find a shape producing node (i.e., a node produces a tensor consumed as shape-like input in other nodes): " << node.Name() << std::endl;
+        LOGS_DEFAULT(VERBOSE) << "Find a shape producing node (i.e., a node produces a tensor consumed as shape-like input in other nodes): " << node.Name() << std::endl;
         shape_producing_nodes.insert(producer_node);
       }
     }
   }
 
-  std::unordered_set<NodeIndex> shape_related_node_indices;
+  InlinedHashSet<NodeIndex> shape_related_node_indices;
   for (auto& node : shape_producing_nodes) {
-    LOGS_DEFAULT(INFO) << "Begin the (topologically reverse) traversing from shape producing node: " << node->Name() << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "Begin the (topologically reverse) traversing from shape producing node: " << node->Name() << std::endl;
     std::vector<const Node*> start_nodes = {node};
 
     auto to_stop = [](const Node* n1, const Node* n2) {
-      LOGS_DEFAULT(INFO) << "Skip the traversal from " << n1->Name() << " to " << n2->Name() << " since " << n2->Name() << " is a Shape or Size node." << std::endl;
+      LOGS_DEFAULT(VERBOSE) << "Skip the traversal from " << n1->Name() << " to " << n2->Name() << " since " << n2->Name() << " is a Shape or Size node." << std::endl;
       return n2->OpType() == "Shape" || n2->OpType() == "Size";
     };
 
@@ -141,7 +143,7 @@ std::unordered_set<NodeIndex> GetShapeRelatedNodes(const onnxruntime::GraphViewe
     graph.ReverseDFSFrom(
         start_nodes,
         [&shape_related_node_indices](const Node* n) {
-          LOGS_DEFAULT(INFO) << "Find an upstream node in shape sub-graph (let's fallback it to CPU): " << n->Name() << std::endl;
+          LOGS_DEFAULT(VERBOSE) << "Find an upstream node in shape sub-graph (let's fallback it to CPU): " << n->Name() << std::endl;
           shape_related_node_indices.insert(n->Index());
         },
         nullptr,
@@ -150,23 +152,6 @@ std::unordered_set<NodeIndex> GetShapeRelatedNodes(const onnxruntime::GraphViewe
   }
 
   return shape_related_node_indices;
-}
-
-bool IsAggressiveCpuFallbackEnabled() {
-#if !defined(_WIN32) && ENABLE_TRAINING
-  // std::getenv is not available on each platform.
-  // Since ORT_AGGRESSIVE_CPU_FALLBACK is experimental,
-  // we only allow it for training to avoid build issues on
-  // custom platform such as XBox.
-  const char* p_env_var = std::getenv("ORT_AGGRESSIVE_CPU_FALLBACK");
-  if (!p_env_var) {
-    // No such an environment variable.
-    return false;
-  }
-  return std::strcmp(p_env_var, "1") == 0;
-#else
-  return false;
-#endif
 }
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
@@ -214,7 +199,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
               candidates.push(consumer_node->Index());
-              LOGS_DEFAULT(INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
+              LOGS_DEFAULT(VERBOSE) << "Candidate for fallback CPU execution: " << consumer_node->Name();
             }
           }
           return Status::OK();
@@ -290,9 +275,9 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
     if (place_in_cpu) {
       cpu_nodes.insert(cur);
-      LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
-                         << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
-                         << " capable of executing this node";
+      LOGS_DEFAULT(VERBOSE) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
+                            << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
+                            << " capable of executing this node";
       for (auto* output : node->OutputDefs()) {
         cpu_output_args.insert(output);
       }
