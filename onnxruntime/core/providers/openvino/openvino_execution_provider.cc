@@ -133,10 +133,6 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                  global_context_->device_type,
                                  global_context_->precision_str, "V_2023_3");
   result = obj.Execute();
-#elif defined(OPENVINO_2023_2)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_2");
-  result = obj.Execute();
 #endif
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
@@ -159,12 +155,12 @@ common::Status OpenVINOExecutionProvider::Compile(
         std::make_shared<openvino_ep::BackendManager>(*global_context_, fused_node, graph_body_viewer, *GetLogger());
 
     compute_info.create_state_func =
-        [backend_manager](ComputeContext* context, FunctionState* state) {
+        [this](ComputeContext* context, FunctionState* state) {
           OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
           p->allocate_func = context->allocate_func;
           p->destroy_func = context->release_func;
           p->allocator_handle = context->allocator_handle;
-          p->backend_manager = backend_manager;
+          p->backend_manager = backend_manager_;
           *state = static_cast<FunctionState>(p);
           return 0;
         };
