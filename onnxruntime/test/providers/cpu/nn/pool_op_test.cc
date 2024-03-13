@@ -58,7 +58,7 @@ TEST(PoolTest, MaxPool) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // TensorRT: result differs
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Only CUDA kernel has float 16 support
@@ -117,7 +117,7 @@ TEST(PoolTest, MaxPool_F16) {
   test.AddInput<MLFloat16>("X", x_dims, f_X);
   test.AddOutput<MLFloat16>("Y", expected_dims, f_Y);
   // TensorRT: Assertion `!attrs.count("pads")' failed
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
 
@@ -170,7 +170,7 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
                        : test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_col);
   }
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kDnnlExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider,
             kAclExecutionProvider, kArmNNExecutionProvider, kOpenVINOExecutionProvider});
 }
 
@@ -200,7 +200,7 @@ TEST(PoolTest, MaxPool1D) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
@@ -222,7 +222,7 @@ static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool1D_8_With_Index) {
@@ -249,7 +249,7 @@ static void MaxPool1D_12_WithIndexTest_int8(int64_t storage_order) {
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 static void MaxPool1D_12_WithIndexTest_uint8(int64_t storage_order) {
@@ -271,7 +271,7 @@ static void MaxPool1D_12_WithIndexTest_uint8(int64_t storage_order) {
   test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool1D_12_With_Index_8bits) {
@@ -309,9 +309,9 @@ TEST(PoolTest, MaxPool2D_uint8) {
 
   test.AddOutput<uint8_t>("Output", output_shape, output);
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {skOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
 #endif
 }
 
@@ -337,7 +337,7 @@ TEST(PoolTest, MaxPool_10_Dilation_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DefaultDilations) {
@@ -357,7 +357,7 @@ TEST(PoolTest, MaxPool_DefaultDilations) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DefaultDilations_int8) {
@@ -377,7 +377,7 @@ TEST(PoolTest, MaxPool_DefaultDilations_int8) {
 
   test.AddInput<int8_t>("X", x_dims, x_vals);
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DefaultDilations_uint8) {
@@ -397,7 +397,7 @@ TEST(PoolTest, MaxPool_DefaultDilations_uint8) {
 
   test.AddInput<uint8_t>("X", x_dims, x_vals);
   test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
@@ -451,7 +451,7 @@ TEST(PoolTest, MaxPool_10_Dilation_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_2d_int8) {
@@ -479,7 +479,7 @@ TEST(PoolTest, MaxPool_10_Dilation_2d_int8) {
 
   test.AddInput<int8_t>("X", x_dims, x_vals);
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
@@ -536,7 +536,7 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider});
+           { kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_12_Dilation_Ceil0_2d_int8) {
@@ -565,7 +565,7 @@ TEST(PoolTest, MaxPool_12_Dilation_Ceil0_2d_int8) {
   test.AddInput<int8_t>("X", x_dims, x_vals);
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
@@ -595,7 +595,7 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_3d) {

@@ -87,6 +87,8 @@ POOLING_KERNEL_VERSIONED_WITH_INDICES(MaxPool, float, MaxPool<8>, 11, 11, kMSInt
 POOLING_KERNEL_VERSIONED_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 11, 11, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_WITH_INDICES(MaxPool, float, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_WITH_INDICES(MaxPool, int8_t, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_WITH_INDICES(MaxPool, uint8_t, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
 
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, kMSInternalNHWCDomain, true)
@@ -165,7 +167,7 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
     pads.assign(kernel_shape.size(), 0);
     strides.assign(kernel_shape.size(), 1);
   }
-  auto out_channel = NHWC ? x_shape[3] : x_shape[1];
+  auto out_channel = NHWC ? x_shape[x_dims.size() - 1] : x_shape[1];
   auto y_dims = pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, NHWC);
   TensorShape y_shape(y_dims);
   Tensor* Y = context->Output(0, y_shape);
@@ -255,7 +257,7 @@ Status Pool<T, MaxPool<8>, NHWC>::ComputeInternal(OpKernelContext* context) cons
     pads.assign(kernel_shape.size(), 0);
     strides.assign(kernel_shape.size(), 1);
   }
-  auto out_channel = NHWC ? x_shape[3] : x_shape[1];
+  auto out_channel = NHWC ? x_shape[x_shape.NumDimensions() - 1] : x_shape[1];
   auto y_dims = this->pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, NHWC);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
@@ -265,10 +267,17 @@ Status Pool<T, MaxPool<8>, NHWC>::ComputeInternal(OpKernelContext* context) cons
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
-  Tensor* I = context->Output(1, TensorShape(y_dims));
+
+  // I is in NCHW format and the contained indices use NCHW math to compute the index
+  auto i_dims = y_dims;
+  if (NHWC) {
+    std::swap(i_dims[1], i_dims[x_shape.NumDimensions() - 1]);
+  }
+  
+  Tensor* I = context->Output(1, TensorShape(i_dims));
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->MutableData<int64_t>();
-    MaxPoolWithIndex<CudaT>(this->Stream(context), x_shape, TensorShape(y_dims), kernel_shape, strides, pads,
+    MaxPoolWithIndex<CudaT, NHWC>(this->Stream(context), x_shape, TensorShape(y_dims), kernel_shape, strides, pads,
                             this->pool_attrs_.dilations, this->pool_attrs_.storage_order, x_data, y_data, i_data);
   } else {
     ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>, NHWC>::ComputeInternal(context)));
