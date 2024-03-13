@@ -214,7 +214,6 @@ stages:
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements-cuda11.txt; \
-            python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
             find $(pwd)/ORT_CUDA -name "*.png" -exec cp {} /images/ \; ; \
@@ -318,7 +317,6 @@ stages:
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
               popd ; \
             "
