@@ -400,10 +400,11 @@ def main():
     upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
 
     try:
+        # Load EP Perf test results from /result
         result_file = args.report_folder
-
-        folders = os.listdir(result_file)
-        os.chdir(result_file)
+        result_perf_test_path = os.path.join(result_file, 'result')
+        folders = os.listdir(result_perf_test_path)
+        os.chdir(result_perf_test_path)
 
         tables = [
             fail_name,
@@ -492,6 +493,42 @@ def main():
                 args.commit_hash,
                 args.commit_datetime,
             )
+        
+        # Load concurrency test results
+        result_mem_test_path = os.path.join(result_file, 'result_mem_test')
+        folders = os.listdir(result_mem_test_path)
+        os.chdir(result_mem_test_path)
+        log_path = "concurrency_test.log"
+        if os.path.exists(log_path):
+            with open(log_path) as log_file:
+                log_content = log_file.read()
+
+            failed_cases_section = log_content.split("Failed Test Cases:")[1]
+
+            # No following failed test cases
+            if failed_cases_section.strip() == "":
+                passed = 1
+            else:
+                passed = 0
+
+            csv_path = 'concurrency_test.csv'
+            with open(csv_path, 'w', newline='') as csv_file:
+                csv_writer = csv.writer(csv_file)
+                csv_writer.writerow([passed, log_content])
+
+        db_table_name = "ep_concurrencytest_record"
+        table = pd.read_csv(csv_path)
+        write_table(
+            ingest_client,
+            args.database,
+            table,
+            db_table_name,
+            upload_time,
+            identifier,
+            args.branch,
+            args.commit_hash,
+            args.commit_datetime,
+        )
 
     except BaseException as e:
         print(str(e))

@@ -112,7 +112,7 @@ mkdir FasterRCNN-10/
 cp -r ${FRCNN_FOLDER}/test_data_set_0 ${FRCNN_FOLDER}/faster_rcnn_R_50_FPN_1x.onnx ./FasterRCNN-10/
 
 # replicate test inputs
-for (( i=1; i<${CONCURRENCY}; i++ )); do
+for (( i=1; i<CONCURRENCY; i++ )); do
     cp -r "./FasterRCNN-10/test_data_set_0/" "./FasterRCNN-10/test_data_set_$i/"
 done
 
@@ -123,7 +123,7 @@ python ${ORT_SOURCE}/onnxruntime/python/tools/symbolic_shape_infer.py \
     --auto_merge
 
 ${ORT_SOURCE}/build/Linux/Release/onnx_test_runner -e tensorrt -c ${CONCURRENCY} -r 100 ./FasterRCNN-10/ > concurrency_test.log 2>&1
-mv concurrency_test.log result
+mv concurrency_test.log result  
 
 # Run AddressSanitizer 
 ASAN_OPTIONS=${ASAN_OPTIONS} ./onnx_memtest
