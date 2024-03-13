@@ -22,6 +22,9 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("kCudaStreamCopyOut", "kHipStreamCopyOut")
     s = s.replace("kTotalCudaStreams", "kTotalHipStreams")
 
+    # in rocm 6.0, hipify-perl, the -roc option also maps __half -> rocblas_half which we don't want
+    s = s.replace("rocblas_half", "__half")
+
     # We want rocblas interfaces, not hipblas. Also force some hipify replacements back to rocblas from hipblas.
     s = s.replace("CublasHandle", "RocblasHandle")
     s = s.replace("cublas_handle", "rocblas_handle")
