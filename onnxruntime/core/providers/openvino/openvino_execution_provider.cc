@@ -52,8 +52,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
               device_found = true;
               break;
             }
-            if ((info.device_type_.find("NPU") != std::string::npos) &&
-                (info.precision_ == "FP16" || info.precision_ == "U8")) {
+            if (info.device_type_.find("NPU") != std::string::npos) {
               device_found = true;
               break;
             }

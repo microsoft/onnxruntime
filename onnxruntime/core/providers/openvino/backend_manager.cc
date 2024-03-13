@@ -24,15 +24,6 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   global_context_ = global_context;
 
   auto prec_str = GetGlobalContext().precision_str;
-  if (prec_str == "FP32") {
-    subgraph_context_.precision = "FP32";
-  } else if (prec_str == "FP16") {
-    subgraph_context_.precision = "FP16";
-  } else if (prec_str == "U8") {
-    subgraph_context_.precision = "U8";
-  } else {
-    ORT_THROW(std::string("Invalid OpenVINO Precision type: " + prec_str));
-  }
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).

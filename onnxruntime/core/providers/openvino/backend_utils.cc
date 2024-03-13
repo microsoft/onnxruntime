@@ -42,7 +42,6 @@ struct static_cast_int64 {
 
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
-              const SubGraphContext& subgraph_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
   if (IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
@@ -50,28 +49,6 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   const std::string model = model_proto.SerializeAsString();
   try {
     auto cnn_network = global_context.ie_core.ReadModel(model, global_context.onnx_model_path_name);
-    if ((subgraph_context.precision == "FP16") &&
-        (global_context.device_type.find("NPU") == std::string::npos)) {
-      // FP16 transformations
-      ov::pass::ConvertFP32ToFP16 pass_obj;
-      pass_obj.run_on_model(cnn_network);
-      cnn_network->validate_nodes_and_infer_types();
-
-      auto proc = ov::preprocess::PrePostProcessor(cnn_network);
-      for (size_t i = 0; i < cnn_network->inputs().size(); i++) {
-        if (cnn_network->inputs()[i].get_element_type() == ov::element::f16) {
-          proc.input(i).tensor().set_element_type(ov::element::f32);
-          proc.input(i).preprocess().convert_element_type(ov::element::f16);
-        }
-      }
-
-      for (size_t i = 0; i < cnn_network->outputs().size(); i++) {
-        if (cnn_network->outputs()[i].get_element_type() == ov::element::f16) {
-          proc.output(i).postprocess().convert_element_type(ov::element::f32);
-        }
-      }
-      cnn_network = proc.build();
-    }
 
     // Check for Constant Folding
     if (!global_context.is_wholly_supported_graph) {

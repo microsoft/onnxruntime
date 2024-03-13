@@ -495,7 +495,7 @@
         "test_scan9_sum_cpu", // Disabled due to output mismatch with tolerance.
         "test_reduce_max_bool_inputs_cpu"
     ],
-    "current_failing_tests_OPENVINO_NPU_FP16": [
+    "current_failing_tests_OPENVINO_NPU": [
         "^test_prelu_broadcast",
         "test_loop11_cpu"
     ],

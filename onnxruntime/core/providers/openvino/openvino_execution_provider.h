@@ -98,12 +98,9 @@ struct OpenVINOExecutionProviderInfo {
 #elif defined OPENVINO_CONFIG_GPU_FP16
       device_type_ = "GPU";
       precision_ = "FP16";
-#elif defined OPENVINO_CONFIG_NPU_FP16
+#elif defined OPENVINO_CONFIG_NPU
       device_type_ = "NPU";
-      precision_ = "FP16";
-#elif defined OPENVINO_CONFIG_NPU_U8
-      device_type_ = "NPU";
-      precision_ = "U8";
+      precision_ = "";
 #elif defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
 #ifdef DEVICE_NAME
 #define DEVICE DEVICE_NAME
@@ -142,12 +139,9 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_type == "GPU.1_FP16") {
       device_type_ = "GPU.1";
       precision_ = "FP16";
-    } else if (dev_type == "NPU_FP16") {
+    } else if (dev_type == "NPU") {
       device_type_ = "NPU";
-      precision_ = "FP16";
-    } else if (dev_type == "NPU_U8") {
-      device_type_ = "NPU";
-      precision_ = "U8";
+      precision_ = "";
     } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type);
       precision_ = "FP16";
