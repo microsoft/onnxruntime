@@ -65,6 +65,9 @@ class RuntimeInspector:
         else:
             raise RuntimeError("Input density observer is already enabled.")
 
+        if model is None:
+            raise RuntimeError("ONNX model is not available when enabling input density inspection.")
+
         return self.input_density_ob.initialize(model, user_input_names)
 
     def inspect_input(self, input_name, input_data) -> Tuple[bool, float, float]:

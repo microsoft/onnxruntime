@@ -153,7 +153,15 @@ def get_device_str(device: Union[str, int, torch.device]) -> str:
     return device
 
 
-def get_device_from_module(module) -> Optional[torch.device]:
+def get_device_from_module_and_inputs(module, inputs, kwargs):
+    """Get the device from the module and save it to self._device"""
+
+    device = _get_device_from_module(module) or _get_device_from_inputs(inputs, kwargs)
+
+    return device
+
+
+def _get_device_from_module(module) -> Optional[torch.device]:
     """Returns the first device found in the `module`'s parameters or None
 
     Args:
@@ -179,7 +187,7 @@ def get_device_from_module(module) -> Optional[torch.device]:
     return device
 
 
-def get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
+def _get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
     """Returns device from first PyTorch Tensor within args or kwargs
 
     Args:
@@ -192,9 +200,12 @@ def get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
 
     device = None
     if args:
-        device = torch.device(args[0].device)
+        if args[0] is not None and hasattr(args[0], "device"):
+            device = torch.device(args[0].device)
     elif kwargs:
-        device = torch.device(next(iter(kwargs.values())).device)
+        v = next(iter(kwargs.values()))
+        if v is not None and hasattr(v, "device"):
+            device = torch.device(v.device)
     return device
 
 
