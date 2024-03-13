@@ -470,13 +470,13 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 #else
     try {
       StartAsyncInference(context, infer_request);
-    } catch (const Exception& e) {
+    } catch (const std::runtime_error& e) {
       ORT_THROW(log_tag + " Exception at StartAsyncInference: " + e.what());
     }
 #endif
     try {
       CompleteAsyncInference(context, infer_request);
-    } catch (const Exception& e) {
+    } catch (const std::runtime_error& e) {
       ORT_THROW(log_tag + " Exception at CompleteAsyncInference: " + e.what());
     }
 
