@@ -116,10 +116,26 @@ Status BFCArena::Extend(size_t rounded_bytes) {
     ORT_CATCH(const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
       // so swallow the exception
+      printf("Caught std::bad_alloc for %zu bytes\n", alloc_bytes);
+      fflush(stdout);
     }
     ORT_CATCH(const OnnxRuntimeException& ort_exception) {
       // swallow if exception is our throw from a failed cudaMalloc call.
       // re-throw otherwise.
+      printf("Caught OnnxRuntimeException: %s\n", ort_exception.what());
+      fflush(stdout);
+
+      onnxruntime::CodeLocation location(__FILE__, __LINE__, static_cast<const char*>(__PRETTY_FUNCTION__), ::onnxruntime::GetStackTrace());
+      std::ostringstream ss;
+      ss << location.FileNoPath() << ":" << location.line_num << " " << location.function << "\n";
+      if (!location.stacktrace.empty()) {
+        ss << "Stacktrace:\n";
+        // skip the first entry in the stacktrace as we have that information from location.ToString()
+        std::copy(std::next(location.stacktrace.begin()), location.stacktrace.end(), std::ostream_iterator<std::string>(ss, "\n"));
+      }
+      printf("%s\n", ss.str().c_str());
+      fflush(stdout);
+
       ORT_HANDLE_EXCEPTION([&ort_exception]() {
         if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos &&
             std::string(ort_exception.what()).find("hipMalloc") == std::string::npos) {
@@ -169,6 +185,9 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   size_t bytes = get_extend_bytes(rounded_bytes);
   // Try allocating.
   void* mem_addr = safe_alloc(bytes);
+  // printf("Try allocating: %zu bytes for rounded_bytes=%zu. Address is good:%d arena_extend_strategy=%d\n",
+  //        bytes, rounded_bytes, mem_addr == nullptr ? 0 : 1, static_cast<int>(arena_extend_strategy_));
+  // fflush(stdout);
 
   static constexpr float kBackpedalFactor = 0.9f;
   // Try allocating less memory.
@@ -341,6 +360,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
       if (stream)
         chunk->stream_timestamp = stream->GetCurrentTimestamp();
     }
+    ORT_ENFORCE(chunk->ptr != nullptr);
     return chunk->ptr;
   }
 
@@ -356,8 +376,11 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
       if (chunk->stream == nullptr && stream) {
         chunk->stream = stream;
       }
+      ORT_ENFORCE(chunk->ptr != nullptr);
       return chunk->ptr;
     } else {
+      printf("Failed to find a free memory block despite calling Extend. rounded_bytes=%zu\n", rounded_bytes);
+      fflush(stdout);
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Failed to find a free memory block despite calling Extend. rounded_bytes=",
                                rounded_bytes);
