@@ -20,7 +20,7 @@ static void print_build_options() {
             << "you want to build"
             << std::endl;
   std::cout << "The different hardware devices that can be added with HETERO/MULTI/AUTO build "
-            << "are ['CPU','GPU']"
+            << "are ['CPU','GPU', 'NPU']"
             << std::endl;
   std::cout << "An example of how to specify the HETERO or MULTI or AUTO build type. "
             << "Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU"
@@ -48,7 +48,7 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
     print_build_options();
     ORT_THROW("Invalid device string: " + device_string);
   }
-  std::vector<std::string> dev_options = {"CPU", "GPU"};
+  std::vector<std::string> dev_options = {"CPU", "GPU", "NPU"};
   for (std::string dev : devices) {
     if (!std::count(dev_options.begin(), dev_options.end(), dev)) {
       print_build_options();
