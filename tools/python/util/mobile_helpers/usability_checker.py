@@ -644,7 +644,7 @@ def checker(model_path: pathlib.Path, logger: logging.Logger):
 
         return suitability
 
-    nnapi_suitability = PartitioningInfo.TryWithEP.NO  # check_ep("NNAPI", check_nnapi_partitions)
+    nnapi_suitability = check_ep("NNAPI", check_nnapi_partitions)
 
     # Check for NeuralNetwork CoreML model
     def check_nn_coreml(model: onnx.ModelProto, require_fixed_input_sizes):
