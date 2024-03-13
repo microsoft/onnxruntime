@@ -1209,28 +1209,25 @@ std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std
   bool fallback_to_mlas=false;
 
 
-  if(plugin_device=="NPU"){
-#ifdef _WIN32
-      std::wstring onnx_path = graph_viewer_.ModelPath().ToPathString();
-      std::string onnx_model_path = std::string(onnx_path.begin(), onnx_path.end());
-#else
-      std::string onnx_model_path = graph_viewer_.ModelPath().ToPathString();
-#endif
-      ov::Core oe;
-      ov::frontend::FrontEndManager mngr;
-      auto front = mngr.load_by_framework("onnx");
-      auto loaded = front->load(onnx_model_path);
-      auto ov_partial_network = front->convert_partially(loaded);
-      auto ops = ov_partial_network->get_ordered_ops();
-      // std::cout << ov_partial_network->get_friendly_name() << std::endl;
-      for (auto it = ops.begin(); it != ops.end(); ++it) {
-        // std::cout << "Node: " << (*it)->get_friendly_name() << ":" << (*it)->get_type_name() << std::endl;
-        if((*it)->get_friendly_name()=="FWNode"){
-          fallback_to_mlas = true;
-          break;
-        }
-      }
-  }
+//   if(plugin_device=="NPU"){
+// #ifdef _WIN32
+//       std::wstring onnx_path = graph_viewer_.ModelPath().ToPathString();
+//       std::string onnx_model_path = std::string(onnx_path.begin(), onnx_path.end());
+// #else
+//       std::string onnx_model_path = graph_viewer_.ModelPath().ToPathString();
+// #endif
+//       ov::Core oe;
+//       ov::frontend::FrontEndManager mngr;
+//       auto front = mngr.load_by_framework("onnx");
+//       auto loaded = front->load(onnx_model_path);
+//       auto ov_partial_network = front->convert_partially(loaded);
+//       for (const auto& op : ov_partial_network->get_ops()){
+//         if (auto framework_node = std::dynamic_pointer_cast<ov::op::util::FrameworkNode>(op)) {
+//           fallback_to_mlas = true;
+//           break;
+//         }
+//       }
+//   }
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
     if (!fallback_to_mlas && node_is_supported(ng_supported_ops, node_idx)) {
       // Collect inputs that are initializers

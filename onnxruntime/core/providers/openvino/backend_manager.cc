@@ -61,10 +61,17 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   }
   subgraph_context_.subgraph_name = fused_node.Name();
   model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+  std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
 
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
+    if (device_type.find("NPU")!= std::string::npos){
+        LOGS_DEFAULT(WARNING) << "Dynamic models are currently not supported at NPU."
+                              << "Falling back to OV CPU for execution";
+        openvino_ep::BackendManager::GetGlobalContext().device_type = "CPU";
+        openvino_ep::BackendManager::GetGlobalContext().precision_str = "FP32";
+    }
     if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
         GetGlobalContext().device_type.find("GPU") != std::string::npos) {
       if (!GetGlobalContext().disable_dynamic_shapes) {
@@ -92,13 +99,13 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                       GetGlobalContext(),
                                                       subgraph_context_);
     } catch (std::string const& msg) {
-      std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
       if (device_type.find("NPU")!= std::string::npos){
         LOGS_DEFAULT(WARNING) << msg;
+        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
+                              << "Falling back to OV CPU for execution";
         openvino_ep::BackendManager::GetGlobalContext().device_type = "CPU";
         openvino_ep::BackendManager::GetGlobalContext().precision_str = "FP32";
         try {
-          std::cout << " Create another backend for cpu FP32 " << std::endl;
           concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                           GetGlobalContext(),
                                                           subgraph_context_);
@@ -281,7 +288,6 @@ void BackendManager::Compute(OrtKernelContext* context) {
   } else if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
-
     std::shared_ptr<IBackend> dynamic_backend;
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {
