@@ -183,10 +183,10 @@ stages:
           displayName: 'test ortmodule'
           inputs:
             script: |
-              files=($(Build.ArtifactStagingDirectory)/*.whl) && \
-              echo ${files[0]} && \
-              whlfilename=$(basename ${files[0]}) && \
-              echo $whlfilename && \
+              set -ex ; \
+              whlfilename=$(ls Build.ArtifactStagingDirectory)/*.whl | head -n 1) ; \
+              echo $whlfilename ; \
+              echo $whlfilename ; \
               docker run --rm \
                 --gpus all \
                 -e NVIDIA_VISIBLE_DEVICES=all \
@@ -205,8 +205,8 @@ stages:
           inputs:
             script: |
               set -e -x
-              files=($(Build.ArtifactStagingDirectory)/*.whl) && \
-              echo ${files[0]} && du -sh "${files[0]}" &&\
-              (( $(wc -c < "${files[0]}") -  300*1024*1024 < 0 )) ||  (exit 1) && \
+              whlfilename=$(ls Build.ArtifactStagingDirectory)/*.whl | head -n 1)  && \
+              echo $whlfilename && du -sh $whlfilename &&\
+              (( $(wc -c < "$whlfilename") -  300*1024*1024 < 0 )) ||  (exit 1) && \
               python3 tools/ci_build/upload_python_package_to_azure_storage.py \
-                  --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
+                  --python_wheel_path $whlfilename ${{ variables['finalStorage'] }}
