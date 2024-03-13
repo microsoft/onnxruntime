@@ -267,18 +267,17 @@ Status Pool<T, MaxPool<8>, NHWC>::ComputeInternal(OpKernelContext* context) cons
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
-
   // I is in NCHW format and the contained indices use NCHW math to compute the index
   auto i_dims = y_dims;
   if (NHWC) {
     std::swap(i_dims[1], i_dims[x_shape.NumDimensions() - 1]);
   }
-  
+
   Tensor* I = context->Output(1, TensorShape(i_dims));
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->MutableData<int64_t>();
     MaxPoolWithIndex<CudaT, NHWC>(this->Stream(context), x_shape, TensorShape(y_dims), kernel_shape, strides, pads,
-                            this->pool_attrs_.dilations, this->pool_attrs_.storage_order, x_data, y_data, i_data);
+                                  this->pool_attrs_.dilations, this->pool_attrs_.storage_order, x_data, y_data, i_data);
   } else {
     ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>, NHWC>::ComputeInternal(context)));
   }
