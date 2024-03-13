@@ -10,6 +10,7 @@
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/rocm_profiler.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
