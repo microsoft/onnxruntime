@@ -160,6 +160,22 @@ stages:
           displayName: 'Mount hf-models-cache'
           condition: succeededOrFailed()
 
+        - template: get-docker-image-steps.yml
+          parameters:
+            Dockerfile: tools/ci_build/github/linux/docker/${{ parameters.docker_file }}
+            Context: tools/ci_build/github/linux/docker
+            DockerBuildArgs: >-
+              --build-arg TORCH_VERSION=${{ parameters.torch_version }}
+              --build-arg OPSET_VERSION=${{ parameters.opset_version }}
+              --build-arg PYTHON_VERSION=${{ parameters.python_version }}
+              --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
+              --build-arg BUILD_UID=$(id -u)
+              --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
+              --build-arg DEVTOOLSET_ROOTPATH=/usr
+              --build-arg PREPEND_PATH=/usr/local/cuda/bin:
+              --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
+            Repository: onnxruntimetraininggpubuild
+
         - task: CmdLine@2
           displayName: 'test ortmodule'
           inputs:
