@@ -1,7 +1,6 @@
 torch>=1.13.0
 transformers>=4.24.0
 openai-whisper
-ffmpeg-python
 datasets
 soundfile
 librosa
