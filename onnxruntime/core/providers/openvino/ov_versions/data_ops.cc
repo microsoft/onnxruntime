@@ -37,6 +37,7 @@ namespace openvino_ep {
 std::set<std::string> ops_supported_only_in_model = {
     "Add",
     "Cast",
+    "Celu",
     "Concat",
     "ConstantOfShape",
     "DequantizeLinear",
@@ -47,6 +48,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "EyeLike",
     "GatherElements",
     "GatherND",
+    "GridSample",
     "Identity",
     "LayerNormalization",
     "Loop",
@@ -73,7 +75,8 @@ std::set<std::string> ops_supported_only_in_model = {
 std::set<std::string> ops_supported_as_function = {
     "LessOrEqual",
     "GreaterOrEqual",
-    "LayerNormalization"};
+    "LayerNormalization",
+    "Celu"};
 
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},
@@ -153,7 +156,6 @@ std::vector<SupportedOp> supported_op_mode = {
     {"LogSoftMax", V_2022_1, {"CPU", "GPU"}},
     {"Loop", V_2021_4, {"CPU", "GPU"}},
     {"LpNormalization", V_2023_1, {"CPU", "GPU"}},
-    {"LpPool", V_2023_1, {"CPU", "GPU"}},
     {"LRN", V_2020_4, {"CPU", "GPU"}},
     {"LSTM", V_2020_4, {"CPU", "GPU"}},
     {"MatMul", V_2020_4, {"CPU", "GPU"}},
