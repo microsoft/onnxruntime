@@ -222,7 +222,8 @@ def get_msft_sample_inputs(
 # Create past_key_values
 # Each is of shape (batch_size, num_heads, past_sequence_length, head_size)
 def get_past_kv_inputs(config: AutoConfig, batch_size: int, past_seq_len: int, use_fp16: bool, world_size: int = 1):
-    num_heads, head_size = config.num_key_value_heads // world_size, config.hidden_size // config.num_attention_heads
+    num_heads = config.num_key_value_heads // world_size
+    head_size = config.head_dim if hasattr(config, "head_dim") else config.hidden_size // config.num_attention_heads
     torch_dtype = torch.float16 if use_fp16 else torch.float32
     past_kv = [
         (
@@ -286,7 +287,14 @@ def add_io_bindings(
 ):
     io_binding = model.io_binding()
 
+    model_inputs = set(map(lambda i: i.name, model.get_inputs()))
     for k, v in ort_inputs.items():
+        # Use this check to handle scenarios such as INT4 CUDA and FP16 CUDA models with
+        # GQA + RotaryEmbedding fusion where `position_ids` is removed as an ONNX model input
+        # but `position_ids` is used as a PyTorch model input
+        if k not in model_inputs:
+            continue
+
         # Bind OrtValue inputs to device
         if use_gqa and ("cache" in k or "past_key_values" in k):
             if k not in kv_cache_ortvalues:
