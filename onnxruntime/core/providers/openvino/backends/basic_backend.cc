@@ -177,7 +177,7 @@ void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
 }
 
 void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
-    device_config.emplace(ov::inference_num_threads(global_context_.num_of_threads));
+  device_config.emplace(ov::inference_num_threads(global_context_.num_of_threads));
 }
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
