@@ -67,10 +67,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if (device_type.find("NPU")!= std::string::npos){
-        LOGS_DEFAULT(WARNING) << "Dynamic models are currently not supported at NPU."
-                              << "Falling back to OV CPU for execution";
-        openvino_ep::BackendManager::GetGlobalContext().device_type = "CPU";
-        openvino_ep::BackendManager::GetGlobalContext().precision_str = "FP32";
+        subgraph_context_.npu_model_has_dynamic_inputs = true;
     }
     if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
         GetGlobalContext().device_type.find("GPU") != std::string::npos) {
@@ -103,8 +100,8 @@ BackendManager::BackendManager(const GlobalContext& global_context,
         LOGS_DEFAULT(WARNING) << msg;
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
-        openvino_ep::BackendManager::GetGlobalContext().device_type = "CPU";
-        openvino_ep::BackendManager::GetGlobalContext().precision_str = "FP32";
+        GetGlobalContext().device_type = "CPU";
+        GetGlobalContext().precision_str = "FP32";
         try {
           concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                           GetGlobalContext(),
@@ -280,6 +277,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
 #endif
   bool use_dynamic_backend = true;
   if (subgraph_context_.has_dynamic_input_shape &&
+      !subgraph_context_.npu_model_has_dynamic_inputs &&
       !GetGlobalContext().disable_dynamic_shapes &&
       (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
        GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
@@ -301,10 +299,24 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                       GetGlobalContext(),
                                                       subgraph_context_);
       } catch (std::string const& msg) {
-        throw msg;
+        if (GetGlobalContext().device_type.find("NPU")!= std::string::npos){
+        LOGS_DEFAULT(WARNING) << msg;
+        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
+                              << "Falling back to OV CPU for execution";
+        GetGlobalContext().device_type = "CPU";
+        GetGlobalContext().precision_str = "FP32";
+        key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
+        try {
+          dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
+                                                      GetGlobalContext(),
+                                                      subgraph_context_);
+        }catch (std::string const& msg) {
+          throw msg;
+        }
       }
       backend_map_.insert({key, dynamic_backend});
-    } else {
+      }
+    }else {
       dynamic_backend = search->second;
     }
 
