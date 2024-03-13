@@ -24,11 +24,11 @@ BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     try {
       concrete_backend_ = std::make_shared<BasicBackend>(model_proto, global_context, subgraph_context);
     } catch (std::string const& msg) {
-      throw msg;
+      ORT_THROW(msg);
     }
     return concrete_backend_;
   } else {
-    throw std::string("[OpenVINO-EP] Backend factory error: Unknown backend type: " + type);
+    ORT_THROW("[OpenVINO-EP] Backend factory error: Unknown backend type: " + type);
   }
 }
 }  // namespace openvino_ep

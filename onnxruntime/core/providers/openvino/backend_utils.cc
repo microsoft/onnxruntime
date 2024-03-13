@@ -98,7 +98,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
 #endif
     return cnn_network;
   } catch (std::string const& msg) {
-    throw msg;
+    ORT_THROW(msg);
   }
 }
 
@@ -122,7 +122,7 @@ GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
   }
   auto it = output_names.find(output_name);
   if (it == output_names.end()) {
-    throw std::string(log_tag + "Output names mismatch between OpenVINO and ONNX");
+    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
   int index = it->second;
   return context.GetOutput(index, output_shape.get(), num_dims);
@@ -140,7 +140,7 @@ GetOutputTensor(Ort::KernelContext& context,
 
   auto it = output_names.find(output_name);
   if (it == output_names.end()) {
-    throw std::string(log_tag + "Output names mismatch between OpenVINO and ONNX");
+    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
   int index = it->second;
   auto shape = node->get_shape();
@@ -199,7 +199,7 @@ void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedVal
       break;
     }
     default:
-      throw std::string(log_tag + "Unsupported output data type");
+      ORT_THROW(log_tag + "Unsupported output data type");
   }
 }
 
@@ -227,7 +227,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
   auto tensor = context.GetInput(subgraph_context.input_names.at(input_name));
   auto mem_info = tensor.GetTensorMemoryInfo();
   if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-    throw std::string(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
+    ORT_THROW(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
   }
   // Copy input data into OpenVINO's input buffer
   const char* tensor_data = tensor.GetTensorData<char>();

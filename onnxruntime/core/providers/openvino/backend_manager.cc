@@ -31,7 +31,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   } else if (prec_str == "U8") {
     subgraph_context_.precision = "U8";
   } else {
-    throw std::string("Invalid OpenVINO Precision type: " + prec_str);
+    ORT_THROW(std::string("Invalid OpenVINO Precision type: " + prec_str));
   }
 
   // Save the indexes of graph inputs among fused_node's inputDefs
@@ -47,7 +47,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   for (auto input : graph_inputs) {
     auto it = subgraph_context_.input_names.find(input->Name());
     if (it == subgraph_context_.input_names.end()) {
-      throw std::string("Input not found in the input defs list");
+      ORT_THROW("Input not found in the input defs list");
     }
     int index = it->second;
     subgraph_context_.input_indexes.push_back(index);
@@ -76,7 +76,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                           GetGlobalContext(),
                                                           subgraph_context_);
         } catch (std::string const& msg) {
-          throw msg;
+          ORT_THROW(msg);
         }
         LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                            << "Backend created for graph " << subgraph_context_.subgraph_name;
@@ -88,7 +88,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                        << subgraph_context_.subgraph_name;
 
     subgraph_context_.has_dynamic_input_shape = false;
-    
+
     // OV NPU plugin is supported with fallback to OV CPU upon compilation failures.
     try {
       concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
@@ -106,11 +106,10 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                           GetGlobalContext(),
                                                           subgraph_context_);
         } catch (std::string const& msg) {
-          LOGS_DEFAULT(WARNING) << msg;
-          throw msg;
+          ORT_THROW(msg);
         }
       } else {
-        throw msg;
+        ORT_THROW(msg);
       }
     }
   }
@@ -274,8 +273,8 @@ void BackendManager::Compute(OrtKernelContext* context) {
   }
 #endif
   // OV NPU doesn't support dynamic shaped model inference.
-  // if disable_dynamic_shapes is set to true then execution of dynamic model is done 
-  // by rewriting the model to static shaped model at runtime based on input shape. 
+  // if disable_dynamic_shapes is set to true then execution of dynamic model is done
+  // by rewriting the model to static shaped model at runtime based on input shape.
   // disable_dynamic_shapes is always set to true for OV NPU plugin.
   bool use_dynamic_backend = true;
   if (subgraph_context_.has_dynamic_input_shape &&
@@ -312,7 +311,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                           GetGlobalContext(),
                                                           subgraph_context_);
           } catch (std::string const& msg) {
-            throw msg;
+            ORT_THROW(msg);
           }
         }
       }
