@@ -136,7 +136,7 @@ stages:
       steps:
         - checkout: self
           clean: true
-          submodules: recursive
+          submodules: none
 
         - template: set-python-manylinux-variables-step.yml
 
@@ -147,18 +147,6 @@ stages:
             TargetPath: '$(Build.ArtifactStagingDirectory)'
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-          displayName: 'Mount MNIST'
-          condition: succeededOrFailed()
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-          displayName: 'Mount bert-data'
-          condition: succeededOrFailed()
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-          displayName: 'Mount hf-models-cache'
-          condition: succeededOrFailed()
 
         - template: get-docker-image-steps.yml
           parameters:
@@ -175,6 +163,21 @@ stages:
               --build-arg PREPEND_PATH=/usr/local/cuda/bin:
               --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
             Repository: onnxruntimetraininggpubuild
+
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
+          displayName: 'Mount MNIST'
+          condition: succeededOrFailed()
+          workingDirectory: $(Build.SourcesDirectory)
+
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
+          displayName: 'Mount bert-data'
+          condition: succeededOrFailed()
+          workingDirectory: $(Build.SourcesDirectory)
+
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+          displayName: 'Mount hf-models-cache'
+          condition: succeededOrFailed()
+          workingDirectory: $(Build.SourcesDirectory)
 
         - task: CmdLine@2
           displayName: 'test ortmodule'
