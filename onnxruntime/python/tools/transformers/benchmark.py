@@ -921,7 +921,7 @@ def main():
                     args,
                 )
             except Exception:
-                logger.error("Exception", exc_info=True)
+                logger.exception("Exception")
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

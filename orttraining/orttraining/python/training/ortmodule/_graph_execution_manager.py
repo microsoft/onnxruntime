@@ -188,7 +188,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         This is an abstract method and must be overridden by a concrete implementation.
         This is the only method that the user should call on a concrete instance of the ExecutionManager
         All other methods are internal"""
-        pass
 
     def _build_graph(self, config):
         if self._runtime_options.use_static_shape:

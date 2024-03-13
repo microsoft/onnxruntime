@@ -236,7 +236,7 @@ def main():
 
     # Train loop
     total_training_time, total_test_time, epoch_0_training = 0, 0, 0
-    for epoch in range(0, args.epochs):
+    for epoch in range(args.epochs):
         total_training_time += train(args, model, device, optimizer, my_loss, train_loader, epoch)
         if not args.pytorch_only and epoch == 0:
             epoch_0_training = total_training_time

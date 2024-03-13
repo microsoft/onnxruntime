@@ -38,8 +38,6 @@ log = get_logger("build")
 class BaseError(Exception):
     """Base class for errors originating from build.py."""
 
-    pass
-
 
 class BuildError(BaseError):
     """Error from running build steps."""

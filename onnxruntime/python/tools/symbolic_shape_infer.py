@@ -1833,7 +1833,7 @@ class SymbolicShapeInference:
             axes = self._try_get_value(node, 3)
             steps = self._try_get_value(node, 4)
             if axes is None and not (starts is None and ends is None):
-                axes = list(range(0, len(starts if starts is not None else ends)))
+                axes = list(range(len(starts if starts is not None else ends)))
             if steps is None and not (starts is None and ends is None):
                 steps = [1] * len(starts if starts is not None else ends)
             axes = as_list(axes, keep_none=True)

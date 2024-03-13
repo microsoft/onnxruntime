@@ -48,15 +48,20 @@ select = [
     "B", # flake8-bugbear
     "E", # pycodestyle
     "F", # Pyflakes
+    "FURB", # refurb
+    "G", # flake8-logging-format
     "ISC", # flake8-implicit-str-concat
     "N", # pep8-naming
     "NPY", # numpy
     "PERF", # Perflint
+    "PIE", # flake8-pie
     "PLC", # pylint conventions
     "PLE", # pylint errors
     "PLW", # pylint warnings
+    "PYI", # flake8-pyi
     "RUF", # Ruff-specific rules
     "SIM", # flake8-simplify
+    "SLOT", # flake8-slots
     "T10", # flake8-debugger
     "UP", # pyupgrade
     "W", # pycodestyle
