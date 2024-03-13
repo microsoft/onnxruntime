@@ -16,7 +16,6 @@
 #include "utils.h"
 #include "../ov_interface.h"
 
-
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245 5208)
 #elif __GNUC__
@@ -945,8 +944,7 @@ bool DataOps::dimension_unsupported(const Node* node) {
   return true;
 }
 
-bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string>>& op_map,
-                                const NodeIndex node_idx) {
+bool DataOps::node_is_supported(const NodeIndex node_idx) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
 
@@ -1060,18 +1058,18 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
 }
 
 std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
-  const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer_));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
-    if (node_is_supported(ng_supported_ops, node_idx)) {
+    if (node_is_supported(node_idx)) {
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
                                                                                     bool is_input) {
             if (is_input && this->graph_viewer_.GetAllInitializedTensors().count(node_arg.Name())) {
                 ng_required_initializers.insert(node_arg.Name());
-              } }, true);
+              } },
+                                                  true);
     } else {
       unsupported_nodes_idx.push_back(node_idx);
     }
