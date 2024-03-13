@@ -184,8 +184,7 @@ stages:
           inputs:
             script: |
               set -ex ; \
-              whlfilename=$(ls Build.ArtifactStagingDirectory)/*.whl | head -n 1) ; \
-              echo $whlfilename ; \
+              whlfilename=$(ls $(Build.ArtifactStagingDirectory)/*.whl | head -n 1) ; \
               echo $whlfilename ; \
               docker run --rm \
                 --gpus all \
@@ -205,7 +204,7 @@ stages:
           inputs:
             script: |
               set -e -x
-              whlfilename=$(ls Build.ArtifactStagingDirectory)/*.whl | head -n 1)  && \
+              whlfilename=$(ls $(Build.ArtifactStagingDirectory)/*.whl | head -n 1)  && \
               echo $whlfilename && du -sh $whlfilename &&\
               (( $(wc -c < "$whlfilename") -  300*1024*1024 < 0 )) ||  (exit 1) && \
               python3 tools/ci_build/upload_python_package_to_azure_storage.py \
