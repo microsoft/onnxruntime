@@ -129,6 +129,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Gather", V_2020_4, {"CPU", "GPU"}},
     {"GatherElements", V_2022_2, {"CPU", "GPU"}},
     {"GatherND", V_2021_4, {"CPU", "GPU"}},
+    {"Gelu", V_2023_1, {"CPU", "GPU"}},
     {"Gemm", V_2020_4, {"CPU", "GPU"}},
     {"GlobalAveragePool", V_2020_4, {"CPU", "GPU"}},
     {"GlobalLpPool", V_2020_4, {"CPU", "GPU"}},
