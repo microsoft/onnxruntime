@@ -10,7 +10,7 @@ import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
-import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
+import {AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
 
@@ -54,6 +54,7 @@ class TensorViewImpl implements TensorView {
 }
 
 class ComputeContextImpl implements ComputeContext {
+  readonly adapterInfo: AdapterInfo;
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly outputCount: number;
@@ -66,6 +67,7 @@ class ComputeContextImpl implements ComputeContext {
   private customDataOffset = 0;
   private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
+    this.adapterInfo = backend.adapterInfo;
     const heapU32 = module.HEAPU32;
 
     // extract context data
