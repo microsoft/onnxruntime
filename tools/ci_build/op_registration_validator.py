@@ -45,7 +45,7 @@ class RegistrationInfo:
 
 
 def _log_registration_error(r: RegistrationInfo, message: str):
-    log.error("Invalid registration for {}. {}\n{}".format(r.domain_and_op_str(), message, "".join(r.lines)))
+    log.error("Invalid registration for {}. {}\n{}".format(r.domain_and_op_str(), message, "".join(r.lines)))  # noqa: G001
 
 
 class RegistrationValidator(op_registration_utils.RegistrationProcessor):
@@ -70,7 +70,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
     def ok(self):
         num_invalid_registrations = self._validate_all_registrations()
         if num_invalid_registrations > 0:
-            log.error(f"Found {num_invalid_registrations} invalid registration(s).")
+            log.error(f"Found {num_invalid_registrations} invalid registration(s).")  # noqa: G004
             return False
 
         return True
@@ -176,12 +176,12 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         ops_with_incomplete_support = ["kOnnxDomain:ArgMin", "kOnnxDomain:ArgMax"]
         if domain_and_op_str in ops_with_incomplete_support:
             log.warning(
-                f"Allowing missing unversioned registration for op with incomplete support: {domain_and_op_str}."
+                f"Allowing missing unversioned registration for op with incomplete support: {domain_and_op_str}."  # noqa: G004
             )
             allow_missing_unversioned_registration = True
 
         if last_r.end_version is not None and not allow_missing_unversioned_registration:
-            log.error(f"Missing unversioned registration for {domain_and_op_str}.")
+            log.error(f"Missing unversioned registration for {domain_and_op_str}.")  # noqa: G004
             return False
 
         return True
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     registration_files = op_registration_utils.get_kernel_registration_files(ort_root, include_cuda)
 
     def validate_registration_file(file: str) -> bool:
-        log.info(f"Processing {file}")
+        log.info(f"Processing {file}")  # noqa: G004
 
         processor = RegistrationValidator()
         op_registration_utils.process_kernel_registration_file(file, processor)
@@ -217,5 +217,5 @@ if __name__ == "__main__":
         list(map(validate_registration_file, registration_files))
     )
 
-    log.info(f"Op kernel registration validation {'succeeded' if validation_successful else 'failed'}.")
+    log.info(f"Op kernel registration validation {'succeeded' if validation_successful else 'failed'}.")  # noqa: G004
     sys.exit(0 if validation_successful else 1)

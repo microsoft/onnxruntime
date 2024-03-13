@@ -56,7 +56,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    log.debug(f"Dockerfile: {args.dockerfile}, context: {args.context}, docker build args: '{args.docker_build_args}'")
+    log.debug(f"Dockerfile: {args.dockerfile}, context: {args.context}, docker build args: '{args.docker_build_args}'")  # noqa: G004
 
     use_container_registry = args.container_registry is not None
 
@@ -69,20 +69,20 @@ def main():
         else f"{args.repository}:latest"
     )
 
-    log.info(f"Image: {full_image_name}")
+    log.info(f"Image: {full_image_name}")  # noqa: G004
 
     dst_deps_file = Path(args.context) / "scripts" / "deps.txt"
     # The docker file may provide a special deps.txt in its docker context dir and uses that one.
     # Otherwise, copy a generic one from this repo's cmake dir.
     if not dst_deps_file.exists():
-        log.info(f"Copy deps.txt to : {dst_deps_file}")
+        log.info(f"Copy deps.txt to : {dst_deps_file}")  # noqa: G004
         shutil.copyfile(Path(REPO_DIR) / "cmake" / "deps.txt", str(dst_deps_file))
 
     if "manylinux" in args.dockerfile and args.multiple_repos:
         manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
         dest = Path(args.context) / "build_scripts"
         if dest.exists():
-            log.info(f"Deleting: {dest!s}")
+            log.info(f"Deleting: {dest!s}")  # noqa: G004
             shutil.rmtree(str(dest))
         shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
         src_entrypoint_file = str(Path(args.manylinux_src) / "docker" / "manylinux-entrypoint")

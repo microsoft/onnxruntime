@@ -373,11 +373,11 @@ class WhisperDecoderHelper:
 
             max_diff = numpy.amax(numpy.abs(torch_outputs[0].cpu().numpy() - ort_outputs[0]))
             max_diff_all = max_diff
-            logger.debug(f"logits max_diff={max_diff}")
+            logger.debug(f"logits max_diff={max_diff}")  # noqa: G004
 
             for i in range(2 * model.config.num_layers):
                 max_diff = numpy.amax(numpy.abs(torch_outputs[1][i].cpu().numpy() - ort_outputs[1 + i]))
-                logger.debug(f"self attention past state {i} max_diff={max_diff}")
+                logger.debug(f"self attention past state {i} max_diff={max_diff}")  # noqa: G004
                 max_diff_all = max(max_diff_all, max_diff)
 
             if isinstance(model, WhisperDecoderInit):
@@ -385,7 +385,7 @@ class WhisperDecoderHelper:
                     max_diff = numpy.amax(
                         numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[1 + 2 * model.config.num_layers + i])
                     )
-                    logger.debug(f"cross attention past state {i} max_diff={max_diff}")
+                    logger.debug(f"cross attention past state {i} max_diff={max_diff}")  # noqa: G004
                     max_diff_all = max(max_diff_all, max_diff)
 
             test_cases_max_diff.append(max_diff_all)

@@ -87,7 +87,7 @@ def run(arg_list, cwd=None):
     import subprocess
 
     log.info(
-        "Running subprocess in '{}'\n  {}".format(cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list]))
+        "Running subprocess in '{}'\n  {}".format(cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list]))  # noqa: G001
     )
 
     return subprocess.run(arg_list, check=True, cwd=cwd)
@@ -178,7 +178,7 @@ def main():
         move_dir(c_pod_staging_dir, staging_dir / c_pod_name)
         move_dir(objc_pod_staging_dir, staging_dir / objc_pod_name)
 
-    log.info(f"Successfully assembled iOS pods at '{staging_dir}'.")
+    log.info(f"Successfully assembled iOS pods at '{staging_dir}'.")  # noqa: G004
 
 
 if __name__ == "__main__":

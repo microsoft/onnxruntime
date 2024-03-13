@@ -287,7 +287,7 @@ class ONNXQuantizer(BaseQuantizer):
             ):
                 return True
             logging.warning(
-                f"Inference failed or unsupported type to quantize for tensor {tensor_name!r}, type is {vi.type}."
+                f"Inference failed or unsupported type to quantize for tensor {tensor_name!r}, type is {vi.type}."  # noqa: G004
             )
             return False
 
@@ -295,7 +295,7 @@ class ONNXQuantizer(BaseQuantizer):
             return self.parent.is_float_tensor(tensor_name)
 
         logging.warning(
-            f"Failed to infer data type of tensor: {tensor_name!r}. Please add data type info for this tensor "
+            f"Failed to infer data type of tensor: {tensor_name!r}. Please add data type info for this tensor "  # noqa: G004
             f"if your model has customized operators."
         )
         return False

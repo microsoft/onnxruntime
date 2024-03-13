@@ -38,7 +38,7 @@ class DynamoOnnxHelper:
         """
         Unrolls the function with the given name in the model.
         """
-        logging.info(f"Unrolling function {func_name}...")
+        logging.info(f"Unrolling function {func_name}...")  # noqa: G004
         nodes_to_remove = []
         nodes_to_add = []
         edges_to_remove = []

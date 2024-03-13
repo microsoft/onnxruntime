@@ -122,15 +122,15 @@ class PartitioningInfo:
 
         num_nodes = self.num_nodes + self.num_nodes_in_subgraphs
         logger.info(
-            f"{self.num_partitions} partitions with a total of {self.num_supported_nodes}/{num_nodes} "
+            f"{self.num_partitions} partitions with a total of {self.num_supported_nodes}/{num_nodes} "  # noqa: G004
             f"nodes can be handled by the {ep_name} EP."
         )
         if self.num_nodes_in_subgraphs:
-            logger.info(f"{self.num_nodes_in_subgraphs} nodes are in subgraphs, which are currently not handled.")
+            logger.info(f"{self.num_nodes_in_subgraphs} nodes are in subgraphs, which are currently not handled.")  # noqa: G004
 
         if self.supported_groups:
-            logger.info(f'Partition sizes: [{", ".join([str(len(partition)) for partition in self.supported_groups])}]')
-            logger.info(f"Unsupported nodes due to operator={self.nodes_unsupported_due_to_op}")
+            logger.info(f'Partition sizes: [{", ".join([str(len(partition)) for partition in self.supported_groups])}]')  # noqa: G004
+            logger.info(f"Unsupported nodes due to operator={self.nodes_unsupported_due_to_op}")  # noqa: G004
             if self.nodes_unsupported_due_to_dynamic_input:
                 logger.info(
                     "Unsupported nodes due to input having a dynamic shape=%d",
@@ -142,45 +142,45 @@ class PartitioningInfo:
             # for group in supported_groups:
             #     logger.debug(f'Nodes in group: {",".join([f"{node.name}:{node.op_type}" for node in group])}')
             if self.unsupported_ops:
-                logger.info(f'Unsupported ops: {",".join(sorted(self.unsupported_ops))}')
+                logger.info(f'Unsupported ops: {",".join(sorted(self.unsupported_ops))}')  # noqa: G004
 
             caveats = self.supported_ops_checker.get_caveats()
             if caveats:
                 indent = " " * 5
                 logger.debug(
-                    "Caveats that have not been checked and may result in a node not being supported:  "
+                    "Caveats that have not been checked and may result in a node not being supported:  "  # noqa: G004
                     f'{"".join([os.linesep + indent + caveat for caveat in caveats])}'
                 )
 
         pct_nodes_using_ep = self.num_supported_nodes / num_nodes * 100
         if self.num_partitions == 0:
-            logger.info(f"{ep_name} cannot run any nodes in this model.")
+            logger.info(f"{ep_name} cannot run any nodes in this model.")  # noqa: G004
         elif self.num_partitions == 1:
             if pct_nodes_using_ep > 75:
                 logger.info(
-                    f"{ep_name} should work well for this model as there is one partition "
+                    f"{ep_name} should work well for this model as there is one partition "  # noqa: G004
                     f"covering {pct_nodes_using_ep:.1f}% of the nodes in the model."
                 )
             elif pct_nodes_using_ep > 50:
                 logger.info(
-                    f"{ep_name} may work well for this model, however only {pct_nodes_using_ep:.1f}% of nodes "
+                    f"{ep_name} may work well for this model, however only {pct_nodes_using_ep:.1f}% of nodes "  # noqa: G004
                     "will use it. Performance testing is required to validate."
                 )
             else:
                 logger.info(
-                    f"{ep_name} will probably not work will for this model as only {pct_nodes_using_ep:.2f}% "
+                    f"{ep_name} will probably not work will for this model as only {pct_nodes_using_ep:.2f}% "  # noqa: G004
                     "of nodes will use it."
                 )
 
         elif self.num_partitions == 2 and pct_nodes_using_ep > 75:
             logger.info(
-                f"{ep_name} can be considered for this model as there are two partitions "
+                f"{ep_name} can be considered for this model as there are two partitions "  # noqa: G004
                 f"covering {pct_nodes_using_ep:.1f}% of the nodes. "
                 "Performance testing is required to validate."
             )
         else:
             logger.info(
-                f"{ep_name} is not recommended with this model as there are {self.num_partitions} partitions "
+                f"{ep_name} is not recommended with this model as there are {self.num_partitions} partitions "  # noqa: G004
                 f"covering {pct_nodes_using_ep:.1f}% of the nodes in the model. "
                 "This will most likely result in worse performance than just using the CPU EP."
             )
@@ -413,7 +413,7 @@ def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None
             dynamic_inputs.append(i)
             # split/join to remove repeated whitespace and newlines from str(i)
             if logger:
-                logger.info(f"Input is not a fixed size tensor: {' '.join(str(i).split())}")
+                logger.info(f"Input is not a fixed size tensor: {' '.join(str(i).split())}")  # noqa: G004
             num_dynamic_values += 1
         else:
             num_fixed_values += 1
@@ -423,7 +423,7 @@ def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None
         if not is_fixed_size_tensor(o):
             dynamic_outputs.append(o)
             if logger:
-                logger.info(f"Output is not a fixed size tensor: {' '.join(str(o).split())}")
+                logger.info(f"Output is not a fixed size tensor: {' '.join(str(o).split())}")  # noqa: G004
             num_dynamic_values += 1
         else:
             num_fixed_values += 1
@@ -445,7 +445,7 @@ def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None
 
     if logger:
         logger.info(
-            f"Num values with fixed shape={num_fixed_values}. Num values with dynamic shape={num_dynamic_values}"
+            f"Num values with fixed shape={num_fixed_values}. Num values with dynamic shape={num_dynamic_values}"  # noqa: G004
         )
 
         if dynamic_inputs:
@@ -481,7 +481,7 @@ def checker(model_path: pathlib.Path, logger: logging.Logger):
     dynamic_inputs, num_dynamic_values = check_shapes(model_with_shape_info.graph)
 
     def check_ep(ep_name, checker_func):
-        logger.info(f"Checking {ep_name}")
+        logger.info(f"Checking {ep_name}")  # noqa: G004
 
         # check with shape info first so supported nodes takes into account values with dynamic shapes
         partition_info = checker_func(model_with_shape_info, value_to_shape)
@@ -489,7 +489,7 @@ def checker(model_path: pathlib.Path, logger: logging.Logger):
             partition_info.dump_analysis(logger, ep_name)
 
         suitability = partition_info.suitability()
-        logger.info(f"Model should perform well with {ep_name} as is: {suitability.name}")
+        logger.info(f"Model should perform well with {ep_name} as is: {suitability.name}")  # noqa: G004
 
         if suitability != PartitioningInfo.TryWithEP.YES and dynamic_inputs:
             logger.info("Checking if model will perform better if the dynamic shapes are fixed...")
@@ -501,7 +501,7 @@ def checker(model_path: pathlib.Path, logger: logging.Logger):
 
             fixed_shape_suitability = partition_info_with_fixed_shapes.suitability()
             logger.info(
-                f"Model should perform well with {ep_name} if modified to have fixed input shapes: "
+                f"Model should perform well with {ep_name} if modified to have fixed input shapes: "  # noqa: G004
                 f"{fixed_shape_suitability.name}"
             )
             if fixed_shape_suitability != PartitioningInfo.TryWithEP.NO:
@@ -537,7 +537,7 @@ def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger:
         logger = logging.getLogger("usability_checker")
         logger.setLevel(logging.INFO)
 
-    logger.info(f"Checking {model_path} for usability with ORT Mobile.")
+    logger.info(f"Checking {model_path} for usability with ORT Mobile.")  # noqa: G004
 
     with tempfile.TemporaryDirectory() as tmp:
         if not skip_optimize:

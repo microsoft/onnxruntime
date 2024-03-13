@@ -41,7 +41,7 @@ def get_ep_list(comparison):
 def resolve_trtexec_path(workspace):
     trtexec_options = get_output(["find", workspace, "-name", "trtexec"])  # noqa: F405
     trtexec_path = re.search(r".*/bin/trtexec", trtexec_options).group(0)
-    logger.info(f"using trtexec {trtexec_path}")  # noqa: F405
+    logger.info(f"using trtexec {trtexec_path}")  # noqa: F405, G004
     return trtexec_path
 
 
@@ -80,9 +80,9 @@ def main():
     benchmark = is_benchmark_mode(args.running_mode)  # noqa: F405
 
     for model, model_info in models.items():
-        logger.info("\n" + "=" * 40 + "=" * len(model))  # noqa: F405
-        logger.info("=" * 20 + model + "=" * 20)  # noqa: F405
-        logger.info("=" * 40 + "=" * len(model))  # noqa: F405
+        logger.info("\n" + "=" * 40 + "=" * len(model))  # noqa: F405, G003
+        logger.info("=" * 20 + model + "=" * 20)  # noqa: F405, G003
+        logger.info("=" * 40 + "=" * len(model))  # noqa: F405, G003
 
         model_info["model_name"] = model
 
@@ -170,10 +170,10 @@ def main():
         if os.path.exists(METRICS_FILE):  # noqa: F405
             model_to_metrics = read_map_from_file(METRICS_FILE)  # noqa: F405
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))  # noqa: F405
-            logger.info(f"\nSaved model metrics results to {benchmark_metrics_csv}")  # noqa: F405
+            logger.info(f"\nSaved model metrics results to {benchmark_metrics_csv}")  # noqa: F405, G004
             # Output op metrics for dashboard display
             output_op_metrics(model_to_metrics, os.path.join(path, benchmark_op_metrics_csv))  # noqa: F405
-            logger.info(f"\nSaved model op metrics results to {benchmark_op_metrics_csv}")  # noqa: F405
+            logger.info(f"\nSaved model op metrics results to {benchmark_op_metrics_csv}")  # noqa: F405, G004
 
     if benchmark:
         logger.info("\n=========================================")  # noqa: F405
@@ -184,7 +184,7 @@ def main():
             model_to_session = read_map_from_file(SESSION_FILE)  # noqa: F405
             pretty_print(pp, model_to_session)  # noqa: F405
             output_session_creation(model_to_session, os.path.join(path, benchmark_session_csv))  # noqa: F405
-            logger.info(f"\nSaved session creation results to {benchmark_session_csv}")  # noqa: F405
+            logger.info(f"\nSaved session creation results to {benchmark_session_csv}")  # noqa: F405, G004
 
         logger.info("\n=========================================================")  # noqa: F405
         logger.info("========== Failing Models/EPs (accumulated) ==============")  # noqa: F405
@@ -194,7 +194,7 @@ def main():
             model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)  # noqa: F405
             output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))  # noqa: F405
             logger.info(model_to_fail_ep)  # noqa: F405
-            logger.info(f"\nSaved model failing results to {benchmark_fail_csv}")  # noqa: F405
+            logger.info(f"\nSaved model failing results to {benchmark_fail_csv}")  # noqa: F405, G004
 
         logger.info("\n=======================================================")  # noqa: F405
         logger.info("=========== Models/EPs Status (accumulated) ===========")  # noqa: F405
@@ -213,7 +213,7 @@ def main():
         pretty_print(pp, model_status)  # noqa: F405
 
         output_status(model_status, os.path.join(path, benchmark_status_csv))  # noqa: F405
-        logger.info(f"\nSaved model status results to {benchmark_status_csv}")  # noqa: F405
+        logger.info(f"\nSaved model status results to {benchmark_status_csv}")  # noqa: F405, G004
 
         logger.info("\n=========================================================")  # noqa: F405
         logger.info("=========== Models/EPs latency (accumulated)  ===========")  # noqa: F405
@@ -226,7 +226,7 @@ def main():
             pretty_print(pp, model_to_latency)  # noqa: F405
 
             output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))  # noqa: F405
-            logger.info(f"\nSaved model latency results to {benchmark_latency_csv}")  # noqa: F405
+            logger.info(f"\nSaved model latency results to {benchmark_latency_csv}")  # noqa: F405, G004
 
     logger.info("\n===========================================")  # noqa: F405
     logger.info("=========== System information  ===========")  # noqa: F405
@@ -235,7 +235,7 @@ def main():
     pretty_print(pp, info)  # noqa: F405
     logger.info("\n")  # noqa: F405
     output_specs(info, os.path.join(path, specs_csv))  # noqa: F405
-    logger.info(f"\nSaved hardware specs to {specs_csv}")  # noqa: F405
+    logger.info(f"\nSaved hardware specs to {specs_csv}")  # noqa: F405, G004
 
 
 if __name__ == "__main__":

@@ -80,9 +80,9 @@ class MatMulBnb4Quantizer:
         if node.op_type != "MatMul":
             return node  # only care about MatMul for now
 
-        logger.debug(f"start to quantize {node.name} ...")
+        logger.debug(f"start to quantize {node.name} ...")  # noqa: G004
         if node.name in self.nodes_to_exclude:
-            logger.debug(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
+            logger.debug(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")  # noqa: G004
             return node
 
         inputB = node.input[1]  # noqa: N806
@@ -125,7 +125,7 @@ class MatMulBnb4Quantizer:
             **kwargs,
         )
 
-        logger.debug(f"complete quantization of {node.name} ...")
+        logger.debug(f"complete quantization of {node.name} ...")  # noqa: G004
 
         return matmul_bnb4_node
 
@@ -231,7 +231,7 @@ if __name__ == "__main__":
     output_model_path = args.output_model
 
     if os.path.exists(output_model_path):
-        logger.error(f"file {output_model_path} already exists")
+        logger.error(f"file {output_model_path} already exists")  # noqa: G004
         raise Exception(f"file {output_model_path} already exists")
 
     model = onnx.load(input_model_path)

@@ -57,7 +57,7 @@ class FusionRotaryAttention(FusionAttention):
 
         if self.hidden_size > 0 and (self.hidden_size % self.num_heads) != 0:
             logger.debug(
-                f"fuse_rotary_attention: input hidden size {self.hidden_size} is not a multiple of num of heads {self.num_heads}"
+                f"fuse_rotary_attention: input hidden size {self.hidden_size} is not a multiple of num of heads {self.num_heads}"  # noqa: G004
             )
             return None
 

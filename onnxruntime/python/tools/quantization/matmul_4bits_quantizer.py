@@ -293,7 +293,7 @@ class HQQWeightOnlyQuantizer:
             return node  # only care about MatMul for now
         import torch
 
-        logger.info(f"start to quantize {node.name} ...")
+        logger.info(f"start to quantize {node.name} ...")  # noqa: G004
         inputB = node.input[1]  # noqa: N806
         b_pb, bs_graph = get_initializer(inputB, graph_stack)
         if b_pb is None:
@@ -355,7 +355,7 @@ class HQQWeightOnlyQuantizer:
             **kwargs,
         )
 
-        logger.info(f"complete quantization of {node.name} ...")
+        logger.info(f"complete quantization of {node.name} ...")  # noqa: G004
 
         return matmul_q4_node
 
@@ -402,7 +402,7 @@ class DefaultWeightOnlyQuantizer:
         if node.op_type != "MatMul":
             return node  # only care about MatMul for now
 
-        logger.info(f"start to quantize {node.name} ...")
+        logger.info(f"start to quantize {node.name} ...")  # noqa: G004
         inputB = node.input[1]  # noqa: N806
         B, Bs_graph = get_initializer(inputB, graph_stack)  # noqa: N806
         if B is None:
@@ -451,7 +451,7 @@ class DefaultWeightOnlyQuantizer:
             **kwargs,
         )
 
-        logger.info(f"complete quantization of {node.name} ...")
+        logger.info(f"complete quantization of {node.name} ...")  # noqa: G004
 
         return matmul_q4_node
 
@@ -519,7 +519,7 @@ class MatMul4BitsQuantizer:
                 )
             out_node = None
             if node.name in self.nodes_to_exclude:
-                logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
+                logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")  # noqa: G004
                 out_node = node
             elif self.algo_config is not None and self.algo_config.algorithm == "HQQ":
                 out_node = self.node_quantizer.quantize(node, graph_stack)
@@ -563,7 +563,7 @@ class MatMul4BitsQuantizer:
         weight_only_node_config = self._generate_q4_node_config()
 
         algorithm = self.algo_config.algorithm
-        logger.info(f"start to quantize model with {algorithm} algorithm...")
+        logger.info(f"start to quantize model with {algorithm} algorithm...")  # noqa: G004
         if algorithm == "RTN":
             from neural_compressor.adaptor.ox_utils.weight_only import rtn_quantize
 
@@ -591,7 +591,7 @@ class MatMul4BitsQuantizer:
                 dataloader=dataloader,
                 **kwargs,
             )
-        logger.info(f"complete quantization of model with {algorithm} algorithm.")
+        logger.info(f"complete quantization of model with {algorithm} algorithm.")  # noqa: G004
 
     def process(self):
         if self.algo_config.algorithm in ["HQQ", "DEFAULT"]:
@@ -612,7 +612,7 @@ class MatMul4BitsQuantizer:
             try:
                 importlib.import_module("neural_compressor")
             except Exception as e:
-                logging.error(f"{e}.")
+                logging.error(f"{e}.")  # noqa: G004
                 raise RuntimeError(
                     "neural-compressor is not correctly installed. Please check your environment."
                 ) from e
@@ -692,7 +692,7 @@ if __name__ == "__main__":
     output_model_path = args.output_model
 
     if os.path.exists(output_model_path):
-        logger.error(f"file {output_model_path} already exists")
+        logger.error(f"file {output_model_path} already exists")  # noqa: G004
         raise Exception(f"file {output_model_path} already exists")
 
     model = onnx.load(input_model_path)

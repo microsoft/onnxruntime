@@ -41,7 +41,7 @@ class FusionQOrderedAttention(Fusion):
         # we assume that reshape fusion has done, so the shape is a tensor like [0, 0, num_heads, head_size]
         q_shape = self.model.get_initializer(reshape_q.input[1])
         if q_shape is None:
-            logger.debug(f"{reshape_q.input[1]} is not initializer.")
+            logger.debug(f"{reshape_q.input[1]} is not initializer.")  # noqa: G004
 
             # Check if the second input to Reshape flows through a Constant node
             # TODO: Investigate why FusionAttention doesn't have such logic
@@ -60,7 +60,7 @@ class FusionQOrderedAttention(Fusion):
 
         q_shape_value = NumpyHelper.to_array(q_shape)
         if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
-            logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
+            logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")  # noqa: G004
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
         num_heads = q_shape_value[2]
@@ -69,13 +69,13 @@ class FusionQOrderedAttention(Fusion):
 
         if self.num_heads > 0 and num_heads != self.num_heads:
             if self.num_heads_warning:
-                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")  # noqa: G004
                 self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
             if self.hidden_size_warning:
                 logger.warning(
-                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."
+                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."  # noqa: G004
                 )
                 self.hidden_size_warning = False  # Do not show the warning more than once
 

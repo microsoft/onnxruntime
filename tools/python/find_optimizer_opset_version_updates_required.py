@@ -53,7 +53,7 @@ def get_call_args_from_file(filename: str, function_or_declaration: str) -> typi
                 else:
                     # TODO: handle automatically by merging lines
                     log.error(
-                        "Call/Declaration is split over multiple lines. Please check manually."
+                        "Call/Declaration is split over multiple lines. Please check manually."  # noqa: G004
                         f"File:{filename} Line:{line_num}"
                     )
                     continue
@@ -178,7 +178,7 @@ def find_potential_issues(root_dir, op_to_opset):
             args = call.split(",", 2)  # first 2 args are simple, remainder need custom processing
             op = args[1].strip()
             if not op.startswith('"') or not op.endswith('"'):
-                log.error(f"Symbolic name of '{op}' found for op. Please check manually. File:{file}")
+                log.error(f"Symbolic name of '{op}' found for op. Please check manually. File:{file}")  # noqa: G004
                 continue
 
             versions_and_domain_arg = args[2]
@@ -199,10 +199,10 @@ def find_potential_issues(root_dir, op_to_opset):
                 latest = op_to_opset[op]
                 if int(latest) != int(last_version):
                     log.warning(
-                        f"Newer opset found for {op}. Latest:{latest} Optimizer support ends at {last_version}. File:{file}"
+                        f"Newer opset found for {op}. Latest:{latest} Optimizer support ends at {last_version}. File:{file}"  # noqa: G004
                     )
             else:
-                log.error(f"Failed to find version information for {op}. File:{file}")
+                log.error(f"Failed to find version information for {op}. File:{file}")  # noqa: G004
 
 
 if __name__ == "__main__":

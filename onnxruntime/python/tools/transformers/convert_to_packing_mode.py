@@ -137,11 +137,11 @@ class PackingAttentionBase:
         restorepadding_input = last_layernorm_node.output[0] + "_restore_input"
         self._insert_restorepadding_node([restorepadding_input, token_offset], [last_layernorm_node.output[0]])
         self.model.replace_output_of_all_nodes(last_layernorm_node.output[0], restorepadding_input)
-        logger.debug(f"inserted RestorePadding after last {last_layernorm_node.op_type} layer")
+        logger.debug(f"inserted RestorePadding after last {last_layernorm_node.op_type} layer")  # noqa: G004
 
         # insert PackedAttention
         self._replace_attention_with_packing_attention(token_offset, cumulated_seq_len)
-        logger.debug(f"replaced {self.attention_op_type} with Packed{self.attention_op_type}")
+        logger.debug(f"replaced {self.attention_op_type} with Packed{self.attention_op_type}")  # noqa: G004
 
         self.model.remove_nodes(self.nodes_to_remove)
         self.model.add_nodes(self.nodes_to_add, self.node_name_to_graph_name)
@@ -225,7 +225,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
         """Check a node does not have given input."""
         if len(node.input) > index:
             if len(node.input[index]) > 0:
-                logger.error(f"node input {index} ({name}) is not supported in PackedMultiHeadAttention: {node}")
+                logger.error(f"node input {index} ({name}) is not supported in PackedMultiHeadAttention: {node}")  # noqa: G004
                 return False
         return True
 
@@ -233,7 +233,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
         """Check a node does not have given input."""
         if len(node.output) > index:
             if len(node.output[index]) > 0:
-                logger.error(f"node output {index} ({name}) is not supported in PackedMultiHeadAttention: {node}")
+                logger.error(f"node output {index} ({name}) is not supported in PackedMultiHeadAttention: {node}")  # noqa: G004
                 return False
         return True
 
@@ -241,7 +241,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
         for node in self.attention_nodes:
             for attr in node.attribute:
                 if attr.name not in ["num_heads", "mask_filter_value", "scale"]:
-                    logger.error(f"node attribute {attr.name} is not supported in PackedMultiHeadAttention: {node}")
+                    logger.error(f"node attribute {attr.name} is not supported in PackedMultiHeadAttention: {node}")  # noqa: G004
                     return False
 
             if node.input[MultiHeadAttentionInputIDs.KEY] and not node.input[MultiHeadAttentionInputIDs.VALUE]:
@@ -372,7 +372,7 @@ def main():
 
     _setup_logger(args.verbose)
 
-    logger.debug(f"arguments:{args}")
+    logger.debug(f"arguments:{args}")  # noqa: G004
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
         logger.warning("Specified the same input and output path. Note that this may overwrite the original model")

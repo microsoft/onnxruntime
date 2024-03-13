@@ -83,7 +83,7 @@ def download_logs(storage_account, container, log_path_pattern, target_dir, az_p
     return [os.path.join(target_dir, log_path) for log_path in log_paths]
 
 
-ImageInfo = collections.namedtuple("ImageInfo", ["repository", "digest"])
+ImageInfo = collections.namedtuple("ImageInfo", ["repository", "digest"])  # noqa: PYI024
 
 
 def get_image_name(image_info):
@@ -146,7 +146,7 @@ def get_valid_images_from_logs(log_paths, min_datetime, min_access_count):
     image_counts = dict()  # dict of {ImageInfo -> count}
 
     for log_path in log_paths:
-        log.debug(f"Processing log file: {log_path}")
+        log.debug(f"Processing log file: {log_path}")  # noqa: G004
         with open(log_path) as log_file:
             for line in log_file:
                 image_info = parse_log_line(line, min_datetime)
@@ -237,13 +237,13 @@ def main():
     def sorted_image_names(image_infos):
         return sorted([get_image_name(image_info) for image_info in image_infos])
 
-    log.debug("All images:\n{}".format("\n".join(sorted_image_names(all_images))))
-    log.debug("Valid images:\n{}".format("\n".join(sorted_image_names(valid_images))))
+    log.debug("All images:\n{}".format("\n".join(sorted_image_names(all_images))))  # noqa: G001
+    log.debug("Valid images:\n{}".format("\n".join(sorted_image_names(valid_images))))  # noqa: G001
 
     images_to_clean = all_images - valid_images
     image_names_to_clean = sorted_image_names(images_to_clean)
 
-    log.info("Images to clean:\n{}".format("\n".join(image_names_to_clean)))
+    log.info("Images to clean:\n{}".format("\n".join(image_names_to_clean)))  # noqa: G001
 
     if args.dry_run:
         log.info("Dry run, no images will be cleaned.")

@@ -515,7 +515,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         #       Currently logits and past state shall be same data type.
 
     if args.verbose:
-        logger.info(f"arguments for convert_to_onnx:{arguments}")
+        logger.info(f"arguments for convert_to_onnx:{arguments}")  # noqa: G004
 
     convert_gpt2_to_onnx(argv=arguments)
 
@@ -543,8 +543,8 @@ def t5_to_onnx(args: argparse.Namespace):
         model_type=args.model_type,
     )
 
-    logger.debug(f"onnx model for encoder: {paths[0]}")
-    logger.debug(f"onnx model for decoder: {paths[1]}")
+    logger.debug(f"onnx model for encoder: {paths[0]}")  # noqa: G004
+    logger.debug(f"onnx model for decoder: {paths[1]}")  # noqa: G004
     args.encoder_decoder_init_onnx = paths[0]
     args.decoder_onnx = paths[1]
 
@@ -922,7 +922,7 @@ def remove_shared_initializers(
                     shared_initializers_names.append(shared_name)
                 break
 
-    logger.debug(f"shared initializers:{shared_initializers_names}")
+    logger.debug(f"shared initializers:{shared_initializers_names}")  # noqa: G004
 
     # Make sure new name does not exist in graph 1
     for node in graph1.node:
@@ -950,7 +950,7 @@ def remove_shared_initializers(
         for j in range(len(node.input)):
             if node.input[j] in mapping_initializers_2:
                 new_name = mapping_initializers_2[node.input[j]]
-                logger.debug(f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                logger.debug(f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}")  # noqa: G004
                 node.input[j] = new_name
 
     #  Remove shared initializers from graph 1
@@ -967,7 +967,7 @@ def remove_shared_initializers(
         for j in range(len(node.input)):
             if node.input[j] in mapping_initializers_1:
                 new_name = mapping_initializers_1[node.input[j]]
-                logger.debug(f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                logger.debug(f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}")  # noqa: G004
                 node.input[j] = new_name
 
     # Rename shared initializers in graph 2
@@ -1185,7 +1185,7 @@ def update_decoder_subgraph_use_decoder_masked_attention(
                         # decoding attention kernels are unidirectional by definition.
                         if k != "unidirectional":
                             logger.warning(
-                                f"Removing attribute: {k} from Attention node while switching to DecoderMaskedSelfAttention"
+                                f"Removing attribute: {k} from Attention node while switching to DecoderMaskedSelfAttention"  # noqa: G004
                             )
 
                         del kwargs[k]
@@ -1963,11 +1963,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     is_sampling: bool = generation_type == GenerationType.SAMPLING
     past_present_share_buffer: bool = args.past_present_share_buffer
 
-    logger.info(f"**** past_present_share_buffer={past_present_share_buffer}")
+    logger.info(f"**** past_present_share_buffer={past_present_share_buffer}")  # noqa: G004
     if len(args.op_block_list) == 1 and args.op_block_list[0] == "auto":
         if is_gpt2 and args.precision == Precision.FLOAT16:
             args.op_block_list = ["Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"]
-            logger.info(f"**** Setting op_block_list to {args.op_block_list}")
+            logger.info(f"**** Setting op_block_list to {args.op_block_list}")  # noqa: G004
             logger.info("**** use --op_block_list if you want to override the block operator list.")
         else:
             args.op_block_list = []
@@ -1999,7 +1999,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
-            logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
+            logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")  # noqa: G004
         else:
             if not args.decoder_onnx:
                 onnx_filename = "{}_past_{}.onnx".format(
@@ -2007,15 +2007,15 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 )
                 args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
 
-            logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
+            logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")  # noqa: G004
             gpt2_to_onnx(args)
     else:  # t5 or mt5
         if args.decoder_onnx and args.encoder_decoder_init_onnx:
             logger.info(
-                f"skip convert_to_onnx since paths specified: {args.decoder_onnx} and {args.encoder_decoder_init_onnx}"
+                f"skip convert_to_onnx since paths specified: {args.decoder_onnx} and {args.encoder_decoder_init_onnx}"  # noqa: G004
             )
         else:
-            logger.info(f"Convert model {args.model_name_or_path} to onnx ...")
+            logger.info(f"Convert model {args.model_name_or_path} to onnx ...")  # noqa: G004
             t5_to_onnx(args)
 
     # We only want to pad the logits MatMul weight in the decoder for fp16 models.
@@ -2031,7 +2031,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         and (is_beamsearch or is_greedysearch or is_sampling)
     ):
         logger.info(
-            f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
+            f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "  # noqa: G004
             "The file will be overwritten."
         )
         logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
@@ -2047,7 +2047,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         and is_gpt2
         and (is_beamsearch or is_greedysearch or is_sampling)
     ):
-        logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
+        logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")  # noqa: G004
 
         gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
             "fp16" if args.precision == Precision.FLOAT16 else "fp32"
@@ -2077,10 +2077,10 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     # weight(s)/input shape(s) in the decoder, we want to run shape inference to capture the new
     # shapes
     if logits_matmul_weight_padded or args.run_shape_inference or gpt2_init_decoder_generated:
-        logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
+        logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")  # noqa: G004
         shape_inference(args.decoder_onnx, args.use_external_data_format)
         if gpt2_init_decoder_generated:
-            logger.info(f"Run symbolic shape inference on {gpt2_init_decoder_onnx_path}. The file will be overwritten.")
+            logger.info(f"Run symbolic shape inference on {gpt2_init_decoder_onnx_path}. The file will be overwritten.")  # noqa: G004
             shape_inference(gpt2_init_decoder_onnx_path, args.use_external_data_format)
 
     if is_gpt2:
@@ -2091,7 +2091,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         config = MT5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
     if args.verbose:
-        logger.info(f"Config={config}")
+        logger.info(f"Config={config}")  # noqa: G004
 
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id if is_gpt2 else config.pad_token_id
@@ -2237,7 +2237,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if args.model_type in ["t5", "mt5"]:
         if args.run_shape_inference:
-            logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
+            logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")  # noqa: G004
             shape_inference(args.encoder_decoder_init_onnx, args.use_external_data_format)
         encoder_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
         encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
@@ -2268,7 +2268,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
             initializers = get_shared_initializers(encoder_model, decoder_model)
             logger.info(
-                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"  # noqa: G004
             )
 
             # TODO(tianleiwu): investigate the following which causes error in inference
@@ -2297,7 +2297,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
                 initializers = get_shared_initializers(gpt2_init_decoder_model, decoder_model)
                 logger.info(
-                    f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
+                    f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"  # noqa: G004
                 )
 
             # Update init decoder subgraph in preparation to use past present share buffer
@@ -2318,7 +2318,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         else:
             # Move initializer from subgraph to main graph could reduce memory usage in inference.
             initializers = move_initializers(decoder_model.graph)
-            logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
+            logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")  # noqa: G004
 
         # Update decoder subgraph in preparation to use past present share buffer
         if past_present_share_buffer:
@@ -2448,7 +2448,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         )
     else:
         onnx.save(new_model, args.output)
-    logger.info(f"model save to {args.output}")
+    logger.info(f"model save to {args.output}")  # noqa: G004
 
 
 def test_torch_performance(
@@ -2652,7 +2652,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         logger.debug("test_data_dir", test_data_dir)  # noqa: PLE1205
         from bert_test_data import output_test_data
 
-        logger.info(f"Saving test_data to {test_data_dir}/test_data_set_* ...")
+        logger.info(f"Saving test_data to {test_data_dir}/test_data_set_* ...")  # noqa: G004
 
         all_inputs = [inputs]
         for i, inputs in enumerate(all_inputs):
@@ -2795,7 +2795,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     eos_token_id = config.eos_token_id
     pad_token_id = config.pad_token_id
     vocab_size = config.vocab_size
-    logger.debug(f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}")
+    logger.debug(f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}")  # noqa: G004
 
     torch_decoded_sequences = []
     if not args.disable_parity:
@@ -2981,9 +2981,9 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
 
     if result:
         if args.use_external_data_format:
-            logger.info(f"Output files: {args.output}, {args.output}.data")
+            logger.info(f"Output files: {args.output}, {args.output}.data")  # noqa: G004
         else:
-            logger.info(f"Output file: {args.output}")
+            logger.info(f"Output file: {args.output}")  # noqa: G004
 
     return result
 

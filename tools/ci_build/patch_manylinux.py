@@ -35,13 +35,13 @@ def parse_args():
 def main():
     args = parse_args()
 
-    log.debug(f"Dockerfile: {args.dockerfile}, context: {args.context}")
+    log.debug(f"Dockerfile: {args.dockerfile}, context: {args.context}")  # noqa: G004
 
     if "manylinux" in args.dockerfile:
         manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
         dest = Path(args.context) / "build_scripts"
         if dest.exists():
-            log.info(f"Deleting: {dest!s}")
+            log.info(f"Deleting: {dest!s}")  # noqa: G004
             shutil.rmtree(str(dest))
 
         shutil.copytree(str(manylinux_build_scripts_folder), str(dest))

@@ -48,7 +48,7 @@ def onnx_compile(
             log.info("Build TVM graph executor")
             lib = relay.build(irmod, target=target, params=params)
         else:
-            log.error(f'Executor type {executor} is unsupported. Only "vm" and "graph" types are supported')
+            log.error(f'Executor type {executor} is unsupported. Only "vm" and "graph" types are supported')  # noqa: G004
             return None
         return lib
 
@@ -114,7 +114,7 @@ def onnx_compile(
                     lib = get_tvm_executor(irmod, executor, tvm_target, params)
         else:
             log.error(
-                f"Tuning log type {tuning_type} is unsupported. "
+                f"Tuning log type {tuning_type} is unsupported. "  # noqa: G004
                 f"Only {ANSOR_TYPE} and {AUTO_TVM_TYPE} types are supported"
             )
             return None

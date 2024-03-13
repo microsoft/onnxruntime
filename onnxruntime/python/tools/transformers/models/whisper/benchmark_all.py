@@ -222,9 +222,9 @@ def process_log_file(device_id, log_file, base_results):
                 )
                 audio_duration = base_results[-1]
                 rtf = (total_latency / audio_duration) if audio_duration else -1
-                logger.info(f"Total latency: {total_latency} s")
-                logger.info(f"Audio duration: {audio_duration} s")
-                logger.info(f"Real-time factor: {rtf}")
+                logger.info(f"Total latency: {total_latency} s")  # noqa: G004
+                logger.info(f"Audio duration: {audio_duration} s")  # noqa: G004
+                logger.info(f"Real-time factor: {rtf}")  # noqa: G004
 
                 # Append log entry to list of entries
                 entry = base_results + [  # noqa: RUF005
@@ -335,7 +335,7 @@ def save_results(results, filename):
 
     BenchmarkRecord.save_as_csv(filename, records)
     BenchmarkRecord.save_as_json(filename.replace(".csv", ".json"), records)
-    logger.info(f"Results saved in {filename}!")
+    logger.info(f"Results saved in {filename}!")  # noqa: G004
 
 
 def benchmark(args, benchmark_cmd, engine, audio_file, duration):
@@ -394,11 +394,11 @@ def main():
             duration = librosa.get_duration(path=audio_path)
         except Exception as e:
             duration = -1
-            logger.warning(f"An error occurred while trying to calculate the audio duration: {e}", exc_info=True)
+            logger.warning(f"An error occurred while trying to calculate the audio duration: {e}", exc_info=True)  # noqa: G004
             logger.warning(
-                f"If you get an error that says:\n\tsoundfile.LibsndfileError: Error opening '{audio_file}': File contains data in an unknown format.\nyou may not have installed `ffmpeg` in addition to installing `librosa`."
+                f"If you get an error that says:\n\tsoundfile.LibsndfileError: Error opening '{audio_file}': File contains data in an unknown format.\nyou may not have installed `ffmpeg` in addition to installing `librosa`."  # noqa: G004
             )
-        logger.info(f"Testing {audio_path}...")
+        logger.info(f"Testing {audio_path}...")  # noqa: G004
 
         # Benchmark PyTorch without torch.compile
         if args.hf_pt_eager:

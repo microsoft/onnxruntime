@@ -279,28 +279,28 @@ class WhisperEncoderDecoderInitHelper:
 
             assert torch_outputs[0].cpu().numpy().shape == ort_outputs[0].shape
             max_diff = numpy.amax(numpy.abs(torch_outputs[0].cpu().numpy() - ort_outputs[0]))
-            logger.debug(f"logits max_diff={max_diff}")
+            logger.debug(f"logits max_diff={max_diff}")  # noqa: G004
             max_diff_all = max_diff
 
             assert torch_outputs[1].cpu().numpy().shape == ort_outputs[1].shape
             max_diff = numpy.amax(numpy.abs(torch_outputs[1].cpu().numpy() - ort_outputs[1]))
-            logger.debug(f"encoder_hidden_states max_diff={max_diff}")
+            logger.debug(f"encoder_hidden_states max_diff={max_diff}")  # noqa: G004
             max_diff_all = max(max_diff_all, max_diff)
 
             for i in range(2 * model.config.num_layers):
                 max_diff = numpy.amax(numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[2 + i]))
-                logger.debug(f"self attention past state {i} max_diff={max_diff}")
+                logger.debug(f"self attention past state {i} max_diff={max_diff}")  # noqa: G004
 
             for i in range(2 * model.config.num_layers):
                 max_diff = numpy.amax(
                     numpy.abs(torch_outputs[3][i].cpu().numpy() - ort_outputs[2 + 2 * model.config.num_layers + i])
                 )
-                logger.debug(f"cross attention past state {i} max_diff={max_diff}")
+                logger.debug(f"cross attention past state {i} max_diff={max_diff}")  # noqa: G004
                 max_diff_all = max(max_diff_all, max_diff)
 
             test_cases_max_diff.append(max_diff_all)
             logger.info(
-                f"batch_size={batch_size} encode_sequence_length={encode_sequence_length}, max_diff={max_diff_all}"
+                f"batch_size={batch_size} encode_sequence_length={encode_sequence_length}, max_diff={max_diff_all}"  # noqa: G004
             )
 
         return max(test_cases_max_diff)

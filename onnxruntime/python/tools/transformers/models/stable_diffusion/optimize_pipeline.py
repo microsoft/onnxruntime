@@ -122,7 +122,7 @@ def _optimize_sd_pipeline(
             use_external_data_format = has_external_data(onnx_model_path)
 
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
-        logger.info(f"Optimize {onnx_model_path}...")
+        logger.info(f"Optimize {onnx_model_path}...")  # noqa: G004
 
         args.model_type = model_type
         fusion_options = FusionOptions.parse(args)

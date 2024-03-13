@@ -87,7 +87,7 @@ def _openvino_verify_device_type(device_read):
         res = True
     elif device_read in choices1:
         res = True
-    elif device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:"):
+    elif device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:"):  # noqa: PIE810
         res = True
         comma_separated_devices = device_read.split(":")
         comma_separated_devices = comma_separated_devices[1].split(",")
@@ -116,7 +116,7 @@ def _openvino_verify_device_type(device_read):
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
-        if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):
+        if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):  # noqa: PIE810
             invalid_hetero_build()
         sys.exit("Wrong Build Type selected")
 
@@ -871,22 +871,22 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
     if is_windows():
         src_model_dir = os.path.join(build_dir, dest_model_dir_name)
         if os.path.exists(source_onnx_model_dir) and not os.path.exists(src_model_dir):
-            log.debug(f"creating shortcut {source_onnx_model_dir} -> {src_model_dir}")
+            log.debug(f"creating shortcut {source_onnx_model_dir} -> {src_model_dir}")  # noqa: G004
             run_subprocess(["mklink", "/D", "/J", src_model_dir, source_onnx_model_dir], shell=True)
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
             os.makedirs(config_build_dir, exist_ok=True)
             dest_model_dir = os.path.join(config_build_dir, dest_model_dir_name)
             if os.path.exists(source_onnx_model_dir) and not os.path.exists(dest_model_dir):
-                log.debug(f"creating shortcut {source_onnx_model_dir} -> {dest_model_dir}")
+                log.debug(f"creating shortcut {source_onnx_model_dir} -> {dest_model_dir}")  # noqa: G004
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, source_onnx_model_dir], shell=True)
             elif os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
-                log.debug(f"creating shortcut {src_model_dir} -> {dest_model_dir}")
+                log.debug(f"creating shortcut {src_model_dir} -> {dest_model_dir}")  # noqa: G004
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, src_model_dir], shell=True)
     else:
         src_model_dir = os.path.join(build_dir, dest_model_dir_name)
         if os.path.exists(source_onnx_model_dir) and not os.path.exists(src_model_dir):
-            log.debug(f"create symlink {source_onnx_model_dir} -> {src_model_dir}")
+            log.debug(f"create symlink {source_onnx_model_dir} -> {src_model_dir}")  # noqa: G004
             os.symlink(source_onnx_model_dir, src_model_dir, target_is_directory=True)
 
 
@@ -1925,7 +1925,7 @@ def run_ios_tests(args, source_dir, config, cwd):
         ],
         text=True,
     ).strip()
-    log.debug(f"Simulator device info:\n{simulator_device_info}")
+    log.debug(f"Simulator device info:\n{simulator_device_info}")  # noqa: G004
 
     simulator_device_info = json.loads(simulator_device_info)
 
@@ -2397,7 +2397,7 @@ def build_nuget_package(
 
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
-        log.info(f"nuget package was created in the {config} build output directory.")
+        log.info(f"nuget package was created in the {config} build output directory.")  # noqa: G004
 
 
 def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl, enable_training_apis):
@@ -2485,11 +2485,11 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     nonlocal have_diff
                     have_diff = True
                     log.warning(
-                        f"The updated document {path} is different from the checked in version. "
+                        f"The updated document {path} is different from the checked in version. "  # noqa: G004
                         f"Please regenerate the file{regenerate_qualifiers}, or copy the updated version from the "
                         "CI build's published artifacts if applicable."
                     )
-                    log.debug("diff:\n" + diff)
+                    log.debug("diff:\n" + diff)  # noqa: G003
 
             diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
             diff_file(contrib_op_doc_path)
@@ -2504,7 +2504,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
-    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
+    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))  # noqa: G001
 
     args = parse_arguments()
 

@@ -282,7 +282,7 @@ class SymbolicShapeInference:
         # when nothing to map to, use the shorter one
         if map_to is None:
             if self.verbose_ > 0:
-                logger.warning("Potential unsafe merge between symbolic expressions: ({})".format(",".join(symbols)))
+                logger.warning("Potential unsafe merge between symbolic expressions: ({})".format(",".join(symbols)))  # noqa: G001
             symbols_list = list(symbols)
             lens = [len(s) for s in symbols_list]
             map_to = symbols_list[lens.index(min(lens))]
@@ -335,13 +335,13 @@ class SymbolicShapeInference:
                     int_dim = is_int.index(1)
                     if self.verbose_ > 0:
                         logger.debug(
-                            f"dim {unique_dims[:int_dim] + unique_dims[int_dim + 1 :]} has been merged with value {unique_dims[int_dim]}"
+                            f"dim {unique_dims[:int_dim] + unique_dims[int_dim + 1 :]} has been merged with value {unique_dims[int_dim]}"  # noqa: G004
                         )
                     self._check_merged_dims(unique_dims, allow_broadcast=False)
                     return unique_dims[int_dim]
                 else:
                     if self.verbose_ > 0:
-                        logger.debug(f"dim {unique_dims[1:]} has been merged with dim {unique_dims[0]}")
+                        logger.debug(f"dim {unique_dims[1:]} has been merged with dim {unique_dims[0]}")  # noqa: G004
                     return dims[0]
             else:
                 return None
@@ -376,7 +376,7 @@ class SymbolicShapeInference:
                     if self.auto_merge_:
                         self._add_suggested_merge([dim1, dim2], apply=True)
                     else:
-                        logger.warning("unsupported broadcast between " + str(dim1) + " " + str(dim2))
+                        logger.warning("unsupported broadcast between " + str(dim1) + " " + str(dim2))  # noqa: G003
             new_shape = [new_dim, *new_shape]
         return new_shape
 
@@ -520,7 +520,7 @@ class SymbolicShapeInference:
 
     def _onnx_infer_subgraph(self, node, subgraph, use_node_input=True, inc_subgraph_id=True):
         if self.verbose_ > 2:
-            logger.debug(f"Inferencing subgraph of node {node.name} with output({node.output[0]}...): {node.op_type}")
+            logger.debug(f"Inferencing subgraph of node {node.name} with output({node.output[0]}...): {node.op_type}")  # noqa: G004
         # node inputs are not passed directly to the subgraph
         # it's up to the node dispatcher to prepare subgraph input
         # for example, with Scan/Loop, subgraph input shape would be trimmed from node input shape
@@ -1208,7 +1208,7 @@ class SymbolicShapeInference:
         if need_second_infer:
             if self.verbose_ > 2:
                 logger.debug(
-                    f"Rerun Loop: {node.name}({node.output[0]}...), because of sequence in loop carried variables"
+                    f"Rerun Loop: {node.name}({node.output[0]}...), because of sequence in loop carried variables"  # noqa: G004
                 )
             self._onnx_infer_subgraph(node, subgraph, inc_subgraph_id=False)
 
@@ -1817,7 +1817,7 @@ class SymbolicShapeInference:
                         return index
                     return bound + index
             except TypeError:
-                logger.warning(f"Cannot determine if {index} < 0")
+                logger.warning(f"Cannot determine if {index} < 0")  # noqa: G004
             return index
 
         if get_opset(self.out_mp_) <= 9:
@@ -1873,7 +1873,7 @@ class SymbolicShapeInference:
                             if not less_equal(e, new_sympy_shape[i]):
                                 e = new_sympy_shape[i]  # noqa: PLW2901
                         except Exception:
-                            logger.warning(f"Unable to determine if {e} <= {new_sympy_shape[i]}, treat as equal")
+                            logger.warning(f"Unable to determine if {e} <= {new_sympy_shape[i]}, treat as equal")  # noqa: G004
                             e = new_sympy_shape[i]  # noqa: PLW2901
 
                 s = handle_negative_index(s, new_sympy_shape[i])  # noqa: PLW2901
@@ -1985,7 +1985,7 @@ class SymbolicShapeInference:
                 symbolic_dimensions = [s for s in input_shape if type(s) != int]  # noqa: E721
                 if len(symbolic_dimensions) > 0:
                     logger.debug(
-                        f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
+                        f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "  # noqa: G004
                         f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}"
                     )
         else:
@@ -1998,7 +1998,7 @@ class SymbolicShapeInference:
                     assert input_shape[i] == 1 or type(input_shape[i]) != int  # noqa: E721
                     if self.verbose_ > 0 and type(input_shape[i]) != int:  # noqa: E721
                         logger.debug(
-                            f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
+                            f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "  # noqa: G004
                             f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1."
                         )
 
@@ -2659,10 +2659,10 @@ class SymbolicShapeInference:
                         break
 
             if self.verbose_ > 2:
-                logger.debug(node.op_type + ": " + node.name)
+                logger.debug(node.op_type + ": " + node.name)  # noqa: G003
                 for i, name in enumerate(node.input):
                     logger.debug(
-                        "  Input {}: {} {}".format(i, name, "initializer" if name in self.initializers_ else "")
+                        "  Input {}: {} {}".format(i, name, "initializer" if name in self.initializers_ else "")  # noqa: G001
                     )
 
             # onnx automatically merge dims with value, i.e. Mul(['aaa', 'bbb'], [1000, 1]) -> [1000, 'bbb']
@@ -2712,7 +2712,7 @@ class SymbolicShapeInference:
                             seq_cls_type = out_type.sequence_type.elem_type.WhichOneof("value")
                             if seq_cls_type == "tensor_type":
                                 logger.debug(
-                                    "  {}: sequence of {} {}".format(
+                                    "  {}: sequence of {} {}".format(  # noqa: G001
                                         node.output[i_o],
                                         str(get_shape_from_value_info(vi)),
                                         onnx.TensorProto.DataType.Name(
@@ -2721,19 +2721,19 @@ class SymbolicShapeInference:
                                     )
                                 )
                             else:
-                                logger.debug(f"  {node.output[i_o]}: sequence of {seq_cls_type}")
+                                logger.debug(f"  {node.output[i_o]}: sequence of {seq_cls_type}")  # noqa: G004
                         else:
-                            logger.debug(f"  {node.output[i_o]}: {out_type_kind}")
+                            logger.debug(f"  {node.output[i_o]}: {out_type_kind}")  # noqa: G004
                     continue
 
                 out_shape = get_shape_from_value_info(vi)
                 out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
                 if self.verbose_ > 2:
                     logger.debug(
-                        f"  {node.output[i_o]}: {out_shape!s} {onnx.TensorProto.DataType.Name(vi.type.tensor_type.elem_type)}"
+                        f"  {node.output[i_o]}: {out_shape!s} {onnx.TensorProto.DataType.Name(vi.type.tensor_type.elem_type)}"  # noqa: G004
                     )
                     if node.output[i_o] in self.sympy_data_:
-                        logger.debug("  Sympy Data: " + str(self.sympy_data_[node.output[i_o]]))
+                        logger.debug("  Sympy Data: " + str(self.sympy_data_[node.output[i_o]]))  # noqa: G003
 
                 # onnx >= 1.11.0, use unk__#index instead of None when the shape dim is uncertain
                 if (
@@ -2834,30 +2834,30 @@ class SymbolicShapeInference:
                             if self.verbose_ > 0:
                                 if is_unknown_op:
                                     logger.debug(
-                                        f"Possible unknown op: {node.op_type} node: {node.name}, guessing {vi.name} shape"
+                                        f"Possible unknown op: {node.op_type} node: {node.name}, guessing {vi.name} shape"  # noqa: G004
                                     )
                                 if self.verbose_ > 2:
-                                    logger.debug(f"  {node.output[i_o]}: {new_shape!s} {vi.type.tensor_type.elem_type}")
+                                    logger.debug(f"  {node.output[i_o]}: {new_shape!s} {vi.type.tensor_type.elem_type}")  # noqa: G004
 
                             self.run_ = True
                             continue  # continue the inference after guess, no need to stop as no merge is needed
 
                     if self.verbose_ > 0 or not self.auto_merge_ or out_type_undefined:
-                        logger.debug("Stopping at incomplete shape inference at " + node.op_type + ": " + node.name)
+                        logger.debug("Stopping at incomplete shape inference at " + node.op_type + ": " + node.name)  # noqa: G003
                         logger.debug("node inputs:")
                         for i in node.input:
                             if i in self.known_vi_:
                                 logger.debug(self.known_vi_[i])
                             else:
-                                logger.debug(f"not in known_vi_ for {i}")
+                                logger.debug(f"not in known_vi_ for {i}")  # noqa: G004
                         logger.debug("node outputs:")
                         for o in node.output:
                             if o in self.known_vi_:
                                 logger.debug(self.known_vi_[o])
                             else:
-                                logger.debug(f"not in known_vi_ for {o}")
+                                logger.debug(f"not in known_vi_ for {o}")  # noqa: G004
                         if self.auto_merge_ and not out_type_undefined:
-                            logger.debug("Merging: " + str(self.suggested_merge_))
+                            logger.debug("Merging: " + str(self.suggested_merge_))  # noqa: G003
                     return False
 
         self.run_ = False
@@ -2942,9 +2942,9 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
-    logger.info("input model: " + args.input)
+    logger.info("input model: " + args.input)  # noqa: G003
     if args.output:
-        logger.info("output model " + args.output)
+        logger.info("output model " + args.output)  # noqa: G003
     logger.info("Doing symbolic shape inference...")
     out_mp = SymbolicShapeInference.infer_shapes(
         onnx.load(args.input),

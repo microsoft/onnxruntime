@@ -42,7 +42,7 @@ class FusionTnlrAttention(FusionAttention):
     ) -> Union[NodeProto, None]:
         assert num_heads > 0
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")  # noqa: G004
             return None
 
         weight = self.model.get_initializer(matmul.input[1])

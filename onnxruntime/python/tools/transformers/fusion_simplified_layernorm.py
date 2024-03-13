@@ -114,7 +114,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
 
         i, add_weight = self.model.get_constant_input(add_node)
         if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
-            logger.warning(f"epsilon value is not expected: {add_weight}")
+            logger.warning(f"epsilon value is not expected: {add_weight}")  # noqa: G004
             return
 
         self.nodes_to_remove.extend(sim_ln_nodes[:-1] if not starts_with_graph_input else sim_ln_nodes)

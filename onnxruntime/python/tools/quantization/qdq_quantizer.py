@@ -117,7 +117,7 @@ class QDQQuantizer(BaseQuantizer):
             self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
         ):
             logging.warning(
-                "ONNX QuantizeLinear and DequantizeLinear operators do not support 16-bit integer quantization types. "
+                "ONNX QuantizeLinear and DequantizeLinear operators do not support 16-bit integer quantization types. "  # noqa: G004
                 f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
                 "enable support."
             )
@@ -153,7 +153,7 @@ class QDQQuantizer(BaseQuantizer):
                 return True
         else:
             logging.warning(
-                f"failed to infer the type of tensor: {tensor_name}. Skip to quantize it. Please check if it is expected."
+                f"failed to infer the type of tensor: {tensor_name}. Skip to quantize it. Please check if it is expected."  # noqa: G004
             )
 
         return False
@@ -206,13 +206,13 @@ class QDQQuantizer(BaseQuantizer):
                     tensor_type=QDQQuantTensorType.WEIGHT, axis=axis, data_type=weight.data_type
                 )
         else:
-            logging.warning(f"only support per-channel quantization on weight. Tensor: {tensor_name} is not quantized.")
+            logging.warning(f"only support per-channel quantization on weight. Tensor: {tensor_name} is not quantized.")  # noqa: G004
 
     def quantize_bias_tensor(self, bias_name, input_name, weight_name, beta=1.0):
         # If the user provided quantization overrides for this tensor, treat it as a regular weight.
         if self.tensor_quant_overrides.get(bias_name):
             logging.info(
-                f"Quantizing bias tensor '{bias_name}' as a weight due to the presence of user-specified overrides"
+                f"Quantizing bias tensor '{bias_name}' as a weight due to the presence of user-specified overrides"  # noqa: G004
             )
             if self.per_channel:
                 self.quantize_weight_tensor_per_channel(bias_name, 0)
@@ -225,7 +225,7 @@ class QDQQuantizer(BaseQuantizer):
             if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
                 self.bias_to_quantize.append((bias_name, input_name, weight_name, beta))
         else:
-            logging.warning(f"Expected {bias_name} to be a weight")
+            logging.warning(f"Expected {bias_name} to be a weight")  # noqa: G004
 
     def remove_node(self, node):
         self.nodes_to_remove.append(node)

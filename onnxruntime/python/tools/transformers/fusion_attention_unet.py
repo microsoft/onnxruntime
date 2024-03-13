@@ -107,7 +107,7 @@ class FusionAttentionUnet(Fusion):
 
         if self.num_heads > 0 and num_heads != self.num_heads:
             if self.num_heads_warning:
-                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")  # noqa: G004
                 self.num_heads_warning = False  # Do not show the warning more than once
 
         hidden_size = self.get_hidden_size(layernorm_node)
@@ -117,7 +117,7 @@ class FusionAttentionUnet(Fusion):
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
             if self.hidden_size_warning:
                 logger.warning(
-                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."
+                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."  # noqa: G004
                 )
                 self.hidden_size_warning = False  # Do not show the warning more than once
 
@@ -169,7 +169,7 @@ class FusionAttentionUnet(Fusion):
                 return None
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")  # noqa: G004
             return None
 
         q_weight = self.model.get_initializer(q_matmul.input[1])
@@ -184,7 +184,7 @@ class FusionAttentionUnet(Fusion):
         qw = NumpyHelper.to_array(q_weight)
         kw = NumpyHelper.to_array(k_weight)
         vw = NumpyHelper.to_array(v_weight)
-        logger.debug(f"qw={qw.shape} kw={kw.shape} vw={vw.shape} hidden_size={hidden_size}")
+        logger.debug(f"qw={qw.shape} kw={kw.shape} vw={vw.shape} hidden_size={hidden_size}")  # noqa: G004
 
         # assert q and k have same shape as expected
         if is_self_attention:
@@ -473,7 +473,7 @@ class FusionAttentionUnet(Fusion):
                 return None
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")  # noqa: G004
             return None
 
         q_weight = self.model.get_initializer(q_matmul.input[1])
@@ -490,7 +490,7 @@ class FusionAttentionUnet(Fusion):
         qw = NumpyHelper.to_array(q_weight)
         kw = NumpyHelper.to_array(k_weight)
         vw = NumpyHelper.to_array(v_weight)
-        logger.debug(f"qw={qw.shape} kw={kw.shape} vw={vw.shape} hidden_size={hidden_size}")
+        logger.debug(f"qw={qw.shape} kw={kw.shape} vw={vw.shape} hidden_size={hidden_size}")  # noqa: G004
 
         # assert q and k have same shape as expected
         if is_self_attention:

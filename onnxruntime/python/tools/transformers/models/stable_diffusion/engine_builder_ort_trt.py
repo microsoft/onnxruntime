@@ -210,7 +210,7 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
                 onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
                 if not os.path.exists(onnx_opt_path):
                     if not os.path.exists(onnx_path):
-                        logger.info(f"Exporting model: {onnx_path}")
+                        logger.info(f"Exporting model: {onnx_path}")  # noqa: G004
                         model = self.get_or_load_model(pipe, model_name, model_obj, framework_model_dir)
 
                         with torch.inference_mode(), torch.autocast("cuda"):

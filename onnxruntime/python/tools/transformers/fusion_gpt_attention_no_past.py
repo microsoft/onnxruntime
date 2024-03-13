@@ -135,7 +135,7 @@ class FusionGptAttentionNoPast(Fusion):
             and layernorm_before_attention.op_type != "SkipLayerNormalization"
         ):
             if layernorm_before_attention.op_type != "Add":
-                logger.debug(f"failed to get (skip)layernorm before gemm. Got {layernorm_before_attention.op_type}")
+                logger.debug(f"failed to get (skip)layernorm before gemm. Got {layernorm_before_attention.op_type}")  # noqa: G004
                 return
 
         # `another_input` will be non-None only if

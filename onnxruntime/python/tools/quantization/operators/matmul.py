@@ -15,19 +15,19 @@ class QOpMatMul(QuantOperatorBase):
 
     def should_quantize(self):
         if not self.quantizer.should_quantize_node(self.node):
-            logging.debug(f"Ignore MatMul {self.node.name}]")
+            logging.debug(f"Ignore MatMul {self.node.name}]")  # noqa: G004
             return False
 
         if (not self.quantizer.is_float_tensor(self.node.input[1])) and (
             not self.quantizer.is_float_tensor(self.node.input[0])
         ):
-            logging.info(f"Ignore MatMul due to non float inputs {self.node.name}]")
+            logging.info(f"Ignore MatMul due to non float inputs {self.node.name}]")  # noqa: G004
             return False
 
         # do not quantize non-constant B matrices for matmul
         if self.quantizer.q_matmul_const_b_only:
             if not self.quantizer.find_initializer_in_path(self.node.input[1]):
-                logging.info(f"Ignore MatMul due to non constant B: {self.quantizer.graph_scope}[{self.node.name}]")
+                logging.info(f"Ignore MatMul due to non constant B: {self.quantizer.graph_scope}[{self.node.name}]")  # noqa: G004
                 return False
         return True
 

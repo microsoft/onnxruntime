@@ -584,7 +584,7 @@ def write_calibration_table(calibration_cache, dir="."):
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
 
-    logging.info(f"calibration cache: {calibration_cache}")
+    logging.info(f"calibration cache: {calibration_cache}")  # noqa: G004
 
     with open(os.path.join(dir, "calibration.json"), "w") as file:
         file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse

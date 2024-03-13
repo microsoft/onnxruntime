@@ -25,7 +25,7 @@ def parse_nightly_and_local_version_from_whl_name(blob_name):
 
 
 def run_subprocess(args, cwd=None):
-    log.warning(f"Running subprocess in '{cwd or os.getcwd()}'\n{args}")
+    log.warning(f"Running subprocess in '{cwd or os.getcwd()}'\n{args}")  # noqa: G004
     return subprocess.run(args, cwd=cwd, check=True)
 
 

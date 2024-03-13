@@ -68,7 +68,7 @@ class FusionT5Attention(FusionAttention):
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")  # noqa: G004
             return None
 
         q_weight = self.model.get_initializer(q_matmul.input[1])
@@ -97,7 +97,7 @@ class FusionT5Attention(FusionAttention):
 
         if hidden_size > 0 and hidden_size != qw_in_size:
             logger.warning(
-                f"Input hidden size ({hidden_size}) is not same as weight matrix dimension of q,k,v ({qw_in_size}). "
+                f"Input hidden size ({hidden_size}) is not same as weight matrix dimension of q,k,v ({qw_in_size}). "  # noqa: G004
                 "Please provide a correct input hidden size or pass in 0"
             )
 
@@ -166,7 +166,7 @@ class FusionT5Attention(FusionAttention):
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")  # noqa: G004
             return None
 
         attention_node_name = self.model.create_node_name("MultiHeadAttention")

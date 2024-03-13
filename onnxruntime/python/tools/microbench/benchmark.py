@@ -77,10 +77,10 @@ def get_default_provider():
 class Benchmark:
     def __init__(self, model, inputs, outputs, args):
         self.provider = get_default_provider() if args.provider is None else provider_name(args.provider)
-        logger.info(f"Execution provider: {self.provider}")
+        logger.info(f"Execution provider: {self.provider}")  # noqa: G004
         self.profiling = args.profiling
         self.model = model
-        logger.info(f"Model: {self.model}")
+        logger.info(f"Model: {self.model}")  # noqa: G004
         self.inputs = inputs
         self.outputs = outputs
 

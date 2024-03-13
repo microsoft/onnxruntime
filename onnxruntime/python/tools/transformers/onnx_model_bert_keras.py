@@ -51,7 +51,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             if root_node.op_type == "Reshape" and root_node.input[0] == parent.output[0]:
                 reshape_nodes.append(root_node)
                 continue
-            logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")
+            logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")  # noqa: G004
             return False, []
 
         return True, reshape_nodes
@@ -77,10 +77,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                         "SkipLayerNormalization",
                         "EmbedLayerNormalization",
                     ]:
-                        logger.debug(f"First input for skiplayernorm: {parent.op_type if parent is not None else None}")
+                        logger.debug(f"First input for skiplayernorm: {parent.op_type if parent is not None else None}")  # noqa: G004
                         continue
                 else:
-                    logger.debug(f"First input for skiplayernorm: {parent.op_type if parent is not None else None}")
+                    logger.debug(f"First input for skiplayernorm: {parent.op_type if parent is not None else None}")  # noqa: G004
                     continue
             else:
                 # TODO: shall we add back the checking of children op types.
@@ -211,7 +211,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 continue
         self.remove_nodes(nodes_to_remove)
         self.update_graph()
-        logger.info(f"Fused Attention count:{attention_count}")
+        logger.info(f"Fused Attention count:{attention_count}")  # noqa: G004
 
     def preprocess(self):
         self.process_embedding()
@@ -231,11 +231,11 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 count += 1
 
         if count > 0:
-            logger.info(f"Skip consequent Reshape count: {count}")
+            logger.info(f"Skip consequent Reshape count: {count}")  # noqa: G004
 
     def fuse_embedding(self, node, output_name_to_node):
         assert node.op_type == "LayerNormalization"
-        logger.debug(f"start fusing embedding from node with output={node.output[0]}...")
+        logger.debug(f"start fusing embedding from node with output={node.output[0]}...")  # noqa: G004
         word_embed_path = self.match_parent_path(node, ["Add", "Add", "Gather"], [0, 0, 0], output_name_to_node)
         if word_embed_path is None:
             logger.debug("failed to match word_embed_path")
@@ -250,10 +250,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
         temp = numpy_helper.to_array(word_initializer)
         if len(temp.shape) == 2:
-            logger.info(f"Found word embedding. name:{word_initializer.name}, shape:{temp.shape}")
+            logger.info(f"Found word embedding. name:{word_initializer.name}, shape:{temp.shape}")  # noqa: G004
             word_embedding = word_initializer.name
         else:
-            logger.info(f"Failed to find word embedding. name:{word_initializer.name}, shape:{temp.shape}")
+            logger.info(f"Failed to find word embedding. name:{word_initializer.name}, shape:{temp.shape}")  # noqa: G004
             return False
 
         pos_initializer = self.get_initializer(add_node.input[1])
@@ -262,10 +262,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             if len(temp.shape) == 3 and temp.shape[0] == 1:
                 tensor = numpy_helper.from_array(temp.reshape((temp.shape[1], temp.shape[2])), "position_embedding")
                 self.add_initializer(tensor)
-                logger.info(f"Found position embedding. name:{pos_initializer.name}, shape:{temp.shape[1:]}")
+                logger.info(f"Found position embedding. name:{pos_initializer.name}, shape:{temp.shape[1:]}")  # noqa: G004
                 position_embedding = "position_embedding"
             else:
-                logger.info(f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}")
+                logger.info(f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}")  # noqa: G004
                 return False
         else:
             pos_embed_path = self.match_parent_path(add_node, ["Gather", "Slice"], [1, 1], output_name_to_node)
@@ -281,10 +281,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
             temp = numpy_helper.to_array(pos_initializer)
             if len(temp.shape) == 2:
-                logger.info(f"Found word embedding. name:{pos_initializer.name}, shape:{temp.shape}")
+                logger.info(f"Found word embedding. name:{pos_initializer.name}, shape:{temp.shape}")  # noqa: G004
                 position_embedding = pos_initializer.name
             else:
-                logger.info(f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}")
+                logger.info(f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}")  # noqa: G004
                 return False
 
         gather = self.get_parent(skip_node, 1, output_name_to_node)
@@ -299,10 +299,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
         temp = numpy_helper.to_array(segment_initializer)
         if len(temp.shape) == 2:
-            logger.info(f"Found segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")
+            logger.info(f"Found segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")  # noqa: G004
             segment_embedding = segment_initializer.name
         else:
-            logger.info(f"Failed to find segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")
+            logger.info(f"Failed to find segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")  # noqa: G004
             return False
 
         logger.info("Create Embedding node")
@@ -470,6 +470,6 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
     def postprocess(self):
         reshape_removed = self.remove_extra_reshape() + self.remove_extra_reshape_2()
-        logger.info(f"Remove {reshape_removed} Reshape nodes.")
+        logger.info(f"Remove {reshape_removed} Reshape nodes.")  # noqa: G004
 
         self.prune_graph()

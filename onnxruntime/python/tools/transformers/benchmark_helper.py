@@ -59,13 +59,13 @@ class ConfigModifier:
             return
         if hasattr(config, "num_hidden_layers"):
             config.num_hidden_layers = self.num_layers
-            logger.info(f"Modifying pytorch model's number of hidden layers to: {self.num_layers}")
+            logger.info(f"Modifying pytorch model's number of hidden layers to: {self.num_layers}")  # noqa: G004
         if hasattr(config, "encoder_layers"):
             config.encoder_layers = self.num_layers
-            logger.info(f"Modifying pytorch model's number of encoder layers to: {self.num_layers}")
+            logger.info(f"Modifying pytorch model's number of encoder layers to: {self.num_layers}")  # noqa: G004
         if hasattr(config, "decoder_layers "):
             config.decoder_layers = self.num_layers
-            logger.info(f"Modifying pytorch model's number of decoder layers to: {self.num_layers}")
+            logger.info(f"Modifying pytorch model's number of decoder layers to: {self.num_layers}")  # noqa: G004
 
     def get_layer_num(self):
         return self.num_layers
@@ -102,14 +102,14 @@ def create_onnxruntime_session(
 
         if num_threads > 0:
             sess_options.intra_op_num_threads = num_threads
-            logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+            logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")  # noqa: G004
 
         if verbose:
             sess_options.log_severity_level = 0
         else:
             sess_options.log_severity_level = 4
 
-        logger.debug(f"Create session for onnx model: {onnx_model_path}")
+        logger.debug(f"Create session for onnx model: {onnx_model_path}")  # noqa: G004
         if use_gpu:
             if provider == "dml":
                 providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
@@ -142,7 +142,7 @@ def create_onnxruntime_session(
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
     except Exception:
-        logger.error("Exception", exc_info=True)
+        logger.error("Exception", exc_info=True)  # noqa: G201
 
     return session
 
@@ -176,9 +176,9 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
                 ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
             ), "Please install onnxruntime-gpu package, or install ROCm support, to test GPU inference."
 
-    logger.info(f"PyTorch Version:{torch.__version__}")
-    logger.info(f"Transformers Version:{transformers.__version__}")
-    logger.info(f"OnnxRuntime Version:{onnxruntime.__version__}")
+    logger.info(f"PyTorch Version:{torch.__version__}")  # noqa: G004
+    logger.info(f"Transformers Version:{transformers.__version__}")  # noqa: G004
+    logger.info(f"OnnxRuntime Version:{onnxruntime.__version__}")  # noqa: G004
 
     # Support three major versions of PyTorch and OnnxRuntime, and up to 9 months of transformers.
     assert version.parse(torch.__version__) >= version.parse("1.10.0")
@@ -233,7 +233,7 @@ def output_details(results, csv_filename):
         for result in results:
             csv_writer.writerow(result)
 
-    logger.info(f"Detail results are saved to csv file: {csv_filename}")
+    logger.info(f"Detail results are saved to csv file: {csv_filename}")  # noqa: G004
 
 
 def output_summary(results, csv_filename, args):
@@ -291,7 +291,7 @@ def output_summary(results, csv_filename, args):
                             if row:
                                 csv_writer.writerow(row)
 
-    logger.info(f"Summary results are saved to csv file: {csv_filename}")
+    logger.info(f"Summary results are saved to csv file: {csv_filename}")  # noqa: G004
 
 
 def output_fusion_statistics(model_fusion_statistics, csv_filename):
@@ -311,7 +311,7 @@ def output_fusion_statistics(model_fusion_statistics, csv_filename):
             model_fusion_statistics[key]["torch"] = torch.__version__
             model_fusion_statistics[key]["model_filename"] = key
             csv_writer.writerow(model_fusion_statistics[key])
-    logger.info(f"Fusion statistics is saved to csv file: {csv_filename}")
+    logger.info(f"Fusion statistics is saved to csv file: {csv_filename}")  # noqa: G004
 
 
 def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size, warm_up_repeat=0):
@@ -484,7 +484,7 @@ class CudaMemoryMonitor(MemoryMonitor):
             nvmlInit()
             device_count = nvmlDeviceGetCount()
             if not isinstance(device_count, int):
-                logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")
+                logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")  # noqa: G004
                 return None
 
             max_gpu_usage = [0 for i in range(device_count)]
@@ -493,7 +493,7 @@ class CudaMemoryMonitor(MemoryMonitor):
                 for i in range(device_count):
                     info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
                     if isinstance(info, str):
-                        logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")
+                        logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")  # noqa: G004
                         return None
                     max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
                 sleep(0.005)  # 5ms
@@ -589,7 +589,7 @@ def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
             if max_usage is None:
                 return None
 
-            logger.info(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
+            logger.info(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")  # noqa: G004
             if len(memory_before_test) >= 1 and len(max_usage) >= 1 and len(memory_before_test) == len(max_usage):
                 # When there are multiple GPUs, we will check the one with maximum usage.
                 max_used = 0
@@ -620,7 +620,7 @@ def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
             monitor.keep_measuring = False
             max_usage = mem_thread.result()
 
-        logger.info(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
+        logger.info(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")  # noqa: G004
         return max_usage - memory_before_test
 
 

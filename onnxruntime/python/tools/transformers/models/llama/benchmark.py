@@ -249,7 +249,7 @@ def get_model(args: argparse.Namespace):
 
     if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
         # Ex: Microsoft export from https://github.com/microsoft/Llama-2-Onnx
-        logger.info(f"Loading model from {args.ort_model_path.format(args.rank)}")
+        logger.info(f"Loading model from {args.ort_model_path.format(args.rank)}")  # noqa: G004
         start_time = time.time()
         model = ort.InferenceSession(
             args.ort_model_path.format(args.rank),
@@ -258,7 +258,7 @@ def get_model(args: argparse.Namespace):
         )
         end_time = time.time()
 
-    logger.info(f"Loaded model in {end_time - start_time} s")
+    logger.info(f"Loaded model in {end_time - start_time} s")  # noqa: G004
     return model
 
 
@@ -325,10 +325,10 @@ def time_fn(args, fn, inputs):
     throughput = args.batch_size / latency
 
     if args.rank == 0:
-        logger.info(f"Batch Size: {args.batch_size}")
-        logger.info(f"Sequence Length: {args.sequence_length}")
-        logger.info(f"Latency: {latency} s")
-        logger.info(f"Throughput: {throughput} tps")
+        logger.info(f"Batch Size: {args.batch_size}")  # noqa: G004
+        logger.info(f"Sequence Length: {args.sequence_length}")  # noqa: G004
+        logger.info(f"Latency: {latency} s")  # noqa: G004
+        logger.info(f"Throughput: {throughput} tps")  # noqa: G004
     return
 
 
@@ -369,7 +369,7 @@ def measure_fn(args, fn, inputs):
 
     fn(inputs)
     if args.rank == 0:
-        logger.info(f"CPU usage: {process.cpu_percent(interval=None) / psutil.cpu_count(logical=False)}%")
+        logger.info(f"CPU usage: {process.cpu_percent(interval=None) / psutil.cpu_count(logical=False)}%")  # noqa: G004
 
     # Measure memory usage
     gc.collect()
@@ -420,14 +420,14 @@ def run_hf_inference(args, init_inputs, iter_inputs, model):
         if args.benchmark_type == "hf-ort":
             # Turn profiling off to stop appending to log
             old_logname = model.decoder.session.end_profiling()
-            logger.warning(f"Renaming {old_logname} to {new_logname}")
+            logger.warning(f"Renaming {old_logname} to {new_logname}")  # noqa: G004
             os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
         new_logname = profile_fn(args, generate_fn, iter_inputs, "token")
         if args.benchmark_type == "hf-ort":
             # Turn profiling off to stop appending to log
             old_logname = model.decoder_with_past.session.end_profiling()
-            logger.warning(f"Renaming {old_logname} to {new_logname}")
+            logger.warning(f"Renaming {old_logname} to {new_logname}")  # noqa: G004
             os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
         return
@@ -449,14 +449,14 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
         user_inputs = set(inputs.keys())
         missing_inputs = model_inputs - user_inputs
         if len(missing_inputs):
-            logger.error(f"The following model inputs are missing: {missing_inputs}")
+            logger.error(f"The following model inputs are missing: {missing_inputs}")  # noqa: G004
             raise Exception("There are missing inputs to the model. Please add them and try again.")
 
         # Remove unnecessary inputs from model inputs
         unnecessary_inputs = user_inputs - model_inputs
         if len(unnecessary_inputs):
             for unnecessary_input in unnecessary_inputs:
-                logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
+                logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")  # noqa: G004
                 del inputs[unnecessary_input]
 
         # Add IO bindings for non-CPU execution providers
@@ -487,7 +487,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 
         # Turn profiling off to stop appending to log file
         old_logname = model.end_profiling()
-        logger.warning(f"Renaming {old_logname} to {new_logname}")
+        logger.warning(f"Renaming {old_logname} to {new_logname}")  # noqa: G004
         os.rename(old_logname, os.path.join(args.log_folder, new_logname))
 
         # Re-initialize model for new log file instead of appending to old log file
@@ -497,7 +497,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 
         # Turn profiling off to stop appending to log
         old_logname = model.end_profiling()
-        logger.warning(f"Renaming {old_logname} to {new_logname}")
+        logger.warning(f"Renaming {old_logname} to {new_logname}")  # noqa: G004
         os.rename(old_logname, os.path.join(args.log_folder, new_logname))
         return
 
@@ -689,7 +689,7 @@ def main():
     # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
     for batch_size, sequence_length in itertools.product(args.batch_sizes, args.sequence_lengths):
         if args.rank == 0:
-            logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
+            logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")  # noqa: G004
         setattr(args, "batch_size", int(batch_size))  # noqa: B010
         setattr(args, "sequence_length", int(sequence_length))  # noqa: B010
 

@@ -18,7 +18,7 @@ from ..run import run
 _log = get_logger("util.android")
 
 
-SdkToolPaths = collections.namedtuple("SdkToolPaths", ["emulator", "adb", "sdkmanager", "avdmanager"])
+SdkToolPaths = collections.namedtuple("SdkToolPaths", ["emulator", "adb", "sdkmanager", "avdmanager"])  # noqa: PYI024
 
 
 def get_sdk_tool_paths(sdk_root: str):

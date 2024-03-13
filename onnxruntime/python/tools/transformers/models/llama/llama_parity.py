@@ -95,7 +95,7 @@ def verify_parity(
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     end_time = time.time()
-    logger.info(f"PyTorch took {end_time - start_time} s")
+    logger.info(f"PyTorch took {end_time - start_time} s")  # noqa: G004
 
     if args.small_gpu and py_model is not None:
         del py_model
@@ -148,14 +148,14 @@ def verify_parity(
 
         ort_outputs = ort_outputs[0]  # Get logits
 
-    logger.info(f"ONNX Runtime took {end_time - start_time} s")
+    logger.info(f"ONNX Runtime took {end_time - start_time} s")  # noqa: G004
 
     # Compare PyTorch and ONNX Runtime accuracy
     tol = 2e1 if "int4" in args.onnx_model_path or "int8" in args.onnx_model_path else 5e-1
     parity = np.allclose(pt_outputs, ort_outputs, rtol=tol, atol=tol)
-    logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")
+    logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")  # noqa: G004
     if not parity:
-        logger.warning(f"Max diff: {np.max(pt_outputs - ort_outputs)}")
+        logger.warning(f"Max diff: {np.max(pt_outputs - ort_outputs)}")  # noqa: G004
     return kv_cache_ortvalues
 
 
@@ -262,7 +262,7 @@ def get_args(argv: list[str]):
 def main(argv: list[str] = []):  # noqa: B006
     args = get_args(argv)
     setup_logger(args.verbose)
-    logger.info(f"Arguments: {args}")
+    logger.info(f"Arguments: {args}")  # noqa: G004
     rank = get_rank()
 
     # Load model and config

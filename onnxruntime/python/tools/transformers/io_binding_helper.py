@@ -180,7 +180,7 @@ class IOBindingHelper:
         for output in ort_session.get_outputs():
             output_name = output.name
             output_buffer = output_buffers[output_name]
-            logger.debug(f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}")
+            logger.debug(f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}")  # noqa: G004
             io_binding.bind_output(
                 output_name,
                 output_buffer.device.type,

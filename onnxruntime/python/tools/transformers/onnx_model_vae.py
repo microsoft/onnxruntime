@@ -39,5 +39,5 @@ class VaeOnnxModel(UnetOnnxModel):
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
 
-        logger.info(f"Optimized operators:{op_count}")
+        logger.info(f"Optimized operators:{op_count}")  # noqa: G004
         return op_count

@@ -223,7 +223,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         for i, name in enumerate(names_to_evaluate):
             shapes[name] = outputs[i]
 
-        logger.debug(f"shapes={shapes}")
+        logger.debug(f"shapes={shapes}")  # noqa: G004
 
         if enable_reshape_opt:
             for i, shape_input in enumerate(reshape_shape_inputs):
@@ -264,7 +264,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
                 new_target_shape.append(dim_value)
         shapes[shape_input] = new_target_shape
 
-        logger.debug(f"source_shape={source_shape}, target_shape={target_shape}, new_target_shape={new_target_shape}")
+        logger.debug(f"source_shape={source_shape}, target_shape={target_shape}, new_target_shape={new_target_shape}")  # noqa: G004
 
     def validate_input(self, input: str):
         if not self.find_graph_input(input):
@@ -327,9 +327,9 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
                     enable_reshape_opt,
                     verbose,
                 )
-            logger.debug(f"Temp model with additional outputs: {temp_file}")
+            logger.debug(f"Temp model with additional outputs: {temp_file}")  # noqa: G004
             logger.warning(
-                f"Shape optimization is done. The optimized model might only work for input with batch_size={batch_size} sequence_length={sequence_length}"
+                f"Shape optimization is done. The optimized model might only work for input with batch_size={batch_size} sequence_length={sequence_length}"  # noqa: G004
             )
 
         if output_path is not None:
