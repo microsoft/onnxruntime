@@ -257,7 +257,7 @@ try:
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
                 for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
                     auditwheel_cmd += ["--exclude", i]
-                logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
+                logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
                     subprocess.run(auditwheel_cmd, check=True, stdout=subprocess.PIPE)
                 finally:

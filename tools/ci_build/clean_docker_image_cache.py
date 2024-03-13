@@ -83,7 +83,7 @@ def download_logs(storage_account, container, log_path_pattern, target_dir, az_p
     return [os.path.join(target_dir, log_path) for log_path in log_paths]
 
 
-ImageInfo = collections.namedtuple("ImageInfo", ["repository", "digest"])  # noqa: PYI024
+ImageInfo = collections.namedtuple("ImageInfo", ["repository", "digest"])
 
 
 def get_image_name(image_info):

@@ -2661,9 +2661,7 @@ class SymbolicShapeInference:
             if self.verbose_ > 2:
                 logger.debug(node.op_type + ": " + node.name)  # noqa: G003
                 for i, name in enumerate(node.input):
-                    logger.debug(
-                        "  Input {}: {} {}".format(i, name, "initializer" if name in self.initializers_ else "")
-                    )
+                    logger.debug("  Input %s: %s %s", i, name, "initializer" if name in self.initializers_ else "")
 
             # onnx automatically merge dims with value, i.e. Mul(['aaa', 'bbb'], [1000, 1]) -> [1000, 'bbb']
             # symbolic shape inference needs to apply merge of 'aaa' -> 1000 in this case
@@ -2843,7 +2841,7 @@ class SymbolicShapeInference:
                             continue  # continue the inference after guess, no need to stop as no merge is needed
 
                     if self.verbose_ > 0 or not self.auto_merge_ or out_type_undefined:
-                        logger.debug("Stopping at incomplete shape inference at " + node.op_type + ": " + node.name)
+                        logger.debug("Stopping at incomplete shape inference at %s: %s", node.op_type, node.name)
                         logger.debug("node inputs:")
                         for i in node.input:
                             if i in self.known_vi_:
