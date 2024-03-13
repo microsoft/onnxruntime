@@ -505,7 +505,7 @@ def main():
 
             failed_cases_section = log_content.split("Failed Test Cases:")[1]
 
-            # No following failed test cases
+            # passed = 1 if no failed test cases
             if failed_cases_section.strip() == "":
                 passed = 1
             else:
@@ -516,19 +516,19 @@ def main():
                 csv_writer = csv.writer(csv_file)
                 csv_writer.writerow([passed, log_content])
 
-        db_table_name = "ep_concurrencytest_record"
-        table = pd.read_csv(csv_path)
-        write_table(
-            ingest_client,
-            args.database,
-            table,
-            db_table_name,
-            upload_time,
-            identifier,
-            args.branch,
-            args.commit_hash,
-            args.commit_datetime,
-        )
+            db_table_name = "ep_concurrencytest_record"
+            table = pd.read_csv(csv_path)
+            write_table(
+                ingest_client,
+                args.database,
+                table,
+                db_table_name,
+                upload_time,
+                identifier,
+                args.branch,
+                args.commit_hash,
+                args.commit_datetime,
+            )
 
     except BaseException as e:
         print(str(e))
