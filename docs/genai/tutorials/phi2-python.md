@@ -15,7 +15,7 @@ Install the ONNX Runtime GenAI Python package using the [installation instructio
 
 ## Build phi-2 ONNX model
 
-The onnxruntime-genai package contains a model builder that generates the phi-2 ONNX model using the weights and config on Huggingface. The tools also allows you to download the weights from Hugging Face, load locally stored weights, or convert from GGUF format. For more details, see [how to build models](../howto/build-models.md)
+The onnxruntime-genai package contains a model builder that generates the phi-2 ONNX model using the weights and config on Huggingface. The tools also allows you to download the weights from Hugging Face, load locally stored weights, or convert from GGUF format. For more details, see [how to build models](../howto/build-model.md)
 
 If using the `-m` option shown here, you will need to login into Hugging Face.
 
