@@ -628,6 +628,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     ORT_STRING_VIEW node_test_root_path = ORT_TSTR("c:\\local\\data\\onnx");
 #endif
     for (auto p : kvp.second) {
+      // tensorrt ep isn't expected to pass all onnx node tests. exclude and run model tests only.
       if (provider_name != provider_name_tensorrt) {
         paths.push_back(ConcatPathComponent(node_test_root_path, p));
       }
