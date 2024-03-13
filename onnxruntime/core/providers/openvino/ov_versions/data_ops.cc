@@ -1058,25 +1058,26 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
 
   // Check 3b
   const auto opset = op_map.find(domain);
-  const auto op_fun = ops_supported_as_function.find(node->OpType());
+  // const auto op_fun = ops_supported_as_function.find(node->OpType());
+
   if (opset == op_map.end()) {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "Failed in Unsupported onnx model domain" << std::endl;
     }
 #endif
-    return false;
+    // return false;
   }
-  if (opset->second.find(optype) == opset->second.end() && op_fun == ops_supported_as_function.end()) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "The operator is not available in OpenVINO ngraph operators list"
-                << "nor the operator is a special ONNX function"
-                << std::endl;
-    }
-#endif
-    return false;
-  }
+//   if (opset->second.find(optype) == opset->second.end() && op_fun == ops_supported_as_function.end()) {
+// #ifndef NDEBUG
+//     if (openvino_ep::backend_utils::IsDebugEnabled()) {
+//       std::cout << "The operator is not available in OpenVINO ngraph operators list"
+//                 << "nor the operator is a special ONNX function"
+//                 << std::endl;
+//     }
+// #endif
+//     return false;
+//   }
   return true;
 }
 
