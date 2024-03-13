@@ -386,7 +386,6 @@ stages:
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.whisper.convert_to_onnx -m /whisper_large_v3 --output whisperlargev3 --use_external_data_format ; \
               popd ; \
             '
