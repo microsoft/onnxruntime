@@ -35,6 +35,7 @@ REGISTER_KERNEL_TYPED(13, float, kOnnxDomain, false)
 REGISTER_KERNEL_TYPED(13, double, kOnnxDomain, false)
 REGISTER_KERNEL_TYPED(13, MLFloat16, kOnnxDomain, false)
 
+#ifdef ENABLE_CUDA_NHWC_OPS
 REGISTER_KERNEL_VERSIONED_TYPED(1, 12, float, kMSInternalNHWCDomain, true)
 REGISTER_KERNEL_VERSIONED_TYPED(1, 12, double, kMSInternalNHWCDomain, true)
 REGISTER_KERNEL_VERSIONED_TYPED(1, 12, MLFloat16, kMSInternalNHWCDomain, true)
@@ -42,6 +43,7 @@ REGISTER_KERNEL_VERSIONED_TYPED(1, 12, MLFloat16, kMSInternalNHWCDomain, true)
 REGISTER_KERNEL_TYPED(13, float, kMSInternalNHWCDomain, true)
 REGISTER_KERNEL_TYPED(13, double, kMSInternalNHWCDomain, true)
 REGISTER_KERNEL_TYPED(13, MLFloat16, kMSInternalNHWCDomain, true)
+#endif
 
 template <typename T, bool Layout>
 LRN<T, Layout>::LRN(const OpKernelInfo& info) : CudaKernel(info) {
