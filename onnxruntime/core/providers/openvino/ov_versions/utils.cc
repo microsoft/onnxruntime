@@ -11,14 +11,6 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-// #include "openvino/core/deprecated.hpp"
-// #define IN_OV_COMPONENT
-// #define NGRAPH_LEGACY_HEADER_INCLUDED
-// #include <ngraph/frontend/onnx_import/onnx.hpp>
-
-// #undef NGRAPH_LEGACY_HEADER_INCLUDED
-// #undef IN_OV_COMPONENT
-
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__
@@ -94,20 +86,6 @@ int GetOnnxOpSet(const GraphViewer& graph_viewer) {
   const auto& dm_to_ver = graph_viewer.DomainToVersionMap();
   return dm_to_ver.at(kOnnxDomain);
 }
-
-// std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_opset) {
-//   std::map<std::string, std::set<std::string>> ng_supported_ops;
-//   OPENVINO_SUPPRESS_DEPRECATED_START
-//   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
-
-//   const std::set<std::string> ng_disabled_ops = {"LSTM"};  // Place-holder for ops not supported.
-
-//   for (const auto& disabled_op : ng_disabled_ops) {
-//     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
-//   }
-//   OPENVINO_SUPPRESS_DEPRECATED_END
-//   return ng_supported_ops;
-// }
 
 /**
  * Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
