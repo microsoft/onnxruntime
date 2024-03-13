@@ -821,7 +821,7 @@ TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
-  provider_options["backend_path"] = "QnnHtp.so";
+  provider_options["backend_path"] = "libQnnHtp.so";
 #endif
   provider_options["enable_htp_fp16_precision"] = "1";
 
