@@ -11,7 +11,9 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
+    - 'js/common/lib'
     - 'onnxruntime/core/providers/js'
+    - 'onnxruntime/wasm/js_internal_api.js'
 pr:
   branches:
     include:
@@ -24,8 +26,10 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
+    - 'js/common/lib'
     - 'onnxruntime/core/providers/js'
-#### end trigger ####parameters:
+    - 'onnxruntime/wasm/js_internal_api.js'
+#### end trigger ####
 
 # reference: https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/README.md
 parameters:
