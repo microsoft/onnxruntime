@@ -620,6 +620,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   std::vector<std::filesystem::path> paths;
 
   for (std::pair<ORT_STRING_VIEW, std::vector<ORT_STRING_VIEW>> kvp : provider_names) {
+    const ORT_STRING_VIEW provider_name = kvp.first;
     // Setup ONNX node tests. The test data is preloaded on our CI build machines.
 #if !defined(_WIN32)
     ORT_STRING_VIEW node_test_root_path = ORT_TSTR("/data/onnx");
@@ -627,7 +628,9 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     ORT_STRING_VIEW node_test_root_path = ORT_TSTR("c:\\local\\data\\onnx");
 #endif
     for (auto p : kvp.second) {
-      paths.push_back(ConcatPathComponent(node_test_root_path, p));
+      if (provider_name != provider_name_tensorrt) {
+        paths.push_back(ConcatPathComponent(node_test_root_path, p));
+      }
     }
 
     // Same as the above, except this one is for large models
@@ -646,7 +649,6 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     }
 #endif
 
-    const ORT_STRING_VIEW provider_name = kvp.first;
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
     if (provider_name == provider_name_cuda) {
