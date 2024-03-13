@@ -10,9 +10,8 @@ ARG ONNXRUNTIME_BRANCH=main
 
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2022.3.0
 
-ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
+ENV OpenVINO_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64/
-ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib/:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
 ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/extras/opencv/cmake
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/extras/opencv/lib:${LD_LIBRARY_PATH}

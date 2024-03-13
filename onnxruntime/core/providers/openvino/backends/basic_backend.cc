@@ -136,15 +136,6 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
 void BasicBackend::EnableCaching() {
   if (!global_context_.cache_dir.empty()) {
-    if (global_context_.is_wholly_supported_graph) {
-#if defined(OPENVINO_2022_3)
-#if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
-      _putenv_s("OV_GPU_CACHE_MODEL", "1");
-#else
-      setenv("OV_GPU_CACHE_MODEL", "1", 1);
-#endif
-#endif
-    }
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
     global_context_.ie_core.SetCache(global_context_.cache_dir);
   }

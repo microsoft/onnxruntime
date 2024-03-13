@@ -8,12 +8,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "backend_utils.h"
 
-#if defined(OV_API_20)
 using Exception = ov::Exception;
-#else
-using Exception = InferenceEngine::details::InferenceEngineException;
-using WaitMode = InferenceEngine::IInferRequest::WaitMode;
-#endif
 
 namespace onnxruntime {
 namespace openvino_ep {

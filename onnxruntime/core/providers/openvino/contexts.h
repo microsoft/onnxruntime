@@ -31,6 +31,7 @@ struct GlobalContext {
   int onnx_opset_version;
   void* context = 0;
   bool use_api_2;
+  std::vector<int> OpenVINO_Version = {}; // Ov Major and OV minor version from OV headers
 };
 
 // Holds context specific to subgraph.
@@ -39,7 +40,6 @@ struct SubGraphContext {
   bool enable_batching = false;
   bool set_npu_config = false;
   bool is_constant = false;
-  bool npu_model_has_dynamic_inputs = false;
   void* context = 0;
   std::string subgraph_name;
   std::vector<int> input_indexes;

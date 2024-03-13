@@ -66,9 +66,6 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
-    if (device_type.find("NPU")!= std::string::npos){
-        subgraph_context_.npu_model_has_dynamic_inputs = true;
-    }
     if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
         GetGlobalContext().device_type.find("GPU") != std::string::npos) {
       if (!GetGlobalContext().disable_dynamic_shapes) {
@@ -91,12 +88,14 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                        << subgraph_context_.subgraph_name;
 
     subgraph_context_.has_dynamic_input_shape = false;
+    
+    // OV NPU plugin is supported with fallback to OV CPU upon compilation failures.
     try {
       concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                       GetGlobalContext(),
                                                       subgraph_context_);
     } catch (std::string const& msg) {
-      if (device_type.find("NPU")!= std::string::npos){
+      if (device_type.find("NPU")!= std::string::npos) {
         LOGS_DEFAULT(WARNING) << msg;
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
@@ -106,12 +105,11 @@ BackendManager::BackendManager(const GlobalContext& global_context,
           concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                           GetGlobalContext(),
                                                           subgraph_context_);
-        }catch (std::string const& msg) {
+        } catch (std::string const& msg) {
           LOGS_DEFAULT(WARNING) << msg;
           throw msg;
         }
-      }
-      else {
+      } else {
         throw msg;
       }
     }
@@ -275,9 +273,12 @@ void BackendManager::Compute(OrtKernelContext* context) {
     LOGS_DEFAULT(INFO) << "Start Compute";
   }
 #endif
+  // OV NPU doesn't support dynamic shaped model inference.
+  // if disable_dynamic_shapes is set to true then execution of dynamic model is done 
+  // by rewriting the model to static shaped model at runtime based on input shape. 
+  // disable_dynamic_shapes is always set to true for OV NPU plugin.
   bool use_dynamic_backend = true;
   if (subgraph_context_.has_dynamic_input_shape &&
-      !subgraph_context_.npu_model_has_dynamic_inputs &&
       !GetGlobalContext().disable_dynamic_shapes &&
       (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
        GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
@@ -290,7 +291,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Creating concrete backend for key: " << key;
+                         << "Creating dynamic backend for key: " << key;
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                          << "Backend created for graph " << subgraph_context_.subgraph_name;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(*model_proto_, tensor_shapes);
@@ -299,7 +300,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                       GetGlobalContext(),
                                                       subgraph_context_);
       } catch (std::string const& msg) {
-          if (GetGlobalContext().device_type.find("NPU")!= std::string::npos){
+          if (GetGlobalContext().device_type.find("NPU")!= std::string::npos) {
           LOGS_DEFAULT(WARNING) << msg;
           LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                                 << "Falling back to OV CPU for execution";
@@ -308,15 +309,15 @@ void BackendManager::Compute(OrtKernelContext* context) {
           key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
           try {
             dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
-                                                        GetGlobalContext(),
-                                                        subgraph_context_);
-          }catch (std::string const& msg) {
+                                                          GetGlobalContext(),
+                                                          subgraph_context_);
+          } catch (std::string const& msg) {
             throw msg;
           }
         }
       }
       backend_map_.insert({key, dynamic_backend});
-    }else {
+    } else {
       dynamic_backend = search->second;
     }
 

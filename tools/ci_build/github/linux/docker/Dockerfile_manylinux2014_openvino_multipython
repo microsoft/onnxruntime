@@ -48,8 +48,7 @@ RUN cd $WORKDIR && cd openvino && mkdir build && cd build && \
 ENV INTEL_OPENVINO_DIR /home/onnxruntimedev/openvino_$OV_VERSION
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64:$INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 ENV TBB_LIBS $INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib
-ENV InferenceEngine_DIR $INTEL_OPENVINO_DIR/runtime/cmake
-ENV ngraph_DIR $INTEL_OPENVINO_DIR/runtime/cmake
+ENV OpenVINO_DIR $INTEL_OPENVINO_DIR/runtime/cmake
 ENV IE_PLUGINS_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64
 ENV OPENVINO_MANYLINUX 1
 

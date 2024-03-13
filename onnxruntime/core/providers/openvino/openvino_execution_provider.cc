@@ -6,6 +6,7 @@
 #include "contexts.h"
 #include "backend_manager.h"
 #include "ov_versions/capability.h"
+#include "openvino/core/version.hpp"
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
 
@@ -25,6 +26,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->enable_opencl_throttling = info.enable_opencl_throttling_;
   global_context_->disable_dynamic_shapes = info.disable_dynamic_shapes_;
   global_context_->num_of_threads = info.num_of_threads_;
+  global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
@@ -113,27 +115,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined(OPENVINO_2023_0)
   openvino_ep::GetCapability obj(graph_viewer,
                                  global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_0");
+                                 global_context_->precision_str);
   result = obj.Execute();
-#elif defined(OPENVINO_2023_1)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_1");
-  result = obj.Execute();
-#elif defined(OPENVINO_2023_2)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_2");
-  result = obj.Execute();
-#elif defined(OPENVINO_2023_3)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_3");
-  result = obj.Execute();
-#endif
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
 

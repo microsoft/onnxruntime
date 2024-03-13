@@ -78,7 +78,6 @@ struct OpenVINO_Provider : Provider {
                                             // with this value at runtime.
     bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                             // device (Reduces CPU Utilization when using GPU)
-    bool disable_dynamic_shapes = false;    // [disable_dynamic_shapes]:  Execute model with default static shape for optimal performance.
     void* context = nullptr;
 
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
@@ -146,13 +145,25 @@ struct OpenVINO_Provider : Provider {
         enable_opencl_throttling = false;
       bool_flag = "";
     }
-
+    
+    // [disable_dynamic_shapes]:  Rewrite dynamic shaped models to static shape at runtime and execute.
+    // Always true for NPU plugin.
+    bool disable_dynamic_shapes = false;    
+    if (device_type.find("NPU")!=std::string::npos) {
+      disable_dynamic_shapes = true;
+    }
     if (provider_options_map.find("disable_dynamic_shapes") != provider_options_map.end()) {
       bool_flag = provider_options_map.at("disable_dynamic_shapes");
       if (bool_flag == "true" || bool_flag == "True")
         disable_dynamic_shapes = true;
-      else if (bool_flag == "false" || bool_flag == "False")
-        disable_dynamic_shapes = false;
+      else if (bool_flag == "false" || bool_flag == "False") {
+        if (device_type.find("NPU")!=std::string::npos) {
+          disable_dynamic_shapes = true;
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] The value for the key 'disable_dynamic_shapes' will be set to TRUE for NPU backend.\n ";
+        } else {
+          disable_dynamic_shapes = false;
+        }
+      }
     }
     return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
                                                      enable_npu_fast_compile,

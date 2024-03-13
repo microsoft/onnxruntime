@@ -21,8 +21,7 @@ class GetCapability {
  public:
   GetCapability(const GraphViewer& graph_viewer_param,
                 const std::string device_type_param,
-                const std::string precision,
-                const std::string version_param);
+                const std::string precision);
   virtual std::vector<std::unique_ptr<ComputeCapability>> Execute();
   bool IsWhollySupportedGraph() {
     return is_wholly_supported_graph_;
