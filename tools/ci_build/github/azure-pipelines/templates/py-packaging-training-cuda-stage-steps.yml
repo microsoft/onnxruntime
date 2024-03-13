@@ -136,7 +136,7 @@ stages:
       steps:
         - checkout: self
           clean: true
-          submodules: none
+          submodules: recursive
 
         - template: flex-downloadPipelineArtifact.yml
           parameters:
