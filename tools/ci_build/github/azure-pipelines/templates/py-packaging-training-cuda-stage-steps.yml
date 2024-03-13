@@ -138,6 +138,8 @@ stages:
           clean: true
           submodules: recursive
 
+        - template: set-python-manylinux-variables-step.yml
+
         - template: flex-downloadPipelineArtifact.yml
           parameters:
             ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}_${{ parameters.python_version }}"
