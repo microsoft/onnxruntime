@@ -133,6 +133,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                  global_context_->device_type,
                                  global_context_->precision_str, "V_2023_3");
   result = obj.Execute();
+#elif defined(OPENVINO_2023_2)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_2");
+  result = obj.Execute();
 #endif
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
