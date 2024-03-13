@@ -183,7 +183,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-A10
+    pool: onnxruntime-Linux-GPU-T4
     steps:
     - checkout: self
       clean: true
