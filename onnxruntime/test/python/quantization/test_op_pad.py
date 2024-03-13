@@ -222,12 +222,8 @@ class TestOpQuatizerPad(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_i8_path = "qop_pad_{}_i8_{}{}_{}{}.onnx".format(
-            quantize_mode,
-            tag_pad_mode,
-            tag_constant_value,
-            activation_type_str,
-            weight_type_str,
+        model_i8_path = (
+            f"qop_pad_{quantize_mode}_i8_{tag_pad_mode}{tag_constant_value}_{activation_type_str}{weight_type_str}.onnx"
         )
         data_reader.rewind()
         self.quantize_model(

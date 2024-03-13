@@ -417,6 +417,7 @@ stages:
     - template: templates/use-xcode-version.yml
       parameters:
         xcodeVersion: 14.3
+
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
       displayName: "Install Python requirements"
@@ -433,4 +434,41 @@ stages:
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
           --variant Mobile
-      displayName: "Test pod with iOS dynamic framework"
+      displayName: "Test pod with iOS framework"
+
+- stage: IosMinimalTrainingBuild
+  dependsOn: []
+  jobs:
+  - job: IosMinimalTrainingBuild
+    timeoutInMinutes: 120
+    pool:
+      vmImage: "macOS-13"
+
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: "3.9"
+        addToPath: true
+        architecture: "x64"
+
+    - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: 14.3
+
+    - script: |
+        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+      displayName: "Install Python requirements"
+
+    - script: |
+        python tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
+          tools/ci_build/github/apple/test_minimal_training_ios_simulator_framework_build_settings.json
+      displayName: "Build iOS framework with minimal build and training enabled"
+
+    - script: |
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Training \
+          --skip_macos_test
+      displayName: "Test pod with iOS framework"

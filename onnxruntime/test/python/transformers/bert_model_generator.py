@@ -94,12 +94,16 @@ def create_bert_attention(
             perm=[0, 2, 3, 1],
         ),
         # mask nodes
-        helper.make_node("Unsqueeze", ["input_mask", "axes_1"], ["unsqueeze0_out"], "unsqueeze0")
-        if has_unsqueeze_two_inputs
-        else helper.make_node("Unsqueeze", ["input_mask"], ["unsqueeze0_out"], "unsqueeze0", axes=[1]),
-        helper.make_node("Unsqueeze", ["unsqueeze0_out", "axes_2"], ["unsqueeze1_out"], "unsqueeze1")
-        if has_unsqueeze_two_inputs
-        else helper.make_node("Unsqueeze", ["unsqueeze0_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[2]),
+        (
+            helper.make_node("Unsqueeze", ["input_mask", "axes_1"], ["unsqueeze0_out"], "unsqueeze0")
+            if has_unsqueeze_two_inputs
+            else helper.make_node("Unsqueeze", ["input_mask"], ["unsqueeze0_out"], "unsqueeze0", axes=[1])
+        ),
+        (
+            helper.make_node("Unsqueeze", ["unsqueeze0_out", "axes_2"], ["unsqueeze1_out"], "unsqueeze1")
+            if has_unsqueeze_two_inputs
+            else helper.make_node("Unsqueeze", ["unsqueeze0_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[2])
+        ),
         # when attention_mask is float type, no need to cast
         helper.make_node("Cast", ["unsqueeze1_out"], ["cast_out"], "cast", to=1) if not use_float_mask else None,
         helper.make_node(
@@ -291,9 +295,11 @@ def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, 
         helper.make_node("Add", ["einsum_k_out", "add_k_weight"], ["add_k_out"], "add_k"),
         helper.make_node("Mul", ["add_k_out", "mul_weight_1"], ["mul_k_out"], "mul_k"),
         # mask nodes
-        helper.make_node("Unsqueeze", ["input_mask", "axes_1"], ["unsqueeze0_out"], "unsqueeze0")
-        if has_unsqueeze_two_inputs
-        else helper.make_node("Unsqueeze", ["input_mask"], ["unsqueeze0_out"], "unsqueeze0", axes=[1, 2]),
+        (
+            helper.make_node("Unsqueeze", ["input_mask", "axes_1"], ["unsqueeze0_out"], "unsqueeze0")
+            if has_unsqueeze_two_inputs
+            else helper.make_node("Unsqueeze", ["input_mask"], ["unsqueeze0_out"], "unsqueeze0", axes=[1, 2])
+        ),
         helper.make_node(
             "Slice",
             ["unsqueeze0_out", "slice_start", "slice_end", "slice_axes", "slice_steps"],

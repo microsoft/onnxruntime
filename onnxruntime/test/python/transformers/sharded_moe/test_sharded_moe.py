@@ -59,39 +59,41 @@ def create_moe_onnx_graph(
 ):
     use_sharded_moe = local_experts_start_index >= 0
     nodes = [
-        helper.make_node(
-            "MoE",
-            [
-                "input",
-                "router_probs",
-                "fc1_experts_weights",
-                "fc2_experts_weights",
-                "fc1_experts_bias",
-                "fc2_experts_bias",
-            ],
-            ["output"],
-            "MoE_0",
-            k=1,
-            activation_type="gelu",
-            domain="com.microsoft",
-        )
-        if not use_sharded_moe
-        else helper.make_node(
-            "ShardedMoE",
-            [
-                "input",
-                "router_probs",
-                "fc1_experts_weights",
-                "fc2_experts_weights",
-                "fc1_experts_bias",
-                "fc2_experts_bias",
-            ],
-            ["output"],
-            "MoE_0",
-            k=1,
-            activation_type="gelu",
-            local_experts_start_index=local_experts_start_index,
-            domain="com.microsoft",
+        (
+            helper.make_node(
+                "MoE",
+                [
+                    "input",
+                    "router_probs",
+                    "fc1_experts_weights",
+                    "fc2_experts_weights",
+                    "fc1_experts_bias",
+                    "fc2_experts_bias",
+                ],
+                ["output"],
+                "MoE_0",
+                k=1,
+                activation_type="gelu",
+                domain="com.microsoft",
+            )
+            if not use_sharded_moe
+            else helper.make_node(
+                "ShardedMoE",
+                [
+                    "input",
+                    "router_probs",
+                    "fc1_experts_weights",
+                    "fc2_experts_weights",
+                    "fc1_experts_bias",
+                    "fc2_experts_bias",
+                ],
+                ["output"],
+                "MoE_0",
+                k=1,
+                activation_type="gelu",
+                local_experts_start_index=local_experts_start_index,
+                domain="com.microsoft",
+            )
         ),
     ]
 

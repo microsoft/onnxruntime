@@ -35,7 +35,7 @@ class OrtFormatModelProcessor:
         :return: Dictionary of NodeArg name to TypeInfo
         """
         value_name_to_typeinfo = outer_scope_value_typeinfo.copy()
-        for j in range(0, graph.NodeArgsLength()):
+        for j in range(graph.NodeArgsLength()):
             n = graph.NodeArgs(j)
             value_name_to_typeinfo[n.Name()] = n.Type()  # TypeInfo for this NodeArg's name
 
@@ -57,7 +57,7 @@ class OrtFormatModelProcessor:
         # Merge the TypeInfo for all values in this level of the graph with the outer scope value TypeInfo.
         value_name_to_typeinfo = OrtFormatModelProcessor._setup_type_info(graph, outer_scope_value_typeinfo)
 
-        for i in range(0, graph.NodesLength()):
+        for i in range(graph.NodesLength()):
             node = graph.Nodes(i)
 
             optype = node.OpType().decode()
@@ -69,7 +69,7 @@ class OrtFormatModelProcessor:
                 self._op_type_processors.process_node(node, value_name_to_typeinfo)
 
             # Read all the attributes
-            for j in range(0, node.AttributesLength()):
+            for j in range(node.AttributesLength()):
                 attr = node.Attributes(j)
                 attr_type = attr.Type()
                 if attr_type == fbs.AttributeType.AttributeType.GRAPH:
@@ -77,7 +77,7 @@ class OrtFormatModelProcessor:
                 elif attr_type == fbs.AttributeType.AttributeType.GRAPHS:
                     # the ONNX spec doesn't currently define any operators that have multiple graphs in an attribute
                     # so entering this 'elif' isn't currently possible
-                    for k in range(0, attr.GraphsLength()):
+                    for k in range(attr.GraphsLength()):
                         self._process_graph(attr.Graphs(k), value_name_to_typeinfo)
 
     def process(self):
