@@ -255,7 +255,8 @@ void BackendManager::Compute(OrtKernelContext* context) {
   }
 #endif
   bool use_dynamic_backend = true;
-  if (!GetGlobalContext().disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
+  if ((subgraph_context_.has_dynamic_input_shape &&
+       GetGlobalContext().disable_dynamic_shapes==false) &&
       (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
        GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
     concrete_backend_->Infer(context);
