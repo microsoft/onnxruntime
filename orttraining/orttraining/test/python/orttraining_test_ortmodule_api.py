@@ -3797,7 +3797,7 @@ def test_forward_call_kwargs_input_unexpected_order():
             model.eval()
 
         # Must work because forward() and dict order match
-        y1, y2 = model(**{"input1": input1, "input2": input2})
+        y1, y2 = model(input1=input1, input2=input2)
         assert y1 is not None
         assert y2 is not None
         if model._is_training():
@@ -3805,7 +3805,7 @@ def test_forward_call_kwargs_input_unexpected_order():
             loss.backward()
 
         # Must work even when forward() and dict order mismatch
-        y1, y2 = model(**{"input2": input2, "input1": input1})
+        y1, y2 = model(input2=input2, input1=input1)
         assert y1 is not None
         assert y2 is not None
         if model._is_training():
@@ -3887,17 +3887,20 @@ def test_forward_call_lots_None():
             None,
             None,
         )
-        run_step(
-            a.item() + f.item(), **{"a": a, "b": None, "c": None, "d": None, "e": None, "f": f, "y": None, "z": None}
-        )
+        run_step(a.item() + f.item(), a=a, b=None, c=None, d=None, e=None, f=f, y=None, z=None)
         run_step(a.item() + z.item(), a, None, None, None, None, None, None, z)
-        run_step(
-            a.item() + z.item(), **{"a": a, "b": None, "c": None, "d": None, "e": None, "f": None, "y": None, "z": z}
-        )
+        run_step(a.item() + z.item(), a=a, b=None, c=None, d=None, e=None, f=None, y=None, z=z)
         run_step(a.item() + c.item() + y.item(), a, None, c, None, None, None, y, None)
         run_step(
             a.item() + c.item() + y.item(),
-            **{"a": a, "b": None, "c": c, "d": None, "e": None, "f": None, "y": y, "z": None},
+            a=a,
+            b=None,
+            c=c,
+            d=None,
+            e=None,
+            f=None,
+            y=y,
+            z=None,
         )
         run_step(
             a.item() + b.item() + c.item() + d.item() + e.item() + f.item() + y.item() + z.item(),
@@ -3912,7 +3915,14 @@ def test_forward_call_lots_None():
         )
         run_step(
             a.item() + b.item() + c.item() + d.item() + e.item() + f.item() + y.item() + z.item(),
-            **{"a": a, "b": b, "c": c, "d": d, "e": e, "f": f, "y": y, "z": z},
+            a=a,
+            b=b,
+            c=c,
+            d=d,
+            e=e,
+            f=f,
+            y=y,
+            z=z,
         )
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
