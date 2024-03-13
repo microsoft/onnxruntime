@@ -359,7 +359,7 @@ stages:
   # because coverage report is hard to support in cross machines.
   displayName: NNAPI MASTER BUILD&TEST
   dependsOn: []
-#  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
@@ -369,7 +369,7 @@ stages:
     timeoutInMinutes: 180
     workspace:
       clean: all
-#    condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+    condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
     steps:
       - script: |
           set -ex
