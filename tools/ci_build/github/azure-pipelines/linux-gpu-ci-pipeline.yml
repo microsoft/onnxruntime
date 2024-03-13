@@ -266,4 +266,8 @@ stages:
               '
       displayName: 'Run Tests'
 
+    - template: templates/check_test_result.yml
+      parameters:
+        FileName: '$(Build.BinariesDirectory)/Release/onnxruntime_test_all.Release.results.xml'
+
     - template: templates/clean-agent-build-directory-step.yml

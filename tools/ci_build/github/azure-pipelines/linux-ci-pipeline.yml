@@ -88,7 +88,6 @@ stages:
                     onnxruntimecpubuildcentos8x64 \
                     /bin/bash -c '
                       set -ex; \
-                      [ -d "/data/onnx/opset18" ] ||  (echo "NO node test data"; exit 1) && echo " node test data exists"; \
                       python3.9 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
