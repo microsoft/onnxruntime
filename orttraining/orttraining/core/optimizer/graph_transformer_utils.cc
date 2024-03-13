@@ -86,7 +86,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     const IExecutionProvider& execution_provider,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
+  std::unique_ptr<RuleBasedGraphTransformer> primitive_rule_transformers = nullptr;
+  std::unique_ptr<RuleBasedGraphTransformer> coarse_grained_rule_transformers = nullptr;
 
   // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
   // If we give values here, the check in transformer will fail.
@@ -94,27 +95,33 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
   switch (level) {
     case TransformerLevel::Level1: {
-      rule_transformer =
-          std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
+      primitive_rule_transformers =
+          std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level, "Primitive"),
                                                       compatible_eps);
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertMaxPoolOutput>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<BatchNormReplacement>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ExpandElimination>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<CastElimination>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PreShapeNodeElimination>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmSumFusion>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NotWhereFusion>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<LSTMReplacement>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GRUReplacement>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<InsertMaxPoolOutput>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<BatchNormReplacement>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<UnsqueezeElimination>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<PreShapeNodeElimination>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<NoopElimination>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<DivMulFusion>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<EliminateDropout>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<LSTMReplacement>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<GRUReplacement>()));
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PythonOpRewriter>()));
+      ORT_THROW_IF_ERROR(primitive_rule_transformers->Register(std::make_unique<PythonOpRewriter>()));
 #endif
+
+      coarse_grained_rule_transformers =
+          std::make_unique<RuleBasedGraphTransformer>(
+              optimizer_utils::GenerateRuleBasedTransformerName(level, "Coarse-Grained"), compatible_eps);
+      // ExpandElimination and CastElimination are depending on ConstantFolding to fold the constant first,
+      // so we put them in coarse_grained_rule_transformers, which will be appended after custom graph transformers.
+      ORT_THROW_IF_ERROR(coarse_grained_rule_transformers->Register(std::make_unique<ExpandElimination>()));
+      ORT_THROW_IF_ERROR(coarse_grained_rule_transformers->Register(std::make_unique<CastElimination>()));
+      ORT_THROW_IF_ERROR(coarse_grained_rule_transformers->Register(std::make_unique<GemmSumFusion>()));
+      ORT_THROW_IF_ERROR(coarse_grained_rule_transformers->Register(std::make_unique<GemmTransposeFusion>()));
+      ORT_THROW_IF_ERROR(coarse_grained_rule_transformers->Register(std::make_unique<NotWhereFusion>()));
+      ORT_THROW_IF_ERROR(coarse_grained_rule_transformers->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
 
       // Put ConstantSharing and ShapeInputMerge before CommonSubexpressionElimination by intention as it can create
       // more opportunities for CSE. For example, if A and B nodes consume same different args but produce same output
@@ -206,11 +213,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      rule_transformer =
-          std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
-                                                      compatible_eps);
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ConcatReplacement>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<TransposeReplacement>()));
+      coarse_grained_rule_transformers =
+          std::make_unique<RuleBasedGraphTransformer>(
+              optimizer_utils::GenerateRuleBasedTransformerName(level, "Coarse-Grained"), compatible_eps);
+      ORT_THROW_IF_ERROR(coarse_grained_rule_transformers->Register(std::make_unique<ConcatReplacement>()));
+      ORT_THROW_IF_ERROR(coarse_grained_rule_transformers->Register(std::make_unique<TransposeReplacement>()));
     } break;
 
     case TransformerLevel::Level3: {
@@ -221,12 +228,13 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       break;
   }
 
-  // Note that some rule-based transformers are depending on some custom transformers,
-  // e.g., ExpandElimination and CastElimination are depending on ConstantFolding to fold the constant first,
-  // so we should always push the rule-based transformer to the end, this is especially important when the number of
-  // transformation steps is 1.
-  if (rule_transformer != nullptr) {
-    transformers.emplace_back(std::move(rule_transformer));
+  if (primitive_rule_transformers != nullptr) {
+    // Insert in the beginning of the list
+    transformers.insert(transformers.begin(), std::move(primitive_rule_transformers));
+  }
+
+  if (coarse_grained_rule_transformers != nullptr) {
+    transformers.emplace_back(std::move(coarse_grained_rule_transformers));
   }
 
   GenerateExternalTransformers(level, true, compatible_eps, transformers);

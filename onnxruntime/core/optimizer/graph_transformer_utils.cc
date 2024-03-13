@@ -103,8 +103,8 @@ static void FilterTransformers(InlinedVector<std::unique_ptr<GraphTransformer>>&
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
-  return "Level" + std::to_string(static_cast<uint32_t>(level)) + "_RuleBasedTransformer";
+std::string GenerateRuleBasedTransformerName(TransformerLevel level, const std::string& prefix) {
+  return "Level" + std::to_string(static_cast<uint32_t>(level)) + "_" + prefix + "RuleBasedTransformer";
 }
 
 InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(

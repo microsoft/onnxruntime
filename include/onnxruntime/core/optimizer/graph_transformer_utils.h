@@ -35,7 +35,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
     const InlinedHashSet<std::string>& rules_to_disable = {});
 
 /** Given a TransformerLevel, this method generates a name for the rule-based graph transformer of that level. */
-std::string GenerateRuleBasedTransformerName(TransformerLevel level);
+std::string GenerateRuleBasedTransformerName(TransformerLevel level, const std::string& prefix = "");
 
 /** Generates all rule-based transformers for this level. */
 std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
