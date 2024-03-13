@@ -51,8 +51,6 @@ __global__ void MaxPoolWithIndexKernel(
       return (((n_index * channels + c_index) * height + h_index) * width + w_index) * depth + d_index;
     } else if constexpr (Layout == LAYOUT_NHWC) {
       return (((n_index * height + h_index) * width + w_index) * depth + d_index) * channels + c_index;
-    } else {
-      static_assert(0, "unsupported layout");
     }
   };
 
@@ -145,7 +143,6 @@ void MaxPoolWithIndex(
     pooled_height = output_shape[2];
     pooled_width = kernel_shape.size() > 1 ? output_shape[3] : 1;
     pooled_depth = kernel_shape.size() > 2 ? output_shape[4] : 1;
-
   } else if constexpr (Layout == LAYOUT_NHWC) {
     batchs = input_shape[0];
     height = input_shape[1];
