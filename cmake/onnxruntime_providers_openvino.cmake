@@ -71,7 +71,14 @@
     message(FATAL_ERROR "onnxruntime_providers_openvino unknown platform, need to specify shared library exports for it")
   endif()
 
-  install(TARGETS onnxruntime_providers_openvino
-          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+  if (CMAKE_OPENVINO_LIBRARY_INSTALL_DIR)
+    install(TARGETS onnxruntime_providers_openvino
+            ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY  DESTINATION ${CMAKE_OPENVINO_LIBRARY_INSTALL_DIR}
+            RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+  else()
+    install(TARGETS onnxruntime_providers_openvino
+            ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
