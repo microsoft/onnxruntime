@@ -176,6 +176,10 @@ void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
     device_config.emplace(ov::inference_num_threads(global_context_.num_of_threads));
 }
 
+void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
+    device_config.emplace(ov::inference_num_threads(global_context_.num_of_threads));
+}
+
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
