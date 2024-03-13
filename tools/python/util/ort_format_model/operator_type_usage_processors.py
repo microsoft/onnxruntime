@@ -182,9 +182,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
             # Don't know of any ops where the number of outputs changed across versions, so require a valid length
             if o >= node.OutputsLength():
                 raise RuntimeError(
-                    "Node has {} outputs. Tracker for {} incorrectly configured as it requires {}.".format(
-                        node.OutputsLength(), self.name, o
-                    )
+                    f"Node has {node.OutputsLength()} outputs. Tracker for {self.name} incorrectly configured as it requires {o}."
                 )
 
             type_str = value_name_to_typestr(node.Outputs(o), value_name_to_typeinfo)
@@ -644,9 +642,7 @@ class GloballyAllowedTypesOpTypeImplFilter(OpTypeImplFilterInterface):
 
         if not globally_allowed_types.issubset(self._valid_allowed_types):
             raise ValueError(
-                "Globally allowed types must all be valid. Invalid types: {}".format(
-                    sorted(globally_allowed_types - self._valid_allowed_types)
-                )
+                f"Globally allowed types must all be valid. Invalid types: {sorted(globally_allowed_types - self._valid_allowed_types)}"
             )
 
         self._globally_allowed_types = globally_allowed_types

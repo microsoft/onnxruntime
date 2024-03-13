@@ -433,9 +433,7 @@ class InputDensityObserver:
                 total_token,
                 valid_token_per_batch,
             ) in self._stats:
-                stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<9.2f}% | {:<15} | {:<15} | {:<15} |\n".format(
-                    step, input_type, input_name, padding_idx, density, valid_token, total_token, valid_token_per_batch
-                )
+                stat += f"\t| {step:<10} | {input_type:<10} | {input_name:<15} | {padding_idx:<10} | {density:<9.2f}% | {valid_token:<15} | {total_token:<15} | {valid_token_per_batch:<15} |\n"
             stat += "<<<\n"
             self._logger.info(stat)
             self._stats.clear()
@@ -697,9 +695,11 @@ class MemoryObserver:
                     [
                         f" - Plan {index}",
                         ":",
-                        "ON"
-                        if all(cluster_id in user_configs_with_out_freq for cluster_id in cluster_ids_without_freq)
-                        else "OFF",
+                        (
+                            "ON"
+                            if all(cluster_id in user_configs_with_out_freq for cluster_id in cluster_ids_without_freq)
+                            else "OFF"
+                        ),
                         ":",
                         cluster_id,
                         saving_symbolic.freq if details else "",

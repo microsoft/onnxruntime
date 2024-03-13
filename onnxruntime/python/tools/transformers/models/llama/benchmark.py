@@ -55,11 +55,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
     max_seq_len = (
         2048
         if args.benchmark_type == "ort-msft"
-        else 16384
-        if "codellama" in temp_name
-        else 4096
-        if "llama2" in temp_name
-        else 2048
+        else 16384 if "codellama" in temp_name else 4096 if "llama2" in temp_name else 2048
     )
 
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
@@ -278,21 +274,25 @@ def time_fn(args, fn, inputs):
         outputs = fn(inputs)
         logger.info(outputs)
 
-    input_sync = (  # noqa: E731
-        lambda *kwargs: args.io_binding.synchronize_inputs()
+    input_sync = lambda *kwargs: (  # noqa: E731
+        args.io_binding.synchronize_inputs()
         if args.device != "cpu" and args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}  # ORT synchronize
-        else lambda *kwargs: torch.cuda.synchronize()
-        if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
-        else lambda *kwargs: None  # no-op function
-    )
+        else lambda *kwargs: (
+            torch.cuda.synchronize()
+            if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
+            else lambda *kwargs: None
+        )
+    )  # no-op function
 
-    output_sync = (  # noqa: E731
-        lambda *kwargs: args.io_binding.synchronize_outputs()
+    output_sync = lambda *kwargs: (  # noqa: E731
+        args.io_binding.synchronize_outputs()
         if args.device != "cpu" and args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}  # ORT synchronize
-        else lambda *kwargs: torch.cuda.synchronize()
-        if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
-        else lambda *kwargs: None  # no-op function
-    )
+        else lambda *kwargs: (
+            torch.cuda.synchronize()
+            if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
+            else lambda *kwargs: None
+        )
+    )  # no-op function
 
     for _ in warmup_range:
         input_sync()

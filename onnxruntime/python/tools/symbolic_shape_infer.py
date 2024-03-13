@@ -335,10 +335,7 @@ class SymbolicShapeInference:
                     int_dim = is_int.index(1)
                     if self.verbose_ > 0:
                         logger.debug(
-                            "dim {} has been merged with value {}".format(
-                                unique_dims[:int_dim] + unique_dims[int_dim + 1 :],
-                                unique_dims[int_dim],
-                            )
+                            f"dim {unique_dims[:int_dim] + unique_dims[int_dim + 1 :]} has been merged with value {unique_dims[int_dim]}"
                         )
                     self._check_merged_dims(unique_dims, allow_broadcast=False)
                     return unique_dims[int_dim]
@@ -663,12 +660,7 @@ class SymbolicShapeInference:
 
     def _new_symbolic_dim_from_output(self, node, out_idx=0, dim=0):
         return self._new_symbolic_dim(
-            "{}{}_{}_o{}_".format(
-                node.op_type,
-                self.prefix_,
-                list(self.out_mp_.graph.node).index(node),
-                out_idx,
-            ),
+            f"{node.op_type}{self.prefix_}_{list(self.out_mp_.graph.node).index(node)}_o{out_idx}_",
             dim,
         )
 
@@ -1216,9 +1208,7 @@ class SymbolicShapeInference:
         if need_second_infer:
             if self.verbose_ > 2:
                 logger.debug(
-                    "Rerun Loop: {}({}...), because of sequence in loop carried variables".format(
-                        node.name, node.output[0]
-                    )
+                    f"Rerun Loop: {node.name}({node.output[0]}...), because of sequence in loop carried variables"
                 )
             self._onnx_infer_subgraph(node, subgraph, inc_subgraph_id=False)
 
@@ -2740,11 +2730,7 @@ class SymbolicShapeInference:
                 out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
                 if self.verbose_ > 2:
                     logger.debug(
-                        "  {}: {} {}".format(
-                            node.output[i_o],
-                            str(out_shape),
-                            onnx.TensorProto.DataType.Name(vi.type.tensor_type.elem_type),
-                        )
+                        f"  {node.output[i_o]}: {out_shape!s} {onnx.TensorProto.DataType.Name(vi.type.tensor_type.elem_type)}"
                     )
                     if node.output[i_o] in self.sympy_data_:
                         logger.debug("  Sympy Data: " + str(self.sympy_data_[node.output[i_o]]))
@@ -2848,18 +2834,10 @@ class SymbolicShapeInference:
                             if self.verbose_ > 0:
                                 if is_unknown_op:
                                     logger.debug(
-                                        "Possible unknown op: {} node: {}, guessing {} shape".format(
-                                            node.op_type, node.name, vi.name
-                                        )
+                                        f"Possible unknown op: {node.op_type} node: {node.name}, guessing {vi.name} shape"
                                     )
                                 if self.verbose_ > 2:
-                                    logger.debug(
-                                        "  {}: {} {}".format(
-                                            node.output[i_o],
-                                            str(new_shape),
-                                            vi.type.tensor_type.elem_type,
-                                        )
-                                    )
+                                    logger.debug(f"  {node.output[i_o]}: {new_shape!s} {vi.type.tensor_type.elem_type}")
 
                             self.run_ = True
                             continue  # continue the inference after guess, no need to stop as no merge is needed

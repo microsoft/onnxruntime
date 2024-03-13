@@ -79,11 +79,7 @@ def _clean_initializers_helper(graph, model):
                 graph.input.remove(name_to_input[initializer.name])
             except StopIteration:
                 if model.ir_version < 4:
-                    print(
-                        "Warning: invalid weight name {} found in the graph (not a graph input)".format(
-                            initializer.name
-                        )
-                    )
+                    print(f"Warning: invalid weight name {initializer.name} found in the graph (not a graph input)")
 
     requesting_tensor_names.difference_update(input.name for input in graph.input)
 
