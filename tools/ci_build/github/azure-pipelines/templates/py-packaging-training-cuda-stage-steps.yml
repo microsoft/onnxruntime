@@ -195,7 +195,7 @@ stages:
                 --volume /bert_data:/bert_data \
                 --volume /hf_models_cache:/hf_models_cache \
                 onnxruntimetraininggpubuild \
-                  bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
+                  bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$basefilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)
 
         # if the wheel size bigger than 300M, fail the UploadWheel step
