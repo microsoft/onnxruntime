@@ -732,7 +732,7 @@ def generate_files(line_list, args):
         )
 
     if args.execution_provider == "openvino":
-        openvino_path = get_env_var("INTEL_OPENVINO_DIR")
+        get_env_var("INTEL_OPENVINO_DIR")
         files_list.append(
             "<file src="
             + '"'
