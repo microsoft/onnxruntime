@@ -1075,7 +1075,7 @@ class SessionState {
   PROVIDER_DISALLOW_ALL(SessionState)
 };
 
-class SessionOptions {
+struct SessionOptions {
  public:
   const ConfigOptions& GetConfigOptions() const { return g_host->SessionOptions__GetConfigOptions(this); }
 
