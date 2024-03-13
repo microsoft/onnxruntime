@@ -146,7 +146,6 @@ std::vector<SupportedOp> supported_op_mode = {
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
     {"LayerNormalization", V_2023_0, {"CPU", "GPU"}},
-    {"LayerNormalization", V_2023_0, {"NPU"}},
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},
     {"LessOrEqual", V_2022_1, {"CPU", "GPU"}},
@@ -1079,32 +1078,9 @@ std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std
   const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer_));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
-  std::string plugin_device=openvino_ep::BackendManager::GetGlobalContext().device_type.substr(0, device_id_.find("_"));
-  // std::string plugin_device=device_id_.substr(0, device_id_.find("_"));
-  bool fallback_to_mlas=false;
 
-
-//   if(plugin_device=="NPU"){
-// #ifdef _WIN32
-//       std::wstring onnx_path = graph_viewer_.ModelPath().ToPathString();
-//       std::string onnx_model_path = std::string(onnx_path.begin(), onnx_path.end());
-// #else
-//       std::string onnx_model_path = graph_viewer_.ModelPath().ToPathString();
-// #endif
-//       ov::Core oe;
-//       ov::frontend::FrontEndManager mngr;
-//       auto front = mngr.load_by_framework("onnx");
-//       auto loaded = front->load(onnx_model_path);
-//       auto ov_partial_network = front->convert_partially(loaded);
-//       for (const auto& op : ov_partial_network->get_ops()){
-//         if (auto framework_node = std::dynamic_pointer_cast<ov::op::util::FrameworkNode>(op)) {
-//           fallback_to_mlas = true;
-//           break;
-//         }
-//       }
-//   }
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
-    if (!fallback_to_mlas && node_is_supported(ng_supported_ops, node_idx)) {
+    if (node_is_supported(ng_supported_ops, node_idx)) {
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
                                                                                     bool is_input) {
