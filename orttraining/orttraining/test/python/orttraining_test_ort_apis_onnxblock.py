@@ -190,9 +190,11 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
 
     ort_inputs = {
         onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target))
-        if target_type is None
-        else _to_numpy(copy.deepcopy(target).type(target_type)),
+        onnx_model.graph.input[1].name: (
+            _to_numpy(copy.deepcopy(target))
+            if target_type is None
+            else _to_numpy(copy.deepcopy(target).type(target_type))
+        ),
     }
     if target_type is not None:
         ort_inputs[onnx_model.graph.input[1].name]

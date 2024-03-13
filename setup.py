@@ -257,7 +257,7 @@ try:
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
                 for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
                     auditwheel_cmd += ["--exclude", i]
-                logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
+                logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
                     subprocess.run(auditwheel_cmd, check=True, stdout=subprocess.PIPE)
                 finally:
@@ -614,9 +614,7 @@ if nightly_build:
             # TODO: this is the last time we have to do this!!!
             # We shall bump up release number right after release cut.
             if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
-                version_number = "{major}.{minor}.{macro}".format(
-                    major=ort_version.major, minor=ort_version.minor + 1, macro=ort_version.micro
-                )
+                version_number = f"{ort_version.major}.{ort_version.minor + 1}.{ort_version.micro}"
 
     version_number = version_number + ".dev" + build_suffix
 
@@ -667,9 +665,11 @@ if enable_training:
                 else:
                     print(
                         "Error getting cudart version. ",
-                        "did not find any cudart library"
-                        if not cudart_versions or len(cudart_versions) == 0
-                        else "found multiple cudart libraries",
+                        (
+                            "did not find any cudart library"
+                            if not cudart_versions or len(cudart_versions) == 0
+                            else "found multiple cudart libraries"
+                        ),
                     )
             elif rocm_version:
                 f.write(f"rocm_version = '{rocm_version}'\n")

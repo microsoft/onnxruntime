@@ -288,7 +288,6 @@ def run_evaluate_test_and_compare(
 
     def cuda_barrier_func():
         torch.cuda.synchronize()
-        pass
 
     cuda = torch.device("cuda:0")
     run_evaluate_test_on_device_and_compare(

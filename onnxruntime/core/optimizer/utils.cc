@@ -272,7 +272,7 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
 constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike",
-                                                    "RandomNormalLike", "Multinomial"};
+                                                    "RandomNormalLike", "Multinomial", "Dropout"};
 
 // List of deterministic MS domain operators. Currently used for constant folding and common subexpression elimination.
 //
@@ -280,7 +280,8 @@ constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNorm
 // with the above ONNX list. With the current approach, only MS domain Q/DQ operators
 // (plus ShrunkenGather for training) are considered deterministic.
 #ifdef ENABLE_TRAINING_OPS
-constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather", "QuantizeLinear", "DequantizeLinear"};
+constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather", "QuantizeLinear", "DequantizeLinear",
+                                               "ConcatTraining"};
 #else
 constexpr std::array kMSDomainDeterministicOps{"QuantizeLinear", "DequantizeLinear"};
 #endif
