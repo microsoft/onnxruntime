@@ -26,7 +26,8 @@ enum versionNum {
   V_2023_0,
   V_2023_1,
   V_2023_2,
-  V_2023_3
+  V_2023_3,
+  V_2024_0
 };
 
 using VersionNum = enum versionNum;
