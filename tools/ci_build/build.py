@@ -87,9 +87,7 @@ def _openvino_verify_device_type(device_read):
         res = True
     elif device_read in choices1:
         res = True
-    elif (
-        device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:")
-    ):  # noqa: PIE810
+    elif device_read.startswith(("HETERO:", "MULTI:", "AUTO:")):
         res = True
         comma_separated_devices = device_read.split(":")
         comma_separated_devices = comma_separated_devices[1].split(",")
@@ -118,9 +116,7 @@ def _openvino_verify_device_type(device_read):
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
-        if not (
-            device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")
-        ):  # noqa: PIE810
+        if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):
             invalid_hetero_build()
         sys.exit("Wrong Build Type selected")
 

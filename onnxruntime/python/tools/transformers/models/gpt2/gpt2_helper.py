@@ -741,9 +741,7 @@ class Gpt2Helper:
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug(
-            "OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, ".2f"))
-        )  # noqa: G001
+        logger.debug("OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, ".2f")))
 
         return ort_outputs, average_latency
 
