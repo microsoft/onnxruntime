@@ -750,32 +750,6 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-        if is_windows():
-            dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
-            tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
-
-            for dll_element in os.listdir(dll_list_path):
-                if dll_element.endswith("dll"):
-                    files_list.append(
-                        "<file src="
-                        + '"'
-                        + os.path.join(dll_list_path, dll_element)
-                        + runtimes_target
-                        + args.target_architecture
-                        + '\\native" />'
-                    )
-
-            for tbb_element in os.listdir(tbb_list_path):
-                if tbb_element.endswith("dll"):
-                    files_list.append(
-                        "<file src="
-                        + '"'
-                        + os.path.join(tbb_list_path, tbb_element)
-                        + runtimes_target
-                        + args.target_architecture
-                        + '\\native" />'
-                    )
-
     if args.execution_provider == "cuda" or is_cuda_gpu_win_sub_package and not is_ado_packaging_build:
         files_list.append(
             "<file src="
