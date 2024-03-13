@@ -52,7 +52,7 @@
 
 #if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
-#if defined(CPUIDINFO_ARCH_ARM)
+#if defined(CPUIDINFO_ARCH_ARM) || defined(CPUINFO_ARCH_ARM64)
 namespace onnxruntime {
 // The following function is declared in "core/common/cpuid_uarch.h" but we cannot include the whole header file because
 //  some of its symbols are conflict with <cpuinfo.h>
@@ -142,7 +142,7 @@ void CPUIDInfo::X86Init() {
 
 #endif /* CPUIDINFO_ARCH_X86 */
 
-#if defined(CPUIDINFO_ARCH_ARM)
+#if defined(CPUIDINFO_ARCH_ARM) || defined(CPUINFO_ARCH_ARM64)
 #ifdef __linux__
 
 void CPUIDInfo::ArmLinuxInit() {
@@ -281,7 +281,7 @@ uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 CPUIDInfo::CPUIDInfo() {
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();
-#elif defined(CPUIDINFO_ARCH_ARM)
+#elif defined(CPUIDINFO_ARCH_ARM) || defined(CPUINFO_ARCH_ARM64)
 #if CPUINFO_SUPPORTED
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
   if (!pytorch_cpuinfo_init_) {

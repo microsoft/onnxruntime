@@ -9,6 +9,6 @@
 #define CPUIDINFO_ARCH_X86
 #endif
 
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__) || defined(_M_ARM64EC)
 #define CPUIDINFO_ARCH_ARM
 #endif  // ARM or ARM64

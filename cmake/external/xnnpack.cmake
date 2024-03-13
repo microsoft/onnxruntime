@@ -15,6 +15,16 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
   set(XNNPACK_ENABLE_ARM_BF16 OFF)
 endif()
 
+if (CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64EC")
+  # TODO: should we use args from https://github.com/google/XNNPACK/pull/3867/files
+  # An older PR https://github.com/google/XNNPACK/pull/3748/files build with -A=ARM64EC but the more recent one
+  # has a weird combination of -A ARM64 -DCMAKE_C_FLAGS=/arm64EC -DCMAKE_CXX_FLAGS=/arm64EC -DCMAKE_EXE_LINKER_FLAGS=/MACHINE:ARM64EC -DCMAKE_SHARED_LINKER_FLAGS=/MACHINE:ARM64EC -DCMAKE_MODULE_LINKER_FLAGS=/MACHINE:ARM64EC
+  # Neither were checked in so not clear what is actually supported.
+  set(XNNPACK_ENABLE_ARM_FP16_SCALAR OFF)
+  set(XNNPACK_ENABLE_ARM_BF16 OFF)
+  set(XNNPACK_ENABLE_ASSEMBLY OFF)
+endif()
+
 # fp16 depends on psimd
 FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
 onnxruntime_fetchcontent_makeavailable(psimd)
@@ -30,7 +40,9 @@ set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
 FetchContent_Declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
 onnxruntime_fetchcontent_makeavailable(pthreadpool)
 
-FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
+FetchContent_Declare(googlexnnpack
+                     URL ${DEP_URL_googlexnnpack}
+                     URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
                      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch
                     )
 onnxruntime_fetchcontent_makeavailable(googlexnnpack)
