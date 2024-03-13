@@ -312,7 +312,7 @@ class GraphLowering:
             for j in range(i + 1, len(groups)):
                 if any(output in group_inputs for output in groups[j].nodes_groups[0].output):
                     group_dependencies[i].add(j)
-                    for k in range(0, i):
+                    for k in range(i):
                         if i in group_dependencies[k]:
                             group_dependencies[k].add(j)
 

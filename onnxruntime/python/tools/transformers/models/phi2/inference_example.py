@@ -121,9 +121,11 @@ class ORTGenerator:
         if not self.use_traced_inputs:
             for i in range(self.num_layers):
                 past = torch.zeros(past_shape, device=self.device, dtype=self.torch_dtype)
-                inputs.update(
-                    {f"past_key_{i}": past.contiguous(), f"past_value_{i}": past.clone().contiguous()}
-                ) if not self.packed_kv else inputs.update({f"past_{i}": past.contiguous()})
+                (
+                    inputs.update({f"past_key_{i}": past.contiguous(), f"past_value_{i}": past.clone().contiguous()})
+                    if not self.packed_kv
+                    else inputs.update({f"past_{i}": past.contiguous()})
+                )
         else:
             for i in range(self.num_layers):
                 inputs.update(
@@ -144,9 +146,13 @@ class ORTGenerator:
             )
             for i in range(self.num_layers):
                 present = torch.zeros(present_shape, device=self.device, dtype=self.torch_dtype)
-                outputs.update(
-                    {f"present_key_{i}": present.contiguous(), f"present_value_{i}": present.contiguous()}
-                ) if not self.packed_kv else outputs.update({f"present_{i}": present.contiguous()})
+                (
+                    outputs.update(
+                        {f"present_key_{i}": present.contiguous(), f"present_value_{i}": present.contiguous()}
+                    )
+                    if not self.packed_kv
+                    else outputs.update({f"present_{i}": present.contiguous()})
+                )
 
         return inputs, outputs
 
@@ -323,9 +329,16 @@ class ORTGenerator:
                 )
                 for i in range(self.num_layers):
                     present = torch.zeros(present_shape, device=self.device, dtype=self.torch_dtype)
-                    outputs.update(
-                        {f"present_key_{i}": present.contiguous(), f"present_value_{i}": present.clone().contiguous()}
-                    ) if not self.packed_kv else outputs.update({f"present_{i}": present.contiguous()})
+                    (
+                        outputs.update(
+                            {
+                                f"present_key_{i}": present.contiguous(),
+                                f"present_value_{i}": present.clone().contiguous(),
+                            }
+                        )
+                        if not self.packed_kv
+                        else outputs.update({f"present_{i}": present.contiguous()})
+                    )
 
         if benchmark:
             print(

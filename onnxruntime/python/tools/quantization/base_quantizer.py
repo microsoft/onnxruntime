@@ -187,17 +187,13 @@ class BaseQuantizer:
 
         if opset_version == 10:
             logging.warning(
-                "The original model opset version is {}, which does not support node fusions. Please update the model to opset >= 11 for better performance.".format(
-                    opset_version
-                )
+                f"The original model opset version is {opset_version}, which does not support node fusions. Please update the model to opset >= 11 for better performance."
             )
             return 10
 
         if opset_version < 10:
             logging.warning(
-                "The original model opset version is {}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model.".format(
-                    opset_version
-                )
+                f"The original model opset version is {opset_version}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model."
             )
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
@@ -205,9 +201,9 @@ class BaseQuantizer:
 
         if opset_version < 19 and self.weight_qType == onnx.TensorProto.FLOAT8E4M3FN:
             logging.warning(
-                "The original model opset version is {}, which does not support quantization to float 8. "
+                f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
                 "Please update the model to opset >= 19. Updating the model automatically to opset 19. "
-                "Please verify the quantized model.".format(opset_version)
+                "Please verify the quantized model."
             )
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 19)])
