@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_CUTLASS
+
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
@@ -60,17 +62,23 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
   const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
-  const Tensor* fc2_experts_weights = context->Input<Tensor>(3);
-  const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(4);
+  const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(3);
+  const Tensor* fc2_experts_weights = context->Input<Tensor>(4);
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(5);
+  const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
+  const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
   MoEParameters moe_params;
-  ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc2_experts_weights,
-                                  fc1_experts_bias_optional, fc2_experts_bias_optional));
+  ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
+                                  fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
+                                  fc3_experts_bias_optional, false));
+
   ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0,
                     "num_experts should be divisible by world_size");
 
-  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm);
+  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
+                                                                     fc3_experts_weights_optional != nullptr,
+                                                                     normalize_routing_weights_);
 
   size_t ws_size =
       moe_runner.getWorkspaceSize(static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.hidden_size),
@@ -93,19 +101,25 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> expert_for_source_row =
       IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
 
-  // fc1_scales and fc2_scales are used in quantized MoE
-  const CudaT* fc1_scales_ptr = nullptr;
-  const CudaT* fc2_scales_ptr = nullptr;
+  const CudaT* fc_scales_ptr = nullptr;
 
   moe_runner.run_moe_fc(reinterpret_cast<const CudaT*>(input->template Data<T>()),
                         reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
                         reinterpret_cast<const CudaT*>(fc1_experts_weights->template Data<T>()),
-                        std::move(fc1_scales_ptr),
+                        std::move(fc_scales_ptr),
                         fc1_experts_bias_optional == nullptr
                             ? nullptr
                             : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
-                        activation_type_, reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
-                        std::move(fc2_scales_ptr), static_cast<int>(moe_params.num_rows),
+                        activation_type_,
+                        fc3_experts_weights_optional == nullptr
+                            ? nullptr
+                            : reinterpret_cast<const CudaT*>(fc3_experts_weights_optional->template Data<T>()),
+                        std::move(fc_scales_ptr),
+                        fc3_experts_bias_optional == nullptr
+                            ? nullptr
+                            : reinterpret_cast<const CudaT*>(fc3_experts_bias_optional->template Data<T>()),
+                        reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
+                        std::move(fc_scales_ptr), static_cast<int>(moe_params.num_rows),
                         static_cast<int>(moe_params.hidden_size),
                         static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
                         static_cast<int>(moe_params.local_num_experts), static_cast<int>(local_experts_start_index_),
@@ -202,3 +216,5 @@ Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator,
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

@@ -45,6 +45,10 @@ class MoeGemmRunner {
   void moe_gemm(const T* A, const WeightType* B, const T* weight_scales, T* C, int64_t* total_rows_before_expert,
                 int64_t total_rows, int64_t gemm_n, int64_t gemm_k, int num_experts, cudaStream_t stream);
 
+  void moe_gemm(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
+                int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
+                int num_experts, cudaStream_t stream);
+
  private:
   template <typename EpilogueTag>
   void dispatch_to_arch(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
