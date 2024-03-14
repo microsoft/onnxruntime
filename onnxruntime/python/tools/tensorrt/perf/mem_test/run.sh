@@ -123,7 +123,7 @@ python ${ORT_SOURCE}/onnxruntime/python/tools/symbolic_shape_infer.py \
     --auto_merge
 
 ${ORT_SOURCE}/build/Linux/Release/onnx_test_runner -e tensorrt -c ${CONCURRENCY} -r 100 ./FasterRCNN-10/ > concurrency_test.log 2>&1
-mv concurrency_test.log result  
+mv concurrency_test.log result
 
 # Run AddressSanitizer 
 ASAN_OPTIONS=${ASAN_OPTIONS} ./onnx_memtest
