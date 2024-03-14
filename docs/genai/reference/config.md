@@ -93,19 +93,19 @@ A configuration file called genai_config.json is generated automatically if the 
 
 * **_pad_token_**: The id of the padding token.
 
-* **_context_length_**: The maxinum length of sequence that the model can process.
+* **_context_length_**: The maximum length of sequence that the model can process.
 
 
 #### Session options
 
 These are the options that are passed to ONNX Runtime, which runs the model on each token generation iteration.
 
-* **_provider_options_**: a priortized list of execution targets on which to run the model. If running on CPU, this option is not present. A list of execution provider specific configurations can be specified inside the provider item.
+* **_provider_options_**: a prioritized list of execution targets on which to run the model. If running on CPU, this option is not present. A list of execution provider specific configurations can be specified inside the provider item.
 
-* **_log_id_**: a prefix to output when logging
+* **_log_id_**: a prefix to output when logging.
 
 
-Then For each model in the pipeline there is one section, named by the model. 
+Then for each model in the pipeline there is one section, named by the model. 
 
 #### Decoder model config
 
@@ -130,7 +130,7 @@ Then For each model in the pipeline there is one section, named by the model.
 
 * **_min_length_**: The minimum length that the model will generate.
 
-* **_do_sample_**: Enables Top P / Top K generation. When set to true, generation uses the top P and top K values. When set to false, generation uses beam search or greedy search.
+* **_do_sample_**: Enables Top P / Top K generation. When set to true, generation uses the configured `top_p` and `top_k` values. When set to false, generation uses beam search or greedy search.
 
 * **_num_beams_**: The number of beams to apply when generating the output sequence using beam search. If num_beams=1, then generation is performed using greedy search. If num_beans > 1, then generation is performed using beam search.
 
@@ -140,7 +140,7 @@ Then For each model in the pipeline there is one section, named by the model.
 
 * **_top_k_**: Only includes tokens that do fall within the list of the `K` most probable tokens. Range is 1 to the vocabulary size.
 
-* **_top_p_**: Only includes the most probable tokens with probabilities that add up to `P` or higher. Defaults to `1`, which includes all of the tokens. Range is 0 < top P <= 1.
+* **_top_p_**: Only includes the most probable tokens with probabilities that add up to `P` or higher. Defaults to `1`, which includes all of the tokens. Range is 0 to 1, exclusive of 0.
 
 * **_temperature_**: The temperature value scales the probability of each token so that probable tokens become more likely while less probable ones become less likely. This value can have a range  0 < `temperature` ≤ 1. When temperature is equal to `1`, it has no effect.
 
