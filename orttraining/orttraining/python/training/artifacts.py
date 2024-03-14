@@ -235,7 +235,7 @@ def generate_artifacts(
         logging.info("Optimizer block provided: %s", optimizer.__class__.__name__)
         optim_block = optimizer
     else:
-        raise RuntimeError(
+        raise TypeError(
             f"Unknown optimizer provided {type(optimizer)}. Expected optimizer to be either one of"
             "onnxruntime.training.artifacts.OptimType or onnxruntime.training.onnxblock.Block."
         )

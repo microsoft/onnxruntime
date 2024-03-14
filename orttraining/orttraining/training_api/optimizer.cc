@@ -61,10 +61,10 @@ Status GraphInputsAreExpected(gsl::span<const std::string> actual_graph_inputs,
 }  // namespace
 
 std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
-    const SessionState& session_state, int32_t& group_count) {
+    const GraphViewer& graph_viewer, int32_t& group_count) {
   std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
 
-  for (const auto& node : session_state.GetGraphViewer().Nodes()) {
+  for (const auto& node : graph_viewer.Nodes()) {
     if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
       auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
       if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
@@ -238,7 +238,8 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
   }
 
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
-  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optim_sess_->GetSessionState(), group_count_);
+  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optim_sess_->GetSessionState().GetGraphViewer(),
+                                                                 group_count_);
 
   // Make sure that the checkpoint state can copy tensors
   state_->optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &optim_sess_->GetDataTransferManager();
