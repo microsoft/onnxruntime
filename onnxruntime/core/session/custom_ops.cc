@@ -1212,13 +1212,14 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     for (auto& [name, schema] : schema_map) {
       schemas.push_back(schema);
       auto infer_fn = schemas.back().GetTypeAndShapeInferenceFunction();
-      ONNX_NAMESPACE::InferenceFunction extended_infer_fn = [schema, infer_fn = std::move(infer_fn),
-                                                             kernel_defs = std::move(kernel_def_map[name])](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
-        InferOutputTypes(schema, kernel_defs, infer_ctx);
-        if (infer_fn) {
-          infer_fn(infer_ctx);
-        }
-      };
+      ONNX_NAMESPACE::InferenceFunction extended_infer_fn =
+          [sch = schema, infer_fn = std::move(infer_fn),
+           kernel_defs = std::move(kernel_def_map[name])](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+            InferOutputTypes(sch, kernel_defs, infer_ctx);
+            if (infer_fn) {
+              infer_fn(infer_ctx);
+            }
+          };
       schemas.back().TypeAndShapeInferenceFunction(extended_infer_fn);
     }
 

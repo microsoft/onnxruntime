@@ -92,7 +92,7 @@ struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInp
   explicit MyCustomOpWithOptionalInput(const char* provider) : provider_(provider) {}
 
   OrtStatusPtr CreateKernelV2(const OrtApi& /* api */, const OrtKernelInfo* info, void** kernel) const {
-    *kernel =  new MyCustomKernelWithOptionalInput(info);
+    *kernel = new MyCustomKernelWithOptionalInput(info);
     return nullptr;
   };
 
@@ -119,7 +119,7 @@ struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInp
   const char* provider_;
 };
 
-constexpr ORTCHAR_T* OPTIONAL_INPUT_CUSTOM_OP_MODEL_URI_2 = ORT_TSTR("testdata/foo_bar_2.onnx");
+const ORTCHAR_T* const OPTIONAL_INPUT_CUSTOM_OP_MODEL_URI_2 = ORT_TSTR("testdata/foo_bar_2.onnx");
 
 }  // namespace
 
