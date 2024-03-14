@@ -501,6 +501,7 @@ def main():
         os.chdir(result_mem_test_path)
         log_path = "concurrency_test.log"
         if os.path.exists(log_path):
+            print("Generating concurrency test report")
             with open(log_path) as log_file:
                 log_content = log_file.read()
 
@@ -515,6 +516,7 @@ def main():
             csv_path = 'concurrency_test.csv'
             with open(csv_path, 'w', newline='') as csv_file:
                 csv_writer = csv.writer(csv_file)
+                csv_writer.writerow(["Passed", "Log"])
                 csv_writer.writerow([passed, log_content])
 
             db_table_name = "ep_concurrencytest_record"
