@@ -530,7 +530,7 @@ Status FlashAttention(
       device_prop, stream, query, present_key, present_value, key, value, data.output,
       reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache,
       batch_size, num_heads, kv_num_heads, head_size, sequence_length,
-      parameters.seqlen_present_kv_cache, kv_sequence_length,
+      parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.rotary_dim,
       scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved,
       parameters.is_packed_qkv));

@@ -25,7 +25,7 @@ pr:
     - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
-#### end trigger ####parameters:
+#### end trigger ####
 
 # reference: https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/README.md
 parameters:

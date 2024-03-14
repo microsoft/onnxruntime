@@ -153,9 +153,7 @@ class QDQQuantizer(BaseQuantizer):
                 return True
         else:
             logging.warning(
-                "failed to infer the type of tensor: {}. Skip to quantize it. Please check if it is expected.".format(
-                    tensor_name
-                )
+                f"failed to infer the type of tensor: {tensor_name}. Skip to quantize it. Please check if it is expected."
             )
 
         return False
