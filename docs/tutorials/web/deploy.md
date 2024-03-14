@@ -59,7 +59,7 @@ The standard ONNX Runtime Web library includes the following WebAssembly binary 
 | `ort-wasm-threaded.wasm` | ❌ | ✔️ | ❌ | ❌ |
 | `ort-wasm-simd-threaded.wasm` | ✔️ | ✔️ | ❌ | ❌ |
 | `ort-wasm-simd.jsep.wasm` | ✔️ | ❌ | ✔️ | ❌ |
-| `ort-wasm-simd-threaded.wasm` | ✔️ | ✔️ | ✔️ | ❌ |
+| `ort-wasm-simd-threaded.jsep.wasm` | ✔️ | ✔️ | ✔️ | ❌ |
 | `ort-training-wasm-simd.wasm` | ✔️ | ❌ | ❌ | ✔️ |
 
 

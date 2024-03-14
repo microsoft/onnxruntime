@@ -8,7 +8,7 @@ nav_order: 2
 ---
 {::options toc_levels="2..4" /}
 
-# Using WebGPU Execution Provider
+# Using the WebGPU Execution Provider
 {: .no_toc }
 
 This document explains how to use the WebGPU execution provider in ONNX Runtime.
@@ -24,11 +24,11 @@ This document explains how to use the WebGPU execution provider in ONNX Runtime.
 
 ### What is WebGPU? Should I use it?
 
-WebGPU is a new web standard for general purpose GPU compute and graphics. It is designed to be a low-level API, similar to Vulkan and Metal, and is designed to be used in the browser. It is designed to be more efficient and performant than WebGL, and is designed to be used for machine learning, graphics, and other compute tasks.
+WebGPU is a new web standard for general purpose GPU compute and graphics. It is designed to be a low-level API, based on D3D12, Vulkan and Metal, and is designed to be used in the browser. It is designed to be more efficient and performant than WebGL, and is designed to be used for machine learning, graphics, and other compute tasks.
 
-WebGPU is available out-of-box in latest versions of Chrome and Edge on Windows, macOS and Android. It is also available in Firefox under a flag and Safari Technology Preview. Check [WebGPU status](https://webgpu.io/status/) for the latest information.
+WebGPU is available out-of-box in latest versions of Chrome and Edge on Windows, macOS, Android and ChromeOS. It is also available in Firefox behind a flag and Safari Technology Preview. Check [WebGPU status](https://webgpu.io/status/) for the latest information.
 
-If you are using ONNX Runtime Web for inferencing very lightweight models in you web application, and you want to have a small binary size, you can keep using the default WebAssembly (WASM) execution provider. If you want to run more complex models, or you want to take advantage of the GPU in the client's device, you can use the WebGPU execution provider.
+If you are using ONNX Runtime Web for inferencing very lightweight models in you web application, and you want to have a small binary size, you can keep using the default WebAssembly (WASM) execution provider. If you want to run more compute intensive models, or you want to take advantage of the GPU in the client's device, you can use the WebGPU execution provider.
 
 ### How to use WebGPU EP in ONNX Runtime Web
 
@@ -53,13 +53,13 @@ To use WebGPU EP, you just need to make 2 small changes:
      const session = await ort.InferenceSession.create(modelPath, { ..., executionProviders: ['webgpu'] });
      ```
 
-It is also recommended to install the latest nightly build version of ONNX Runtime Web (onnxruntime-web@dev) to get the latest features and bug fixes.
+You might also consider installing the latest nightly build version of ONNX Runtime Web (onnxruntime-web@dev) to benefit from the latest features and improvments.
 
 ## WebGPU EP features
 
 ONNX Runtime Web offers the following features which may be helpful to use with WebGPU EP:
 
-### Free dimension override
+### Free dimension overrides
 
 ONNX models may have some dimensions as free dimensions, which means that the model can accept inputs of any size in that dimension. For example, an image model may define its input shape as `[batch, 3, height, width]`, which means that the model can accept any numbers of images of any size, as long as the number of channels is 3. However, if your application always uses images of a specific size, you can override the free dimensions to a specific size, which can be helpful to optimize the performance of the model. For example, if your web app always use a single image of 224x224, you can override the free dimensions to `[1, 3, 224, 224]` by specifying the following config in your session options:
 
@@ -80,7 +80,7 @@ See [API reference: freeDimensionOverrides](https://onnxruntime.ai/docs/api/js/i
 
 ### Capture and replay
 
-If ONNX Runtime determines that a model have static shapes, and all its computing kernels are running on WebGPU EP, it can capture the kernel execution and replay it in the next run. This can lead to better performance, especially for relatively lightweighted models.
+If ONNX Runtime determines that a model has static shapes, and all its computing kernels are running on WebGPU EP, it can capture the kernel executions in the first run and replay them in the following runs. This can lead to better performance when CPU sometimes is the bottleneck to prepare for the commands.
 
 ```js
 const mySessionOptions = {
@@ -95,9 +95,9 @@ See [API reference: enableGraphCapture](https://onnxruntime.ai/docs/api/js/inter
 
 ## Keep tensor data on GPU (IO binding)
 
-By default, a model's inputs and outputs are tensors that hold data in CPU memory. When you run a session with WebGPU EP, the data is copied to GPU memory, and the results are copied back to CPU memory. If you get your input data from a GPU-based source, or you want to keep the output data on GPU for further processing, you can use IO binding to keep the data on GPU. This will be specially helpful when running transformer based models, which usually run a single model multiple times with previous output as the next input.
+By default, a model's inputs and outputs are tensors that hold data in CPU memory. When you run a session with WebGPU EP, the data is copied to GPU memory, and the results are copied back to CPU memory. If you get your input data from a GPU-based source, or you want to keep the output data on GPU for further processing, you can use IO binding to keep the data on GPU. This will be especially helpful when running transformer based models, which usually runs a single model multiple times with previous output as the next input.
 
-For model input, if your input data is a WebGPU storage buffer, you can [create a GPU tensor and use it as input tensor](#create-input-tensor-from-gpu-buffer).
+For model input, if your input data is a WebGPU storage buffer, you can [create a GPU tensor and use it as input tensor](#create-input-tensor-from-a-gpu-buffer).
 
 For model output, there are 2 ways to use the IO binding feature:
 - [Use pre-allocated GPU tensors](#use-pre-allocated-gpu-tensors)
@@ -107,12 +107,12 @@ Please also check the following topics:
 - [Zero-sized tensors](#zero-sized-tensors)
 - [GPU tensor life cycle management](#gpu-tensor-life-cycle-management)
 
-### Create input tensor from GPU buffer
+### Create input tensor from a GPU buffer
 
 If your input data is a WebGPU storage buffer, you can create a GPU tensor and use it as input tensor:
 
 ```js
-const inputTensor = Tensor.fromGpuBuffer(inputGpuBuffer, {
+const inputTensor = ort.Tensor.fromGpuBuffer(inputGpuBuffer, {
   dataType: 'float32',
   dims: [1, 3, 224, 224]
 });
@@ -132,10 +132,10 @@ const bufferSize = (10 * 1000) /* number of elements */ * 4 /* bytes per element
 const device = ort.env.webgpu.device;
 const myPreAllocatedBuffer = device.createBuffer({
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
-    size: Math.ceil(size / 16) * 16 /* align to 16 bytes */
+    size: Math.ceil(bufferSize / 16) * 16 /* align to 16 bytes */
 });
 
-const myPreAllocatedOutputTensor = Tensor.fromGpuBuffer(myPreAllocatedBuffer, {
+const myPreAllocatedOutputTensor = ort.Tensor.fromGpuBuffer(myPreAllocatedBuffer, {
   dataType: 'float32',
   dims: [10, 1000]
 });

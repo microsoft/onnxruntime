@@ -36,7 +36,7 @@ The ONNX model is serialized in the protobuf format. The maximum size of a proto
 
 ### WebAssembly memory limit
 
-WebAssembly has a memory limit of 4GB. This is the maximum amount of memory that a WebAssembly module can access because of the 32-bit addressing. Currently, there is no way for ONNX Runtime Web to run models that larger than 4GB. We may support it in the future either by using WASM64 or by using direct GPU weight loading.
+WebAssembly has a memory limit of 4GB. This is the maximum amount of memory that a WebAssembly module can access because of the 32-bit addressing. Currently, there is no way for ONNX Runtime Web to run models larger than 4GB. We may support it in the future either by using WASM64 or by using direct GPU weight loading.
 
 ## Cache the model
 
