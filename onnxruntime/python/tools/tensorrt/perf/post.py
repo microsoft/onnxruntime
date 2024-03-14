@@ -422,7 +422,7 @@ def main():
     try:
         # Load EP Perf test results from /result
         result_file = args.report_folder
-        result_perf_test_path = os.path.join(result_file, 'result')
+        result_perf_test_path = os.path.join(result_file, "result")
         folders = os.listdir(result_perf_test_path)
         os.chdir(result_perf_test_path)
 
@@ -513,9 +513,9 @@ def main():
                 args.commit_hash,
                 args.commit_datetime,
             )
-        
+
         # Load concurrency test results
-        result_mem_test_path = os.path.join(result_file, 'result_mem_test')
+        result_mem_test_path = os.path.join(result_file, "result_mem_test")
         folders = os.listdir(result_mem_test_path)
         os.chdir(result_mem_test_path)
         log_path = "concurrency_test.log"
@@ -532,8 +532,8 @@ def main():
             else:
                 passed = 0
 
-            csv_path = 'concurrency_test.csv'
-            with open(csv_path, 'w', newline='') as csv_file:
+            csv_path = "concurrency_test.csv"
+            with open(csv_path, "w", newline="") as csv_file:
                 csv_writer = csv.writer(csv_file)
                 csv_writer.writerow(["Passed", "Log"])
                 csv_writer.writerow([passed, log_content])
