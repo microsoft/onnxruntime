@@ -64,8 +64,8 @@ def generate_artifacts(
         model: The base model to be used for gradient graph generation.
         requires_grad: List of names of model parameters that require gradient computation
         frozen_params: List of names of model parameters that should be frozen.
-        loss: The loss function enum to be used for training. If None, no loss node is added to the graph.
-        optimizer: The optimizer enum to be used for training. If None, no optimizer model is generated.
+        loss: The loss function enum or onnxblock to be used for training. If None, no loss node is added to the graph.
+        optimizer: The optimizer enum or onnxblock to be used for training. If None, no optimizer model is generated.
         artifact_directory: The directory to save the generated artifacts.
             If None, the current working directory is used.
         prefix: The prefix to be used for the generated artifacts. If not specified, no prefix is used.
