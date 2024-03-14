@@ -428,13 +428,13 @@ def main():
         for model_group in folders:
             os.chdir(model_group)
             csv_filenames = os.listdir()
-            for csv in csv_filenames:
-                table = pd.read_csv(csv)
-                if session_name in csv:
+            for csv_file in csv_filenames:
+                table = pd.read_csv(csv_file)
+                if session_name in csv_file:
                     table_results[session_name] = pd.concat(
                         [table_results[session_name], get_session(table, model_group)], ignore_index=True
                     )
-                elif specs_name in csv:
+                elif specs_name in csv_file:
                     table_results[specs_name] = pd.concat(
                         [
                             table_results[specs_name],
@@ -442,12 +442,12 @@ def main():
                         ],
                         ignore_index=True,
                     )
-                elif fail_name in csv:
+                elif fail_name in csv_file:
                     table_results[fail_name] = pd.concat(
                         [table_results[fail_name], get_failures(table, model_group)],
                         ignore_index=True,
                     )
-                elif latency_name in csv:
+                elif latency_name in csv_file:
                     table_results[memory_name] = pd.concat(
                         [table_results[memory_name], get_memory(table, model_group)],
                         ignore_index=True,
@@ -457,11 +457,11 @@ def main():
                         [table_results[latency_name], get_latency(table, model_group)],
                         ignore_index=True,
                     )
-                elif status_name in csv:
+                elif status_name in csv_file:
                     table_results[status_name] = pd.concat(
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
                     )
-                elif op_metrics_name in csv:
+                elif op_metrics_name in csv_file:
                     table = table.assign(Group=model_group)
                     table_results[op_metrics_name] = pd.concat(
                         [table_results[op_metrics_name], table], ignore_index=True
