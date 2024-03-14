@@ -29,6 +29,8 @@ stages:
           value: 'Release'
       - name: PythonVersion
         value: ${{ parameters.python_version }}
+      - name: Repository
+        value: onnxruntimetraininggpubuild_${{ parameters.python_version }}
     dependsOn: []
 
     jobs:
@@ -67,7 +69,7 @@ stages:
               --build-arg DEVTOOLSET_ROOTPATH=/usr
               --build-arg PREPEND_PATH=/usr/local/cuda/bin:
               --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
-            Repository: onnxruntimetraininggpubuild
+            Repository: $(Repository)
 
         - task: CmdLine@2
           displayName: 'build onnxruntime'
@@ -86,7 +88,7 @@ stages:
                 -e DEFAULT_TRAINING_PACKAGE_DEVICE \
                 -e BUILD_BUILDNUMBER \
                 -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
-                onnxruntimetraininggpubuild \
+                $(Repository) \
                   $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                     --build_dir /build \
                     --config ${{ variables['buildConfig'] }} \
@@ -178,7 +180,7 @@ stages:
               --build-arg DEVTOOLSET_ROOTPATH=/usr
               --build-arg PREPEND_PATH=/usr/local/cuda/bin:
               --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
-            Repository: onnxruntimetraininggpubuild
+            Repository: $(Repository)
 
         - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
           displayName: 'Mount MNIST'
@@ -210,7 +212,7 @@ stages:
                 --volume /mnist:/mnist \
                 --volume /bert_data:/bert_data \
                 --volume /hf_models_cache:/hf_models_cache \
-                onnxruntimetraininggpubuild \
+                $(Repository) \
                   bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$basefilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)
 
