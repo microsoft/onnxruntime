@@ -1,0 +1,15 @@
+diff --git a/bestla/bestla_prologue_b.h b/bestla/bestla_prologue_b.h
+index 28a7347..ce0880b 100644
+--- a/bestla/bestla_prologue_b.h
++++ b/bestla/bestla_prologue_b.h
+@@ -403,9 +403,8 @@ class WeightKBlockNInteger {
+     auto tmpscales = tmp;
+     auto tmpzeropoints = reinterpret_cast<int8_t*>(tmpscales + N * blks);
+     if (scales) {
+-      for (size_t i = 0; i < N * blks; i += 2) {
++      for (size_t i = 0; i < N * blks; i++) {
+         tmpscales[i] = scales[i] / 16;
+-        tmpscales[i + 1] = scales[i + 1] / 16;
+       }
+     }
+     if (zero_points) {
