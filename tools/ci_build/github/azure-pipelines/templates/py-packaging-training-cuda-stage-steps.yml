@@ -135,6 +135,8 @@ stages:
           value: 'Release'
       - name: PythonVersion
         value: ${{ parameters.python_version }}
+      - name: Repository
+        value: onnxruntimetraininggpubuild_${{ parameters.python_version }}
     dependsOn: Build_${{ parameters.stage_name }}
     jobs:
     - job: Test_GPU
