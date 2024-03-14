@@ -98,7 +98,7 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   auto tensor_V = ctx->Output(0, output_shape);
   auto tensor_I = ctx->Output(1, output_shape);
 
-  if (output_shape.Size() == 0) { // Bail out early if the output is going to be empty 
+  if (output_shape.Size() == 0) {  // Bail out early if the output is going to be empty
     return Status::OK();
   }
 
