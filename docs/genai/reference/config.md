@@ -148,9 +148,9 @@ Then for each model in the pipeline there is one section, named by the model.
 
 * **_length_penalty_**: Controls the length of the output generated. Value less than `1` encourages the generation to produce shorter sequences. Values greater than `1` encourages longer sequences. Defaults to `1`.
 
-* **_diversity_penalty_**: Not implemented.
+* **_diversity_penalty_**: Not supported.
 
-* **_no_repeat_ngram_size_**: Not implemented.
+* **_no_repeat_ngram_size_**: Not supported.
 
 * **_past_present_share_buffer_**: If set to true, the past and present buffer are shared for efficiency.  
 
