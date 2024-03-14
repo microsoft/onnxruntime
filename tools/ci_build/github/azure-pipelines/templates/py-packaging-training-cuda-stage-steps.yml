@@ -35,6 +35,10 @@ stages:
     - job: Build
       pool: onnxruntime-Ubuntu2204-AMD-CPU
       steps:
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
+
         - task: CmdLine@2
           displayName: 'check variables'
           inputs:
@@ -134,6 +138,10 @@ stages:
     - job: Test_GPU
       pool: Onnxruntime-Linux-GPU
       steps:
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
+
         - checkout: self
           clean: true
           submodules: none
