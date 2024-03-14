@@ -88,12 +88,13 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Now that we know the value of 'K' and the input shape,
   // make a final validation before going to the implementation
-  if ((k_value < 0) || (k_value > tensor_X->Shape().GetDims()[axis])) {
+  const auto& input_shape = tensor_X->Shape();
+  if ((k_value < 0) || (k_value > input_shape.GetDims()[axis])) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Value of K outside range. K value: ", k_value,
-                           ". Input shape: ", tensor_X->Shape(), " . Axis: ", axis);
+                           ". Input shape: ", input_shape, " . Axis: ", axis);
   }
 
-  auto output_shape = tensor_X->Shape();
+  auto output_shape = input_shape;
   output_shape[axis] = k_value;
   auto tensor_V = ctx->Output(0, output_shape);
   auto tensor_I = ctx->Output(1, output_shape);
