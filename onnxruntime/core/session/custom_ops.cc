@@ -736,6 +736,18 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
   });
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out) {
+  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+    onnxruntime::AllocatorPtr allocator = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAllocator(mem_type);
+    if (!allocator) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
+    }
+    auto p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
+    *out = p.release();
+    return nullptr;
+  });
+}
+
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetScratchBuffer, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _In_ size_t count_or_bytes, _Outptr_ void** out) {
   if (count_or_bytes == 0) {
     *out = nullptr;
