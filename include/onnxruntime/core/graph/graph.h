@@ -21,18 +21,7 @@
 #pragma warning(pop)
 #endif
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-
-#ifdef HAS_SHORTEN_64_TO_32
-#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
-#endif
-
-#include "flatbuffers/flatbuffers.h"
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+#include "core/common/flatbuffers.h"
 
 #include "core/common/gsl.h"
 

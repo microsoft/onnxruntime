@@ -4,7 +4,7 @@
 #ifndef FLATBUFFERS_GENERATED_ORT_ONNXRUNTIME_FBS_H_
 #define FLATBUFFERS_GENERATED_ORT_ONNXRUNTIME_FBS_H_
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 namespace onnxruntime {
 namespace fbs {

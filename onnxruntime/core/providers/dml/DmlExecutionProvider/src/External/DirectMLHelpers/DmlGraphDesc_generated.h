@@ -4,7 +4,7 @@
 #ifndef FLATBUFFERS_GENERATED_DMLGRAPHDESC_DML_IR_H_
 #define FLATBUFFERS_GENERATED_DMLGRAPHDESC_DML_IR_H_
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
