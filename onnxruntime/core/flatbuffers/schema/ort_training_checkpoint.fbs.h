@@ -4,7 +4,7 @@
 #ifndef FLATBUFFERS_GENERATED_ORTTRAININGCHECKPOINT_ONNXRUNTIME_FBS_H_
 #define FLATBUFFERS_GENERATED_ORTTRAININGCHECKPOINT_ONNXRUNTIME_FBS_H_
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "ort.fbs.h"
 
@@ -59,7 +59,7 @@ struct ModuleState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_FROZEN_PARAMS) &&
            verifier.VerifyVector(frozen_params()) &&
            verifier.VerifyVectorOfTables(frozen_params()) &&
-           VerifyField<uint8_t>(verifier, VT_IS_NOMINAL_STATE) &&
+           VerifyField<uint8_t>(verifier, VT_IS_NOMINAL_STATE, 1) &&
            verifier.EndTable();
   }
 };
@@ -206,8 +206,8 @@ struct OptimizerGroup FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_GROUP_NAME) &&
            verifier.VerifyString(group_name()) &&
-           VerifyField<int64_t>(verifier, VT_STEP) &&
-           VerifyField<float>(verifier, VT_INITIAL_LEARNING_RATE) &&
+           VerifyField<int64_t>(verifier, VT_STEP, 8) &&
+           VerifyField<float>(verifier, VT_INITIAL_LEARNING_RATE, 4) &&
            VerifyOffset(verifier, VT_OPTIMIZER_STATES) &&
            verifier.VerifyVector(optimizer_states()) &&
            verifier.VerifyVectorOfTables(optimizer_states()) &&
@@ -289,7 +289,7 @@ struct IntProperty FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
-           VerifyField<int64_t>(verifier, VT_VALUE) &&
+           VerifyField<int64_t>(verifier, VT_VALUE, 8) &&
            verifier.EndTable();
   }
 };
@@ -353,7 +353,7 @@ struct FloatProperty FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
-           VerifyField<float>(verifier, VT_VALUE) &&
+           VerifyField<float>(verifier, VT_VALUE, 4) &&
            verifier.EndTable();
   }
 };
@@ -572,7 +572,7 @@ struct Checkpoint FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_VERSION) &&
+           VerifyField<int32_t>(verifier, VT_VERSION, 4) &&
            VerifyOffset(verifier, VT_MODULE_STATE) &&
            verifier.VerifyTable(module_state()) &&
            VerifyOffset(verifier, VT_OPTIMIZER_GROUPS) &&

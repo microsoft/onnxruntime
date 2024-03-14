@@ -21,7 +21,7 @@
 #pragma warning(pop)
 #endif
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/gsl.h"
 
