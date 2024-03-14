@@ -86,7 +86,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6df40a2471737b27271bdd9b900ab5f3aec746c7",
+          "commitHash": "0100f6a5779831fa7a651e4b67ef389a8752bd9b",
           "repositoryUrl": "https://github.com/google/flatbuffers.git"
         },
         "comments": "flatbuffers"
