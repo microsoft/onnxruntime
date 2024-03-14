@@ -11,6 +11,7 @@ parameters:
     values:
       - 11.8
       - 12.2
+      - 12.4
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
