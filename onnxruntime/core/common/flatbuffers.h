@@ -9,6 +9,7 @@
 #ifdef HAS_SHORTEN_64_TO_32
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
+#endif
 
 #include "flatbuffers/flatbuffers.h"
 
