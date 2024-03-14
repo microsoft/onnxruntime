@@ -11,8 +11,12 @@ nav_order: 1
 
 _Note: this API is in preview and is subject to change._
 
-A configuration file called genai_config.json is generated automatically if the model is generated with the model builder. If you provide your own model, you can copy the example below and modify it for your scenario.
+A configuration file called genai_config.json is generated automatically if the model is generated with the model builder. If you provide your own model, you can copy the example below and modify it for your scenario. 
 
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Example file for phi-2
 
@@ -126,19 +130,19 @@ Then For each model in the pipeline there is one section, named by the model.
 
 * **_min_length_**: The minimum length that the model will generate.
 
-* **_do_sample_**: Enables Top P / Top K generation.
+* **_do_sample_**: Enables Top P / Top K generation. When set to true, generation uses the top P and top K values. When set to false, generation uses beam search or greedy search.
 
-* **_num_beams_**: The number of beams to apply when generating the output sequence using beam search. If num_beams=1, then generation is performed using greedy search.
+* **_num_beams_**: The number of beams to apply when generating the output sequence using beam search. If num_beams=1, then generation is performed using greedy search. If num_beans > 1, then generation is performed using beam search.
 
 * **_early_stopping_**:  Whether to stop the beam search when at least num_beams sentences are finished per batch or not. Defaults to false.
 
 * **_num_sequences_**: The number of sequences to generate. Returns the sequences with the highest scores in order.
 
-* **_temperature_**: The temperature value scales the probability of each token so that probable tokens become more likely while less probable ones become less likely. This value can have a range  0 < `temperature` ≤ 1. When temperature is equal to `1`, it has no effect.
-
 * **_top_k_**: Only includes tokens that do fall within the list of the `K` most probable tokens. Range is 1 to the vocabulary size.
 
 * **_top_p_**: Only includes the most probable tokens with probabilities that add up to `P` or higher. Defaults to `1`, which includes all of the tokens. Range is 0 < top P <= 1.
+
+* **_temperature_**: The temperature value scales the probability of each token so that probable tokens become more likely while less probable ones become less likely. This value can have a range  0 < `temperature` ≤ 1. When temperature is equal to `1`, it has no effect.
 
 * **_repetition_penalty_**: Discounts the scores of previously generated tokens if set to a value greater than `1`. Defaults to `1`. 
 
