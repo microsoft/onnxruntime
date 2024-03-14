@@ -37,6 +37,10 @@ steps:
         - bash: |
             echo "##vso[task.setvariable variable=trtCudaVersion]12.0"
           displayName: Set trtCudaVersion
+    - ${{ if eq(parameters.CudaVersion, '12.4') }}:
+            - bash: |
+                echo "##vso[task.setvariable variable=trtCudaVersion]12.4"
+              displayName: Set trtCudaVersion
 
     - bash: |
         echo $(trtCudaVersion)
