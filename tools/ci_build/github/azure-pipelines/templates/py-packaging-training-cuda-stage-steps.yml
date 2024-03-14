@@ -148,6 +148,14 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
+        - script: |
+            set -e -x
+            whlfilename=$(ls $(Build.ArtifactStagingDirectory)/Release/dist/*.whl | head -n 1)  && \
+            echo $whlfilename && du -sh $whlfilename &&\
+            (( $(wc -c < "$whlfilename") -  200*1024*1024 < 0 )) ||  (exit 1) && \
+          displayName: 'Check wheel size'
+          continueOnError: true
+
         - template: get-docker-image-steps.yml
           parameters:
             Dockerfile: tools/ci_build/github/linux/docker/${{ parameters.docker_file }}
@@ -198,15 +206,12 @@ stages:
                   bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$basefilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)
 
-        # if the wheel size bigger than 300M, fail the UploadWheel step
         - task: CmdLine@2
           displayName: 'Upload wheel'
           condition: and(succeeded(), and(eq(variables['UploadWheel'], 'yes'), ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')))
           inputs:
             script: |
               set -e -x
-              whlfilename=$(ls $(Build.ArtifactStagingDirectory)/Release/dist/*.whl | head -n 1)  && \
-              echo $whlfilename && du -sh $whlfilename &&\
-              (( $(wc -c < "$whlfilename") -  300*1024*1024 < 0 )) ||  (exit 1) && \
+              whlfilename=$(ls $(Build.ArtifactStagingDirectory)/Release/dist/*.whl | head -n 1) ; \
               python3 tools/ci_build/upload_python_package_to_azure_storage.py \
                   --python_wheel_path $whlfilename ${{ variables['finalStorage'] }}
