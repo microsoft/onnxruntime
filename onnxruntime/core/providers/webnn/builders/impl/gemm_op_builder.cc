@@ -71,7 +71,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
     // If the inputs are both 1D， reduce the output to a scalar.
     if (extended_a_shape && extended_b_shape) {
-      output = model_builder.GetBuilder().call<emscripten::val>("reduceSum", output);
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array());
     }
     // After matrix multiplication the prepended 1 is removed.
     else if (extended_a_shape) {
