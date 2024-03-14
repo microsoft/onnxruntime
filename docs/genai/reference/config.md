@@ -91,7 +91,6 @@ A configuration file called genai_config.json is generated automatically if the 
 
 * _context_length_: The maxinum length of sequence that the model can process.
 
-* _pad_token_: The id of the padding token.
 
 #### Session options
 
