@@ -66,7 +66,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                   "Internal Error: Prepacked gemm does not support zero points of type T. Fix the prepacking logic!");
     return PrepackedGemm(
         static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()),
-        helper.M(), a, b, scales, zero_points, Y);
+        static_cast<int>(helper.M()), a, b, scales, zero_points, Y);
   }
 
   const auto* a_data = a->Data<T>();
