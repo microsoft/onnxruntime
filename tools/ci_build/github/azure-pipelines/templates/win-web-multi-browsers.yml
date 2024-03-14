@@ -68,15 +68,15 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
   - script: |
-      npm test -- suite0 -b=wasm,webgl --wasm-init-timeout=30000 --file-cache
+      npm test -- suite0 -b=wasm,webgl --wasm.initTimeout=30000 --file-cache
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Chrome)'
   - script: |
-      npm test -- suite0 -b=wasm,webgl --env=firefox --wasm-init-timeout=30000 --file-cache
+      npm test -- suite0 -b=wasm,webgl -e=firefox --wasm.initTimeout=30000 --file-cache
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Firefox)'
   - script: |
-      npm test -- suite0 -b=wasm,webgl --env=edge --wasm-init-timeout=30000 --file-cache
+      npm test -- suite0 -b=wasm,webgl -e=edge --wasm.initTimeout=30000 --file-cache
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Edge)'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

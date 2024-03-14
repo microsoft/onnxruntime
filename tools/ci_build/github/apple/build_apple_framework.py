@@ -65,9 +65,11 @@ def _build_for_apple_sysroot(
             build_dir_current_arch,
             build_config,
             build_config + "-" + sysroot,
-            "onnxruntime.framework"
-            if build_dynamic_framework
-            else os.path.join("static_framework", "onnxruntime.framework"),
+            (
+                "onnxruntime.framework"
+                if build_dynamic_framework
+                else os.path.join("static_framework", "onnxruntime.framework")
+            ),
         )
         ort_libs.append(os.path.join(framework_dir, "onnxruntime"))
 

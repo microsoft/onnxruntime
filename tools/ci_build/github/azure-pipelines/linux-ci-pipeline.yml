@@ -86,7 +86,7 @@ stages:
                     -e NIGHTLY_BUILD \
                     -e BUILD_BUILDNUMBER \
                     onnxruntimecpubuildcentos8x64 \
-                    /bin/bash -c "
+                    /bin/bash -c '
                       set -ex; \
                       python3.9 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
@@ -105,7 +105,8 @@ stages:
                         --parallel --use_binskim_compliant_compile_flags \
                         --build_csharp \
                         --enable_onnx_tests --enable_address_sanitizer \
-                        --test;"
+                        --test;
+                      '
                 workingDirectory: $(Build.SourcesDirectory)
 
       - task: PublishTestResults@2
@@ -284,6 +285,10 @@ stages:
                 /bin/bash /onnxruntime_src/tools/scripts/symbolic_shape_infer_test.sh /build
               "
         displayName: 'Run Release tests and symbolic shape infer test'
+
+      - template: templates/check_test_result.yml
+        parameters:
+          FileName: '$(Build.BinariesDirectory)/Release/onnxruntime_test_all.Release.results.xml'
 
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'

@@ -15,6 +15,13 @@ export enum GpuDataType {
 }
 export type GpuDataId = number;
 
+export type GpuArchitecture = 'ampere';
+export type GpuVendor = 'amd'|'intel'|'nvidia';
+export interface AdapterInfo {
+  isArchitecture: (architecture: GpuArchitecture) => boolean;
+  isVendor: (vendor: GpuVendor) => boolean;
+}
+
 export interface GpuData {
   type: GpuDataType;
   id: GpuDataId;
@@ -146,6 +153,11 @@ export interface ComputeContextInputsOutputsMapping {
  * A ComputeContext instance carries the states that representing the current running of a kernel.
  */
 export interface ComputeContext {
+  /**
+   * gpu adapter info
+   */
+  readonly adapterInfo: AdapterInfo;
+
   /**
    * stores the pointer to OpKernelContext
    */

@@ -17,7 +17,6 @@
 #include <cstdint>
 #include "core/common/gsl.h"
 
-// TODO!! Already have this in cuda, what about cpu code though?
 #if defined(_MSC_VER)
 #define ORT_FORCEINLINE __forceinline
 #else

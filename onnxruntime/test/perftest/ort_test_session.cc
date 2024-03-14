@@ -382,11 +382,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Wrong value for htp_arch. select from: " + str);
         }
+      } else if (key == "enable_htp_fp16_precision") {
+        std::unordered_set<std::string> supported_options = {"0", "1"};
+        if (supported_options.find(value) == supported_options.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_options.begin(), supported_options.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
-'htp_arch', 'device_id'])");
+'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
       }
 
       qnn_options[key] = value;
@@ -649,7 +658,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       std::string value(token.substr(pos + 1));
       vitisai_session_options[key] = value;
     }
-    session_options.AppendExecutionProvider("VitisAI", vitisai_session_options);
+    session_options.AppendExecutionProvider_VitisAI(vitisai_session_options);
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif

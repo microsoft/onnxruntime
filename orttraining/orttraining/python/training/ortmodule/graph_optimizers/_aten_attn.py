@@ -5,8 +5,11 @@
 
 """
 PyTorch's _efficient_attention_forward/_efficient_attention_backward APIs is keep changing. Current implementation
-is tested well on version 2.2.0.dev20231010+cu121, and should be run well since official version 2.2.0. If may fail to
+is tested well on version 2.3.0.dev20240221+cu118, and should be run well since official version 2.3.0. If may fail to
 run is you are using PyTorch with older versions.
+
+This file is more like an example of how to add a new graph optimizer. Ideally user can add graph optimizer according
+to the specific model they are using on their own instead of putting every possible graph optimizer here.
 
 PyTorch also has API for flash attention (currently doesn't support random attention mask or Dropout), we can add
 support if we want to try in the future.
@@ -40,13 +43,14 @@ def _make_efficient_attention_nodes(
     scale_node = make_constant_node("scale_" + str(idx), TensorProto.FLOAT, [], [scale])
     dropout_ratio_node = make_constant_node("dropout_ratio_" + str(idx), TensorProto.FLOAT, [], [dropout_ratio])
     causal_node = make_constant_node("causal_" + str(idx), TensorProto.INT64, [], [1 if causal else 0])
-    int_zero_node = make_constant_node("int_zero_" + str(idx), TensorProto.INT64, [], [0])
-    true_node = make_constant_node("true_" + str(idx), TensorProto.BOOL, [], [True])
-    false_node = make_constant_node("false_" + str(idx), TensorProto.BOOL, [], [False])
+    one_node = make_constant_node("one_" + str(idx), TensorProto.INT64, [], [1])
+    zero_node = make_constant_node("zero_" + str(idx), TensorProto.INT64, [], [0])
     logsumexp = helper.make_tensor_value_info("logsumexp" + str(idx), TensorProto.FLOAT, [])
     seed = helper.make_tensor_value_info("seed" + str(idx), TensorProto.INT64, [])
     offset = helper.make_tensor_value_info("offset" + str(idx), TensorProto.INT64, [])
-    new_value_infos = [logsumexp, seed, offset]
+    msb_q = helper.make_tensor_value_info("msb_q_" + str(idx), TensorProto.INT64, [])
+    msb_k = helper.make_tensor_value_info("msb_k_" + str(idx), TensorProto.INT64, [])
+    new_value_infos = [logsumexp, seed, offset, msb_q, msb_k]
     if expand_bias:
         shape_0 = helper.make_node("Shape", [q], ["shape_0_" + str(idx)], start=0, end=1)
         shape_1 = helper.make_node("Shape", [q], ["shape_1_" + str(idx)], start=2, end=3)
@@ -54,13 +58,13 @@ def _make_efficient_attention_nodes(
         shape_3 = helper.make_node("Shape", [k], ["shape_3_" + str(idx)], start=1, end=2)
         concat = helper.make_node(
             "Concat",
-            ["shape_0_" + str(idx), "shape_1_" + str(idx), "shape_2_" + str(idx), "shape_3_" + str(idx)],
+            [shape_0.output[0], shape_1.output[0], shape_2.output[0], shape_3.output[0]],
             ["concated_shape_" + str(idx)],
             axis=0,
         )
-        expand = helper.make_node("Expand", [bias, "concated_shape_" + str(idx)], ["expanded_bias_" + str(idx)])
+        expand = helper.make_node("Expand", [bias, concat.output[0]], ["expanded_bias_" + str(idx)])
         nodes_to_add.extend([shape_0, shape_1, shape_2, shape_3, concat, expand])
-        bias = "expanded_bias_" + str(idx)
+        bias = expand.output[0]
     fwd_node = helper.make_node(
         "ATen",
         [
@@ -71,18 +75,21 @@ def _make_efficient_attention_nodes(
             "",
             "",
             "",
+            "",
             dropout_ratio_node.output[0],
             causal_node.output[0],
-            true_node.output[0],
+            one_node.output[0],
             scale_node.output[0],
             "",
             "",
         ],
-        [y, logsumexp.name, seed.name, offset.name],
+        [y, logsumexp.name, seed.name, offset.name, msb_q.name, msb_k.name],
         "efficient_attention_forward_" + str(idx),
         None,
         "org.pytorch.aten",
         operator="_efficient_attention_forward",
+        cpu_input_args=[4, 5, 12, 13],
+        cpu_output_args=[2, 3, 4, 5],
     )
     bwd_node = helper.make_node(
         "ATen",
@@ -95,14 +102,14 @@ def _make_efficient_attention_nodes(
             y,
             "",
             "",
-            int_zero_node.output[0],
-            int_zero_node.output[0],
+            msb_q.name,
+            msb_k.name,
             logsumexp.name,
             dropout_ratio_node.output[0],
             seed.name,
             offset.name,
             causal_node.output[0],
-            false_node.output[0],
+            zero_node.output[0],
             scale_node.output[0],
             "",
         ],
@@ -111,10 +118,9 @@ def _make_efficient_attention_nodes(
         None,
         "org.pytorch.aten",
         operator="_efficient_attention_backward",
+        cpu_input_args=[6, 7, 12, 13],
     )
-    nodes_to_add.extend(
-        [scale_node, dropout_ratio_node, causal_node, int_zero_node, true_node, false_node, fwd_node, bwd_node]
-    )
+    nodes_to_add.extend([scale_node, dropout_ratio_node, causal_node, one_node, zero_node, fwd_node, bwd_node])
     return nodes_to_add, new_value_infos
 
 
@@ -240,140 +246,9 @@ def _optimize_for_pattern_1(matcher: GraphMatcher, idx: int, nodes: List[NodePro
     return nodes, nodes_to_add, new_value_infos
 
 
-# No causal mask, no attention mask, without Dropout.
-_PATTERN_2: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
-    ("MatMul", False, []),  # 0
-    ("Mul", True, [(0, 0, 0)]),  # 1
-    ("Mul", True, [(0, 0, 1)]),  # 2
-    ("Transpose", True, [(1, 0, 0)]),  # 3
-    ("Transpose", True, [(2, 0, 0)]),  # 4
-    ("Softmax", False, [(0, 0, 0)]),  # 5
-    ("MatMul", False, [(5, 0, 0)]),  # 6
-    ("Transpose", True, [(6, 0, 1)]),  # 7
-    ("Transpose", False, [(6, 0, 0)]),  # 8
-    ("FusedMatMul", False, [(7, 0, 1)]),  # 9
-    ("SoftmaxGrad_13", False, [(9, 0, 0), (5, 0, 1)]),  # 10
-    ("FusedMatMul", False, [(2, 0, 1), (10, 0, 0)]),  # 11
-    ("FusedMatMul", False, [(1, 0, 0), (10, 0, 1)]),  # 12
-    ("Mul", False, [(11, 0, 0)]),  # 13
-    ("Mul", False, [(12, 0, 0)]),  # 14
-    ("Identity", False, [(13, 0, 0)]),  # 15
-    ("Identity", False, [(14, 0, 0)]),  # 16
-    ("Transpose", False, [(15, 0, 0)]),  # 17
-    ("Transpose", False, [(16, 0, 0)]),  # 18
-    ("FusedMatMul", False, [(5, 0, 0)]),  # 19
-    ("Transpose", True, [(19, 0, 1)]),  # 20
-    ("Transpose", False, [(19, 0, 0)]),  # 21
-]
-
-
-def _optimize_for_pattern_2(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
-    # Check forward only as the backward is expected to be consistent if it's built correctly.
-    scale_value_1 = matcher.get_constant_value(nodes[1].input[1])
-    scale_value_1 = scale_value_1[0] if isinstance(scale_value_1, list) else scale_value_1
-    scale_value_2 = matcher.get_constant_value(nodes[2].input[1])
-    scale_value_2 = scale_value_2[0] if isinstance(scale_value_2, list) else scale_value_2
-    if not (
-        check_attribute_value(nodes[3], "perm", [0, 2, 1, 3])
-        and check_attribute_value(nodes[4], "perm", [0, 2, 3, 1])
-        and check_attribute_value(nodes[7], "perm", [0, 2, 1, 3])
-        and check_attribute_value(nodes[8], "perm", [0, 2, 1, 3])
-        and scale_value_1 == scale_value_2
-    ):
-        return [], [], []
-
-    nodes_to_add, new_value_infos = _make_efficient_attention_nodes(
-        idx,
-        nodes[3].input[0],
-        nodes[4].input[0],
-        nodes[7].input[0],
-        nodes[8].output[0],
-        nodes[20].input[0],
-        nodes[17].output[0],
-        nodes[18].output[0],
-        nodes[21].output[0],
-        "",
-        False,
-        scale_value_1,
-        0.0,
-        False,
-    )
-    return nodes, nodes_to_add, new_value_infos
-
-
-# Has causal mask, no attention mask, without Dropout.
-_PATTERN_3: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
-    ("MatMul", False, []),  # 0
-    ("Mul", True, [(0, 0, 0)]),  # 1
-    ("Mul", True, [(0, 0, 1)]),  # 2
-    ("Transpose", True, [(1, 0, 0)]),  # 3
-    ("Transpose", True, [(2, 0, 0)]),  # 4
-    ("Add", False, [(0, 0, 0)]),  # 5
-    ("Slice", True, [(5, 0, 1)]),  # 6
-    ("Slice", True, [(6, 0, 0)]),  # 7
-    ("Unsqueeze", True, [(6, 0, 2)]),  # 8
-    ("Gather", True, [(8, 0, 0)]),  # 9
-    ("Shape", True, [(9, 0, 0)]),  # 10
-    ("Softmax", False, [(5, 0, 0)]),  # 11
-    ("MatMul", False, [(11, 0, 0)]),  # 12
-    ("Transpose", True, [(12, 0, 1)]),  # 13
-    ("Transpose", False, [(12, 0, 0)]),  # 14
-    ("FusedMatMul", False, [(13, 0, 1)]),  # 15
-    ("SoftmaxGrad_13", False, [(15, 0, 0), (11, 0, 1)]),  # 16
-    ("Identity", False, [(16, 0, 0)]),  # 17
-    ("FusedMatMul", False, [(2, 0, 1), (17, 0, 0)]),  # 18
-    ("FusedMatMul", False, [(1, 0, 0), (17, 0, 1)]),  # 19
-    ("Mul", False, [(18, 0, 0)]),  # 20
-    ("Mul", False, [(19, 0, 0)]),  # 21
-    ("Identity", False, [(20, 0, 0)]),  # 22
-    ("Identity", False, [(21, 0, 0)]),  # 23
-    ("Transpose", False, [(22, 0, 0)]),  # 24
-    ("Transpose", False, [(23, 0, 0)]),  # 25
-    ("FusedMatMul", False, [(11, 0, 0)]),  # 26
-    ("Transpose", True, [(26, 0, 1)]),  # 27
-    ("Transpose", False, [(26, 0, 0)]),  # 28
-]
-
-
-def _optimize_for_pattern_3(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
-    # Check forward only as the backward is expected to be consistent if it's built correctly.
-    scale_value_1 = matcher.get_constant_value(nodes[1].input[1])
-    scale_value_1 = scale_value_1[0] if isinstance(scale_value_1, list) else scale_value_1
-    scale_value_2 = matcher.get_constant_value(nodes[2].input[1])
-    scale_value_2 = scale_value_2[0] if isinstance(scale_value_2, list) else scale_value_2
-    if not (
-        check_attribute_value(nodes[3], "perm", [0, 2, 1, 3])
-        and check_attribute_value(nodes[4], "perm", [0, 2, 3, 1])
-        and check_attribute_value(nodes[13], "perm", [0, 2, 1, 3])
-        and check_attribute_value(nodes[14], "perm", [0, 2, 1, 3])
-        and scale_value_1 == scale_value_2
-    ):
-        return [], [], []
-
-    nodes_to_add, new_value_infos = _make_efficient_attention_nodes(
-        idx,
-        nodes[3].input[0],
-        nodes[4].input[0],
-        nodes[13].input[0],
-        nodes[14].output[0],
-        nodes[27].input[0],
-        nodes[24].output[0],
-        nodes[25].output[0],
-        nodes[28].output[0],
-        "",
-        False,
-        scale_value_1,
-        0.0,
-        True,
-    )
-    return nodes, nodes_to_add, new_value_infos
-
-
 _PATTERNS = [
     (_PATTERN_0, _optimize_for_pattern_0),
     (_PATTERN_1, _optimize_for_pattern_1),
-    (_PATTERN_2, _optimize_for_pattern_2),
-    (_PATTERN_3, _optimize_for_pattern_3),
 ]
 
 

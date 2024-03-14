@@ -29,8 +29,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 template <typename U, bool simplified>
 __device__ void cuWelfordOnlineSum(
     const U curr,
