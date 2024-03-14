@@ -20,7 +20,7 @@ from op_test_utils import (
     create_clip_node,
 )
 
-from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static
+from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import TensorData
 
 
@@ -87,14 +87,11 @@ class TestQDQExtraOptions(unittest.TestCase):
 
         op_types_to_quantize = ["Add"]
 
-        mode = QuantizationMode.QLinearOps
         model = onnx.load_model(test_model_path)
         quantizer = QDQQuantizer(
             model,
             True,  # per_channel
             False,  # reduce_range
-            mode,
-            True,  # static
             QuantType.QInt8,  # weight_type
             QuantType.QInt8,  # activation_type
             compute_data,
@@ -191,14 +188,11 @@ class TestQDQExtraOptions(unittest.TestCase):
 
         op_types_to_quantize = ["Add", "MatMul"]
 
-        mode = QuantizationMode.QLinearOps
         model = onnx.load_model(test_model_path)
         quantizer = QDQQuantizer(
             model,
             True,  # per_channel
             False,  # reduce_range
-            mode,
-            True,  # static
             QuantType.QInt8,  # weight_type
             QuantType.QInt8,  # activation_type
             compute_data,

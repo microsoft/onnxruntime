@@ -4,28 +4,14 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with TensorRT installed from provided binaries
 
-FROM nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04
+# Build base image with required system packages
+FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 AS base
 
+# The local directory into which to build and install CMAKE
+ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
 
-# ONNX Runtime Variables
-ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=main
-ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
-
-# Must provide version numbers used to build the name of the tar file containing TensorRT binaries.
-# See: https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar
-ARG TAR_TRT_VERSION
-ARG TAR_CUDA_VERSION
-ARG TAR_CUDNN_VERSION
-
-# Directory containing TensorRT tar.gz installation package
-ARG TRT_BINS_DIR=.
-
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.27.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
-
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${ONNXRUNTIME_LOCAL_CODE_DIR}/cmake-3.27.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
-
-COPY ${TRT_BINS_DIR}/TensorRT-${TAR_TRT_VERSION}.Linux.x86_64-gnu.cuda-${TAR_CUDA_VERSION}.cudnn${TAR_CUDNN_VERSION}.tar.gz /TensorRT-${TAR_TRT_VERSION}.tar.gz
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades wget
@@ -44,22 +30,77 @@ RUN apt-get install -y --no-install-recommends \
 RUN pip install --upgrade pip 
 RUN pip install setuptools>=68.2.2
 
+# Install cuDNN v9
+RUN apt-get -y install cudnn9-cuda-12
+
+# Install TensorRT
+# Must provide version numbers used to build the name of the tar file containing TensorRT binaries.
+# See: https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar
+ARG TAR_TRT_VERSION
+ARG TAR_CUDA_VERSION
+
+# Directory containing TensorRT tar.gz installation package
+ARG TRT_BINS_DIR=.
+COPY ${TRT_BINS_DIR}/TensorRT-${TAR_TRT_VERSION}.Linux.x86_64-gnu.cuda-${TAR_CUDA_VERSION}.tar.gz /TensorRT-${TAR_TRT_VERSION}.tar.gz
+
 # Install TensorRT from tar.gz
 RUN tar -xzvf /TensorRT-${TAR_TRT_VERSION}.tar.gz
 
 RUN cd /TensorRT-${TAR_TRT_VERSION}/python &&\
-    python3 -m pip install tensorrt-${TAR_TRT_VERSION}-cp38-none-linux_x86_64.whl
+    python3 -m pip install tensorrt*cp38*.whl
 
 RUN cp -r /TensorRT-${TAR_TRT_VERSION}/lib/* /usr/lib/x86_64-linux-gnu/
 RUN cp /TensorRT-${TAR_TRT_VERSION}/include/* /usr/local/include/
 RUN cp /TensorRT-${TAR_TRT_VERSION}/bin/* /usr/local/bin/
 
-WORKDIR /code
+# Install Valgrind
+RUN apt-get install -y valgrind
+
+# Build final image from base. Builds ORT.
+FROM base as final
+ARG BUILD_USER=onnxruntimedev
+ARG BUILD_UID=1000
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+USER $BUILD_USER
+
+# ONNX Runtime arguments
+
+# URL to the github repo from which to clone ORT.
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+
+# The local directory into which to clone ORT.
+ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
+
+# The git branch of ORT to checkout and build.
+ARG ONNXRUNTIME_BRANCH=main
+
+# Optional. The specific commit to pull and build from. If not set, the latest commit is used.
+ARG ONNXRUNTIME_COMMIT_ID
+
+# The supported CUDA architecture
+ARG CMAKE_CUDA_ARCHITECTURES=75
 
 # Prepare onnxruntime repository & build onnxruntime with TensorRT
+WORKDIR ${ONNXRUNTIME_LOCAL_CODE_DIR}
+
+# Clone ORT repository with branch
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
-    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
-    cd onnxruntime &&\
-    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
-    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
-    cd .. 
+    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
+
+WORKDIR ${ONNXRUNTIME_LOCAL_CODE_DIR}/onnxruntime
+
+# Reset to a specific commit if specified by build args.
+RUN if [ -z "$ONNXRUNTIME_COMMIT_ID" ] ; then echo "Building branch ${ONNXRUNTIME_BRANCH}" ;\
+    else echo "Building branch ${ONNXRUNTIME_BRANCH} @ commit ${ONNXRUNTIME_COMMIT_ID}" &&\
+    git reset --hard ${ONNXRUNTIME_COMMIT_ID} && git submodule update --recursive ; fi
+
+# Build ORT
+ENV CUDA_MODULE_LOADING "LAZY" 
+ARG PARSER_CONFIG=""
+RUN /bin/sh build.sh ${PARSER_CONFIG} --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"'
+
+# Switch to root to continue following steps of CI
+USER root
+
+# Intall ORT wheel
+RUN pip install ${ONNXRUNTIME_LOCAL_CODE_DIR}/onnxruntime/build/Linux/Release/dist/*.whl

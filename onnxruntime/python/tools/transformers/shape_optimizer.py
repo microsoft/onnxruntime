@@ -133,9 +133,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
                     dim_proto.dim_value = max_seq_len
                 elif dim_proto.HasField("dim_value") and dim_proto.dim_value != max_seq_len:
                     raise ValueError(
-                        "Unable to set dimension value to {} for axis {} of {}. Contradicts existing dimension value {}.".format(
-                            max_seq_len, 1, input.name, dim_proto.dim_value
-                        )
+                        f"Unable to set dimension value to {max_seq_len} for axis {1} of {input.name}. Contradicts existing dimension value {dim_proto.dim_value}."
                     )
 
     def create_dummy_inputs(

@@ -2725,6 +2725,7 @@ static constexpr OrtApi ort_api_1_to_18 = {
     &OrtApis::KernelContext_ParallelFor,
     &OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
     &OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
+    &OrtApis::KernelContext_GetScratchBuffer,
     &OrtApis::KernelInfoGetAllocator,
 };
 

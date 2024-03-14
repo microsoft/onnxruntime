@@ -41,15 +41,17 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             ["fc_out"],
             "add_fc",
         ),
-        helper.make_node("Split", ["fc_out", "split_q_k_v"], ["q", "k", "v"], "split_qkv", axis=2)
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Split",
-            ["fc_out"],
-            ["q", "k", "v"],
-            "split_qkv",
-            axis=2,
-            split=[hidden_size, hidden_size, hidden_size],
+        (
+            helper.make_node("Split", ["fc_out", "split_q_k_v"], ["q", "k", "v"], "split_qkv", axis=2)
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Split",
+                ["fc_out"],
+                ["q", "k", "v"],
+                "split_qkv",
+                axis=2,
+                split=[hidden_size, hidden_size, hidden_size],
+            )
         ),
         # q nodes
         helper.make_node("Reshape", ["q", "reshape_x_shape"], ["reshape_q_out"], "reshape_q"),
@@ -79,19 +81,23 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             perm=[0, 2, 1, 3],
         ),
         # past
-        helper.make_node("Split", ["past", "split_1_1"], ["split_k", "split_v"], "split_past", axis=0)
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Split",
-            ["past"],
-            ["split_k", "split_v"],
-            "split_past",
-            axis=0,
-            split=[1, 1],
+        (
+            helper.make_node("Split", ["past", "split_1_1"], ["split_k", "split_v"], "split_past", axis=0)
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Split",
+                ["past"],
+                ["split_k", "split_v"],
+                "split_past",
+                axis=0,
+                split=[1, 1],
+            )
         ),
-        helper.make_node("Squeeze", ["split_k", "axes_0"], ["past_k"], "squeeze_past_k")
-        if is_opset_13_or_newer
-        else helper.make_node("Squeeze", ["split_k"], ["past_k"], "squeeze_past_k", axes=[0]),
+        (
+            helper.make_node("Squeeze", ["split_k", "axes_0"], ["past_k"], "squeeze_past_k")
+            if is_opset_13_or_newer
+            else helper.make_node("Squeeze", ["split_k"], ["past_k"], "squeeze_past_k", axes=[0])
+        ),
         helper.make_node(
             "Concat",
             ["past_k", "transpose_k_out"],
@@ -106,9 +112,11 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             "transpose_concat_k",
             perm=[0, 1, 3, 2],
         ),
-        helper.make_node("Squeeze", ["split_v", "axes_0"], ["past_v"], "squeeze_past_v")
-        if is_opset_13_or_newer
-        else helper.make_node("Squeeze", ["split_v"], ["past_v"], "squeeze_past_v", axes=[0]),
+        (
+            helper.make_node("Squeeze", ["split_v", "axes_0"], ["past_v"], "squeeze_past_v")
+            if is_opset_13_or_newer
+            else helper.make_node("Squeeze", ["split_v"], ["past_v"], "squeeze_past_v", axes=[0])
+        ),
         helper.make_node(
             "Concat",
             ["past_v", "transpose_v_out"],
@@ -117,33 +125,37 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             axis=-2,
         ),
         # present
-        helper.make_node(
-            "Unsqueeze",
-            ["concat_k_out", "axes_0"],
-            ["concat_k_unsqueeze_out"],
-            "concat_k_unsqueeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze",
-            ["concat_k_out"],
-            ["concat_k_unsqueeze_out"],
-            "concat_k_unsqueeze",
-            axes=[0],
+        (
+            helper.make_node(
+                "Unsqueeze",
+                ["concat_k_out", "axes_0"],
+                ["concat_k_unsqueeze_out"],
+                "concat_k_unsqueeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Unsqueeze",
+                ["concat_k_out"],
+                ["concat_k_unsqueeze_out"],
+                "concat_k_unsqueeze",
+                axes=[0],
+            )
         ),
-        helper.make_node(
-            "Unsqueeze",
-            ["concat_v_out", "axes_0"],
-            ["concat_v_unsqueeze_out"],
-            "concat_v_unsqueeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze",
-            ["concat_v_out"],
-            ["concat_v_unsqueeze_out"],
-            "concat_v_unsqueeze",
-            axes=[0],
+        (
+            helper.make_node(
+                "Unsqueeze",
+                ["concat_v_out", "axes_0"],
+                ["concat_v_unsqueeze_out"],
+                "concat_v_unsqueeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Unsqueeze",
+                ["concat_v_out"],
+                ["concat_v_unsqueeze_out"],
+                "concat_v_unsqueeze",
+                axes=[0],
+            )
         ),
         helper.make_node(
             "Concat",
@@ -159,19 +171,21 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             ["transpose_q_shape_slice_out"],
             "transpose_q_shape_slice",
         ),
-        helper.make_node(
-            "Squeeze",
-            ["transpose_q_shape_slice_out", "axes_0"],
-            ["transpose_q_shape_slice_squeeze_out"],
-            "transpose_q_shape_slice_squeeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Squeeze",
-            ["transpose_q_shape_slice_out"],
-            ["transpose_q_shape_slice_squeeze_out"],
-            "transpose_q_shape_slice_squeeze",
-            axes=[0],
+        (
+            helper.make_node(
+                "Squeeze",
+                ["transpose_q_shape_slice_out", "axes_0"],
+                ["transpose_q_shape_slice_squeeze_out"],
+                "transpose_q_shape_slice_squeeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Squeeze",
+                ["transpose_q_shape_slice_out"],
+                ["transpose_q_shape_slice_squeeze_out"],
+                "transpose_q_shape_slice_squeeze",
+                axes=[0],
+            )
         ),
         helper.make_node("Shape", ["concat_k_out"], ["concat_k_shape_out"], "concat_k_shape"),
         helper.make_node(
@@ -180,19 +194,21 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             ["concat_k_shape_slice_out"],
             "concat_k_shape_slice",
         ),
-        helper.make_node(
-            "Squeeze",
-            ["concat_k_shape_slice_out", "axes_0"],
-            ["concat_k_shape_slice_squeeze_out"],
-            "concat_k_shape_slice_squeeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Squeeze",
-            ["concat_k_shape_slice_out"],
-            ["concat_k_shape_slice_squeeze_out"],
-            "concat_k_shape_slice_squeeze",
-            axes=[0],
+        (
+            helper.make_node(
+                "Squeeze",
+                ["concat_k_shape_slice_out", "axes_0"],
+                ["concat_k_shape_slice_squeeze_out"],
+                "concat_k_shape_slice_squeeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Squeeze",
+                ["concat_k_shape_slice_out"],
+                ["concat_k_shape_slice_squeeze_out"],
+                "concat_k_shape_slice_squeeze",
+                axes=[0],
+            )
         ),
         helper.make_node(
             "Sub",
@@ -200,22 +216,26 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             ["sub_out"],
             "sub",
         ),
-        helper.make_node("Unsqueeze", ["sub_out", "axes_0"], ["sub_unsqueeze_out"], "sub_unsqueeze")
-        if is_opset_13_or_newer
-        else helper.make_node("Unsqueeze", ["sub_out"], ["sub_unsqueeze_out"], "sub_unsqueeze", axes=[0]),
-        helper.make_node(
-            "Unsqueeze",
-            ["concat_k_shape_slice_squeeze_out", "axes_0"],
-            ["concat_k_shape_slice_squeeze_unsqueeze_out"],
-            "concat_k_shape_slice_squeeze_unsqueeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze",
-            ["concat_k_shape_slice_squeeze_out"],
-            ["concat_k_shape_slice_squeeze_unsqueeze_out"],
-            "concat_k_shape_slice_squeeze_unsqueeze",
-            axes=[0],
+        (
+            helper.make_node("Unsqueeze", ["sub_out", "axes_0"], ["sub_unsqueeze_out"], "sub_unsqueeze")
+            if is_opset_13_or_newer
+            else helper.make_node("Unsqueeze", ["sub_out"], ["sub_unsqueeze_out"], "sub_unsqueeze", axes=[0])
+        ),
+        (
+            helper.make_node(
+                "Unsqueeze",
+                ["concat_k_shape_slice_squeeze_out", "axes_0"],
+                ["concat_k_shape_slice_squeeze_unsqueeze_out"],
+                "concat_k_shape_slice_squeeze_unsqueeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Unsqueeze",
+                ["concat_k_shape_slice_squeeze_out"],
+                ["concat_k_shape_slice_squeeze_unsqueeze_out"],
+                "concat_k_shape_slice_squeeze_unsqueeze",
+                axes=[0],
+            )
         ),
         helper.make_node(
             "Slice",
@@ -255,23 +275,27 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             ["input_mask_reshape_out"],
             "input_mask_reshape",
         ),
-        helper.make_node(
-            "Unsqueeze",
-            ["input_mask_reshape_out", "axes_1"],
-            ["unsqueeze0_out"],
-            "unsqueeze0",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze",
-            ["input_mask_reshape_out"],
-            ["unsqueeze0_out"],
-            "unsqueeze0",
-            axes=[1],
+        (
+            helper.make_node(
+                "Unsqueeze",
+                ["input_mask_reshape_out", "axes_1"],
+                ["unsqueeze0_out"],
+                "unsqueeze0",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Unsqueeze",
+                ["input_mask_reshape_out"],
+                ["unsqueeze0_out"],
+                "unsqueeze0",
+                axes=[1],
+            )
         ),
-        helper.make_node("Unsqueeze", ["unsqueeze0_out", "axes_2"], ["unsqueeze1_out"], "unsqueeze1")
-        if is_opset_13_or_newer
-        else helper.make_node("Unsqueeze", ["unsqueeze0_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[2]),
+        (
+            helper.make_node("Unsqueeze", ["unsqueeze0_out", "axes_2"], ["unsqueeze1_out"], "unsqueeze1")
+            if is_opset_13_or_newer
+            else helper.make_node("Unsqueeze", ["unsqueeze0_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[2])
+        ),
         helper.make_node("Sub", ["sub_weight", "unsqueeze1_out"], ["mask_sub_out"], "sub_mask"),
         helper.make_node("Mul", ["mask_sub_out", "mul_weight"], ["mul_mask_out"], "mul_mask"),
         # qk nodes
@@ -322,33 +346,37 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             ["qkv_shape_slice_out"],
             "qkv_shape_slice",
         ),
-        helper.make_node(
-            "Squeeze",
-            ["qkv_shape_slice_out", "axes_0"],
-            ["qkv_shape_slice_squeeze_out"],
-            "qkv_shape_slice_squeeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Squeeze",
-            ["qkv_shape_slice_out"],
-            ["qkv_shape_slice_squeeze_out"],
-            "qkv_shape_slice_squeeze",
-            axes=[0],
+        (
+            helper.make_node(
+                "Squeeze",
+                ["qkv_shape_slice_out", "axes_0"],
+                ["qkv_shape_slice_squeeze_out"],
+                "qkv_shape_slice_squeeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Squeeze",
+                ["qkv_shape_slice_out"],
+                ["qkv_shape_slice_squeeze_out"],
+                "qkv_shape_slice_squeeze",
+                axes=[0],
+            )
         ),
-        helper.make_node(
-            "Unsqueeze",
-            ["qkv_shape_slice_squeeze_out", "axes_0"],
-            ["qkv_shape_slice_squeeze_unsqueeze_out"],
-            "qkv_shape_slice_squeeze_unsqueeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze",
-            ["qkv_shape_slice_squeeze_out"],
-            ["qkv_shape_slice_squeeze_unsqueeze_out"],
-            "qkv_shape_slice_squeeze_unsqueeze",
-            axes=[0],
+        (
+            helper.make_node(
+                "Unsqueeze",
+                ["qkv_shape_slice_squeeze_out", "axes_0"],
+                ["qkv_shape_slice_squeeze_unsqueeze_out"],
+                "qkv_shape_slice_squeeze_unsqueeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Unsqueeze",
+                ["qkv_shape_slice_squeeze_out"],
+                ["qkv_shape_slice_squeeze_unsqueeze_out"],
+                "qkv_shape_slice_squeeze_unsqueeze",
+                axes=[0],
+            )
         ),
         helper.make_node(
             "Concat",
@@ -387,33 +415,37 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             "shape_qkv_gather_0",
             axis=0,
         ),
-        helper.make_node(
-            "Unsqueeze",
-            ["qkv_shape_1", "axes_0"],
-            ["qkv_shape_1_unsqueeze_out"],
-            "qkv_shape_1_unsqueeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze",
-            ["qkv_shape_1"],
-            ["qkv_shape_1_unsqueeze_out"],
-            "qkv_shape_1_unsqueeze",
-            axes=[0],
+        (
+            helper.make_node(
+                "Unsqueeze",
+                ["qkv_shape_1", "axes_0"],
+                ["qkv_shape_1_unsqueeze_out"],
+                "qkv_shape_1_unsqueeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Unsqueeze",
+                ["qkv_shape_1"],
+                ["qkv_shape_1_unsqueeze_out"],
+                "qkv_shape_1_unsqueeze",
+                axes=[0],
+            )
         ),
-        helper.make_node(
-            "Unsqueeze",
-            ["qkv_shape_0", "axes_0"],
-            ["qkv_shape_0_unsqueeze_out"],
-            "qkv_shape_0_unsqueeze",
-        )
-        if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze",
-            ["qkv_shape_0"],
-            ["qkv_shape_0_unsqueeze_out"],
-            "qkv_shape_0_unsqueeze",
-            axes=[0],
+        (
+            helper.make_node(
+                "Unsqueeze",
+                ["qkv_shape_0", "axes_0"],
+                ["qkv_shape_0_unsqueeze_out"],
+                "qkv_shape_0_unsqueeze",
+            )
+            if is_opset_13_or_newer
+            else helper.make_node(
+                "Unsqueeze",
+                ["qkv_shape_0"],
+                ["qkv_shape_0_unsqueeze_out"],
+                "qkv_shape_0_unsqueeze",
+                axes=[0],
+            )
         ),
         helper.make_node(
             "Concat",
@@ -767,9 +799,11 @@ def create_gpt2_fused_embedlayer(
                 "",
                 "ids",
             ],
-            ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index", "embedding_sum"]
-            if output_embedding_sum
-            else ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index"],
+            (
+                ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index", "embedding_sum"]
+                if output_embedding_sum
+                else ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index"]
+            ),
             "EmbedLayerNormalization_0",
             domain="com.microsoft",
             epsilon=epsilon,

@@ -15,7 +15,6 @@ from ._modifier import FP16OptimizerModifier
 class ApexAMPModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
         super().__init__(optimizer)
-        pass
 
     def can_be_modified(self):
         return self.check_requirements(
