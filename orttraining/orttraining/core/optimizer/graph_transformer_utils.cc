@@ -24,7 +24,6 @@
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/optimizer/gather_fusion.h"
-#include "core/optimizer/gather_slice_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
@@ -45,6 +44,7 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/shape_input_merge.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
@@ -116,10 +116,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PythonOpRewriter>()));
 #endif
 
-      // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
-      // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
-      // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
+      // Put ConstantSharing and ShapeInputMerge before CommonSubexpressionElimination by intention as it can create
+      // more opportunities for CSE. For example, if A and B nodes consume same different args but produce same output
+      // or consume different initializers with same value, by default, CSE will not merge them.
       transformers.emplace_back(std::make_unique<ConstantSharing>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ShapeInputMerge>(compatible_eps));
       // LayerNormFusion must be applied before CommonSubexpressionElimination as the latter will break the pattern when 2 LayerNormFusion share the same input.
       transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
       // Remove duplicate nodes. Must be applied before any recompute transformations.
@@ -139,9 +140,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<GatherToSplitFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<GatherToSliceFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GatherToSliceFusion>(compatible_eps));
       // If a model with Q, DQ nodes is being used for the purpose of training, it must be for
       // Quantization Aware Training. So, replace QDQ nodes with FakeQuant.
       transformers.emplace_back(std::make_unique<QDQFusion>(compatible_eps));

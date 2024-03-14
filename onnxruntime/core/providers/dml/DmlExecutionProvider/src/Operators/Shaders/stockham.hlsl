@@ -41,20 +41,21 @@ float2 ReadSourceValue(uint3 index)
     float2 value = float2(0, 0);
 
     bool hasWindow = HasWindow == 1;
-    [branch]
+    [flatten]
     if (hasWindow && index.y < (uint)WindowSizes[2])
     {
         uint windowIndexReal = index.y * WindowStrides[2];
         window_value.x = window[windowIndexReal];
 
         uint windowIndexImaginary = windowIndexReal + WindowStrides[3];
+        [branch]
         if (WindowSizes[3] == 2)
         {
             window_value.y = window[windowIndexImaginary];
         }
     }
 
-    [branch]
+    [flatten]
     if (index.y < (uint)InputSizes[1])
     {
         uint indexReal =
@@ -108,7 +109,7 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
     uint index = StartIndex + dtid.x;
     if (index < ElementCount)
     {
-        uint halfTotalDFTLength = DFTLength / 2;
+        uint halfTotalDFTLength = DFTLength >> 1;
         uint N = 1U << DFTIteration;
         uint halfN = 1U << (DFTIteration - 1);
 
@@ -143,8 +144,16 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
         unweighted.y = Scale * (inputEvenValue.y + (w.x * inputOddValue.y + w.y * inputOddValue.x));
 
         // When ChirpLength is 0, then chirp should evaluate to (1,0), which is a no-op.
-        float2 chirp = CalculateChirp(k, ChirpLength);
-        dst[outputIndex.x] = (TBUFFER)(unweighted.x * chirp.x - unweighted.y * chirp.y);
-        dst[outputIndex.y] = (TBUFFER)(unweighted.x * chirp.y + unweighted.y * chirp.x);
+        [branch]
+        if (ChirpLength == 0)
+        {
+            dst[outputIndex.x] = (TBUFFER)(unweighted.x);
+            dst[outputIndex.y] = (TBUFFER)(unweighted.y);
+        }
+        else {
+            float2 chirp = CalculateChirp(k, ChirpLength);
+            dst[outputIndex.x] = (TBUFFER)(unweighted.x * chirp.x - unweighted.y * chirp.y);
+            dst[outputIndex.y] = (TBUFFER)(unweighted.x * chirp.y + unweighted.y * chirp.x);
+        }
     }
 }

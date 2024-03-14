@@ -106,6 +106,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 14);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 15);
 
+  REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 1);
   REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 11);
   REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 13);
 

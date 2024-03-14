@@ -59,7 +59,7 @@ def PrintResult(op, axes, keepdims, res):  # noqa: N802
 
     print(" // expected values")
     print("{", end="")
-    for i in range(0, res.size):
+    for i in range(res.size):
         print("%5.6ff," % res.item(i))
 
     print("})},")
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     print("ReductionTestCases testcases = {")
     print("// input_data")
     print("{")
-    for i in range(0, input_data.size):
+    for i in range(input_data.size):
         print(
             "%5.6ff," % input_data.item(i),
         )

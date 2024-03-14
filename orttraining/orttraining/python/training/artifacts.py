@@ -41,13 +41,14 @@ def generate_artifacts(
     requires_grad: Optional[List[str]] = None,
     frozen_params: Optional[List[str]] = None,
     loss: Optional[Union[LossType, onnxblock.Block]] = None,
-    optimizer: Optional[OptimType] = None,
+    optimizer: Optional[Union[OptimType, onnxblock.Block]] = None,
     artifact_directory: Optional[Union[str, bytes, os.PathLike]] = None,
     prefix: str = "",
     ort_format: bool = False,
     custom_op_library: Optional[Union[str, bytes, os.PathLike]] = None,
     additional_output_names: Optional[List[str]] = None,
     nominal_checkpoint: bool = False,
+    loss_input_names: Optional[List[str]] = None,
 ) -> None:
     """Generates artifacts required for training with ORT training api.
 
@@ -63,8 +64,8 @@ def generate_artifacts(
         model: The base model to be used for gradient graph generation.
         requires_grad: List of names of model parameters that require gradient computation
         frozen_params: List of names of model parameters that should be frozen.
-        loss: The loss function enum to be used for training. If None, no loss node is added to the graph.
-        optimizer: The optimizer enum to be used for training. If None, no optimizer model is generated.
+        loss: The loss function enum or onnxblock to be used for training. If None, no loss node is added to the graph.
+        optimizer: The optimizer enum or onnxblock to be used for training. If None, no optimizer model is generated.
         artifact_directory: The directory to save the generated artifacts.
             If None, the current working directory is used.
         prefix: The prefix to be used for the generated artifacts. If not specified, no prefix is used.
@@ -77,7 +78,9 @@ def generate_artifacts(
             Default is False. Nominal checkpoint is a checkpoint that contains nominal information about the model
             parameters. It can be used on the device to reduce overhead while constructing the training model
             as well as to reduce the size of the checkpoint packaged with the on-device application.
-
+        loss_input_names: Specifies a list of input names to be used specifically for the loss computation. When provided,
+            only these inputs will be passed to the loss function. If `None`, all graph outputs are passed to
+            the loss function.
     Raises:
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
         RuntimeError: If the optimizer provided is not one of the supported optimizers.
@@ -111,11 +114,16 @@ def generate_artifacts(
         logging.info("Custom loss block provided: %s", loss.__class__.__name__)
 
     class _TrainingBlock(onnxblock.TrainingBlock):
-        def __init__(self, _loss):
+        def __init__(self, _loss, _loss_input_names=None):
             super().__init__()
             self._loss = _loss
+            self._loss_input_names = _loss_input_names
 
         def build(self, *inputs_to_loss):
+            # If loss_input_names is passed, only pass the specified input names to the loss function.
+            if self._loss_input_names:
+                inputs_to_loss = self._loss_input_names
+
             if additional_output_names:
                 # If additional output names is not a list, raise an error
                 if not isinstance(additional_output_names, list):
@@ -132,7 +140,7 @@ def generate_artifacts(
 
             return self._loss(*inputs_to_loss)
 
-    training_block = _TrainingBlock(loss_block)
+    training_block = _TrainingBlock(loss_block, loss_input_names)
 
     if requires_grad is not None and frozen_params is not None and set(requires_grad).intersection(set(frozen_params)):
         raise RuntimeError(
@@ -157,9 +165,11 @@ def generate_artifacts(
         logging.info("Custom op library provided: %s", custom_op_library)
         custom_op_library_path = pathlib.Path(custom_op_library)
 
-    with onnxblock.base(model), onnxblock.custom_op_library(
-        custom_op_library_path
-    ) if custom_op_library is not None else contextlib.nullcontext():
+    with onnxblock.base(model), (
+        onnxblock.custom_op_library(custom_op_library_path)
+        if custom_op_library is not None
+        else contextlib.nullcontext()
+    ):
         _ = training_block(*[output.name for output in model.graph.output])
         training_model, eval_model = training_block.to_model_proto()
         model_params = training_block.parameters()
@@ -209,14 +219,6 @@ def generate_artifacts(
         logging.info("No optimizer enum provided. Skipping optimizer model generation.")
         return
 
-    if not isinstance(optimizer, OptimType):
-        raise RuntimeError(
-            f"Unknown optimizer provided {type(optimizer)}. Expected optimizer to be of type "
-            "onnxruntime.training.artifacts.OptimType."
-        )
-
-    logging.info("Optimizer enum provided: %s", optimizer.name)
-
     opset_version = None
     for domain in model.opset_import:
         if domain.domain == "" or domain.domain == "ai.onnx":
@@ -225,8 +227,19 @@ def generate_artifacts(
 
     optim_model = None
     optim_blocks = {OptimType.AdamW: onnxblock.optim.AdamW, OptimType.SGD: onnxblock.optim.SGD}
+    optim_block = None
+    if isinstance(optimizer, OptimType):
+        logging.info("Optimizer enum provided: %s", optimizer.name)
+        optim_block = optim_blocks[optimizer]()
+    elif isinstance(optimizer, onnxblock.Block):
+        logging.info("Optimizer block provided: %s", optimizer.__class__.__name__)
+        optim_block = optimizer
+    else:
+        raise TypeError(
+            f"Unknown optimizer provided {type(optimizer)}. Expected optimizer to be either one of"
+            "onnxruntime.training.artifacts.OptimType or onnxruntime.training.onnxblock.Block."
+        )
 
-    optim_block = optim_blocks[optimizer]()
     with onnxblock.empty_base(opset_version=opset_version):
         _ = optim_block(model_params)
         optim_model = optim_block.to_model_proto()

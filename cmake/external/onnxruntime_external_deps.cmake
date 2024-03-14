@@ -37,8 +37,13 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set(gtest_disable_pthreads ON)
   endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-  if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    # Needs to update onnxruntime/test/xctest/xcgtest.mm
+  if (IOS OR ANDROID)
+    # on mobile platforms the absl flags class dumps the flag names (assumably for binary size), which breaks passing
+    # any args to gtest executables, such as using --gtest_filter to debug a specific test.
+    # Processing of compile definitions:
+    # https://github.com/abseil/abseil-cpp/blob/8dc90ff07402cd027daec520bb77f46e51855889/absl/flags/config.h#L21
+    # If set, this code throws away the flag and does nothing on registration, which results in no flags being known:
+    # https://github.com/abseil/abseil-cpp/blob/8dc90ff07402cd027daec520bb77f46e51855889/absl/flags/flag.h#L205-L217
     set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
   else()
     set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
@@ -256,14 +261,7 @@ if (onnxruntime_ENABLE_CPUINFO)
       set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
-      # Exclude Windows ARM build and Windows Store
-      if (${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
-        message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
-        set(CPUINFO_SUPPORTED FALSE)
-      elseif (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-        message(WARNING "Cpuinfo not included non-Desktop builds")
-        set(CPUINFO_SUPPORTED FALSE)
-      endif()
+      set(CPUINFO_SUPPORTED TRUE)
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       message(WARNING
         "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
@@ -307,13 +305,23 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-
-  FetchContent_Declare(
-    pytorch_cpuinfo
-    URL ${DEP_URL_pytorch_cpuinfo}
-    URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-    FIND_PACKAGE_ARGS NAMES cpuinfo
-  )
+  if(onnxruntime_target_platform STREQUAL "ARM64EC")
+      message("Applying a patch for Windows ARM64EC in cpuinfo")
+      FetchContent_Declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
+        FIND_PACKAGE_ARGS NAMES cpuinfo
+      )
+  else()
+      FetchContent_Declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        FIND_PACKAGE_ARGS NAMES cpuinfo
+      )
+  endif()
   set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
 endif()
 

@@ -276,7 +276,7 @@ def compute_scale_zp_float8(element_type, std):
             from onnx.reference.custom_element_types import float8e4m3fn
 
             zp_dtype = float8e4m3fn
-            all_values = [float8e4m3_to_float32(i) for i in range(0, 256)]
+            all_values = [float8e4m3_to_float32(i) for i in range(256)]
             values = numpy.array(
                 [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
             )
@@ -530,7 +530,7 @@ def get_elem_index(elem_name, elem_list):
     Helper function to return index of an item in a node list
     """
     elem_idx = -1
-    for i in range(0, len(elem_list)):
+    for i in range(len(elem_list)):
         if elem_list[i] == elem_name:
             elem_idx = i
     return elem_idx
