@@ -78,7 +78,7 @@ stages:
       docker_file: ${{ parameters.docker_file }}
       upload_wheel: ${{ parameters.upload_wheel }}
       debug_build: ${{ parameters.debug_build }}
-      stage_name: 'Linux_py_Training_Cuda_Wheels_python38'
+      stage_name: 'Linux_py_Training_Cuda_Wheels_${{ python_version }}'
       python_version: ${{ python_version }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
