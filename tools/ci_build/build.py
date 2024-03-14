@@ -2551,7 +2551,7 @@ def main():
     if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
-    if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
+    if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs or args.enable_pybind:
         args.build_shared_lib = True
 
     if args.build_nuget and cross_compiling:

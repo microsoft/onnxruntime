@@ -299,6 +299,7 @@ if platform.system() == "Linux":
     dl_libs.append(providers_cuda_or_rocm)
     dl_libs.append(providers_tensorrt_or_migraphx)
     dl_libs.append(providers_cann)
+    dl_libs.append("libonnxruntime.so*")
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
@@ -307,6 +308,7 @@ if platform.system() == "Linux":
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
+    libs.append("libonnxruntime.so*")
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -317,10 +319,11 @@ elif platform.system() == "Darwin":
     libs.extend(["libonnxruntime_providers_tensorrt.dylib"])
     libs.extend(["libonnxruntime_providers_cuda.dylib"])
     libs.extend(["libonnxruntime_providers_vitisai.dylib"])
+    libs.append("libonnxruntime.dylib*")
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
 else:
-    libs = ["onnxruntime_pybind11_state.pyd", "dnnl.dll", "mklml.dll", "libiomp5md.dll"]
+    libs = ["onnxruntime_pybind11_state.pyd", "dnnl.dll", "mklml.dll", "libiomp5md.dll", "onnxruntime.dll",]
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["onnxruntime_providers_shared.dll"])
     libs.extend(["onnxruntime_providers_dnnl.dll"])
@@ -359,7 +362,7 @@ if is_manylinux:
         dl_libs.append("plugins.xml")
         dl_libs.append("usb-ma2x8x.mvcmd")
     data = ["capi/libonnxruntime_pywrapper.so"] if nightly_build else []
-    data += [path.join("capi", x) for x in dl_libs if path.isfile(path.join("onnxruntime", "capi", x))]
+    data += [path.join("capi", x) for x in dl_libs if glob(path.join("onnxruntime", "capi", x))]
     ext_modules = [
         Extension(
             "onnxruntime.capi.onnxruntime_pybind11_state",
@@ -367,7 +370,7 @@ if is_manylinux:
         ),
     ]
 else:
-    data = [path.join("capi", x) for x in libs if path.isfile(path.join("onnxruntime", "capi", x))]
+    data = [path.join("capi", x) for x in libs if glob(path.join("onnxruntime", "capi", x))]
     ext_modules = []
 
 # Additional examples
