@@ -1373,7 +1373,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC")
     file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/mlas/unittest/*.h"
       "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
@@ -1421,7 +1420,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
       endif()
     endif()
-endif()
+
   # Training API Tests
   # Disabling training_api_test_trainer. CXXOPT generates a ton of warnings because of which nuget pipeline is failing.
   # TODO(askhade): Fix the warnings.
