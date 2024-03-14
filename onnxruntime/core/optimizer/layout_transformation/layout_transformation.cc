@@ -31,6 +31,7 @@ CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const a
 }
 
 #if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
+// TODO(mtavenrath) generate list from registered kernels using nhwc domain
 const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
   static std::unordered_set<std::string_view> cuda_nhwc_ops = []() {
     return std::unordered_set<std::string_view>{
@@ -41,7 +42,10 @@ const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
         "MaxPool",
         "GlobalAveragePool",
         "AveragePool",
-    };
+        "GridSample",
+        "DepthToSpace",
+        "SpaceToDepth",
+        "LRN"};
   }();
   return cuda_nhwc_ops;
 }

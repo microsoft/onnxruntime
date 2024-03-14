@@ -91,7 +91,7 @@ def _ortvalues_to_torch_tensor(
         # Second option makes it impossible to directly use `_from_dlpack` or
         # or `from_dlpack` from torch.
         # The best option would be to add boolean type in DLDataTypeCode.
-        for i in range(0, len(bool_indices)):
+        for i in range(len(bool_indices)):
             j = bool_indices[i]
             res[j] = res[j].to(torch.bool)
 

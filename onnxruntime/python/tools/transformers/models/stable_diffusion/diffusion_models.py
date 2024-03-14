@@ -414,7 +414,6 @@ class BaseModel:
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
         """For TensorRT"""
-        pass
 
     def get_shape_dict(self, batch_size, image_height, image_width):
         pass

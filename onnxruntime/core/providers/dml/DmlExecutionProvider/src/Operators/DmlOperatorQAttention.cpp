@@ -8,41 +8,43 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
                N is number of attention heads, H is head size, and W=N*H
                M is mask_index tensor
 
-M, A, B, C and P are Inputs
+Input, Weight, Bias, Mask Index and Past are Inputs
 
-     M               A  B      C
-     |               |  |     /
-     |             MatMulIntToFloat
-     |                / |   \
-     |               /  |    \
-     |              /   |     \
-     |          Slice  Slice  Slice
-     |            |     |       |
-     |            |     |       |
-     |      Identity Identity Identity // The identities are used to transpose NCHW -> NHCW while
-     |            |     |       |      // keeping the GEMM strides as NCHW to better target metacommands
-     |            |     |       |
-     |            |     |       |        P
-     |            |     |       |       / \
-     |            |     |       |      /   \
-     |            |     |       |  Slice   Slice
-     |            |     |       |     |      |
-     |            |     |       |     |      |
-     |            |     |       |     |      |
-     --------------------------MHA -----------
-                              / | \
-                             /  |   \
-                            /   |     \
-                           /    |       \
-                          /     |         \
-                         /      |           \
-                        /  presentKey   presentValue
-                       /         \       /
-                      /           \     /
-                     /             \   /
-                    /             Concat
-                   /                 |
-               Output1            Output2 (present)
+Mask Index/Causal  Input   Weight   Bias
+         |             \    |       /
+         |              \   |      /
+         |               \  |     /
+         |             MatMulIntToFloat
+         |                / |   \
+         |               /  |    \
+         |              /   |     \
+         |          Slice  Slice  Slice
+         |            |     |       |
+         |            |     |       |
+         |      Identity Identity Identity // The identities are used to transpose NCHW -> NHCW while
+         |            |     |       |      // keeping the GEMM strides as NCHW to better target metacommands
+         |            |     |       |
+         |            |     |       |       Past
+         |            |     |       |       / \
+         |            |     |       |      /   \
+         |            |     |       |  Slice   Slice
+         |            |     |       |     |      |
+         |            |     |       |     |      |
+         |            |     |       |     |      |
+         --------------------------MHA -----------
+                                  / | \
+                                 /  |   \
+                                /   |     \
+                               /    |       \
+                              /     |         \
+                             /      |           \
+                            /  presentKey   presentValue
+                           /         \       /
+                          /           \     /
+                         /             \   /
+                        /             Concat
+                       /                 |
+                   Output1            Output2 (present)
 
  This kernel creates a DML_GRAPH, as mentioned above.
  For reference, refer to this Doc:
@@ -115,7 +117,7 @@ public:
 
         const bool unidirectional = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::Unidirectional));
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
-        ML_CHECK_VALID_ARGUMENT(numHeads > 0); // to avoid process crash because of division by zero.
+        ML_CHECK_VALID_ARGUMENT(numHeads > 0); //  to avoid process crash because of division by zero.
 
         auto inputTensorShape = m_inputTensorDescs[inputIndex].GetSizes();
         ML_CHECK_VALID_ARGUMENT(inputTensorShape.size() == 3);
@@ -327,7 +329,7 @@ public:
         std::array<uint32_t, 5> pastKeyOffsets = {0, 0, 0, 0, 0};
         TensorDesc pastKeyOutputTensorDesc;
         DML_TENSOR_DESC namedPastKeyOutputTensorDesc;
-        
+
         std::array<uint32_t, 5> pastValueOutputShape = {1, batchSize, numHeads, pastSequenceLength, headSize};
         std::array<int32_t, 5> pastValueStrides = {1, 1, 1, 1, 1};
         std::array<uint32_t, 5> pastValueOffsets = {1, 0, 0, 0, 0};
@@ -361,11 +363,16 @@ public:
         const DML_OPERATOR_DESC pastKeySlicedDesc = { DML_OPERATOR_SLICE1, &pastKeySlicedOperatorDesc};
         const DML_OPERATOR_DESC pastValueSlicedDesc = { DML_OPERATOR_SLICE1, &pastValueSlicedOperatorDesc};
 
-        // Causal Mask: [pastSequenceLength, pastSequenceLength + 1 ... pastSequenceLength + batchSize -1]
+        // Causal Mask: Upper Triangular Boolean Matrix
+        // Example: [[1, 0, 0, 0, 0],
+        //           [1, 1, 0, 0, 0],
+        //           [1, 1, 1, 0, 0],
+        //           [1, 1, 1, 1, 0]]
+        // DML adds maskFilterValue to the "off" bits in the mask and sets the "on" bits to 0
         // passed to MHA as maskIndex Tensor when unidirectional == 1
-        std::array<uint32_t, 2> causalMaskOutputShape = {1, batchSize};
+        std::array<uint32_t, 4> causalMaskOutputShape = {1, 1,  sequenceLength, pastSequenceLength + sequenceLength};
         TensorDesc causalMaskTensorDesc;
-        DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC causalMaskOperatorDesc = {};
+        DML_DIAGONAL_MATRIX1_OPERATOR_DESC causalMaskOperatorDesc = {};
         DML_TENSOR_DESC namedcausalMaskTensorDesc;
 
         if (unidirectional && !hasMask)
@@ -373,13 +380,13 @@ public:
             causalMaskTensorDesc = TensorDesc::ConstructDefaultTensorDesc(MLOperatorTensorDataType::Int32, causalMaskOutputShape);
             namedcausalMaskTensorDesc = causalMaskTensorDesc.GetDmlDesc();
             causalMaskOperatorDesc.ValueDataType = DML_TENSOR_DATA_TYPE_INT32;
-            causalMaskOperatorDesc.ValueStart.Int32 = pastSequenceLength;
-            causalMaskOperatorDesc.ValueDelta.Int32 = 1;
+            causalMaskOperatorDesc.DiagonalFillBegin = INT32_MIN;
+            causalMaskOperatorDesc.DiagonalFillEnd = pastSequenceLength + 1;
+            causalMaskOperatorDesc.Value.Int32 = 1;
             causalMaskOperatorDesc.OutputTensor = &namedcausalMaskTensorDesc;
-
-            maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH;
+            maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN;
         }
-        DML_OPERATOR_DESC causalMaskDesc = { DML_OPERATOR_FILL_VALUE_SEQUENCE, &causalMaskOperatorDesc };
+        DML_OPERATOR_DESC causalMaskDesc = { DML_OPERATOR_DIAGONAL_MATRIX1, &causalMaskOperatorDesc };
 
         DML_MULTIHEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
         std::array<uint32_t, 5> presentKeyOutputShape = {1, batchSize, numHeads, pastSequenceLength + sequenceLength, headSize};
@@ -391,9 +398,15 @@ public:
 
         mhaOperatorDesc.StackedQueryKeyValueTensor = &namedQueryKeyValueTransposedOutputTensorDesc;
 
+        // Broadcast to MHA MaskTensor Shape
+        std::array<uint32_t, 4> mhaMaskTensorShape = {batchSize, numHeads, sequenceLength, pastSequenceLength + sequenceLength};
+        TensorDesc broadcastedcausalMaskTensorDesc;
+        DML_TENSOR_DESC namedbroadcastedcausalMaskTensorDesc;
         if (unidirectional && !hasMask)
         {
-            mhaOperatorDesc.MaskTensor = &namedcausalMaskTensorDesc;
+            broadcastedcausalMaskTensorDesc = TensorDesc::ConstructBroadcastedTensorDesc(MLOperatorTensorDataType::Int32, mhaMaskTensorShape, causalMaskOutputShape);
+            namedbroadcastedcausalMaskTensorDesc = broadcastedcausalMaskTensorDesc.GetDmlDesc();
+            mhaOperatorDesc.MaskTensor = &namedbroadcastedcausalMaskTensorDesc;
         }
         else if (hasMaxSequenceMask)
         {
@@ -407,7 +420,9 @@ public:
         mhaOperatorDesc.RelativePositionBiasTensor = nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
-        mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
+        // Set MaskFilterValue to lowest float for Causal Mask 
+        mhaOperatorDesc.MaskFilterValue = unidirectional ? std::numeric_limits<float>::lowest() :
+            kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaOperatorDesc.HeadCount = numHeads;
         mhaOperatorDesc.MaskType = maskType;
         if (hasPast)
@@ -484,7 +499,7 @@ public:
             opDescs.push_back(&causalMaskDesc);
             causalMaskNodeIndex = currentNodeIndex++;
         }
-        
+
         DML_INPUT_GRAPH_EDGE_DESC inputToMatMulIntToFloatEdge = {};
         inputToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::inputIndex;
         inputToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
@@ -570,7 +585,7 @@ public:
             causalMaskToMhaEdge.FromNodeIndex = causalMaskNodeIndex;
             causalMaskToMhaEdge.FromNodeOutputIndex = 0;
             causalMaskToMhaEdge.ToNodeIndex = mhaNodeIndex;
-            causalMaskToMhaEdge.ToNodeInputIndex = mhaMaskIndex ;
+            causalMaskToMhaEdge.ToNodeInputIndex = mhaMaskIndex;
             intermediateEdges.push_back(causalMaskToMhaEdge);
         }
 
@@ -655,7 +670,7 @@ public:
         operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
         operatorGraphDesc.outputEdges = outputEdges.data();
         operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
-        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+        operatorGraphDesc.nodes = opDescs.data();
 
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
@@ -688,4 +703,4 @@ void CALLBACK QueryQAttention(IMLOperatorSupportQueryContextPrivate* context, /*
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(QAttention, DmlOperatorQAttention);
-} // namespace Dml
+}  // namespace Dml

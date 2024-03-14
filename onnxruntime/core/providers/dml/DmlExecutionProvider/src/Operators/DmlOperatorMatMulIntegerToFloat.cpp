@@ -19,7 +19,7 @@ class DmlOperatorMatMulIntegerToFloat : public DmlOperator
         ortBias,
         ortInputCount
     };
-    
+
     enum DmlInputIndex : uint32_t
     {
         dmlA,
@@ -60,9 +60,9 @@ public:
         // Resize the A Scale to be the same dimension as the input tensor.
         // The 1D tensor needs to be moved to the H channel.
         m_inputTensorDescs[DmlInputIndex::dmlAScale] = CreateTensorDescFromInput(
-            kernelInfo, 
+            kernelInfo,
             OrtInputTensors::ortAScale,
-            TensorAxis::DoNotCoerce, 
+            TensorAxis::DoNotCoerce,
             TensorAxis::H,
             TensorAxis::LeftAligned,
             std::nullopt,
@@ -75,9 +75,9 @@ public:
         {
 
             m_inputTensorDescs[DmlInputIndex::dmlAZeroPoint] = CreateTensorDescFromInput(
-                kernelInfo, 
+                kernelInfo,
                 OrtInputTensors::ortAZeroPoint,
-                TensorAxis::DoNotCoerce, 
+                TensorAxis::DoNotCoerce,
                 TensorAxis::H,
                 TensorAxis::LeftAligned,
                 std::nullopt,
@@ -110,4 +110,4 @@ public:
 
 DML_OP_DEFINE_CREATION_FUNCTION(MatMulIntegerToFloat, DmlOperatorMatMulIntegerToFloat);
 
-} // namespace Dml
+}  // namespace Dml

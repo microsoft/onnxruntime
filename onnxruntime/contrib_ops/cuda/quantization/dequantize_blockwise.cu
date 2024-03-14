@@ -2,10 +2,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdint>
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cmath>
+#include <type_traits>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -21,7 +23,7 @@ namespace cuda {
 
 __device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, half scale, half zp, half* output) {
   half2 scale_half2 = {scale, scale};
-  half zp_adjust = -scale * __short2half_rn(zp);
+  half zp_adjust = -scale * zp;
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
 
   alignas(16) half2 results[4];
@@ -56,41 +58,95 @@ __device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, f
 }
 
 template <class T>
-__global__ void Dequantize4BitsKernel(
+__global__ void Dequantize4BitsKernelReOrder(
     T* output,
     const uint8_t* quant_data,
     const T* scale_data,
     const uint8_t* zero_points,
+    const int32_t* reorder_idx,
     int block_size,
-    int blocks_per_K,
-    int blocks_per_threadblock,
-    int total_blks,
-    int shift) {
-  int block_id = blockIdx.x * blocks_per_threadblock + ((threadIdx.x * 8) >> shift);
-  if (block_id >= total_blks) {
+    int groups_per_K,
+    int groups_per_threadblock,
+    int total_groups) {
+  int group_id = blockIdx.x * groups_per_threadblock + ((threadIdx.x * 8) / block_size);
+  if (group_id >= total_groups) {
     return;
   }
-  int n_idx = block_id / blocks_per_K;
-  int kb_idx = block_id % blocks_per_K;
-  int element_offset = block_id * block_size + ((threadIdx.x * 8) & ((1 << shift) - 1));
+  // T __shared__ zero_points_after_reorder[];//K
+  // T __shared__ scales_after_reorder[];     // K
+  // const int num_r_per_thread = k / 256;
+
+  const int zero_point_shape_x = (groups_per_K + 1) / 2;
+  const int scales_shape_x = groups_per_K;
+  int n_idx = group_id / scales_shape_x;
+  int kb_idx = group_id % scales_shape_x;
+  int element_offset = group_id * block_size + ((threadIdx.x * 8) & (block_size - 1));
+  T* output_i = output + element_offset;
+  uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
+  const int32_t* reorder_idx_with_off = reorder_idx + kb_idx * block_size + ((threadIdx.x * 8) & (block_size - 1));
+  for (int i = 0; i < 8; i++) {
+    int32_t rid = reorder_idx_with_off[i];
+    T scale = *(scale_data + n_idx * scales_shape_x + rid);
+    uint8_t zp = 8;
+    if (zero_points) {
+      zp = zero_points[n_idx * zero_point_shape_x + rid / 2];
+      zp = (rid & 0x01) ? (zp >> 4) : (zp & 0x0f);
+    }
+
+    if constexpr (std::is_same_v<T, half>) {
+      T zp_adjust = -scale * __short2half_rn(zp);
+      output_i[i] = __uint2half_rn((quant_value >> (4 * i)) & 0xF) * scale + zp_adjust;
+    } else {
+      T zp_adjust = -scale * T(zp);
+      output_i[i] = T((quant_value >> (4 * i)) & 0xF) * scale + zp_adjust;
+    }
+  }
+}
+
+template <class T, typename ZeroT = uint8_t>
+__global__ void Dequantize4BitsKernel(
+    T* output,
+    const uint8_t* quant_data,
+    const T* scale_data,
+    const ZeroT* zero_points,
+    int block_size,
+    int groups_per_K,
+    int groups_per_threadblock,
+    int total_groups) {
+  int block_id = blockIdx.x * groups_per_threadblock + ((threadIdx.x * 8) / block_size);
+  if (block_id >= total_groups) {
+    return;
+  }
+  int element_offset = block_id * block_size + ((threadIdx.x * 8) & (block_size - 1));
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
   T scale = *(scale_data + block_id);
-  uint8_t zp = 8;
-  if (zero_points) {
-    zp = zero_points[n_idx * ((blocks_per_K + 1)/2) + kb_idx / 2];
-    zp = (kb_idx & 0x01) ? (zp >> 4) : (zp & 0x0f);
+  T zero_point_value;
+  if constexpr (std::is_same_v<ZeroT, uint8_t>) {
+    const int scales_shape_x = groups_per_K;
+    const int zero_point_shape_x = (groups_per_K + 1) / 2;
+    int kb_idx = block_id % scales_shape_x;
+    int n_idx = block_id / scales_shape_x;
+    uint8_t zp = 8;
+    if (zero_points) {
+      zp = zero_points[n_idx * zero_point_shape_x + kb_idx / 2];
+      zp = (kb_idx & 0x01) ? (zp >> 4) : (zp & 0x0f);
+    }
+    zero_point_value = static_cast<T>(zp);
+  } else {
+    zero_point_value = zero_points? *(zero_points + block_id):static_cast<T>(8);
   }
 
   output = output + element_offset;
-  DequantizeEightElements(quant_value, scale, static_cast<T>(zp), output);
+  DequantizeEightElements(quant_value, scale, zero_point_value, output);
 }
 
-template <class T>
+template <class T, typename ZeroT>
 Status Dequantize4Bits(
     T* output,
     const uint8_t* quant_data,
     const T* scales_data,
-    const uint8_t* zero_points,  // shape: [N, (block_per_K + 1)/2]
+    const ZeroT* zero_points,  // shape: [N, (block_per_K + 1)/2]
+    const int32_t* reorder_idx,
     int k,
     int n,
     int block_size,
@@ -98,47 +154,79 @@ Status Dequantize4Bits(
   // k is padded and equal to block_per_K * block_size
   ORT_ENFORCE(k % block_size == 0, "k must be a multiplier of block_size");
   constexpr int element_per_thread = 8;
-  int blocks_per_threadblock = GridDim::maxThreadsPerBlock * element_per_thread / block_size;
-  int blocks_per_K = k / block_size;
-  int total_blks = n * blocks_per_K;
-  int blocks_per_grid = static_cast<int>(CeilDiv(n * blocks_per_K, blocks_per_threadblock));
-  int shift = static_cast<int>(log2f(float(block_size)));
-
-  Dequantize4BitsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      output,
-      quant_data,
-      scales_data,
-      zero_points,
-      block_size,
-      blocks_per_K,
-      blocks_per_threadblock,
-      total_blks,
-      shift);
+  int groups_per_threadblock = GridDim::maxThreadsPerBlock * element_per_thread / block_size;
+  int groups_per_K = k / block_size;
+  int total_groups = n * groups_per_K;  // total elemenets in quant_data
+  int groups_per_grid = static_cast<int>(CeilDiv(total_groups, groups_per_threadblock));
+  if (!reorder_idx || std::is_same_v<ZeroT, T>) {
+    Dequantize4BitsKernel<T, ZeroT><<<groups_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+        output,
+        quant_data,
+        scales_data,
+        zero_points,
+        block_size,
+        groups_per_K,
+        groups_per_threadblock,
+        total_groups);
+  } else {
+    // static_assert(std::is_same_v<ZeroT, uint8_t>, "ZeroT must be uint8_t");
+    Dequantize4BitsKernelReOrder<<<groups_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+        output,
+        quant_data,
+        scales_data,
+        (const uint8_t*)zero_points,
+        reorder_idx,
+        block_size,
+        groups_per_K,
+        groups_per_threadblock,
+        total_groups);
+  }
 
   return Status::OK();
 }
 
-template Status Dequantize4Bits<float>(
+template Status Dequantize4Bits<float, uint8_t>(
     float* output,
     const uint8_t* quant_data,
     const float* scales_data,
     const uint8_t* zero_points,
+    const int32_t* reorder_idx,
     int k,
     int n,
     int block_size,
     cudaStream_t stream);
 
-template Status Dequantize4Bits<half>(
+template Status Dequantize4Bits<half, uint8_t>(
     half* output,
     const uint8_t* quant_data,
     const half* scales_data,
     const uint8_t* zero_points,
+    const int32_t* reorder_idx,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream);
+template Status Dequantize4Bits<float, float>(
+    float* output,
+    const uint8_t* quant_data,
+    const float* scales_data,
+    const float* zero_points,
+    const int32_t* reorder_idx,
     int k,
     int n,
     int block_size,
     cudaStream_t stream);
 
-
+template Status Dequantize4Bits<half, half>(
+    half* output,
+    const uint8_t* quant_data,
+    const half* scales_data,
+    const half* zero_points,
+    const int32_t* reorder_idx,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream);
 ///////////////////////////////////////////////////////////////////////////////
 // A more general block-wise dequantization implementation that supports
 // different block sizes and block orientations (row-wise/column-wise).

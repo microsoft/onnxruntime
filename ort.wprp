@@ -8,12 +8,12 @@
   <Profiles>
     <EventCollector Id="EventCollector_OrtTraceLoggingProvider"
       Name="OrtTraceLoggingProviderCollector">
-      <BufferSize Value="65536" />
+      <BufferSize Value="1024" />
       <Buffers Value="10" PercentageOfTotalMemory="true"/>
     </EventCollector>
 
     <EventProvider Id="EventProvider_OrtTraceLoggingProvider"
-      Name="3a26b1ff-7484-7484-7484-15261f42614d" />
+      Name="3a26b1ff-7484-7484-7484-15261f42614d" Level="5" />
     <Profile Id="OrtTraceLoggingProvider.Verbose.File"
       Name="OrtTraceLoggingProvider" Description="OrtTraceLoggingProvider"
       LoggingMode="File" DetailLevel="Verbose">

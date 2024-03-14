@@ -18,6 +18,7 @@
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 
 #ifdef _WIN32
@@ -170,6 +171,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     const auto& api = Ort::GetApi();
     OrtTensorRTProviderOptionsV2* tensorrt_options;
     Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
+    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
+        tensorrt_options, api.ReleaseTensorRTProviderOptions);
     std::vector<const char*> option_keys, option_values;
     // used to keep all option keys and value strings alive
     std::list<std::string> buffer;
@@ -305,7 +308,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
     }
-    session_options.AppendExecutionProvider("OpenVINO", ov_options);
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
@@ -341,11 +344,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
           ORT_THROW("Supported profiling_level: off, basic, detailed");
         }
-      } else if (key == "rpc_control_latency" || key == "vtcm_mb") {
+      } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
-                                                         "high_power_saver", "low_balanced", "low_power_saver",
+                                                         "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver",
                                                          "power_saver", "sustained_high_performance"};
         if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
           std::ostringstream str_stream;
@@ -370,10 +373,29 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
           ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
         }
+      } else if (key == "htp_arch") {
+        std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+        if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for htp_arch. select from: " + str);
+        }
+      } else if (key == "enable_htp_fp16_precision") {
+        std::unordered_set<std::string> supported_options = {"0", "1"};
+        if (supported_options.find(value) == supported_options.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_options.begin(), supported_options.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
-'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
+'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
+'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
       }
 
       qnn_options[key] = value;
@@ -455,7 +477,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
       } else if (key.empty()) {
       } else {
-        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
+        ORT_THROW(
+            "[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options "
+            "that are available for NNAPI. "
+            "['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
       }
     }
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
@@ -463,10 +488,31 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
+#ifdef __APPLE__
 #ifdef USE_COREML
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, 0));
+    uint32_t coreml_flags = 0;
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    std::istringstream ss(ov_string);
+
+    std::string key;
+    while (ss >> key) {
+      if (key == "COREML_FLAG_CREATE_MLPROGRAM") {
+        coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+        std::cout << "Enabling ML Program.\n";
+      } else if (key.empty()) {
+      } else {
+        ORT_THROW(
+            "[ERROR] [CoreML] wrong key type entered. Choose from the following runtime key options "
+            "that are available for CoreML. ['COREML_FLAG_CREATE_MLPROGRAM'] \n");
+      }
+    }
+    // COREML_FLAG_CREATE_MLPROGRAM
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, coreml_flags));
 #else
-    ORT_THROW("COREML is not supported in this build\n");
+    ORT_THROW("CoreML is not supported in this build\n");
+#endif
+#else
+    ORT_THROW("COREML is not supported on this platform.\n");
 #endif
   } else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
@@ -528,6 +574,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ORT_THROW(
               "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else if (key == "enable_graph_serialization") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          session_options.AddConfigEntry(kOrtSessionOptionsConfigEnableGraphSerialization, value.data());
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'enable_graph_serialization'. "
               "Select from 'true' or 'false' \n");
         }
       }
@@ -603,7 +658,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       std::string value(token.substr(pos + 1));
       vitisai_session_options[key] = value;
     }
-    session_options.AppendExecutionProvider("VitisAI", vitisai_session_options);
+    session_options.AppendExecutionProvider_VitisAI(vitisai_session_options);
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif
@@ -622,22 +677,41 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.DisableMemPattern();
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
 
+  // Set any extra session configuration entries provided by the user via command-line arguments.
+  //
+  // Some session config entries can also be set via dedicated command-line options.
+  // If the user uses multiple command-line options to set the same session config entry,
+  // we'll print a warning. Note that the dedicated command-line options will take precedence.
+  const auto& user_session_configs = performance_test_config.run_config.session_config_entries;
+  for (auto& it : user_session_configs) {
+    session_options.AddConfigEntry(it.first.c_str(), it.second.c_str());
+  }
+
+  auto warn_dup_config_entry = [&user_session_configs](const char* key) -> void {
+    if (user_session_configs.find(key) != user_session_configs.end()) {
+      fprintf(stderr, "[WARNING]: Trying to set session config entry '%s' via multiple command-line options\n", key);
+    }
+  };
+
   if (performance_test_config.run_config.intra_op_num_threads > 0) {
     fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
     session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
   }
 
   if (!performance_test_config.run_config.intra_op_thread_affinities.empty()) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpThreadAffinities);
     fprintf(stdout, "Setting intra op thread affinity as %s\n", performance_test_config.run_config.intra_op_thread_affinities.c_str());
     session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, performance_test_config.run_config.intra_op_thread_affinities.c_str());
   }
 
   if (performance_test_config.run_config.disable_spinning) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigAllowIntraOpSpinning);
     fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
   }
 
   if (performance_test_config.run_config.disable_spinning_between_run) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigForceSpinningStop);
     fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1");
   }
@@ -649,12 +723,16 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
-  if (!performance_test_config.run_config.profile_file.empty())
+  if (!performance_test_config.run_config.profile_file.empty()) {
     session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
-  if (!performance_test_config.run_config.optimized_model_path.empty())
+  }
+  if (!performance_test_config.run_config.optimized_model_path.empty()) {
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
-  if (performance_test_config.run_config.set_denormal_as_zero)
+  }
+  if (performance_test_config.run_config.set_denormal_as_zero) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigSetDenormalAsZero);
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  }
   if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
     for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
       if (g_ort->AddFreeDimensionOverrideByName(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {

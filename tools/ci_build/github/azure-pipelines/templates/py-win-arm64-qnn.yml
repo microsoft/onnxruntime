@@ -1,0 +1,165 @@
+parameters:
+
+- name: MACHINE_POOL
+  type: string
+  default: 'onnxruntime-qnn-windows-vs-2022-arm64'
+
+- name: QNN_SDK
+  displayName: QNN Windows SDK path
+  type: string
+  default: qnn-v2.18.0.240101_win
+
+- name: PYTHON_VERSION
+  type: string
+  default: '3.11'
+
+- name: NUMPY_VERSION
+  type: string
+  default: '1.25.2'
+
+- name: ENV_SETUP_SCRIPT
+  type: string
+  default: ''
+
+- name: BUILD_PY_PARAMETERS
+  displayName: >
+    Extra parameters to pass to build.py. Don't put newlines in here.
+  type: string
+  default: ''
+
+jobs:
+- job: Win_py_arm64_qnn_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}
+  timeoutInMinutes: 210
+  workspace:
+    clean: all
+  pool:
+    name: ${{ parameters.MACHINE_POOL }}
+  variables:
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+    VSGenerator: 'Visual Studio 17 2022'
+    QNN_SDK_ROOTDIR: 'C:\data\qnnsdk\${{parameters.QNN_SDK}}'
+  steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: telemetry-steps.yml
+
+      - script: |
+          DIR C:\data\qnnsdk
+        displayName: Check available QNN SDKs
+
+      - script: |
+          MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
+          XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
+          COPY NUL $(Agent.ToolsDirectory)\Python\3.11.0\arm64.complete
+          DIR $(Agent.ToolsDirectory)\Python
+          DIR $(Agent.ToolsDirectory)\Python\3.11.0
+          DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
+        displayName: Copy python 3.11.0 version to agent tools directory
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: ${{ parameters.PYTHON_VERSION }}
+          addToPath: true
+          architecture: 'arm64'
+
+      - task: onebranch.pipeline.tsaoptions@1
+        displayName: 'OneBranch TSAOptions'
+        inputs:
+          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
+          appendSourceBranchName: false
+
+      - task: PythonScript@0
+        inputs:
+          scriptSource: inline
+          script: |
+            import subprocess
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', 'numpy==${{parameters.NUMPY_VERSION}}'])
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Install python modules'
+
+      - template: set-nightly-build-option-variable-step.yml
+
+      - task: PythonScript@0
+        displayName: 'Generate cmake config'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: >
+            --config RelWithDebInfo
+            --build_dir $(Build.BinariesDirectory)
+            --skip_submodule_sync
+            --cmake_generator "$(VSGenerator)"
+            --use_qnn
+            --qnn_home $(QNN_SDK_ROOTDIR)
+            --enable_pybind
+            --parallel --update
+            --numpy_version ${{ parameters.NUMPY_VERSION }}
+            $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      - task: VSBuild@1
+        displayName: 'Build'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+          platform: 'arm64'
+          configuration: RelWithDebInfo
+          msbuildArchitecture: 'arm64'
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          createLogFile: true
+
+      # Esrp signing
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: true
+          Pattern: '*.pyd,*.dll'
+
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=qnn'
+          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+          Contents: '*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime_qnn
+
+      - script: |
+          7z x *.whl
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'unzip the package'
+
+      - task: CredScan@3
+        displayName: 'Run CredScan'
+        inputs:
+          debugMode: false
+        continueOnError: true
+
+      - task: BinSkim@4
+        displayName: 'Run BinSkim'
+        inputs:
+          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll'
+
+      - task: TSAUpload@2
+        displayName: 'TSA upload'
+        condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        inputs:
+          GdnPublishTsaOnboard: false
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'

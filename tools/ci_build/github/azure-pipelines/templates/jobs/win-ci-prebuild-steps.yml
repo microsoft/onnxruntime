@@ -30,6 +30,41 @@ steps:
     addToPath: true
     architecture: ${{parameters.BuildArch}}
 
+- ${{ if eq(parameters.BuildArch, 'x64') }}:
+  - script: |
+      @echo off
+      set vswherepath="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+      for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationPath`) do (
+        if exist "%%i\VC\Auxiliary\Build\vcvars64.bat" (
+          set vcvarsall="%%i\VC\Auxiliary\Build\vcvars64.bat"
+        )
+      )
+
+      @echo %vcvarsall% will be used as the VC compiler
+      @echo ##vso[task.setvariable variable=vcvarsall]%vcvarsall%
+    displayName: 'locate vcvarsall via vswhere'
+
+- ${{ if eq(parameters.BuildArch, 'x86') }}:
+  - script: |
+      @echo off
+      set vswherepath="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+      for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationPath`) do (
+        if exist "%%i\VC\Auxiliary\Build\vcvars32.bat" (
+          set vcvarsall="%%i\VC\Auxiliary\Build\vcvars32.bat"
+        )
+      )
+
+      @echo %vcvarsall% will be used as the VC compiler
+      @echo ##vso[task.setvariable variable=vcvarsall]%vcvarsall%
+    displayName: 'locate vcvarsall via vswhere'
+
+- task: BatchScript@1
+  displayName: 'Setup VC env'
+  inputs:
+    filename: '$(vcvarsall)'
+    modifyEnvironment: true
+    workingFolder: '$(Build.BinariesDirectory)'
+
 - script: |
     python -m pip install --upgrade "setuptools>=68.2.2" wheel numpy flatbuffers
   workingDirectory: '$(Build.BinariesDirectory)'
@@ -58,8 +93,17 @@ steps:
         $ccache_parent_dir = (Split-Path -parent $ccache_path)
         Copy-Item "C:\ProgramData\chocolatey\lib\ccache\tools\ccache-4.7.4-windows-x86_64\ccache.exe" -Destination "C:\ProgramData\chocolatey\bin\cl.exe"
         Get-ChildItem $ccache_parent_dir
-        ccache --version
       }
+
+      "ccache info:"
+      ccache --version
+      ccache --show-config
+
+      "cl.exe from path: $((Get-Command cl).Path). Version:"
+      (cl.exe -?) -match 'Compiler Version'
+      "C:\ProgramData\chocolatey\bin\cl.exe version:"
+      (C:\ProgramData\chocolatey\bin\cl.exe -?) -match 'Compiler Version'
+
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
   - ${{ if eq(parameters.WITHCACHE, true) }}:

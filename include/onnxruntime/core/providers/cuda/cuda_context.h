@@ -16,9 +16,10 @@
 #include "core/providers/custom_op_context.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
+#ifndef USE_CUDA_MINIMAL
 #include <cublas_v2.h>
 #include <cudnn.h>
-
+#endif
 namespace Ort {
 
 namespace Custom {
@@ -28,38 +29,47 @@ struct CudaContext : public CustomOpContext {
   cudnnHandle_t cudnn_handle = {};
   cublasHandle_t cublas_handle = {};
   OrtAllocator* deferred_cpu_allocator = {};
+  // below are cuda ep options
+  int16_t device_id = 0;
+  int32_t arena_extend_strategy = 0;
+  int32_t cudnn_conv_algo_search = 0;
+  bool cudnn_conv_use_max_workspace = true;
+  bool cudnn_conv1d_pad_to_nc1d = false;
+  bool enable_skip_layer_norm_strict_mode = false;
+  bool prefer_nhwc = false;
+  bool use_tf32 = true;
 
   void Init(const OrtKernelContext& kernel_ctx) {
+    cuda_stream = FetchResource<cudaStream_t>(kernel_ctx, CudaResource::cuda_stream_t);
+    cudnn_handle = FetchResource<cudnnHandle_t>(kernel_ctx, CudaResource::cudnn_handle_t);
+    cublas_handle = FetchResource<cublasHandle_t>(kernel_ctx, CudaResource::cublas_handle_t);
+    deferred_cpu_allocator = FetchResource<OrtAllocator*>(kernel_ctx, CudaResource::deferred_cpu_allocator_t);
+
+    device_id = FetchResource<int16_t>(kernel_ctx, CudaResource::device_id_t);
+    arena_extend_strategy = FetchResource<int32_t>(kernel_ctx, CudaResource::arena_extend_strategy_t);
+    cudnn_conv_algo_search = FetchResource<int32_t>(kernel_ctx, CudaResource::cudnn_conv_algo_search_t);
+    cudnn_conv_use_max_workspace = FetchResource<bool>(kernel_ctx, CudaResource::cudnn_conv_use_max_workspace_t);
+
+    cudnn_conv1d_pad_to_nc1d = FetchResource<bool>(kernel_ctx, CudaResource::cudnn_conv1d_pad_to_nc1d_t);
+    enable_skip_layer_norm_strict_mode = FetchResource<bool>(kernel_ctx, CudaResource::enable_skip_layer_norm_strict_mode_t);
+    prefer_nhwc = FetchResource<bool>(kernel_ctx, CudaResource::prefer_nhwc_t);
+    use_tf32 = FetchResource<bool>(kernel_ctx, CudaResource::use_tf32_t);
+  }
+
+  template <typename T>
+  T FetchResource(const OrtKernelContext& kernel_ctx, CudaResource resource_type) {
+    if constexpr (sizeof(T) > sizeof(void*)) {
+      ORT_CXX_API_THROW("void* is not large enough to hold resource type: " + std::to_string(resource_type), OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
-    OrtStatus* status = nullptr;
-
-    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::cuda_stream_t, &resource);
+    OrtStatus* status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, resource_type, &resource);
     if (status) {
-      ORT_CXX_API_THROW("failed to fetch cuda stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("Failed to fetch cuda ep resource, resouce type: " + std::to_string(resource_type), OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
-    cuda_stream = reinterpret_cast<cudaStream_t>(resource);
-
-    resource = {};
-    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::cudnn_handle_t, &resource);
-    if (status) {
-      ORT_CXX_API_THROW("failed to fetch cudnn handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
-    }
-    cudnn_handle = reinterpret_cast<cudnnHandle_t>(resource);
-
-    resource = {};
-    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::cublas_handle_t, &resource);
-    if (status) {
-      ORT_CXX_API_THROW("failed to fetch cublas handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
-    }
-    cublas_handle = reinterpret_cast<cublasHandle_t>(resource);
-
-    resource = {};
-    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::deferred_cpu_allocator_t, &resource);
-    if (status) {
-      ORT_CXX_API_THROW("failed to fetch deferred cpu allocator", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
-    }
-    deferred_cpu_allocator = reinterpret_cast<OrtAllocator*>(resource);
+    T t = {};
+    memcpy(&t, &resource, sizeof(T));
+    return t;
   }
 
   void* AllocDeferredCpuMem(size_t size) const {

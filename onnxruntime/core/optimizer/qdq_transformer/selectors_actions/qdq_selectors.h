@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#include "core/framework/node_unit.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
 namespace onnxruntime {
@@ -12,13 +13,6 @@ class Graph;
 class Node;
 
 namespace QDQ {
-
-// Struct to represent a DQ->Op->Q node group
-struct NodeGroup {
-  std::vector<NodeIndex> dq_nodes;
-  std::vector<NodeIndex> q_nodes;
-  NodeIndex target_node;
-};
 
 class NodeGroupSelector {
  public:
@@ -337,9 +331,10 @@ class WhereSelector : public BaseSelector {
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
  public:
-  MatMulSelector(bool int8_allowed, bool allow_16bit = false)
+  MatMulSelector(gsl::span<const char*> compatible_providers, bool int8_allowed, bool allow_16bit = false)
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
-                                                               allow_16bit)) {}
+                                                               allow_16bit),
+                     compatible_providers) {}
 };
 
 // Input: DQ nodes for A, B and optional C

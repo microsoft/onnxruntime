@@ -8,6 +8,9 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
+#if defined(ENABLE_CUDA_NHWC_OPS)
+#include <core/providers/cuda/cuda_provider_options.h>
+#endif
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/session_options.h"
 
@@ -118,6 +121,19 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   return nullptr;
 }
 
+#ifdef ENABLE_CUDA_NHWC_OPS
+std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
+#if defined(USE_CUDA)
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.prefer_nhwc = true;
+  if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+#endif
+
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
 #ifdef USE_CUDA
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
@@ -207,15 +223,21 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
-// For any non - macOS system, CoreML will only be used for ort model converter
-// Make it unavailable here, you can still manually append CoreML EP to session for model conversion
+std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
+  // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
+  // The test will create a model but execution of it will obviously fail.
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+
+  if (use_mlprogram) {
+    coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+  }
+
   return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;
 #endif
 }

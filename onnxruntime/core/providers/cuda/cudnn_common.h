@@ -7,7 +7,7 @@
 #include <cfloat>
 
 #include "core/providers/cuda/cuda_common.h"
-
+#ifndef USE_CUDA_MINIMAL
 namespace onnxruntime {
 namespace cuda {
 
@@ -24,12 +24,12 @@ class CudnnTensor final {
 
   operator cudnnTensorDescriptor_t() const { return tensor_; }
 
+  Status CreateTensorIfNeeded();
+
   template <typename T>
   static cudnnDataType_t GetDataType();
 
  private:
-  Status CreateTensorIfNeeded();
-
   cudnnTensorDescriptor_t tensor_;
 };
 
@@ -260,3 +260,4 @@ SetPoolingNdDescriptorHelper(cudnnPoolingDescriptor_t poolingDesc,
 
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

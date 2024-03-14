@@ -121,7 +121,11 @@ async function buildOrt({
           case 'node:fs/promises':
           case 'node:fs':
           case 'fs':
-            return {contents: 'export const readFile = undefined;'};
+            return {
+              contents: 'export const readFile = undefined;' +
+                  'export const readFileSync = undefined;' +
+                  'export const createReadStream = undefined;'
+            };
           case 'node:os':
           case 'os':
             return {contents: 'export const cpus = undefined;'};
@@ -367,10 +371,7 @@ async function main() {
 
   if (BUNDLE_MODE === 'dev') {
     // ort.all.js
-    await addBuildTask(buildOrt({
-      outputBundleName: 'ort.all',
-      format: 'iife',
-    }));
+    await addBuildTask(buildOrt({outputBundleName: 'ort.all', format: 'iife', define: {...DEFAULT_DEFINE}}));
   }
 
   if (BUNDLE_MODE === 'perf') {
@@ -404,7 +405,11 @@ async function main() {
     // ort.webgl[.min].js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.webgl',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WASM': 'true'},
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+        'BUILD_DEFS.DISABLE_WASM': 'true',
+      },
     });
     // ort.wasm-core[.min].js
     await addAllWebBuildTasks({

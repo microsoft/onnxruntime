@@ -29,7 +29,8 @@ class CudnnConvolutionDescriptor final {
              const gsl::span<const int64_t>& dilations,
              int groups,
              cudnnConvolutionMode_t mode,
-             cudnnDataType_t data_type);
+             cudnnDataType_t data_type,
+             bool use_tf32);
 
   operator cudnnConvolutionDescriptor_t() const { return desc_; }
 
@@ -194,7 +195,7 @@ class Conv : public CudaKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) override;
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
   Status ComputeInternal(OpKernelContext* context) const override;
 

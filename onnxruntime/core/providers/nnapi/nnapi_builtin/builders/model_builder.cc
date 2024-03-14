@@ -11,17 +11,19 @@
 #include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/node_unit.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
-#include "core/providers/shared/node_unit/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
-#include "core/optimizer/initializer.h"
+#include "core/providers/shared/utils/utils.h"
 
 using namespace android::nn::wrapper;
 
@@ -100,7 +102,7 @@ void ModelBuilder::PreprocessActivations() {
       activation_node_units_.emplace(node_unit.get(), ANEURALNETWORKS_FUSED_RELU);
     } else if (op_type == "Clip") {  // Relu1 or Relu6
       float min, max;
-      if (!GetClipMinMax(GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger()))
+      if (!GetClipMinMax(graph_viewer_, node, min, max, logging::LoggingManager::DefaultLogger()))
         continue;
 
       if (min == -1.0f && max == 1.0f) {
@@ -119,7 +121,7 @@ const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
-  std::tie(node_unit_holder_, node_unit_map_) = GetAllNodeUnits(graph_viewer_);
+  std::tie(node_unit_holder_, node_unit_map_) = QDQ::GetAllNodeUnits(graph_viewer_);
 }
 
 // Help to get all quantized operators' input and the NodeUnit(s) using the input
@@ -151,7 +153,7 @@ void ModelBuilder::GetAllQuantizedOpInputs() {
 }
 
 static Status GetInputDataType(
-    const InitializedTensorSet& initializers,
+    const GraphViewer& graph_viewer,
     const std::unordered_map<std::string, std::vector<const NodeUnit*>>& all_quantized_op_inputs,
     const std::string& name, int32_t data_type, const Shape& shape,
     OperandType& operand_type) {
@@ -177,7 +179,7 @@ static Status GetInputDataType(
       // TODO, verify the scale and zero point match if there are multiple op using same input
       const auto* node_unit = all_quantized_op_inputs.at(name)[0];
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
+          graph_viewer, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
@@ -226,9 +228,8 @@ Status ModelBuilder::RegisterInitializers() {
     }
 
     OperandType operand_type(Type::TENSOR_FLOAT32, shape);
-    ORT_RETURN_IF_ERROR(
-        GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_,
-                         name, tensor.data_type(), shape, operand_type));
+    ORT_RETURN_IF_ERROR(GetInputDataType(graph_viewer_, all_quantized_op_inputs_, name, tensor.data_type(), shape,
+                                         operand_type));
     shaper_.AddShape(name, operand_type.dimensions);
 
     uint32_t index = 0;
@@ -304,7 +305,7 @@ Status ModelBuilder::RegisterModelInputs() {
                              "The input of graph doesn't have elem_type: ", input_name);
     } else {
       ORT_RETURN_IF_ERROR(
-          GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_,
+          GetInputDataType(graph_viewer_, all_quantized_op_inputs_,
                            input_name, type_proto->tensor_type().elem_type(), shape, operand_type));
     }
 
@@ -665,7 +666,7 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
 
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   bool fuse_code_assigned_from_activation = false;
-  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
+  for (auto it = node_unit.OutputEdgesBegin(), end = node_unit.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
 

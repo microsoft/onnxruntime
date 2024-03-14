@@ -9,7 +9,7 @@
 #include "core/common/gsl.h"
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
-
+#ifndef USE_CUDA_MINIMAL
 namespace onnxruntime {
 namespace cuda {
 
@@ -160,7 +160,6 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
   ORT_THROW("cuDNN doesn't support BFloat16.");
-  return CUDNN_DATA_FLOAT;
 }
 
 template <>
@@ -222,3 +221,4 @@ const Float8E5M2 Consts<Float8E5M2>::One = Float8E5M2(1.0f, true);
 
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

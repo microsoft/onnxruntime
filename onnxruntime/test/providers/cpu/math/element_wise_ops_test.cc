@@ -5,6 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/common/dnnl_op_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <math.h>
@@ -786,11 +787,18 @@ TEST(MathOpTest, Sqrt_Float) {
   test.Run();
 }
 
-#if defined(USE_DNNL)
+#if defined(USE_DNNL) || defined(USE_CUDA)
 TEST(MathOpTest, Sqrt_bfloat16) {
 #ifdef USE_DNNL
   if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BFP16";
     return;
   }
 #endif
@@ -804,6 +812,9 @@ TEST(MathOpTest, Sqrt_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
 #endif
   test_bf16.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }

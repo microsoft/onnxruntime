@@ -190,9 +190,11 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
 
     ort_inputs = {
         onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target))
-        if target_type is None
-        else _to_numpy(copy.deepcopy(target).type(target_type)),
+        onnx_model.graph.input[1].name: (
+            _to_numpy(copy.deepcopy(target))
+            if target_type is None
+            else _to_numpy(copy.deepcopy(target).type(target_type))
+        ),
     }
     if target_type is not None:
         ort_inputs[onnx_model.graph.input[1].name]
@@ -1017,3 +1019,56 @@ def test_save_ort_format():
             raise AssertionError(f"Opsets mismatch {base_opsets['']} != {eval_opsets['']}.")
         if base_opsets[""] != optimizer_opsets[""]:
             raise AssertionError(f"Opsets mismatch {base_opsets['']} != {optimizer_opsets['']}.")
+
+
+def test_custom_loss_function():
+    # This test tries to add a custom loss function to the model.
+    # The custom loss function tries to use two model outputs of two different ranks, computes the
+    # two losses and returns the sum of the two losses.
+    # If the artifacts are generated successfully, without an exception being raised, the test passes.
+    class ModelWithTwoOutputs(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.a = torch.randn(20, 100, 35, 45)
+            self.b = torch.randn(40, 100, 70)
+
+        def forward(self, x, y):
+            return self.a + x, self.b + y
+
+    class CustomLossBlock(onnxblock.Block):
+        def __init__(self):
+            self._loss1 = onnxblock.loss.MSELoss()
+            self._loss2 = onnxblock.loss.BCEWithLogitsLoss()
+            self._add = onnxblock.blocks.Add()
+
+        def build(self, input1, input2):
+            return self._add(self._loss1(input1, target_name="target1"), self._loss2(input2, target_name="target2"))
+
+    model = ModelWithTwoOutputs()
+    onnx_model = _get_onnx_model(model, (torch.randn(20, 100, 35, 45), torch.randn(40, 100, 70)))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(onnx_model, loss=CustomLossBlock(), artifact_directory=temp_dir)
+
+
+def test_save_nominal_checkpoint():
+    device = "cpu"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(
+            base_model,
+            requires_grad=["fc1.weight", "fc1.bias", "fc2.weight", "fc2.bias"],
+            loss=artifacts.LossType.CrossEntropyLoss,
+            optimizer=artifacts.OptimType.AdamW,
+            artifact_directory=temp_dir,
+            nominal_checkpoint=True,
+        )
+
+        assert os.path.exists(os.path.join(temp_dir, "checkpoint"))
+        assert os.path.exists(os.path.join(temp_dir, "nominal_checkpoint"))
+        assert (
+            os.stat(os.path.join(temp_dir, "checkpoint")).st_size
+            > os.stat(os.path.join(temp_dir, "nominal_checkpoint")).st_size
+        )

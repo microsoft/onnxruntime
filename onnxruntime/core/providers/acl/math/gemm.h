@@ -49,11 +49,18 @@ class Gemm : public onnxruntime::Gemm<T> {
   }
 
   Status Compute(OpKernelContext* context) const override {
+#ifdef ACL_2308
+    if (this->packed_b_) {
+      // Prepacked RHS not supported, defaulting to cpu execution provider
+      return onnxruntime::Gemm<T>::Compute(context);
+    }
+#endif
     const auto A = context->Input<Tensor>(0);
     const auto B = context->Input<Tensor>(1);
     const auto C = context->Input<Tensor>(2);
 
-    GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans, C->Shape());
+    GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans,
+                      C != nullptr ? C->Shape() : TensorShape({}));
 
     if (!helper.State().IsOK())
       return helper.State();
@@ -70,7 +77,7 @@ class Gemm : public onnxruntime::Gemm<T> {
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
-    arm_compute::TensorShape cShape = ACLTensorShape(C->Shape());
+    arm_compute::TensorShape cShape = ACLTensorShape(C != nullptr ? C->Shape() : TensorShape({}));
     if (useC &&
         (cShape.num_dimensions() > 2 ||
          (cShape.num_dimensions() == 2 && cShape[0] > 1 && cShape[1] > 1))) {  // Multi-dimensional Bias
@@ -89,8 +96,13 @@ class Gemm : public onnxruntime::Gemm<T> {
           (cShape[1] == 1 && cShape[0] != (long unsigned int)N)) {
         return onnxruntime::Gemm<T>::Compute(context);
       }
+#ifdef ACL_2308
+      cShape = arm_compute::TensorShape(N);
+      LOGS_DEFAULT(VERBOSE) << "Bias reshaped to: {" << N << "}";
+#else
       cShape = arm_compute::TensorShape(1, N);
       LOGS_DEFAULT(VERBOSE) << "Bias reshaped to: {1," << N << "}";
+#endif
     }
 
     int64_t K = helper.K();
