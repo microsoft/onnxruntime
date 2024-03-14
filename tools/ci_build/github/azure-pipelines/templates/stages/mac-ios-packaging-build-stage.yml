@@ -16,7 +16,7 @@ stages:
     displayName: "Build iOS package for variant: ${{ parameters.packageVariant}}"
 
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-latest"
 
     variables:
       xcodeVersion: "14.3"
