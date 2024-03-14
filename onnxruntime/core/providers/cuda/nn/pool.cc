@@ -179,7 +179,7 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
       // The second dim of x_dims is channel(C).
       // Put the remaining part in kernel_shape
       kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
-      pads.assign(kernel_shape.size(), 0);
+      pads.assign(kernel_shape.size() * 2, 0);
       strides.assign(kernel_shape.size(), 1);
     }
   }

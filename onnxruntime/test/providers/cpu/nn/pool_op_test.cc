@@ -202,6 +202,19 @@ TEST(PoolTest, MaxPool1D_wrong_kernel_shape) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Attribute kernel_shape has incorrect size", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
 }
 
+TEST(PoolTest, MaxPool1D_global_pooling) {
+  OpTester test("GlobalMaxPool");
+
+  std::vector<float> x_vals = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<int64_t> x_dims = {1, 2, 4};
+  std::vector<int64_t> expected_dims = {1, 2, 1};
+  std::vector<float> expected_vals = {4, 8};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+}
+
 TEST(PoolTest, MaxPool1D_case1) {
   OpTester test("MaxPool");
 
