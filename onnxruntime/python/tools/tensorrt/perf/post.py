@@ -516,7 +516,6 @@ def main():
 
         # Load concurrency test results
         result_mem_test_path = os.path.join(result_file, "result_mem_test")
-        folders = os.listdir(result_mem_test_path)
         os.chdir(result_mem_test_path)
         log_path = "concurrency_test.log"
         if os.path.exists(log_path):
