@@ -57,18 +57,28 @@ parameters:
   type: string
   default: '0'
 
+- name: PythonVersionList
+  displayName: Python Version List
+  type: object
+  default:
+    - '3.8'
+    - '3.9'
+    - '3.10'
+    - '3.11'
+
 stages:
-- template: py-packaging-training-cuda-stage-steps.yml
-  parameters:
-    build_py_parameters: ${{ parameters.build_py_parameters }}
-    torch_version: ${{ parameters.torch_version }}
-    opset_version: ${{ parameters.opset_version }}
-    cuda_version: ${{ parameters.cuda_version }}
-    cmake_cuda_architectures: ${{ parameters.cmake_cuda_architectures }}
-    docker_file: ${{ parameters.docker_file }}
-    upload_wheel: ${{ parameters.upload_wheel }}
-    debug_build: ${{ parameters.debug_build }}
-    stage_name: 'Linux_py_Training_Cuda_Wheels_python38'
-    python_version: '3.8'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
+- ${{ each python_version in parameters.PythonVersionList }}:
+  - template: py-packaging-training-cuda-stage-steps.yml
+    parameters:
+      build_py_parameters: ${{ parameters.build_py_parameters }}
+      torch_version: ${{ parameters.torch_version }}
+      opset_version: ${{ parameters.opset_version }}
+      cuda_version: ${{ parameters.cuda_version }}
+      cmake_cuda_architectures: ${{ parameters.cmake_cuda_architectures }}
+      docker_file: ${{ parameters.docker_file }}
+      upload_wheel: ${{ parameters.upload_wheel }}
+      debug_build: ${{ parameters.debug_build }}
+      stage_name: 'Linux_py_Training_Cuda_Wheels_python38'
+      python_version: ${{ python_version }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
