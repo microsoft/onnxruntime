@@ -20,7 +20,7 @@ Accelerate ONNX models on Intel CPUs, GPUs with Intel OpenVINO™ Execution Prov
 ## Install
 
 Pre-built packages and Docker images are published for OpenVINO™ Execution Provider for ONNX Runtime by Intel for each release.
-* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.1 Release](https://github.com/intel/onnxruntime/releases)
+* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.2 Release](https://github.com/intel/onnxruntime/releases)
 * Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/)
 * Docker image: [openvino/onnxruntime_ep_ubuntu20](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu20)
 
@@ -30,6 +30,8 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three lastest rel
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---|
+|1.17.1|2023.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.2)|
+|1.17.1|2023.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.2)|
 |1.16.0|2023.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.1)|
 |1.15.0|2023.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.0.0)|
 |1.14.0|2022.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.3)|
@@ -94,7 +96,7 @@ Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtim
 
 ### Model caching
 
-OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html).
+OpenVINO™ supports [model caching](https://docs.openvino.ai/2024/openvino-workflow/running-inference/optimize-inference/optimizing-latency/model-caching-overview.html).
 
 From OpenVINO™ 2023.1 version, model caching feature is supported on CPU, GPU along with kernel caching on iGPU, dGPU.
 

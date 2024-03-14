@@ -303,6 +303,13 @@
 	];
 	let blogsCommunity = [
 		{
+			title: 'Efficient image generation with Stable Diffusion models and ONNX Runtime using AMD GPUs',
+			date: 'February 23, 2024',
+			link: 'https://rocm.blogs.amd.com/artificial-intelligence/stable-diffusion-onnx-runtime/README.html',
+			blurb:
+				'Use pre-trained Stable Diffusion models to generate images from text (text-to-image), transform existing visuals (image-to-image), and restore damaged pictures (inpainting) on AMD GPUs using ONNX Runtime.'
+		},
+		{
 			title: 'AMD expands its AI and ML development tools with ROCm 6.0',
 			date: 'February 15, 2024',
 			link: 'https://overclock3d.net/news/software/amd-expands-its-ai-and-machine-learning-development-tools-with-rocm-6-0-with-expanded-gpu-support/',
