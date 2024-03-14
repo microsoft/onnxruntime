@@ -89,7 +89,7 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   auto tensor_V = ctx->Output(0, output_shape);
   auto tensor_I = ctx->Output(1, output_shape);
 
-  if (0 == K_) {
+  if (output_shape.Size() == 0) {
     return Status::OK();
   }
 
