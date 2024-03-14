@@ -53,7 +53,7 @@ prompt = '''def print_prime(n):
     Print all primes between 1 and n
     """'''
 
-model=og.Model(f'example-models/phi2-int4-cpu', og.DeviceType.CPU)
+model=og.Model(f'example-models/phi2-int4-cpu')
 
 tokenizer = model.create_tokenizer()
 

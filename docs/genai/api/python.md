@@ -35,7 +35,7 @@ import onnxruntime_genai
 Loads the ONNX model(s) and configuration from a folder on disk.
 
 ```python
-onnxruntime_genai.Model(model_folder: str, device: onnxruntime_genai.DeviceType) -> onnxruntime_genai.Model
+onnxruntime_genai.Model(model_folder: str) -> onnxruntime_genai.Model
 ```
 
 #### Parameters

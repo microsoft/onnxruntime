@@ -27,14 +27,13 @@ Creates a model from the given configuration directory and device type.
 
 #### Parameters
  * Input: config_path The path to the model configuration directory. The path is expected to be encoded in UTF-8.
- * Input: device_type The device type to use for the model.
  * Output:  out The created model.
 
 #### Returns
  `OgaResult` containing the error message if the model creation failed.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateModel(const char* config_path, OgaDeviceType device_type, OgaModel** out);
+OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateModel(const char* config_path, OgaModel** out);
 ```
 
 ### Destroy model
@@ -400,14 +399,6 @@ OGA_EXPORT const int32_t* OGA_API_CALL OgaGenerator_GetSequence(const OgaGenerat
 ```
 
 ## Enums and structs
-
-```c
-typedef enum OgaDeviceType {
-  OgaDeviceTypeAuto,
-  OgaDeviceTypeCPU,
-  OgaDeviceTypeCUDA,
-} OgaDeviceType;
-```
 
 ```c
 typedef enum OgaDataType {

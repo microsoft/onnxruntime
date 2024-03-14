@@ -23,7 +23,7 @@ _Note: this API is in preview and is subject to change._
 ### Constructor
 
 ```csharp
-public Model(string modelPath, DeviceType deviceType)
+public Model(string modelPath)
 ```
 
 ### Generate method

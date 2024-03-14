@@ -86,6 +86,18 @@ python3 builder.py -m model_name -o path_to_output_folder -p precision -e execut
 ```
 To see all available options through `--extra_options`, please use the `help` commands in the `Full Usage` section above.
 
+### Config Only
+This scenario is for when you already have your optimized and/or quantized ONNX model and you need to create the config files to run with ONNX Runtime GenAI.
+```
+# From wheel:
+python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_for_hf_files --extra_options config_only=true
+
+# From source:
+python3 builder.py -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_for_hf_files --extra_options config_only=true
+```
+
+Afterwards, please open the `genai_config.json` file in the output folder and modify the fields as needed for your model. You should store your ONNX model in the output folder as well.
+
 ### Unit Testing Models
 This scenario is where your PyTorch model is already downloaded locally (either in the default Hugging Face cache directory or in a local folder on disk). If it is not already downloaded locally, here is an example of how you can download it.
 
