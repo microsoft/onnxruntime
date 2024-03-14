@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUTLASS
-
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
@@ -71,7 +69,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
                                   fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
-                                  fc3_experts_bias_optional, false));
+                                  fc3_experts_bias_optional));
 
   ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0,
                     "num_experts should be divisible by world_size");
@@ -216,5 +214,3 @@ Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator,
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif
