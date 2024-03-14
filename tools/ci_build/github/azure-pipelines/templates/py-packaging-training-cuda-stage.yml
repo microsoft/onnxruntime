@@ -65,6 +65,10 @@ parameters:
       version: '3.8'
     - name: '39'
       version: '3.9'
+    - name: '310'
+      version: '3.10'
+    - name: '311'
+      version: '3.11'
 
 stages:
 - ${{ each python_version in parameters.PythonVersionList }}:
