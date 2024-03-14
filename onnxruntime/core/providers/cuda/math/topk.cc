@@ -67,7 +67,7 @@ TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
                                 static_cast<int64_t*>(tensor_I->MutableDataRaw()), \
                                 elem_nums_cuda,                                    \
                                 elem_nums.size(),                                  \
-                                axis, K_, largest_, sorted_, N, dimension)
+                                axis, k_value, largest_, sorted_, N, dimension)
 
 template <bool inputk>
 Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
