@@ -95,6 +95,7 @@ set(contrib_ops_excluded_files
   "bert/group_query_attention_impl.h"
   "bert/group_query_attention_impl.cu"
   "collective/distributed_*"
+  "collective/nccl_kernels.cc"
   "collective/shard*"
 )
 
