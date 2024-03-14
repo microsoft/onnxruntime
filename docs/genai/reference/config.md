@@ -136,7 +136,7 @@ Then for each model in the pipeline there is one section, named by the model.
 
 * **_early_stopping_**:  Whether to stop the beam search when at least num_beams sentences are finished per batch or not. Defaults to false.
 
-* **_num_sequences_**: The number of sequences to generate. Returns the sequences with the highest scores in order.
+* **_num_return_sequences_**: The number of sequences to generate. Returns the sequences with the highest scores in order.
 
 * **_top_k_**: Only includes tokens that do fall within the list of the `K` most probable tokens. Range is 1 to the vocabulary size.
 
