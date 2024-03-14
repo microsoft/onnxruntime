@@ -151,8 +151,8 @@ stages:
         - script: |
             set -e -x
             whlfilename=$(ls $(Build.ArtifactStagingDirectory)/Release/dist/*.whl | head -n 1)  && \
-            echo $whlfilename && du -sh $whlfilename &&\
-            (( $(wc -c < "$whlfilename") -  200*1024*1024 < 0 )) ||  (exit 1) && \
+            echo $whlfilename ; du -sh $whlfilename \
+            (( $(wc -c < "$whlfilename") -  200*1024*1024 < 0 )) ||  ( echo 'Wheel size bigger than 300M'; exit 1)
           displayName: 'Check wheel size'
           continueOnError: true
 
