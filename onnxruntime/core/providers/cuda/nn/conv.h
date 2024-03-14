@@ -7,6 +7,10 @@
 #include <list>
 #include <memory>
 
+#if !defined(__CUDACC__)
+#include <cudnn_frontend.h>
+#endif
+
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
@@ -150,6 +154,21 @@ struct CudnnConvState {
   CudnnTensor z_tensor;
   const void* z_data = nullptr;
   CudnnConvolutionDescriptor conv_desc;
+  bool bias_fused = true;
+
+#if !defined(__CUDACC__)
+  std::unique_ptr<cudnn_frontend::graph::Graph> cudnn_fe_graph;
+  std::unique_ptr<cudnn_frontend::graph::Graph> cudnn_fe_bias_graph;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_X;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_W;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_Y;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_bias_X;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_bias_Y;
+  std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_B;
+
+  std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack;
+  std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack_bias;
+#endif
 
   struct PerfResultParams {
     decltype(AlgoPerfType().algo) algo;
@@ -205,6 +224,15 @@ class Conv : public CudaKernel {
   }
 
   Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
+
+#if !defined(__CUDACC__)
+  Status CreateCudnnFeExecutionPlan(
+      const Tensor* X, const Tensor* W, const Tensor* B,
+      const TensorShapeVector& y_dims, cudnnContext* handle, const cudnn_frontend::HeurMode_t heur_mode,
+      const std::vector<int64_t>& pads, const std::vector<int64_t>& strides, const std::vector<int64_t>& dilations,
+      const bool bias_expected, const bool fuse_bias) const;
+#endif
+
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
