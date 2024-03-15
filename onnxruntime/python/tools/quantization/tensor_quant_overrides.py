@@ -16,6 +16,7 @@ class TensorQuantOverridesHelper(MutableMapping):
     """
     Utility wrapper over the tensor quantization overrides passed via extra_options.
     """
+
     def __init__(self, raw_overrides: dict[str, list[dict[str, Any]]]):
         self.overrides = raw_overrides
         self.quant_types = None
@@ -214,4 +215,3 @@ class TensorQuantOverridesHelper(MutableMapping):
 
     def __repr__(self) -> str:
         return f"{super().__repr__()}, TensorQuantOverridesHelper({self.overrides})"
-
