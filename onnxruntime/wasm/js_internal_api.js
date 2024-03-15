@@ -4,39 +4,27 @@
 'use strict';
 
 /**
- * Mount external data files of a model to the virtual file system (MEMFS).
+ * Mount external data files of a model to an internal map, which will be used during session initialization.
  *
  * @param {string} externalDataFilesPath
  * @param {Uint8Array} externalDataFilesData
  */
 Module['mountExternalData'] = (externalDataFilePath, externalDataFileData) => {
   const files = Module.MountedFiles || (Module.MountedFiles = new Map());
-    files.set(externalDataFilePath, externalDataFileData);
+  files.set(externalDataFilePath, externalDataFileData);
 };
 
 /**
- * Unmount external data files of a model from the virtual file system (MEMFS).
+ * Unmount external data files of a model.
  */
 Module['unmountExternalData'] = () => {
   delete Module.MountedFiles;
 };
 
 /**
- * init JSEP
+ * initialize JSEP for asyncify support.
  */
-Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, releaseKernel, runKernel, captureBegin, captureEnd, replay) => {
-  Module.jsepBackend = backend;
-  Module.jsepAlloc = alloc;
-  Module.jsepFree = free;
-  Module.jsepCopy = copy;
-  Module.jsepCopyAsync = copyAsync;
-  Module.jsepCreateKernel = createKernel;
-  Module.jsepReleaseKernel = releaseKernel;
-  Module.jsepRunKernel = runKernel;
-  Module.jsepCaptureBegin = captureBegin;
-  Module.jsepCaptureEnd = captureEnd;
-  Module.jsepReplay = replay;
-
+let jsepInitAsync = () => {
   // This is a simplified version of cwrap() with options.async === true (-sASYNCIFY=1)
   // It removes some overhead in cwarp() and ccall() that we don't need.
   //
@@ -143,7 +131,7 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
         }
 
         // Flush the backend. This will submit all pending commands to the GPU.
-        backend['flush']();
+        Module.jsepBackend?.['flush']();
 
         // Await all pending promises. This includes GPU validation promises for diagnostic purposes.
         const errorPromises = state.errors;
@@ -180,20 +168,46 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
       () => Module['_OrtBindInput'],
       v => Module['_OrtBindInput'] = v);
 
-  // expose webgpu backend functions
-  Module['jsepRegisterBuffer'] = (sessionId, index, buffer, size) => {
-    return backend['registerBuffer'](sessionId, index, buffer, size);
-  };
-  Module['jsepGetBuffer'] = (dataId) => {
-    return backend['getBuffer'](dataId);
-  };
-  Module['jsepCreateDownloader'] = (gpuBuffer, size, type) => {
-    return backend['createDownloader'](gpuBuffer, size, type);
-  };
-  Module['jsepOnReleaseSession'] = sessionId => {
-    backend['onReleaseSession'](sessionId);
-  };
-  Module['jsepOnRunStart'] = sessionId => {
-    return backend['onRunStart'](sessionId);
-  };
+  // remove this function to make sure it is called only once.
+  jsepInitAsync = undefined;
+};
+
+
+/**
+ * initialize JSEP for WebGPU.
+ */
+Module['jsepInit'] = (name, params) => {
+  jsepInitAsync?.();
+
+  if (name === 'webgpu') {
+    [Module.jsepBackend,
+     Module.jsepAlloc,
+     Module.jsepFree,
+     Module.jsepCopy,
+     Module.jsepCopyAsync,
+     Module.jsepCreateKernel,
+     Module.jsepReleaseKernel,
+     Module.jsepRunKernel,
+     Module.jsepCaptureBegin,
+     Module.jsepCaptureEnd,
+     Module.jsepReplay] = params;
+
+    // expose webgpu backend functions
+    const backend = Module.jsepBackend;
+    Module['jsepRegisterBuffer'] = (sessionId, index, buffer, size) => {
+      return backend['registerBuffer'](sessionId, index, buffer, size);
+    };
+    Module['jsepGetBuffer'] = (dataId) => {
+      return backend['getBuffer'](dataId);
+    };
+    Module['jsepCreateDownloader'] = (gpuBuffer, size, type) => {
+      return backend['createDownloader'](gpuBuffer, size, type);
+    };
+    Module['jsepOnReleaseSession'] = sessionId => {
+      backend['onReleaseSession'](sessionId);
+    };
+    Module['jsepOnRunStart'] = sessionId => {
+      return backend['onRunStart'](sessionId);
+    };
+  }
 };
