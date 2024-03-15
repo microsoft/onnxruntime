@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+from __future__ import annotations
 
 import os
 import tempfile
@@ -21,25 +22,17 @@ from op_test_utils import (
     create_clip_node,
 )
 
-if os.environ.get("LOCAL_IMPORT") == "1":
-    # Allow running this test script without installing onnxruntime package.
-    import sys
-
-    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "python", "tools"))
-    from quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static
-    from quantization.calibrate import TensorData
-else:
-    from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static
-    from onnxruntime.quantization.calibrate import TensorData
+from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization.calibrate import TensorData
 
 
 class TestQDQFormat(unittest.TestCase):
-    def input_feeds(self, n, name2shape):
+    def input_feeds(self, n, name2shape, np_float_type=np.float32):
         input_data_list = []
         for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.randint(-1, 2, shape).astype(np_float_type)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -742,7 +735,13 @@ class TestQDQMixedPrecision(TestQDQFormat):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def build_test_model_for_add_qdq_ops(self, num_consumers, is_graph_output, op0_transpose=False):
+    def build_test_model_for_add_qdq_ops(
+        self,
+        num_consumers: int,
+        is_graph_output: bool,
+        float_type: onnx.TensorProto.DataType = onnx.TensorProto.FLOAT,
+        op0_transpose: bool = False,
+    ):
         """
         Builds a float32 model with a single producer node and a configurable number of consumer nodes.
         The tensor between the producer and consumers can be optionally made a graph output.
@@ -760,15 +759,15 @@ class TestQDQMixedPrecision(TestQDQFormat):
         """
         shape = (1, 2, 3)
         shape_t = (1, 3, 2)
-        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, shape)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", float_type, shape)
         output_shape = shape if not op0_transpose else shape_t
 
         outputs = []
         for i in range(num_consumers):
-            outputs.append(onnx.helper.make_tensor_value_info(f"output_{i}", onnx.TensorProto.FLOAT, output_shape))
+            outputs.append(onnx.helper.make_tensor_value_info(f"output_{i}", float_type, output_shape))
 
         if is_graph_output:
-            outputs.append(onnx.helper.make_tensor_value_info("op_0_out", onnx.TensorProto.FLOAT, output_shape))
+            outputs.append(onnx.helper.make_tensor_value_info("op_0_out", float_type, output_shape))
 
         nodes = []
         if op0_transpose:
@@ -797,15 +796,24 @@ class TestQDQMixedPrecision(TestQDQFormat):
         Tensor T is not a graph output; all consumers use the converted type
         <Producer> ---> Q1 ---> DQ1 ---> Q2 ---> DQ2 ---> <Consumers>
         """
-        for test_qparam_sharing in (False, True):  # Producer op_0 is a Transpose when testing qparam sharing
-            with self.subTest(test_qparam_sharing=test_qparam_sharing):
-                label = "_share" if test_qparam_sharing else ""
-                f32_model_path = os.path.join(self._tmp_dir_path, f"case_1{label}.onnx")
+        # Test configurations (qparam_sharing, float_type)
+        subtest_configs = [
+            (False, onnx.TensorProto.FLOAT, np.float32),
+            (False, onnx.TensorProto.FLOAT16, np.float16),
+            (True, onnx.TensorProto.FLOAT, np.float32),
+            (True, onnx.TensorProto.FLOAT16, np.float16),
+        ]
+        for test_qparam_sharing, float_type, np_float_type in subtest_configs:
+            with self.subTest(test_qparam_sharing=test_qparam_sharing, float_type=float_type):
+                label = f"_share{test_qparam_sharing}_f{float_type}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"case_1{label}.onnx")
                 qdq_model_path = os.path.join(self._tmp_dir_path, f"case_1{label}.qdq.onnx")
-                f32_model = self.build_test_model_for_add_qdq_ops(2, False, op0_transpose=test_qparam_sharing)
-                onnx.save_model(f32_model, f32_model_path)
+                float_model = self.build_test_model_for_add_qdq_ops(
+                    2, False, float_type=float_type, op0_transpose=test_qparam_sharing
+                )
+                onnx.save_model(float_model, float_model_path)
 
-                data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)})
+                data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)}, np_float_type)
 
                 mixed_prec_overrides = {
                     "op_0_out": [
@@ -818,12 +826,12 @@ class TestQDQMixedPrecision(TestQDQFormat):
                     "output_1": [{"quant_type": QuantType.QUInt16}],
                 }
                 quantize_static(
-                    f32_model_path,
+                    float_model_path,
                     qdq_model_path,
                     data_reader,
                     quant_format=QuantFormat.QDQ,
                     activation_type=QuantType.QUInt8,
-                    op_types_to_quantize=[node.op_type for node in f32_model.graph.node],
+                    op_types_to_quantize=[node.op_type for node in float_model.graph.node],
                     extra_options={
                         "TensorQuantOverrides": mixed_prec_overrides,
                         "ForceQuantizeNoInputCheck": test_qparam_sharing,  # To ensure Transpose is wrapped in DQ/Q
@@ -848,7 +856,6 @@ class TestQDQMixedPrecision(TestQDQFormat):
                     # op_0_out_zero_point should not be in the model because the Transpose output is sharing
                     # qparams from the Transpose input.
                     self.assertNotIn("op_0_out_zero_point", initializers)
-                    self.assertNotIn("op_0_out_scale", initializers)
                     orig_zp_init = initializers["input_0_zero_point"]
                 else:
                     orig_zp_init = initializers["op_0_out_zero_point"]
@@ -861,6 +868,22 @@ class TestQDQMixedPrecision(TestQDQFormat):
                 output_1_zp_init = initializers["output_1_zero_point"]
                 self.assertEqual(output_1_zp_init.data_type, onnx.TensorProto.UINT16)
 
+                # Check scale data types
+                orig_scale_init = None
+                if test_qparam_sharing:
+                    self.assertNotIn("op_0_out_scale", initializers)
+                    orig_scale_init = initializers["input_0_scale"]
+                else:
+                    orig_scale_init = initializers["op_0_out_scale"]
+
+                self.assertEqual(orig_scale_init.data_type, float_type)
+                convert_scale_init = initializers["op_0_out_scale_convert"]
+                self.assertEqual(convert_scale_init.data_type, float_type)
+                output_0_scale_init = initializers["output_0_scale"]
+                self.assertEqual(output_0_scale_init.data_type, float_type)
+                output_1_scale_init = initializers["output_1_scale"]
+                self.assertEqual(output_1_scale_init.data_type, float_type)
+
     def test_add_tensor_qdq_ops_case_2(self):
         """
         Tensor T is not a graph output; some consumers use the original type, others use the converted type
@@ -868,15 +891,24 @@ class TestQDQMixedPrecision(TestQDQFormat):
                             |
                             +-> DQ1' ---> Q2 ---> DQ2 ---> <Consumers of converted type>
         """
-        for test_qparam_sharing in (False, True):  # Producer op_0 is a Transpose when testing qparam sharing
-            with self.subTest(test_qparam_sharing=test_qparam_sharing):
-                label = "_share" if test_qparam_sharing else ""
-                f32_model_path = os.path.join(self._tmp_dir_path, f"case_2{label}.onnx")
+        # Test configurations (qparam_sharing, float_type)
+        subtest_configs = [
+            (False, onnx.TensorProto.FLOAT, np.float32),
+            (False, onnx.TensorProto.FLOAT16, np.float16),
+            (True, onnx.TensorProto.FLOAT, np.float32),
+            (True, onnx.TensorProto.FLOAT16, np.float16),
+        ]
+        for test_qparam_sharing, float_type, np_float_type in subtest_configs:
+            with self.subTest(test_qparam_sharing=test_qparam_sharing, float_type=float_type):
+                label = f"_share{test_qparam_sharing}_f{float_type}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"case_2{label}.onnx")
                 qdq_model_path = os.path.join(self._tmp_dir_path, f"case_2{label}.qdq.onnx")
-                f32_model = self.build_test_model_for_add_qdq_ops(4, False, op0_transpose=test_qparam_sharing)
-                onnx.save_model(f32_model, f32_model_path)
+                float_model = self.build_test_model_for_add_qdq_ops(
+                    4, False, float_type=float_type, op0_transpose=test_qparam_sharing
+                )
+                onnx.save_model(float_model, float_model_path)
 
-                data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)})
+                data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)}, np_float_type)
 
                 mixed_prec_overrides = {
                     "op_0_out": [
@@ -889,12 +921,12 @@ class TestQDQMixedPrecision(TestQDQFormat):
                     "output_3": [{"quant_type": QuantType.QUInt16}],
                 }
                 quantize_static(
-                    f32_model_path,
+                    float_model_path,
                     qdq_model_path,
                     data_reader,
                     quant_format=QuantFormat.QDQ,
                     activation_type=QuantType.QUInt8,
-                    op_types_to_quantize=[node.op_type for node in f32_model.graph.node],
+                    op_types_to_quantize=[node.op_type for node in float_model.graph.node],
                     extra_options={
                         "TensorQuantOverrides": mixed_prec_overrides,
                         "ForceQuantizeNoInputCheck": test_qparam_sharing,  # To ensure Transpose is wrapped in DQ/Q
@@ -923,7 +955,6 @@ class TestQDQMixedPrecision(TestQDQFormat):
                     # op_0_out_zero_point should not be in the model because the Transpose output is sharing
                     # qparams from the Transpose input.
                     self.assertNotIn("op_0_out_zero_point", initializers)
-                    self.assertNotIn("op_0_out_scale", initializers)
                     orig_zp_init = initializers["input_0_zero_point"]
                 else:
                     orig_zp_init = initializers["op_0_out_zero_point"]
@@ -940,6 +971,26 @@ class TestQDQMixedPrecision(TestQDQFormat):
                 output_3_zp_init = initializers["output_3_zero_point"]
                 self.assertEqual(output_3_zp_init.data_type, onnx.TensorProto.UINT16)
 
+                # Check scale data types
+                orig_scale_init = None
+                if test_qparam_sharing:
+                    self.assertNotIn("op_0_out_scale", initializers)
+                    orig_scale_init = initializers["input_0_scale"]
+                else:
+                    orig_scale_init = initializers["op_0_out_scale"]
+
+                self.assertEqual(orig_scale_init.data_type, float_type)
+                convert_scale_init = initializers["op_0_out_scale_convert"]
+                self.assertEqual(convert_scale_init.data_type, float_type)
+                output_0_scale_init = initializers["output_0_scale"]
+                self.assertEqual(output_0_scale_init.data_type, float_type)
+                output_1_scale_init = initializers["output_1_scale"]
+                self.assertEqual(output_1_scale_init.data_type, float_type)
+                output_2_scale_init = initializers["output_2_scale"]
+                self.assertEqual(output_2_scale_init.data_type, float_type)
+                output_3_scale_init = initializers["output_3_scale"]
+                self.assertEqual(output_3_scale_init.data_type, float_type)
+
     def test_add_tensor_qdq_ops_case_3(self):
         """
         Tensor T is a graph output; all consumers use the converted type
@@ -947,15 +998,24 @@ class TestQDQMixedPrecision(TestQDQFormat):
                                                       |
                                                       +-> <Graph output>
         """
-        for test_qparam_sharing in (False, True):  # Producer op_0 is a Transpose when testing qparam sharing
-            with self.subTest(test_qparam_sharing=test_qparam_sharing):
-                label = "_share" if test_qparam_sharing else ""
-                f32_model_path = os.path.join(self._tmp_dir_path, f"case_3{label}.onnx")
+        # Test configurations (qparam_sharing, float_type)
+        subtest_configs = [
+            (False, onnx.TensorProto.FLOAT, np.float32),
+            (False, onnx.TensorProto.FLOAT16, np.float16),
+            (True, onnx.TensorProto.FLOAT, np.float32),
+            (True, onnx.TensorProto.FLOAT16, np.float16),
+        ]
+        for test_qparam_sharing, float_type, np_float_type in subtest_configs:
+            with self.subTest(test_qparam_sharing=test_qparam_sharing, float_type=float_type):
+                label = f"_share{test_qparam_sharing}_f{float_type}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"case_3{label}.onnx")
                 qdq_model_path = os.path.join(self._tmp_dir_path, f"case_3{label}.qdq.onnx")
-                f32_model = self.build_test_model_for_add_qdq_ops(2, True, op0_transpose=test_qparam_sharing)
-                onnx.save_model(f32_model, f32_model_path)
+                float_model = self.build_test_model_for_add_qdq_ops(
+                    2, True, float_type=float_type, op0_transpose=test_qparam_sharing
+                )
+                onnx.save_model(float_model, float_model_path)
 
-                data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)})
+                data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)}, np_float_type)
 
                 mixed_prec_overrides = {
                     "op_0_out": [
@@ -968,12 +1028,12 @@ class TestQDQMixedPrecision(TestQDQFormat):
                     "output_1": [{"quant_type": QuantType.QUInt16}],
                 }
                 quantize_static(
-                    f32_model_path,
+                    float_model_path,
                     qdq_model_path,
                     data_reader,
                     quant_format=QuantFormat.QDQ,
                     activation_type=QuantType.QUInt8,
-                    op_types_to_quantize=[node.op_type for node in f32_model.graph.node],
+                    op_types_to_quantize=[node.op_type for node in float_model.graph.node],
                     extra_options={
                         "TensorQuantOverrides": mixed_prec_overrides,
                         "ForceQuantizeNoInputCheck": test_qparam_sharing,  # To ensure Transpose is wrapped in DQ/Q
@@ -1014,6 +1074,22 @@ class TestQDQMixedPrecision(TestQDQFormat):
                 output_1_zp_init = initializers["output_1_zero_point"]
                 self.assertEqual(output_1_zp_init.data_type, onnx.TensorProto.UINT16)
 
+                # Check scale data types
+                orig_scale_init = None
+                if test_qparam_sharing:
+                    self.assertNotIn("op_0_out_scale", initializers)
+                    orig_scale_init = initializers["input_0_scale"]
+                else:
+                    orig_scale_init = initializers["op_0_out_scale"]
+
+                self.assertEqual(orig_scale_init.data_type, float_type)
+                convert_scale_init = initializers["op_0_out_scale_convert"]
+                self.assertEqual(convert_scale_init.data_type, float_type)
+                output_0_scale_init = initializers["output_0_scale"]
+                self.assertEqual(output_0_scale_init.data_type, float_type)
+                output_1_scale_init = initializers["output_1_scale"]
+                self.assertEqual(output_1_scale_init.data_type, float_type)
+
                 self.assertIn("op_0_out", graph_outputs)
 
     def test_add_tensor_qdq_ops_case_4(self):
@@ -1025,15 +1101,24 @@ class TestQDQMixedPrecision(TestQDQFormat):
                             |
                             +-> DQ1' ---> Q2 ---> DQ2 ---> <Consumers of converted type>
         """
-        for test_qparam_sharing in (False, True):  # Producer op_0 is a Transpose when testing qparam sharing
-            with self.subTest(test_qparam_sharing=test_qparam_sharing):
-                label = "_share" if test_qparam_sharing else ""
-                f32_model_path = os.path.join(self._tmp_dir_path, f"case_4{label}.onnx")
+        # Test configurations (qparam_sharing, float_type)
+        subtest_configs = [
+            (False, onnx.TensorProto.FLOAT, np.float32),
+            (False, onnx.TensorProto.FLOAT16, np.float16),
+            (True, onnx.TensorProto.FLOAT, np.float32),
+            (True, onnx.TensorProto.FLOAT16, np.float16),
+        ]
+        for test_qparam_sharing, float_type, np_float_type in subtest_configs:
+            with self.subTest(test_qparam_sharing=test_qparam_sharing, float_type=float_type):
+                label = f"_share{test_qparam_sharing}_f{float_type}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"case_4{label}.onnx")
                 qdq_model_path = os.path.join(self._tmp_dir_path, f"case_4{label}.qdq.onnx")
-                f32_model = self.build_test_model_for_add_qdq_ops(4, True, op0_transpose=test_qparam_sharing)
-                onnx.save_model(f32_model, f32_model_path)
+                float_model = self.build_test_model_for_add_qdq_ops(
+                    4, True, float_type=float_type, op0_transpose=test_qparam_sharing
+                )
+                onnx.save_model(float_model, float_model_path)
 
-                data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)})
+                data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)}, np_float_type)
 
                 mixed_prec_overrides = {
                     "op_0_out": [
@@ -1046,12 +1131,12 @@ class TestQDQMixedPrecision(TestQDQFormat):
                     "output_3": [{"quant_type": QuantType.QUInt16}],
                 }
                 quantize_static(
-                    f32_model_path,
+                    float_model_path,
                     qdq_model_path,
                     data_reader,
                     quant_format=QuantFormat.QDQ,
                     activation_type=QuantType.QUInt8,
-                    op_types_to_quantize=[node.op_type for node in f32_model.graph.node],
+                    op_types_to_quantize=[node.op_type for node in float_model.graph.node],
                     extra_options={
                         "TensorQuantOverrides": mixed_prec_overrides,
                         "ForceQuantizeNoInputCheck": test_qparam_sharing,  # To ensure Transpose is wrapped in DQ/Q
@@ -1083,7 +1168,6 @@ class TestQDQMixedPrecision(TestQDQFormat):
                     # op_0_out_zero_point should not be in the model because the Transpose output is sharing
                     # qparams from the Transpose input.
                     self.assertNotIn("op_0_out_zero_point", initializers)
-                    self.assertNotIn("op_0_out_scale", initializers)
                     orig_zp_init = initializers["input_0_zero_point"]
                 else:
                     orig_zp_init = initializers["op_0_out_zero_point"]
@@ -1099,6 +1183,26 @@ class TestQDQMixedPrecision(TestQDQFormat):
                 self.assertEqual(output_2_zp_init.data_type, onnx.TensorProto.UINT16)
                 output_3_zp_init = initializers["output_3_zero_point"]
                 self.assertEqual(output_3_zp_init.data_type, onnx.TensorProto.UINT16)
+
+                # Check scale data types
+                orig_scale_init = None
+                if test_qparam_sharing:
+                    self.assertNotIn("op_0_out_scale", initializers)
+                    orig_scale_init = initializers["input_0_scale"]
+                else:
+                    orig_scale_init = initializers["op_0_out_scale"]
+
+                self.assertEqual(orig_scale_init.data_type, float_type)
+                convert_scale_init = initializers["op_0_out_scale_convert"]
+                self.assertEqual(convert_scale_init.data_type, float_type)
+                output_0_scale_init = initializers["output_0_scale"]
+                self.assertEqual(output_0_scale_init.data_type, float_type)
+                output_1_scale_init = initializers["output_1_scale"]
+                self.assertEqual(output_1_scale_init.data_type, float_type)
+                output_2_scale_init = initializers["output_2_scale"]
+                self.assertEqual(output_2_scale_init.data_type, float_type)
+                output_3_scale_init = initializers["output_3_scale"]
+                self.assertEqual(output_3_scale_init.data_type, float_type)
 
                 self.assertIn("op_0_out", graph_outputs)
 
