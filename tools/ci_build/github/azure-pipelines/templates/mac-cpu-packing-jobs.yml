@@ -56,7 +56,7 @@ jobs:
 
   - template: use-xcode-version.yml
     parameters:
-      xcodeVersion: 13.1
+      xcodeVersion: 14.2
 
   - template: mac-build-step-with-cache.yml
     parameters:
