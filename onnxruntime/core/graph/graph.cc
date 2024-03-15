@@ -1818,16 +1818,36 @@ void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
   }
 }
 
+template <typename T>
+struct VisitorPriorityQueue {
+  using ComparatorType = std::function<bool(T, T)>;
+  std::list<T> list_;
+  const ComparatorType comparator_ = nullptr;
+  VisitorPriorityQueue(const ComparatorType& comp) : comparator_(comp) {}
+
+  void push(T node) {
+    list_.insert(
+        std::upper_bound(list_.begin(), list_.end(), node, comparator_),
+        node);
+  }
+  bool empty() { return list_.empty(); }
+  T top() { return list_.back(); }
+  void pop() { list_.pop_back(); }
+};
+
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
-  std::unordered_map<NodeIndex, size_t> in_degree;
-  std::priority_queue<const Node*, std::vector<const Node*>, decltype(comp)> to_visit(comp);
-  std::vector<NodeIndex> topo_order;
+  InlinedVector<size_t> in_degree(MaxNodeIndex(), 0);
+  InlinedVector<NodeIndex> topo_order;
+  VisitorPriorityQueue<const Node*> to_visit(comp);
+
+  auto number_of_nodes = NumberOfNodes();
+  topo_order.reserve(number_of_nodes);
 
   for (auto& node : Nodes()) {
     size_t input_edge_count = node.GetInputEdgesCount();
-    in_degree.insert({node.Index(), input_edge_count});
+    in_degree[node.Index()] = input_edge_count;
     if (input_edge_count == 0) {
       to_visit.push(&node);
     }
@@ -1844,16 +1864,17 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
     }
 
     for (auto node_it = current->OutputNodesBegin(); node_it != current->OutputNodesEnd(); ++node_it) {
-      in_degree[node_it->Index()]--;
+      auto& node_in_degree = in_degree[node_it->Index()];
+      node_in_degree--;
 
-      if (in_degree[node_it->Index()] == 0) {
+      if (node_in_degree == 0) {
         to_visit.push(&*node_it);
       }
     }
     topo_order.push_back(current->Index());
   }
 
-  if (NumberOfNodes() != static_cast<int>(topo_order.size())) {
+  if (number_of_nodes != static_cast<int>(topo_order.size())) {
     ORT_THROW("Some nodes are not included in the topological sort, graph have a cycle.");
   }
 }
@@ -2367,8 +2388,14 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       inferred_type = existing_type;
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
+      std::stringstream ss;
+      ss << "index=" << operand_index;
+      for (auto it = op_formal_parameter.GetTypes().begin(); it != op_formal_parameter.GetTypes().end(); ++it) {
+        ss << "," << *(*it);
+      }
       Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
-                    "Node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
+                    "Node (" + node_name + ") Op (" + node.OpType() + ") output arg (" +
+                        output_def->Name() + ") type inference failed, inferred types: " + ss.str());
       return status;
     }
 
@@ -2550,14 +2577,14 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     // Node verification.
     auto& node = *GetNode(node_index);
 
-    NodeProto node_proto;
-    node.ToProto(node_proto);
     const auto& node_name = node.Name();
 
     if (!node.Op()) {
       {
         auto status = Status::OK();
         ORT_TRY {
+          NodeProto node_proto;
+          node.ToProto(node_proto);
           checker::check_node(node_proto, ctx, lsc);
         }
         ORT_CATCH(const std::exception& ex) {
@@ -2630,8 +2657,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op, options)));
 
     // Accumulate output names of the iterated Node
-    for (auto& output_name : node_proto.output()) {
-      lsc.output_names.insert(output_name);
+    for (const auto& output : node.OutputDefs()) {
+      lsc.output_names.insert(output->Name());
     }
   }
 
@@ -2792,11 +2819,12 @@ Status Graph::Resolve(const ResolveOptions& options) {
                 graph.GraphProtoSyncNeeded(false);
             }
 
+            // set num_resolves_ here so the graph and any subgraphs all have the same value
+            ++graph.num_resolves_;
+
             return Status::OK(); };
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
-
-  ++num_resolves_;
 
   return Status::OK();
 }
@@ -2836,7 +2864,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
 
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
-  name_to_initial_tensor_[tensor.name()] = tensor_added;
+  name_to_initial_tensor_.emplace(tensor.name(), tensor_added);
   SetGraphResolveNeeded();
   if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
     // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.

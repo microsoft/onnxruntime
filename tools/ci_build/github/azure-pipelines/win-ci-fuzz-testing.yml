@@ -20,11 +20,15 @@ jobs:
   workspace:
     clean: all
   steps:
-  - template: win-ci-prebuild-steps.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+  - template: templates/jobs/win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: false
-      BuildArch: $(buildArch)
+      BuildArch: x64
       BuildConfig: $(BuildConfig)
       MachinePool: 'onnxruntime-Win-CPU-2022'
       WithCache: true
@@ -69,7 +73,3 @@ jobs:
       script: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t  /f "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\mnist.onnx"  1 m'
       workingDirectory: $(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
       failOnStderr: false # Optional
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

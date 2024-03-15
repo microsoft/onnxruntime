@@ -79,8 +79,14 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
       }
       case 'create': {
         const {model, options} = message!;
-        const sessionMetadata = createSession(model, options);
-        postMessage({type, out: sessionMetadata} as OrtWasmMessage);
+        createSession(model, options)
+            .then(
+                sessionMetadata => {
+                  postMessage({type, out: sessionMetadata} as OrtWasmMessage);
+                },
+                err => {
+                  postMessage({type, err});
+                });
         break;
       }
       case 'release':
@@ -97,7 +103,7 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
                   } else {
                     postMessage(
                         {type, out: outputs} as OrtWasmMessage,
-                        extractTransferableBuffers(outputs as SerializableTensorMetadata[]));
+                        extractTransferableBuffers([...inputs, ...outputs] as SerializableTensorMetadata[]));
                   }
                 },
                 err => {

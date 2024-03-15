@@ -20,10 +20,6 @@ set(contrib_ops_excluded_files
   "bert/fastertransformer_decoder_attention/*"
   "bert/multihead_attention.cc"
   "bert/multihead_attention.h"
-  "bert/fast_gelu_impl.cu"
-  "bert/fast_gelu_impl.h"
-  "bert/fast_gelu.cc"
-  "bert/fast_gelu.h"
   "bert/relative_attn_bias.cc"
   "bert/relative_attn_bias.h"
   "bert/relative_attn_bias_impl.cu"
@@ -44,9 +40,7 @@ set(contrib_ops_excluded_files
   "bert/packed_multihead_attention.cc"
   "bert/packed_multihead_attention_impl.h"
   "bert/packed_multihead_attention_impl.cu"
-  "diffusion/group_norm.cc"
   "diffusion/group_norm_impl.cu"
-  "diffusion/group_norm_impl.h"
   "diffusion/nhwc_conv.cc"
   "math/gemm_float8.cc"
   "math/gemm_float8.cu"
@@ -120,6 +114,10 @@ if (NOT onnxruntime_USE_NCCL)
   list(APPEND contrib_ops_excluded_files "collective/distributed_reduce.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_unsqueeze.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_squeeze.cc")
+else()
+  # moe not supported for ROCm EP
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.h")
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.cc")
 endif()
 
 set(provider_excluded_files

@@ -1,1160 +1,560 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
-#include <cfenv>
-#include <vector>
-
 #include "gtest/gtest.h"
-#include "core/common/span_utils.h"
 #include "test/common/quantization_test_utils.h"
-#include "test/common/tensor_op_test_utils.h"
-#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/util/qmath.h"
-#include "core/quantization/quantization.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace test {
 
-enum class EP : char {
-  CPU,
-  CUDA,
-  DNNL,
-  DML
-};
-
-// input:      [batch_size, sequence_length, hidden_size]
-// weights:    [hidden_size, 3 * hidden_size]
-// bias:       [3 * hidden_size]
-// mask_index: [batch_size]
-// output:     [batch_size, sequence_length, hidden_size]
-template <typename QInput, typename QWeight, EP ep>
-void RunQAttention(const std::vector<float>& input_data,
-                   const std::vector<float>& weights_data,
-                   const std::vector<float>& bias_data,
-                   const std::vector<int32_t>& mask_index_data,
-                   const std::vector<float>& output_data,
-                   quantization::Params<QInput>& input_quant_params,
-                   quantization::Params<QWeight>& weight_quant_params,
-                   int batch_size,
-                   int sequence_length,
-                   int hidden_size,
-                   int number_of_heads,
-                   bool is_unidirectional = false,
-                   bool use_float16 = false,
-                   int input_hidden_size = 0) {
-  input_hidden_size = (input_hidden_size == 0) ? hidden_size : input_hidden_size;
-
-  OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
-  if (is_unidirectional) {
-    tester.AddAttribute<int64_t>("unidirectional", 1);
-  }
-
-  std::vector<int64_t> input_dims = {batch_size, sequence_length, input_hidden_size};
-  std::vector<int64_t> weights_dims = {input_hidden_size, static_cast<int64_t>(3 * hidden_size)};
-  std::vector<int64_t> bias_dims = {static_cast<int64_t>(3 * hidden_size)};
-  std::vector<int64_t> mask_index_dims = {batch_size};
-  if constexpr (ep == EP::DNNL) {
-    // onednn only supports raw mask
-    if (mask_index_data.size() == static_cast<size_t>(batch_size * sequence_length)) {
-      mask_index_dims = {batch_size, sequence_length};
-    }
-  }
-  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
-
-  if (input_quant_params.scale != 0.0f) {
-    tester.AddInput<QInput>("input",
-                            input_dims,
-                            QuantizeTestVector<QInput>(input_data, input_quant_params));
-    tester.AddInput<QWeight>("weight",
-                             weights_dims,
-                             QuantizeTestVector<QWeight>(weights_data, weight_quant_params));
-  } else {
-    bool force_symmetric = false;
-    if constexpr (ep == EP::CUDA) {
-      force_symmetric = true;
-    }
-    tester.AddInput<QInput>(
-        "input",
-        input_dims,
-        QuantizeLinearTestVector<QInput>(input_data, input_quant_params, force_symmetric));
-    tester.AddInput<QWeight>(
-        "weight",
-        weights_dims,
-        QuantizeLinearTestVector<QWeight>(weights_data, weight_quant_params, force_symmetric));
-  }
-  if (use_float16) {
-    tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
-    tester.AddInput<MLFloat16>("input_scale", {1}, ToFloat16({input_quant_params.scale}));
-    tester.AddInput<MLFloat16>("weight_scale", {1}, ToFloat16({weight_quant_params.scale}));
-    tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
-  } else {
-    tester.AddInput<float>("bias", bias_dims, bias_data);
-    tester.AddInput<float>("input_scale", {1}, {input_quant_params.scale});
-    tester.AddInput<float>("weight_scale", {1}, {weight_quant_params.scale});
-    tester.AddOutput<float>("output", output_dims, output_data);
-  }
-
-  if (mask_index_data.size() > 0) {
-    tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
-  } else {
-    // mask index is optional.
-    tester.AddOptionalInputEdge<int32_t>();
-  }
-
-  tester.AddInput<QInput>("input_zero_point", {1}, {input_quant_params.zero_point});
-  tester.AddInput<QWeight>("weight_zero_point", {1}, {weight_quant_params.zero_point});
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  if constexpr (ep == EP::CUDA) {
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-  } else if constexpr (ep == EP::CPU) {
-    execution_providers.push_back(DefaultCpuExecutionProvider());
-  } else if constexpr (ep == EP::DML) {
-    execution_providers.push_back(DefaultDmlExecutionProvider());
-  } else {  // onednn ep
-    execution_providers.push_back(DefaultDnnlExecutionProvider());
-  }
-
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+static std::vector<int64_t> PrefixingDims(const std::vector<int64_t>& dims, size_t number_dims) {
+  std::vector<int64_t> prefixed_dims;
+  if (number_dims > dims.size()) prefixed_dims.resize(number_dims - dims.size(), 1);
+  prefixed_dims.insert(prefixed_dims.end(), dims.begin(), dims.end());
+  return prefixed_dims;
 }
 
-static void RunQAttentionCUDA(
-    const std::vector<float>& input_data,
-    const std::vector<float>& weights_data,
-    const std::vector<float>& bias_data,
-    const std::vector<int32_t>& mask_index_data,
-    const std::vector<float>& output_data,
-    int batch_size,
-    int sequence_length,
-    int hidden_size,
-    int number_of_heads,
-    bool use_special_quantize_parameter = true,
-    bool is_unidirectional = false,
-    bool use_float16 = false,
-    int input_hidden_size = 0) {
-  int min_cuda_architecture = 530;
-  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-
-  if (enable_cuda) {
-    quantization::Params<int8_t> input_quant_params = {0.0f, 0};
-    quantization::Params<int8_t> weights_quant_params = {0.0f, 0};
-    if (use_special_quantize_parameter) {
-      input_quant_params.scale = 0.1f;
-      weights_quant_params.scale = 0.1f;
-    }
-    RunQAttention<int8_t, int8_t, EP::CUDA>(
-        input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
-        batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, use_float16, input_hidden_size);
+static int64_t CalcStrides(const std::vector<int64_t>& dims, std::vector<int64_t>& strides, bool clear1 = false) {
+  strides.clear();
+  strides.resize(dims.size(), 1);
+  for (int i = (int)dims.size() - 2; i >= 0; --i) {
+    strides[i] = strides[i + 1] * dims[i + 1];
   }
+  int64_t len = strides[0] * dims[0];
+  if (clear1) {
+    for (size_t i = 0, sz = strides.size(); i < sz; ++i) {
+      if (dims[i] == 1) strides[i] = 0;
+    }
+  }
+  return len;
 }
 
-static void RunQAttentionDNNL(
-    const std::vector<float>& input_data,
-    const std::vector<float>& weights_data,
-    const std::vector<float>& bias_data,
-    const std::vector<int32_t>& mask_index_data,  // onednn only support raw mask data
-    const std::vector<float>& output_data,
-    int batch_size,
-    int sequence_length,
-    int hidden_size,
-    int number_of_heads,
-    bool use_special_quantize_parameter = true,
-    bool is_unidirectional = false,
-    int input_hidden_size = 0) {
-  // Return without running code if USE_DNNL is not defined
-#ifdef USE_DNNL
-  quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
-  quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
-  if (use_special_quantize_parameter) {
-    input_quant_params.scale = 0.1f;
-    weights_quant_params.scale = 0.1f;
-    input_quant_params.zero_point = 128;
-    weights_quant_params.zero_point = 1;
-  }
+template <typename T>
+static T clampi(int a, int min_value, int max_value) {
+  return static_cast<T>(std::max(std::min(a, max_value), min_value));
+}
 
-  RunQAttention<uint8_t, int8_t, EP::DNNL>(
-      input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
-      batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
-#else
-  ORT_UNUSED_PARAMETER(input_data);
-  ORT_UNUSED_PARAMETER(weights_data);
-  ORT_UNUSED_PARAMETER(bias_data);
-  ORT_UNUSED_PARAMETER(mask_index_data);
-  ORT_UNUSED_PARAMETER(output_data);
-  ORT_UNUSED_PARAMETER(batch_size);
-  ORT_UNUSED_PARAMETER(sequence_length);
-  ORT_UNUSED_PARAMETER(hidden_size);
-  ORT_UNUSED_PARAMETER(number_of_heads);
-  ORT_UNUSED_PARAMETER(use_special_quantize_parameter);
-  ORT_UNUSED_PARAMETER(is_unidirectional);
-  ORT_UNUSED_PARAMETER(input_hidden_size);
+template <typename T>
+void RunQLinearMathTestFromFloat(
+    const char* op_name, std::function<float(float, float)> calc,
+    const std::vector<float>& a, const std::vector<int64_t>& a_shape_origin,
+    const quantization::Params<T>& a_params,
+    const std::vector<float>& b, const std::vector<int64_t>& b_shape_origin,
+    const quantization::Params<T>& b_params,
+    const quantization::Params<T>& c_params) {
+  const auto run_test = [&](bool input_b_is_initializer,
+                            bool all_initializer_scale_zero_point) {
+    size_t number_dims = std::max(a_shape_origin.size(), b_shape_origin.size());
+    std::vector<int64_t> a_shape = PrefixingDims(a_shape_origin, number_dims);
+    std::vector<int64_t> b_shape = PrefixingDims(b_shape_origin, number_dims);
+    // calc broadcasting shaped
+    std::vector<int64_t> c_shape(number_dims, 1);
+    for (size_t axis = 0; axis < number_dims; ++axis) {
+      if (a_shape[axis] != b_shape[axis] && (a_shape[axis] != 1 && b_shape[axis] != 1)) {
+        ORT_THROW("Shapes can not be broadcasted");
+      }
+      c_shape[axis] = std::max(a_shape[axis], b_shape[axis]);
+    }
+
+    std::vector<int64_t> a_strides, b_strides, c_strides;
+    auto c_size = CalcStrides(c_shape, c_strides, false);
+    auto a_size = CalcStrides(a_shape, a_strides, true);
+    auto b_size = CalcStrides(b_shape, b_strides, true);
+    if (a_size != static_cast<int64_t>(a.size()) || b_size != static_cast<int64_t>(b.size())) {
+      ORT_THROW("Input size not match input shape!");
+    }
+    constexpr int qmax = std::numeric_limits<T>::max();
+    constexpr int qmin = std::numeric_limits<T>::min();
+
+    OpTester test(op_name, 1, onnxruntime::kMSDomain);
+    std::vector<T> a_quantized = QuantizeTestVector<T>(a, a_params);
+    test.template AddInput<T>("A", a_shape_origin, a_quantized);
+    test.AddInput<float>("A_scale", {}, {a_params.scale}, all_initializer_scale_zero_point);
+    test.template AddInput<T>("A_zero_point", {}, {a_params.zero_point}, all_initializer_scale_zero_point);
+
+    std::vector<T> b_quantized = QuantizeTestVector<T>(b, b_params);
+    test.template AddInput<T>("B", b_shape_origin, b_quantized, input_b_is_initializer);
+    test.AddInput<float>("B_scale", {}, {b_params.scale}, all_initializer_scale_zero_point);
+    test.template AddInput<T>("B_zero_point", {}, {b_params.zero_point}, all_initializer_scale_zero_point);
+
+    test.AddInput<float>("C_scale", {}, {c_params.scale}, all_initializer_scale_zero_point);
+    test.template AddInput<T>("C_zero_point", {}, {c_params.zero_point}, all_initializer_scale_zero_point);
+    std::vector<T> c(c_size);
+    for (int64_t offset = 0; offset < c_size; ++offset) {
+      int64_t remain = offset, a_offset = 0, b_offset = 0;
+      for (size_t axis = 0; axis < number_dims; ++axis) {
+        int64_t index = remain / c_strides[axis];
+        remain = remain % c_strides[axis];
+        a_offset += index * a_strides[axis];
+        b_offset += index * b_strides[axis];
+      }
+
+      float a_dequantized = quantization::Dequantize(a_quantized[a_offset], a_params);
+      float b_dequantized = quantization::Dequantize(b_quantized[b_offset], b_params);
+      c[offset] = clampi<T>(static_cast<int>(std::nearbyintf(calc(a_dequantized, b_dequantized) / c_params.scale)) + c_params.zero_point, qmin, qmax);
+    }
+
+    float abs_error = 0.0f;
+
+    // For quantized models, NNAPI's rounding is different than CPU provider
+    // Sometimes the result is within +/-1 of result of CPU provider
+    // For ONNX, we use rounding to nearest ties to even.
+    // For NNAPI, it is using std::round which is HALF_AWAY_FROM_ZERO, see
+    // https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/operations/Quantize.cpp
+    // Use 1 as abs_error which is the smallest possbile for uint8_t
+    //
+    // NOTE, for now the tolerance will only apply if the NNAPI is actually used,
+    // if for any reason the execution falls back to CPU, we still expect an exact match
+    // See, 'void Check<uint8_t>(...' in onnxruntime/test/providers/provider_test_utils.cc
+#ifdef USE_NNAPI
+    abs_error = 1.0f;
 #endif
-}
 
-static void RunQAttentionDML(
-    const std::vector<float>& input_data,
-    const std::vector<float>& weights_data,
-    const std::vector<float>& bias_data,
-    const std::vector<int32_t>& mask_index_data,
-    const std::vector<float>& output_data,
-    int batch_size,
-    int sequence_length,
-    int hidden_size,
-    int number_of_heads,
-    bool use_special_quantize_parameter = true,
-    bool is_unidirectional = false,
-    int input_hidden_size = 0) {
-  // Return without running code if USE_DML is not defined
-#ifdef USE_DML
-  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
-  if (enable_dml) {
-    quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
-    quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
-    if (use_special_quantize_parameter) {
-      input_quant_params.scale = 0.1f;
-      weights_quant_params.scale = 0.1f;
-      input_quant_params.zero_point = 128;
-      weights_quant_params.zero_point = 1;
-    }
+    test.template AddOutput<T>("C", c_shape, c, false /* sort_output */, 0.0f /* rel_error */, abs_error);
 
-    RunQAttention<uint8_t, int8_t, EP::DML>(
-        input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
-        batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
-  }
-#else
-  ORT_UNUSED_PARAMETER(input_data);
-  ORT_UNUSED_PARAMETER(weights_data);
-  ORT_UNUSED_PARAMETER(bias_data);
-  ORT_UNUSED_PARAMETER(mask_index_data);
-  ORT_UNUSED_PARAMETER(output_data);
-  ORT_UNUSED_PARAMETER(batch_size);
-  ORT_UNUSED_PARAMETER(sequence_length);
-  ORT_UNUSED_PARAMETER(hidden_size);
-  ORT_UNUSED_PARAMETER(number_of_heads);
-  ORT_UNUSED_PARAMETER(use_special_quantize_parameter);
-  ORT_UNUSED_PARAMETER(is_unidirectional);
-  ORT_UNUSED_PARAMETER(input_hidden_size);
-#endif
-}
-
-static void RunQAttentionU8U8(
-    const std::vector<float>& input_data,
-    const std::vector<float>& weights_data,
-    const std::vector<float>& bias_data,
-    const std::vector<int32_t>& mask_index_data,
-    const std::vector<float>& output_data,
-    int batch_size,
-    int sequence_length,
-    int hidden_size,
-    int number_of_heads,
-    bool use_special_quantize_parameter = true,
-    bool is_unidirectional = false,
-    int input_hidden_size = 0) {
-  quantization::Params<uint8_t> input_quant_params = {0.0f, 0};
-  quantization::Params<uint8_t> weights_quant_params = {0.0f, 0};
-  if (use_special_quantize_parameter) {
-    input_quant_params.scale = 0.1f;
-    weights_quant_params.scale = 0.1f;
-    input_quant_params.zero_point = 128;
-    weights_quant_params.zero_point = 128;
-  }
-
-  RunQAttention<uint8_t, uint8_t, EP::CPU>(
-      input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
-      batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
-}
-
-static void RunQAttentionU8S8(
-    const std::vector<float>& input_data,
-    const std::vector<float>& weights_data,
-    const std::vector<float>& bias_data,
-    const std::vector<int32_t>& mask_index_data,
-    const std::vector<float>& output_data,
-    int batch_size,
-    int sequence_length,
-    int hidden_size,
-    int number_of_heads,
-    bool use_special_quantize_parameter = true,
-    bool is_unidirectional = false,
-    int input_hidden_size = 0) {
-  quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
-  quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
-  if (use_special_quantize_parameter) {
-    input_quant_params.scale = 0.1f;
-    weights_quant_params.scale = 0.1f;
-    input_quant_params.zero_point = 128;
-    weights_quant_params.zero_point = 1;
-  }
-
-  RunQAttention<uint8_t, int8_t, EP::CPU>(
-      input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
-      batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
-}
-
-static void RunQAttentionAll(
-    const std::vector<float>& input_data,
-    const std::vector<float>& weight_data,
-    const std::vector<float>& bias_data,
-    const std::vector<int32_t>& mask_index_data,
-    const std::vector<float>& output_data,
-    int batch_size,
-    int sequence_length,
-    int hidden_size,
-    int number_of_heads,
-    bool use_special_quantize_parameter = true,
-    bool is_unidirectional = false,
-    bool use_float16 = false,
-    int input_hidden_size = 0) {
-  RunQAttentionU8U8(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    use_special_quantize_parameter, is_unidirectional, input_hidden_size);
-  RunQAttentionU8S8(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    use_special_quantize_parameter, is_unidirectional, input_hidden_size);
-  RunQAttentionCUDA(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    use_special_quantize_parameter, is_unidirectional, use_float16, input_hidden_size);
-  RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    use_special_quantize_parameter, is_unidirectional, input_hidden_size);
-  RunQAttentionDML(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads,
-                   use_special_quantize_parameter, is_unidirectional, input_hidden_size);
-}
-
-// ONEDNN EP only supports 2D raw mask
-#ifdef USE_DNNL
-TEST(QAttentionTest, QAttentionDNNLBatch1) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  std::vector<int32_t> mask_index_data = {1L, 1L};
-
-  std::vector<float> output_data = {
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
-
-  RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads);
-}
-#endif  // USE_DNNL
-
-TEST(QAttentionTest, QAttentionBatch1) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  std::vector<int32_t> mask_index_data = {2L};
-
-  std::vector<float> output_data = {
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
-
-  RunQAttentionAll(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads);
-}
-
-TEST(QAttentionTest, QAttentionBatch1_Float16) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  std::vector<int32_t> mask_index_data = {2L};
-
-  std::vector<float> output_data = {
-      3.15039f, 0.1082763671875f, 4.24609375f, 5.6484375f,
-      3.96679f, 0.072998046875f, 4.24609f, 5.6484375f};
-
-  RunQAttentionCUDA(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    true /*use_special_quantize_parameter*/,
-                    false /*is_unidirectional*/,
-                    true /*use_float16*/);
-}
-
-TEST(QAttentionTest, QAttentionBatch2) {
-  int batch_size = 2;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f,
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  std::vector<int32_t> mask_index_data = {2L, 2L};
-
-  std::vector<float> output_data = {
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f,
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
-
-  RunQAttentionAll(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads);
-}
-
-// ONEDNN EP only support 2D raw mask
-#ifdef USE_DNNL
-TEST(QAttentionTest, QAttentionDNNLBatch2) {
-  int batch_size = 2;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f,
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  std::vector<int32_t> mask_index_data = {1L, 1L, 1L, 1L};
-
-  std::vector<float> output_data = {
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f,
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
-
-  RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads);
-}
-#endif  // USE_DNNL
-
-TEST(QAttentionTest, QAttentionMaskPartialSequence) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  // Test mask_index < sequence_length
-  std::vector<int32_t> mask_index_data = {1L};
-
-  std::vector<float> output_data = {
-      8.6899995803833008f, -0.13000002503395081f, 4.25f, 5.6499996185302734f,
-      8.6899995803833008f, -0.13000002503395081f, 4.2499995231628418f, 5.6499991416931152f};
-
-  RunQAttentionAll(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads);
-}
-
-// oneDNN EP only supports 2D raw mask
-#ifdef USE_DNNL
-TEST(QAttentionTest, QAttentionDNNLMaskPartialSequence) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  std::vector<int32_t> mask_index_data = {1L, 0L};
-
-  std::vector<float> output_data = {
-      8.6899995803833008f, -0.13000002503395081f, 4.25f, 5.6499996185302734f,
-      8.6899995803833008f, -0.13000002503395081f, 4.2499995231628418f, 5.6499991416931152f};
-
-  RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads);
-}
-#endif  // USE_DNNL
-
-TEST(QAttentionTest, QAttentionMaskExceedSequence) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  // Test mask_index > sequence_length
-  std::vector<int32_t> mask_index_data = {3L};
-
-  std::vector<float> output_data = {
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
-
-  RunQAttentionAll(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads);
-}
-
-TEST(QAttentionTest, QAttentionNoMaskIndex) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  // No mask_index
-  std::vector<int32_t> mask_index_data = {};
-
-  std::vector<float> output_data = {
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
-
-  RunQAttentionAll(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads);
-}
-
-TEST(QAttentionTest, QAttentionUnidirectional_U8U8) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.91099896f, -0.18294459f, -0.36594841f, 0.28410032f,
-      -0.12125026f, -0.66160089f, 0.38809127f, -0.22455512f};
-
-  std::vector<float> weight_data = {
-      -0.2659236192703247f,
-      0.2789675071835518f,
-      0.7280516624450684f,
-      0.50951678305864334f,
-      0.20417947322130203f,
-      -0.4751841351389885f,
-      0.43815530836582184f,
-      0.6015353370457888f,
-      -0.11496957391500473f,
-      -0.1773347705602646f,
-      0.30928605794906616f,
-      0.5648412741720676f,
-
-      0.8960387855768204f,
-      -0.27270448207855225f,
-      0.14847396314144135f,
-      -0.17960812151432037f,
-      0.1788954995572567f,
-      0.9993876516819f,
-      0.3943513706326485f,
-      -0.2484400011599064f,
-      -0.12958766520023346f,
-      0.220433309674263f,
-      0.1720484346151352f,
-      0.22024005651474f,
-
-      0.59368450194597244f,
-      0.1710093915462494f,
-      -0.3967452347278595f,
-      -0.1591450721025467f,
-      0.1446179747581482f,
-      -0.20505407452583313f,
-      0.12749597430229187f,
-      0.32139700651168823f,
-      0.139958456158638f,
-      -0.10619817674160004f,
-      0.4528557509183884f,
-      0.45598603785037994f,
-
-      -0.7152545265853405f,
-      0.109454445540905f,
-      -0.1582530289888382f,
-      -0.2646341919898987f,
-      0.920850858092308f,
-      0.701494812965393f,
-      -0.19062495231628418f,
-      -0.24360455572605133f,
-      -0.9368397295475006f,
-      0.7878211885690689f,
-      0.2973634898662567f,
-      0.11210034042596817f};
-
-  std::vector<float> bias_data = {
-      -0.0540979839861393f,
-      -0.06444740295410156f,
-      0.03112877532839775f,
-      -0.08288222551345825f,
-      0.07840359210968018f,
-      0.039143580943346024f,
-      -0.45591455698013306f,
-      -0.11876055598258972f,
-      0.3670335114002228f,
-      0.028461361303925514f,
-      -0.08913630992174149f,
-      0.28048714995384216f};
-
-  // No mask_index
-  std::vector<int32_t> mask_index_data = {};
-
-  std::vector<float> output_data = {
-      -0.027716159820556641f, 0.091021925210952759f,
-      0.080938525497913361f, 0.61913836002349854f,
-      0.36089283227920532f, -0.11653690040111542f,
-      -0.030121456831693649f, 0.40923327207565308f};
-
-  RunQAttentionU8U8(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    false /*use_special_quantize_parameter*/,
-                    true /*is_unidirectional*/);
-}
-
-TEST(QAttentionTest, QAttentionUnidirectional_U8S8) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.91099896f, -0.18294459f, -0.36594841f, 0.28410032f,
-      -0.12125026f, -0.66160089f, 0.38809127f, -0.22455512f};
-
-  std::vector<float> weight_data = {
-      -0.2659236192703247f,
-      0.2789675071835518f,
-      0.7280516624450684f,
-      0.50951678305864334f,
-      0.20417947322130203f,
-      -0.4751841351389885f,
-      0.43815530836582184f,
-      0.6015353370457888f,
-      -0.11496957391500473f,
-      -0.1773347705602646f,
-      0.30928605794906616f,
-      0.5648412741720676f,
-
-      0.8960387855768204f,
-      -0.27270448207855225f,
-      0.14847396314144135f,
-      -0.17960812151432037f,
-      0.1788954995572567f,
-      0.9993876516819f,
-      0.3943513706326485f,
-      -0.2484400011599064f,
-      -0.12958766520023346f,
-      0.220433309674263f,
-      0.1720484346151352f,
-      0.22024005651474f,
-
-      0.59368450194597244f,
-      0.1710093915462494f,
-      -0.3967452347278595f,
-      -0.1591450721025467f,
-      0.1446179747581482f,
-      -0.20505407452583313f,
-      0.12749597430229187f,
-      0.32139700651168823f,
-      0.139958456158638f,
-      -0.10619817674160004f,
-      0.4528557509183884f,
-      0.45598603785037994f,
-
-      -0.7152545265853405f,
-      0.109454445540905f,
-      -0.1582530289888382f,
-      -0.2646341919898987f,
-      0.920850858092308f,
-      0.701494812965393f,
-      -0.19062495231628418f,
-      -0.24360455572605133f,
-      -0.9368397295475006f,
-      0.7878211885690689f,
-      0.2973634898662567f,
-      0.11210034042596817f};
-
-  std::vector<float> bias_data = {
-      -0.0540979839861393f,
-      -0.06444740295410156f,
-      0.03112877532839775f,
-      -0.08288222551345825f,
-      0.07840359210968018f,
-      0.039143580943346024f,
-      -0.45591455698013306f,
-      -0.11876055598258972f,
-      0.3670335114002228f,
-      0.028461361303925514f,
-      -0.08913630992174149f,
-      0.28048714995384216f};
-
-  // No mask_index
-  std::vector<int32_t> mask_index_data = {};
-
-  std::vector<float> output_data = {
-      -0.029270321130752563f, 0.089105717837810516f,
-      0.084381766617298126f, 0.62047165632247925f,
-      0.36089283227920532f, -0.11732138693332672f,
-      -0.029981952160596848f, 0.40998253226280212f};
-
-  RunQAttentionU8S8(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    false /*use_special_quantize_parameter*/,
-                    true /*is_unidirectional*/);
-}
-
-TEST(QAttentionTest, QAttentionUnidirectional_CUDA) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.91099896f, -0.18294459f, -0.36594841f, 0.28410032f,
-      -0.12125026f, -0.66160089f, 0.38809127f, -0.22455512f};
-
-  std::vector<float> weight_data = {
-      -0.2659236192703247f,
-      0.2789675071835518f,
-      0.7280516624450684f,
-      0.50951678305864334f,
-      0.20417947322130203f,
-      -0.4751841351389885f,
-      0.43815530836582184f,
-      0.6015353370457888f,
-      -0.11496957391500473f,
-      -0.1773347705602646f,
-      0.30928605794906616f,
-      0.5648412741720676f,
-
-      0.8960387855768204f,
-      -0.27270448207855225f,
-      0.14847396314144135f,
-      -0.17960812151432037f,
-      0.1788954995572567f,
-      0.9993876516819f,
-      0.3943513706326485f,
-      -0.2484400011599064f,
-      -0.12958766520023346f,
-      0.220433309674263f,
-      0.1720484346151352f,
-      0.22024005651474f,
-
-      0.59368450194597244f,
-      0.1710093915462494f,
-      -0.3967452347278595f,
-      -0.1591450721025467f,
-      0.1446179747581482f,
-      -0.20505407452583313f,
-      0.12749597430229187f,
-      0.32139700651168823f,
-      0.139958456158638f,
-      -0.10619817674160004f,
-      0.4528557509183884f,
-      0.45598603785037994f,
-
-      -0.7152545265853405f,
-      0.109454445540905f,
-      -0.1582530289888382f,
-      -0.2646341919898987f,
-      0.920850858092308f,
-      0.701494812965393f,
-      -0.19062495231628418f,
-      -0.24360455572605133f,
-      -0.9368397295475006f,
-      0.7878211885690689f,
-      0.2973634898662567f,
-      0.11210034042596817f};
-
-  std::vector<float> bias_data = {
-      -0.0540979839861393f,
-      -0.06444740295410156f,
-      0.03112877532839775f,
-      -0.08288222551345825f,
-      0.07840359210968018f,
-      0.039143580943346024f,
-      -0.45591455698013306f,
-      -0.11876055598258972f,
-      0.3670335114002228f,
-      0.028461361303925514f,
-      -0.08913630992174149f,
-      0.28048714995384216f};
-
-  // No mask_index
-  std::vector<int32_t> mask_index_data = {};
-
-  std::vector<float> output_data = {
-      -0.037525445222854614f, 0.089105717837810516f,
-      0.076988570392131805f, 0.62047165632247925f,
-      0.36089283227920532f, -0.11732138693332672f,
-      -0.029981952160596848f, 0.40998253226280212f};
-
-  RunQAttentionCUDA(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    false /*use_special_quantize_parameter*/,
-                    true /*is_unidirectional*/);
-}
-
-template <typename InputT, typename WeightT>
-void TestQuantizedAttentionPastState(int64_t batch,
-                                     int64_t seq_len,
-                                     int64_t past_seq_len,
-                                     int64_t hidden_size,
-                                     int64_t head_number,
-                                     int64_t head_size,
-                                     const std::string& reference_model,
-                                     bool is_weight_constant,
-                                     bool per_column = false) {
-  // create rand inputs
-  RandomValueGenerator random{};
-
-  constexpr InputT input_min = std::numeric_limits<InputT>::min();
-  constexpr InputT input_max = std::numeric_limits<InputT>::max();
-  constexpr int32_t input_range = input_max - input_min;
-
-  int64_t weight_scale_zp_size = per_column ? 3 * hidden_size : 1;
-
-  InputT input_mean = (input_min + input_max) / 2 + 1;
-  std::vector<InputT> input_zero_point{input_mean};
-
-  std::vector<int64_t> input_dims{batch, seq_len, hidden_size};
-  std::vector<InputT> input_data = random.Gaussian<InputT>(input_dims, input_mean, static_cast<InputT>(input_range / 6), input_min, input_max);
-
-  constexpr WeightT weight_min = std::numeric_limits<WeightT>::min();
-  constexpr WeightT weight_max = std::numeric_limits<WeightT>::max();
-  constexpr int32_t weight_range = weight_max - weight_min;
-
-  std::vector<WeightT> weight_zero_point(weight_scale_zp_size);
-  for (auto& zp : weight_zero_point) {
-    zp = static_cast<WeightT>(random.Uniform<int32_t>(std::array<int64_t, 1>{1}, weight_min, weight_max)[0]);
-  }
-
-  WeightT weight_mean = (weight_min + weight_max) / 2 + 1;
-  std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
-  std::vector<WeightT> weight_data = random.Gaussian<WeightT>(weight_dims, weight_mean, static_cast<WeightT>(weight_range / 6), weight_min, weight_max);
-
-  std::vector<int64_t> bias_dims{3 * hidden_size};
-  std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.3f);
-
-  std::vector<float> input_scale{0.005f};
-  std::vector<float> weight_scale(random.Uniform<float>(AsSpan({weight_scale_zp_size}), -0.01f, 0.01f));
-
-  std::vector<int64_t> past_dims{2, batch, head_number, past_seq_len, head_size};
-  std::vector<float> past_data = random.Gaussian<float>(past_dims, 0.0f, 0.3f);
-
-  OpTester test("QAttention", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("num_heads", head_number);
-  test.AddAttribute<int64_t>("unidirectional", 1);
-  test.AddInput<InputT>("input", input_dims, input_data);
-  test.AddInput<WeightT>("weight", weight_dims, weight_data, is_weight_constant);
-  test.AddInput<float>("bias", bias_dims, bias_data);
-  test.AddInput<float>("input_scale", {1}, input_scale);
-  test.AddInput<float>("weight_scale", {weight_scale_zp_size}, weight_scale);
-  test.AddOptionalInputEdge<int32_t>();
-  test.AddInput<InputT>("input_zero_point", {1}, input_zero_point);
-  test.AddInput<WeightT>("weight_zero_point", {weight_scale_zp_size}, weight_zero_point);
-  test.AddInput<float>("past", past_dims, past_data);
-
-  test.AddReferenceOutputs(reference_model, 0.0002f);
-  test.Run();
-}
-
-TEST(QAttentionTest, QAttentionPastState_u8u8) {
-  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
-                                                    "testdata/attention_past_state.u8u8.onnx",
-                                                    false /*is_weight_constant*/);
-
-  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
-                                                    "testdata/attention_past_state.u8u8.onnx",
-                                                    true /*is_weight_constant*/);
-
-  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
-                                                    "testdata/attention_past_state.u8u8.onnx",
-                                                    false /*is_weight_constant*/,
-                                                    true /*per_column*/);
-
-  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
-                                                    "testdata/attention_past_state.u8u8.onnx",
-                                                    true /*is_weight_constant*/,
-                                                    true /*per_column*/);
-}
-
-TEST(QAttentionTest, QAttentionPastState_u8s8) {
-  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64,
-                                                   "testdata/attention_past_state.u8s8.onnx",
-                                                   false /*is_weight_constant*/);
-
-  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64,
-                                                   "testdata/attention_past_state.u8s8.onnx",
-                                                   true /*is_weight_constant*/);
-
-  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64,
-                                                   "testdata/attention_past_state.u8s8.onnx",
-                                                   false /*is_weight_constant*/,
-                                                   true /*per_column*/);
-
-  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64,
-                                                   "testdata/attention_past_state.u8s8.onnx",
-                                                   true /*is_weight_constant*/,
-                                                   true /*per_column*/);
-}
-
-TEST(QAttentionTest, QAttentionPrunedModel) {
-  int batch_size = 2;
-  int sequence_length = 2;
-  // test input_hidden_size > hidden_size
-  int input_hidden_size = 6;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.5f, 0.2f, 0.3f, -0.6f, 0.0f, 1.0f,
-      0.8f, -0.5f, 0.0f, 1.f, 2.0f, 3.0f,
-      0.8f, -0.5f, 0.0f, 1.f, 4.0f, 5.0f,
-      0.5f, 0.2f, 0.3f, -0.6f, 6.0f, 7.0f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f,
-      0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f,
-      1.2f, 1.1f, 1.0f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 0.4f, 0.3f, 0.2f, 0.1f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  std::vector<int32_t> mask_data = {};
-
-  std::vector<float> output_data = {
-      11.689527f, 2.769937f, 7.05f, 8.35f,
-      11.69f, 2.77f, 7.05f, 8.35f,
-      14.276558f, 5.374159f, 9.65f, 10.95f,
-      14.289073f, 5.370287f, 9.65f, 10.95f};
-
-  bool use_special_quantize_parameter = true;
-  bool is_unidirectional = false;
-  bool use_float16 = false;
-  RunQAttentionAll(input_data, weight_data, bias_data, mask_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads,
-                   use_special_quantize_parameter, is_unidirectional, use_float16,
-                   input_hidden_size);
-}
-
-#ifndef ENABLE_TRAINING
-// Prepacking is disabled in full training build so no need to test the feature in a training build.
-TEST(QAttentionTest, SharedPrepackedWeights) {
-  int batch_size = 1;
-  int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  std::vector<int32_t> mask_index_data = {2L};
-
-  std::vector<float> output_data = {
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
-
-  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
-  std::vector<int64_t> bias_dims = {3 * hidden_size};
-  std::vector<int64_t> mask_index_dims = {batch_size};
-  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
-
-  OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
-
-  tester.AddInput<uint8_t>(
-      "input",
-      input_dims,
-      QuantizeTestVector<uint8_t>(
-          input_data,
-          quantization::Params<uint8_t>(/*scale=*/0.1f, /*zero_point=*/128)));
-
-  auto weight_data_converted_to_int = QuantizeTestVector<uint8_t>(
-      weight_data,
-      quantization::Params<uint8_t>(/*scale=*/0.1f, /*zero_point=*/128));
-  tester.AddInput<uint8_t>("weight",
-                           weights_dims,
-                           weight_data_converted_to_int,
-                           /*is_initializer=*/true);  // Trigger pre-packing
-
-  tester.AddInput<float>("bias", bias_dims, bias_data);
-  tester.AddInput<float>("input_scale", {1}, {0.1f});
-  tester.AddInput<float>("weight_scale", {1}, {0.1f});
-  tester.AddOutput<float>("output", output_dims, output_data);
-
-  tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
-
-  tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
-  tester.AddInput<uint8_t>("weight_zero_point", {1}, {128});
-
-  OrtValue weight;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
-                       weight_data_converted_to_int.data(),
-                       OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), weight);
-
-  SessionOptions so;
-
-  // Set up weight as a shared initializer to be shared between sessions
-  ASSERT_EQ(so.AddInitializer("weight", &weight), Status::OK());
-
-  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
-  tester.EnableSharingOfPrePackedWeightsAcrossSessions();
-
-  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
-  // and we want to ensure that it is available in this build
-  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCpuExecutionProvider());
-    return execution_providers;
+    test.Run();
   };
 
-  size_t number_of_pre_packed_weights_counter_session_1 = 0;
-  size_t number_of_shared_pre_packed_weights_counter = 0;
+  run_test(false /* input_b_is_initializer */, false /* all_initializer_scale_zero_point */);
 
-  // Session 1
-  {
-    auto ep_vec = cpu_ep();
-    tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-               &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
-    // Assert that no pre-packed weights have been shared thus far
-    ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
-  }
+  // NNAPI will require all the scales and zero points be initializers
+  run_test(false /* input_b_is_initializer */, true /* all_initializer_scale_zero_point */);
 
-  auto number_of_elements_in_shared_prepacked_buffers_container =
-      tester.GetNumPrePackedWeightsShared();
-  // Assert that the number of elements in the shared container
-  // is the same as the number of weights that have been pre-packed
-  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);
-
-  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
-  // that have been pre-packed will be zero in which case we do not continue with the testing
-  // of "sharing" of pre-packed weights as there are no pre-packed weights to be shared at all.
-  if (number_of_pre_packed_weights_counter_session_1 == 0)
-    return;
-
-  // Session 2
-  {
-    size_t number_of_pre_packed_weights_counter_session_2 = 0;
-    auto ep_vec = cpu_ep();
-    tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-               &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
-
-    // Assert that the same number of weights were pre-packed in both sessions
-    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
-
-    // Assert that the number of pre-packed weights that were shared equals
-    // the number of pre-packed weights in the second session
-    ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
-              static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
-  }
+  // We also want to test the case input B is an initializer
+  run_test(true /* input_b_is_initializer */, true /* all_initializer_scale_zero_point */);
 }
-#endif
+
+// total 32 + 31 elements to cover all path
+// for add() usage tensor A
+static std::vector<float> A4Add = {
+    0.00f, 0.25f, 0.50f, 0.75f, 1.00f, 1.25f, 1.50f, 1.75f,
+    2.00f, 2.25f, 2.50f, 2.75f, 3.00f, 3.50f, 3.75f, 4.00f,
+    -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f,
+    -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, -4.00f, -3.75f, -3.50f,
+    0.00f, 0.25f, 0.50f, 0.75f, 1.00f, 1.25f, 1.50f, 1.75f,
+    2.00f, 2.25f, 2.50f, 2.75f, 3.00f, 3.75f, 4.25f, 4.50f,
+    -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f,
+    -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, 3.75f, 3.00f};
+
+// for add() usage tensor B
+static std::vector<float> B4Add = {
+    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+    -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+    -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+    -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+    4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+    -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -3.75f, -4.00f};
+
+static auto add_function = [](float a_dequantized, float b_dequantized) {
+  return a_dequantized + b_dequantized;
+};
+
+static auto mul_function = [](float a_dequantized, float b_dequantized) {
+  return a_dequantized * b_dequantized;
+};
+
+TEST(QLinearBinaryOpTest, AddU8VectorVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  const std::vector<float>& B(B4Add);
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/128);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {63}, A_params,
+                              B, {63}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+      -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/128);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {3, 3, 7}, A_params,
+                              B, {3, 1, 7}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {0.25f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/96);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/100);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              B, {1}, B_params,
+                              A, {63}, A_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/96);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/100);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              B, {3, 1, 1}, B_params,
+                              A, {3, 7, 3}, A_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {0.25f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/96);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {63}, A_params,
+                              B, {1}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/96);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {3, 7, 3}, A_params,
+                              B, {1, 1, 3}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  const std::vector<float>& B(B4Add);
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/0);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/-16);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {63}, A_params,
+                              B, {63}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+      -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/0);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/-16);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {3, 3, 7}, A_params,
+                              B, {3, 1, 7}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddS8ScalarVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {0.25f};
+  float B_scale = 2.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/16);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              B, {1}, B_params,
+                              A, {63}, A_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddS8ScalarVectorBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
+  float B_scale = 2.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/16);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              B, {3, 1, 1}, B_params,
+                              A, {3, 7, 3}, A_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddS8VectorScalarFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {0.25f};
+  float B_scale = 2.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/16);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {63}, A_params,
+                              B, {1}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, AddS8VectorScalarBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
+  float B_scale = 2.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/16);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {3, 7, 3}, A_params,
+                              B, {1, 1, 3}, B_params,
+                              C_params);
+}
+
+//
+// Tests for QLinearMul
+//
+TEST(QLinearBinaryOpTest, MulU8VectorVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  const std::vector<float>& B(B4Add);
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/128);
+  float C_scale = 64.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              A, {63}, A_params,
+                              B, {63}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulU8VectorVectorBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+      -0.50f, -1.25f, 0.75f, 0.00f, 2.25f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/128);
+  float C_scale = 64.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              A, {3, 3, 7}, A_params,
+                              B, {3, 1, 7}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulU8ScalarVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {0.25f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/96);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/100);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              B, {1}, B_params,
+                              A, {63}, A_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulU8ScalarVectorBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/96);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/100);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              B, {3, 1, 1}, B_params,
+                              A, {3, 7, 3}, A_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulU8VectorScalarFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {0.25f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/96);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              A, {63}, A_params,
+                              B, {1}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulU8VectorScalarBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<uint8_t> B_params(B_scale, /*zero_point=*/96);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<uint8_t> C_params(C_scale, /*zero_point=*/128);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              A, {3, 7, 3}, A_params,
+                              B, {1, 1, 3}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulS8VectorVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  const std::vector<float>& B(B4Add);
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/0);
+  float C_scale = 64.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/-16);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              A, {63}, A_params,
+                              B, {63}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulS8VectorVectorBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+      -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
+  float B_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/0);
+  float C_scale = 16.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/-16);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              A, {3, 3, 7}, A_params,
+                              B, {3, 1, 7}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulS8ScalarVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {0.25f};
+  float B_scale = 2.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/16);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              B, {1}, B_params,
+                              A, {63}, A_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulS8ScalarVectorBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
+  float B_scale = 2.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/16);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              B, {3, 1, 1}, B_params,
+                              A, {3, 7, 3}, A_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulS8VectorScalarFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {0.25f};
+  float B_scale = 2.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/16);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              A, {63}, A_params,
+                              B, {1}, B_params,
+                              C_params);
+}
+
+TEST(QLinearBinaryOpTest, MulS8VectorScalarBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
+  float B_scale = 2.0f / 256.0f;
+  quantization::Params<int8_t> B_params(B_scale, /*zero_point=*/16);
+  float C_scale = 8.0f / 256.0f;
+  quantization::Params<int8_t> C_params(C_scale, /*zero_point=*/10);
+
+  RunQLinearMathTestFromFloat("QLinearMul", mul_function,
+                              A, {3, 7, 3}, A_params,
+                              B, {1, 1, 3}, B_params,
+                              C_params);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

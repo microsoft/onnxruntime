@@ -3,6 +3,7 @@ Github publishes the markdown documentation with jekyll enabled.
 This extension does not publish any folder starting with `_`.
 These folders need to be renamed.
 """
+
 import os
 import re
 

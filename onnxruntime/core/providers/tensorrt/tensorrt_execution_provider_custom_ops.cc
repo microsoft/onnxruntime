@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unordered_set>
+
 #include "core/framework/provider_options.h"
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "tensorrt_execution_provider.h"
-#include <NvInferRuntime.h>
-#include <NvInferPlugin.h>
-#include <unordered_set>
 
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger();
@@ -27,8 +26,12 @@ extern TensorrtLogger& GetTensorrtLogger();
  * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
-  std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
-  custom_op_domain->domain_ = "trt.plugins";
+  static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+  static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+  if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
+    domain_list.push_back(custom_op_domain.get());
+    return Status::OK();
+  }
 
   // Load any extra TRT plugin library if any.
   // When the TRT plugin library is loaded, the global static object is created and the plugin is registered to TRT registry.
@@ -69,34 +72,15 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
         continue;
       }
 
-      std::unique_ptr<TensorRTCustomOp> trt_custom_op = std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
-      trt_custom_op->SetName(plugin_creator->getPluginName());
-      custom_op_domain->custom_ops_.push_back(trt_custom_op.release());
+      created_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr));  // Make sure TensorRTCustomOp object won't be cleaned up
+      created_custom_op_list.back().get()->SetName(plugin_creator->getPluginName());
+      custom_op_domain->custom_ops_.push_back(created_custom_op_list.back().get());
       registered_plugin_names.insert(plugin_name);
     }
-    domain_list.push_back(custom_op_domain.release());
+    custom_op_domain->domain_ = "trt.plugins";
+    domain_list.push_back(custom_op_domain.get());
   } catch (const std::exception&) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
-  }
-  return Status::OK();
-}
-
-common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info) {
-  std::vector<OrtCustomOpDomain*> domain_list;
-  std::string extra_plugin_lib_paths{""};
-  if (info.has_trt_options) {
-    if (!info.extra_plugin_lib_paths.empty()) {
-      extra_plugin_lib_paths = info.extra_plugin_lib_paths;
-    }
-  } else {
-    const std::string extra_plugin_lib_paths_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kExtraPluginLibPaths);
-    if (!extra_plugin_lib_paths_env.empty()) {
-      extra_plugin_lib_paths = extra_plugin_lib_paths_env;
-    }
-  }
-  auto status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
-  if (!domain_list.empty()) {
-    info.custom_op_domain_list = domain_list;
   }
   return Status::OK();
 }

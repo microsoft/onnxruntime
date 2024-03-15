@@ -8,9 +8,22 @@ import torch._dynamo
 import torch.onnx._internal.exporter
 from torch import nn
 from torch.nn import functional as F
+from torch.onnx import ExportOptions
+from torch.onnx import _OrtBackend as OrtBackend
+from torch.onnx import _OrtBackendOptions as OrtBackendOptions
 from torch.utils import _pytree
 
-from onnxruntime.training.torchdynamo.register_backend import aot_ort, dynamic_aot_ort, make_aot_ort, ort
+
+def make_local_backend(dynamic: bool = False, use_aot_autograd: bool = False):
+    ort_backend = OrtBackend(
+        options=OrtBackendOptions(
+            export_options=ExportOptions(
+                dynamic_shapes=dynamic,
+            ),
+            use_aot_autograd=use_aot_autograd,
+        )
+    )
+    return ort_backend
 
 
 class TestTorchDynamoOrt(unittest.TestCase):
@@ -35,9 +48,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 tensor_q = tensor_p.sigmoid()
                 return tensor_q
 
-            @torch._dynamo.optimize(aot_ort)
-            def optimized_elementwise_model(tensor_x: torch.Tensor):
-                return elementwise_model(tensor_x)
+            optimized_elementwise_model = torch.compile(elementwise_model, backend="onnxrt", dynamic=True)
 
             def run(fun, list_x):
                 tensor_x = torch.tensor(list_x, dtype=torch.float32).requires_grad_()
@@ -77,9 +88,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
             # With dynamic_shape=True, Dynamo sends FX graphs with dynamic
             # shapes (e.g., batch size is a symbol "batch" instead of a fixed
             # number) to OrtBackend.compile(...).
-            @torch._dynamo.optimize(dynamic_aot_ort, dynamic=True)
-            def optimized_elementwise_model(tensor_x: torch.Tensor):
-                return elementwise_model(tensor_x)
+            optimized_elementwise_model = torch.compile(elementwise_model, backend="onnxrt", dynamic=True)
 
             def run(fun, seed: torch.Tensor):
                 tensor_x = seed.detach().clone().requires_grad_()
@@ -125,8 +134,8 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 tensor_q = tensor_p.sigmoid()
                 return (tensor_q, (tensor_y, tensor_z))
 
-            local_aot_ort, ort_backend = make_aot_ort(dynamic=True)
-            cached = ort_backend._all_ort_execution_info.execution_info_per_graph_module
+            local_backend = make_local_backend(dynamic=True, use_aot_autograd=True)
+            cached = local_backend._all_ort_execution_info.execution_info_per_graph_module
             # Before compilation, no graph is generated.
             assert len(cached) == 0
 
@@ -135,7 +144,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
             # With dynamic_shape=True, Dynamo sends FX graphs with dynamic
             # shapes (e.g., batch size is a symbol "batch" instead of a fixed
             # number) to OrtBackend.compile(...).
-            @torch._dynamo.optimize(local_aot_ort, dynamic=True)
+            @torch._dynamo.optimize(local_backend, dynamic=True)
             def optimized_elementwise_model(tensor_x: torch.Tensor):
                 return elementwise_model(tensor_x)
 
@@ -207,9 +216,13 @@ class TestTorchDynamoOrt(unittest.TestCase):
             tensor_q = tensor_p.relu()
             return tensor_q
 
-        @torch._dynamo.optimize(ort)
-        def optimized_elementwise_model(tensor_x: torch.Tensor):
-            return elementwise_model(tensor_x)
+        # TODO: Set use_aot_autograd=False. In order to decompose torch
+        # function calls to aten ops, we need to set
+        # user_aot_autograd=True because there is no decomposition in DORT
+        # anymore. A long-term fix will be brining # decomposition pass back
+        # into DORT.
+        local_backend = make_local_backend(dynamic=True, use_aot_autograd=True)
+        optimized_elementwise_model = torch.compile(elementwise_model, backend=local_backend, dynamic=True)
 
         def run(fun, list_x):
             tensor_x = torch.tensor(list_x, dtype=torch.float32).requires_grad_()
@@ -237,9 +250,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 )
                 return tensor_x1, tensor_x2, tensor_x3
 
-            @torch._dynamo.optimize(aot_ort)
-            def optimized_copy_copy_copy(tensor_x: torch.Tensor):
-                return copy_copy_copy(tensor_x)
+            optimized_copy_copy_copy = torch.compile(copy_copy_copy, backend="onnxrt")
 
             def run(fun, list_x):
                 tensor_x = torch.tensor(list_x, dtype=torch.float32)
@@ -265,7 +276,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
             def no_input_model():
                 return torch.ops.aten.full([2, 3], 1.5)
 
-            @torch._dynamo.optimize(aot_ort)
+            @torch._dynamo.optimize("onnxrt")
             def optimized_no_input_model():
                 return no_input_model()
 
@@ -291,9 +302,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
             def no_input_model():
                 return torch.ops.aten.full([2, 3], 1.5, device="cpu")
 
-            @torch._dynamo.optimize(aot_ort)
-            def optimized_no_input_model():
-                return no_input_model()
+            optimized_no_input_model = torch.compile(no_input_model, backend="onnxrt")
 
             def run(fun):
                 tensor_x = fun()
@@ -355,7 +364,8 @@ class TestTorchDynamoOrt(unittest.TestCase):
             # Baseline.
             loss, grads = run(model, tensor_x, tensor_y)
             # ORT result.
-            compiled_model = torch._dynamo.optimize(aot_ort)(model)
+            local_backend = make_local_backend(dynamic=False, use_aot_autograd=True)
+            compiled_model = torch.compile(model, backend=local_backend, dynamic=False)
             loss_new, grads_new = run(compiled_model, tensor_x, tensor_y)
 
             print(f"MNIST loss: {loss} (pytorch), {loss_new} (ort).")

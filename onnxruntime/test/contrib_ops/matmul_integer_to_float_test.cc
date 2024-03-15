@@ -39,12 +39,8 @@ static void CalculateMatMulIntegerToFloat(const int64_t M, const int64_t N, cons
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
-        float A_dequantized = has_zp ?
-                              (static_cast<int>(A_data[m * K + k]) - static_cast<int>(A_zero_point[0])) * A_scale[0] :
-                              A_data[m * K + k] * A_scale[0];
-        float B_dequantized = has_zp ?
-                              (static_cast<int>(B_data[k * N + n]) - static_cast<int>(B_zero_point[n])) * B_scale[n] :
-                              B_data[k * N + n] * B_scale[n];
+        float A_dequantized = has_zp ? (static_cast<int>(A_data[m * K + k]) - static_cast<int>(A_zero_point[0])) * A_scale[0] : A_data[m * K + k] * A_scale[0];
+        float B_dequantized = has_zp ? (static_cast<int>(B_data[k * N + n]) - static_cast<int>(B_zero_point[n])) * B_scale[n] : B_data[k * N + n] * B_scale[n];
 
         sum += A_dequantized * B_dequantized;
       }
@@ -81,8 +77,7 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
 
   std::vector<WType> tmp_B_data;
   tmp_B_data = random.Uniform<WType>(B_dims,
-                                     (constexpr(std::is_same_v<WType, int8_t>)) ?
-                                     std::numeric_limits<int8_t>::lowest()/2 : std::numeric_limits<uint8_t>::lowest(),
+                                     std::is_signed<WType>::value ? std::numeric_limits<int8_t>::lowest() / 2 : std::numeric_limits<uint8_t>::lowest(),
                                      std::numeric_limits<WType>::max() / 2);
   std::transform(tmp_B_data.begin(), tmp_B_data.end(), std::back_inserter(B_data), [](int32_t v) -> WType {
     return static_cast<WType>(v);
@@ -130,18 +125,20 @@ void TestMatMulIntegerToFloat(bool is_matrix_b_constant,
                                                      B_data, B_scale, B_zero_point, Bias, Y_data,
                                                      per_column, has_zp, has_bias);
 
-  if (constexpr(std::is_same_v<OType, float>)) {
+  if (std::is_same_v<OType, float>) {
     test.AddOutput<float>("Y", {M, N}, Y_data);
+    test.SetOutputAbsErr("Y", 0.0001f);
+    test.SetOutputRelErr("Y", 0.02f);
   } else {
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
     test.SetOutputAbsErr("Y", 0.5f);
   }
 
   // Only DML EP supports these data type combinations for now
-  if ((constexpr(std::is_same_v<OType, MLFloat16>)) ||
-      (constexpr(std::is_same_v<OType, float>) &&
-       constexpr(std::is_same_v<IType, int8_t>) &&
-       constexpr(std::is_same_v<WType, uint8_t>))) {
+  if (std::is_same_v<OType, MLFloat16> ||
+      (std::is_same_v<OType, float> &&
+       std::is_same_v<IType, int8_t> &&
+       std::is_same_v<WType, uint8_t>)) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultDmlExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -179,6 +176,106 @@ void RunMatMulIntegerToFloatTest() {
       HasZeroPoint, /*has_zp*/
       HasBias       /*has_bias*/
   );
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8S8) {
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, float, true, false>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_S8S8) {
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, float, false, true>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_NoBias_test_S8S8) {
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, float, false, false>();
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_S8S8) {
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, float, true, true>();
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_U8U8) {
+  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, true, false>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8U8) {
+  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, false, true>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_NoBias_test_U8U8) {
+  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, false, false>();
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_U8X8) {
+  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, true, true>();
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_U8S8) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, true, false>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8S8) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, false, true>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_NoBias_test_U8S8) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, false, false>();
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_U8S8) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, true, true>();
+}
+
+// DML EP supports Float16 output type and Signed A Matrix and Unsigned B Matric for Float32 output
+#if defined(USE_DML)
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8U8) {
+  RunMatMulIntegerToFloatTest<int8_t, uint8_t, float, true, false>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_S8U8) {
+  RunMatMulIntegerToFloatTest<int8_t, uint8_t, float, false, true>();
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_NoBias_test_S8U8) {
+  RunMatMulIntegerToFloatTest<int8_t, uint8_t, float, false, false>();
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_S8U8) {
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, float, true, true>();
+}
+
+TEST(MatMulIntegerToFloat, MatMulIntegerToFloat_FP16_U8U8) {
+  OpTester test("MatMulIntegerToFloat", 1, kMSDomain);
+  int64_t M = 5;
+  int64_t N = 5;
+  int64_t K = 2;
+
+  std::vector<uint8_t> A_data = {1, 5, 2, 1, 9,
+                                 1, 1, 3, 7, 2};
+  std::vector<uint8_t> B_data = {3, 7, 2, 1, 1,
+                                 2, 1, 9, 1, 1};
+  std::vector<MLFloat16> A_scale = ToFloat16({3.0f});
+  std::vector<MLFloat16> B_scale = ToFloat16({2.0f});
+  test.AddInput<uint8_t>("A", {M, K}, A_data);
+  test.AddInput<uint8_t>("B", {K, N}, B_data);
+  std::vector<uint8_t> A_zero_point = {1};
+  std::vector<uint8_t> B_zero_point = {1};
+
+  test.AddInput<MLFloat16>("a_scale", {1}, A_scale);
+  test.AddInput<MLFloat16>("b_scale", {1}, B_scale);
+  test.AddInput<uint8_t>("a_zero_point", {1}, A_zero_point);
+  test.AddInput<uint8_t>("b_zero_point", {1}, B_zero_point);
+
+  std::vector<float> Y_data(M * N);
+  CalculateMatMulIntegerToFloat<uint8_t, uint8_t, MLFloat16>(M, N, K, A_data, A_scale, A_zero_point,
+                                                             B_data, B_scale, B_zero_point, {}, Y_data,
+                                                             false, true, false);
+
+  test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(Y_data));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDmlExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8S8) {

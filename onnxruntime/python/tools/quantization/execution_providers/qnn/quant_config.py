@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 from pathlib import Path
 
+import numpy as np
 import onnx
 
 from ...calibrate import CalibrationDataReader, CalibrationMethod
@@ -14,6 +15,7 @@ from ...quantize import StaticQuantConfig
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
 OP_TYPES_TO_EXCLUDE = {"Cast"}
+MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 2GB
 
 
 def get_qnn_qdq_config(
@@ -27,14 +29,21 @@ def get_qnn_qdq_config(
     if per_channel:
         raise ValueError("QNN EP does not yet support per-channel quantization.")
 
-    # Process model nodes to setup overrides.
-    model = onnx.load_model(model_input)
+    model = onnx.load_model(model_input, load_external_data=False)
 
     op_types = set()
     tensor_quant_overrides = {}
+    model_has_external_data = False
+    name_to_initializer = {}
 
-    name_to_initializer = {initializer.name: initializer for initializer in model.graph.initializer}
+    # Build map of initializers (name -> initializer) and
+    # check if the model has external data.
+    for initializer in model.graph.initializer:
+        name_to_initializer[initializer.name] = initializer
+        if onnx.external_data_helper.uses_external_data(initializer):
+            model_has_external_data = True
 
+    # Setup quantization overrides for specific operator types
     for node in model.graph.node:
         op_types.add(node.op_type)
 
@@ -55,14 +64,22 @@ def get_qnn_qdq_config(
                     tensor_quant_overrides[input_name] = [{"quant_type": weight_type, "symmetric": weight_symmetric}]
         elif node.op_type == "Sigmoid":
             if activation_type == QuantType.QUInt16:
-                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 65536.0, "zero_point": 0}]
+                tensor_quant_overrides[node.output[0]] = [
+                    {"scale": np.array(1.0 / 65536.0, dtype=np.float32), "zero_point": np.array(0, dtype=np.uint16)}
+                ]
             elif activation_type == QuantType.QInt16:
-                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 0}]
+                tensor_quant_overrides[node.output[0]] = [
+                    {"scale": np.array(1.0 / 32768.0, dtype=np.float32), "zero_point": np.array(0, dtype=np.int16)}
+                ]
         elif node.op_type == "Tanh":
             if activation_type == QuantType.QUInt16:
-                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 32768}]
+                tensor_quant_overrides[node.output[0]] = [
+                    {"scale": np.array(1.0 / 32768.0, dtype=np.float32), "zero_point": np.array(32768, dtype=np.uint16)}
+                ]
             elif activation_type == QuantType.QInt16:
-                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 0}]
+                tensor_quant_overrides[node.output[0]] = [
+                    {"scale": np.array(1.0 / 32768.0, dtype=np.float32), "zero_point": np.array(0, dtype=np.int16)}
+                ]
 
     extra_options = {
         "MinimumRealRange": 0.0001,
@@ -80,5 +97,6 @@ def get_qnn_qdq_config(
         activation_type=activation_type,
         weight_type=weight_type,
         op_types_to_quantize=list(op_types.difference(OP_TYPES_TO_EXCLUDE)),
+        use_external_data_format=(model_has_external_data or model.ByteSize() >= MODEL_SIZE_THRESHOLD),
         extra_options=extra_options,
     )

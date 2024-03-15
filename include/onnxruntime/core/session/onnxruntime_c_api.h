@@ -29,15 +29,16 @@
  */
 
 #pragma once
-#include <stdlib.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 /** \brief The API version defined in this header
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 17
+#define ORT_API_VERSION 18
 
 #ifdef __cplusplus
 extern "C" {
@@ -495,6 +496,7 @@ typedef struct OrtROCMProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
+        enable_hip_graph{false},
         tunable_op_enable{false},
         tunable_op_tuning_enable{false},
         tunable_op_max_tuning_duration_ms{} {}
@@ -546,6 +548,8 @@ typedef struct OrtROCMProviderOptions {
   /** \brief ROCM memory arena configuration parameters
    */
   OrtArenaCfg* default_memory_arena_cfg;
+
+  int enable_hip_graph;
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
@@ -3597,7 +3601,7 @@ struct OrtApi {
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
-   *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
+   *   "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *   may alter model/EP partitioning. Use only for debugging.
@@ -3607,6 +3611,18 @@ struct OrtApi {
    *     - "1": Faster preparation time, less optimal graph.
    *     - "2": Longer preparation time, more optimal graph.
    *     - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific details.
+   *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values. Defaults to "0" (unknown).
+   *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators. Available options:
+   *     - "0": Default (none).
+   *     - "68"
+   *     - "69"
+   *     - "73"
+   *     - "75"
+   *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
+       "enable_htp_fp16_precision": Only used for float32 model.
+       Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
+         - "0": Default. With fp32 precision.
+         - "1": With fp16 precision.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -4417,7 +4433,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
 
   /**
-   * Get a EP resoure.
+   * Get a EP resource.
    * E.g. a cuda stream or a cublas handle
    *
    * \param context - Kernel context
@@ -4515,6 +4531,85 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
+
+  /** \brief Set whether to use deterministic compute.
+   *
+   * Default is false. If set to true, this will enable deterministic compute for GPU kernels where possible.
+   * Note that this most likely will have a performance cost.
+   *
+   * \param[in] options
+   * \param[in] value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value);
+
+  /**
+   * Run fn in parallel
+   *
+   * \param[in] context
+   * \param[in] fn Function accepting usr_data and an integer as iterator
+   * \param[in] total The number of times fn is to be invoked
+   * \param[in] num_batch Number of batches by which the "total" is to be divided in maximum. When zero, there is no limit
+   * \param[in] usr_data User data to be passed back to fn
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data);
+
+  /** \brief Append OpenVINO execution provider to the session options
+   *
+   * If OpenVINO is not available (due to a non OpenVINO enabled build, or if OpenVINO is not installed on the system), this function will fail.
+   *
+   * \param[in] options
+   * \param[in] provider_options_keys
+   * \param[in] provider_options_values
+   * \param[in] num_keys
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                  _In_ OrtSessionOptions* options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /** \brief Append VitisAI provider to session options
+   *
+   * If VitisAI is not available (due to a non VitisAI enabled build, or if VitisAI is not installed on the system), this function will return failure.
+   *
+   * \param[in] options
+   * \param[in] provider_options_keys
+   * \param[in] provider_options_values
+   * \param[in] num_keys
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_VitisAI,
+                  _In_ OrtSessionOptions* options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /** \brief Get scratch buffer from the corresponding allocator under the sepcific OrtMemoryInfo object.
+   *         NOTE: callers are responsible to release this scratch buffer from the corresponding allocator
+   *  \param[in] context OrtKernelContext instance
+   *  \param[in] mem_info OrtMemoryInfo instance
+   *  \param[in] count_or_bytes How many bytes is this scratch buffer
+   *  \param[out] out A pointer to the scrach buffer
+   *  \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(KernelContext_GetScratchBuffer, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _In_ size_t count_or_bytes, _Outptr_ void** out);
+
+  /** \brief Get allocator from KernelInfo for a specific memory type. Please use C API ReleaseAllocator to release out object
+   *
+   * \param[in] info OrtKernelInfo instance
+   * \param[in] mem_type OrtMemType object
+   * \param[out] out A pointer to OrtAllocator
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
 };
 
 /*
@@ -4612,6 +4707,13 @@ struct OrtCustomOp {
   // Get start range
   int(ORT_API_CALL* GetStartVersion)(_In_ const struct OrtCustomOp* op);
   int(ORT_API_CALL* GetEndVersion)(_In_ const struct OrtCustomOp* op);
+
+  // Get the inplace_map that defines which output can reuse which input
+  // Callers will provide 2 raw int* and pass in their address, this function will fill these 2 arrays
+  // when return, output (*output_index)[i] may reuse the input (*input_index[i]).
+  // The return value is the size of these 2 arrays.
+  // Callers are responsible to delete these 2 arrays after use.
+  size_t(ORT_API_CALL* GetMayInplace)(_Out_ int** input_index, _Out_ int** output_index);
 };
 
 /*

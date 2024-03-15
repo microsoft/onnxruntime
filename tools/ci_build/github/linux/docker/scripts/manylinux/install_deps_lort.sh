@@ -31,8 +31,7 @@ cd /usr/local/
 echo "Cloning ONNX Script"
 git clone --recursive https://github.com/microsoft/onnxscript.git
 cd onnxscript
-/opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements-dev.txt
-/opt/python/cp39-cp39/bin/python3.9 setup.py install
+/opt/python/cp39-cp39/bin/python3.9 -m pip install .
 cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import onnxscript; print(f'Installed ONNX Script: {onnxscript.__version__}')"
 
 cd /usr/local

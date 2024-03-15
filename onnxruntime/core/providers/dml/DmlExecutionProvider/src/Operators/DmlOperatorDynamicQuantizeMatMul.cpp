@@ -54,8 +54,8 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
-                0 // guaranteedBaseOffsetAlignment
+                NchwDimensionCount,  // minDimensionCount
+                0  // guaranteedBaseOffsetAlignment
             );
 
         TensorDesc intermediateQuantizedAScaleTensorDesc = TensorDesc(
@@ -65,8 +65,8 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
-                0 // guaranteedBaseOffsetAlignment
+                NchwDimensionCount,  // minDimensionCount
+                0  // guaranteedBaseOffsetAlignment
             );
 
         TensorDesc intermediateQuantizedAZeroPointTensorDesc = TensorDesc(
@@ -76,8 +76,8 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
-                0 // guaranteedBaseOffsetAlignment
+                NchwDimensionCount,  // minDimensionCount
+                0  // guaranteedBaseOffsetAlignment
             );
 
         DML_TENSOR_DESC namedIntermediateQuantizedATensorDesc = intermediateQuantizedATensorDesc.GetDmlDesc();
@@ -110,7 +110,7 @@ public:
         MLOperatorGraphDesc operatorGraphDesc = {};
         std::vector<const DML_OPERATOR_DESC*> opDescs{&opDesc1, &opDesc2};
         operatorGraphDesc.nodeCount = static_cast<uint32_t>(opDescs.size());
-        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+        operatorGraphDesc.nodes = opDescs.data();
 
         // set input edges
         std::pair<uint32_t, uint32_t> nodeToNodeInputIndex[OnnxInputIndex::Count] {{0, 0}, {1, 3}, {1, 4}, {1, 5}, {1, 6}};
@@ -120,7 +120,7 @@ public:
             if (inputIndex == OnnxInputIndex::B_zero_point && !hasBZP) continue;
             if (inputIndex == OnnxInputIndex::Bias && !hasBias) continue;
             DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
-            inputEdge.GraphInputIndex = inputIndex; // OnnxInputIndex and DmlInputIndex are identity for QLinearSigmoid
+            inputEdge.GraphInputIndex = inputIndex;  // OnnxInputIndex and DmlInputIndex are identity for QLinearSigmoid
             inputEdge.ToNodeIndex = nodeToNodeInputIndex[inputIndex].first;
             inputEdge.ToNodeInputIndex = nodeToNodeInputIndex[inputIndex].second;
             inputEdges.push_back(inputEdge);
@@ -170,4 +170,4 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(DynamicQuantizeMatMul, DmlOperatorDynamicQuantizeMatMul);
-} // namespace Dml
+}  // namespace Dml

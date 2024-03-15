@@ -22,7 +22,8 @@ namespace test {
 TEST_F(ActivationOpTest, ThresholdedRelu_version_1_to_9) {
   float alpha = 0.1f;
   TestActivationOp<float>(
-      "ThresholdedRelu", input_values, [alpha](float x) { return (x >= alpha) ? x : 0; }, {{"alpha", alpha}}, true, 1);
+      "ThresholdedRelu", input_values, [alpha](float x) { return (x >= alpha) ? x : 0; }, {{"alpha", alpha}}, {},
+      true, 1);
 }
 
 TEST_F(ActivationOpTest, ScaledTanh) {
@@ -46,13 +47,13 @@ TEST_F(ActivationOpTest, ParametricSoftplus) {
         else
           return alpha * logf(expf(bx) + 1);
       },
-      {{"alpha", alpha}, {"beta", beta}}, false);  // Disable TensorRT due to result mismatch
+      {{"alpha", alpha}, {"beta", beta}}, {}, false);  // Disable TensorRT due to result mismatch
 }
 
 TEST_F(ActivationOpTest, Gelu) {
   TestActivationOp<float>(
       "Gelu", input_values, [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {},
-      false, 1, kMSDomain);
+      {}, false, 1, kMSDomain);
 }
 
 #if defined(USE_DNNL)
@@ -115,7 +116,7 @@ TEST_F(ActivationOpTest, QuickGelu) {
           y = tmp >= 0 ? y : 1 - y;
           return x * y;
         },
-        {{"alpha", alpha}}, false, 1, kMSDomain);
+        {{"alpha", alpha}}, {}, false, 1, kMSDomain);
   }
 
   // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
@@ -129,7 +130,7 @@ TEST_F(ActivationOpTest, QuickGelu) {
           y = tmp >= 0 ? y : 1 - y;
           return x * y;
         },
-        {{"alpha", alpha}}, false, 1, kMSDomain);
+        {{"alpha", alpha}}, {}, false, 1, kMSDomain);
   }
 
   // Negative alpha.
@@ -143,7 +144,7 @@ TEST_F(ActivationOpTest, QuickGelu) {
           y = tmp >= 0 ? y : 1 - y;
           return x * y;
         },
-        {{"alpha", alpha}}, false, 1, kMSDomain);
+        {{"alpha", alpha}}, {}, false, 1, kMSDomain);
   }
 }
 

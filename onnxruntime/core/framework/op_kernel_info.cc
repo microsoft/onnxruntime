@@ -15,7 +15,8 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                            const OrtValueNameIdxMap& ort_value_name_idx_map,
                            const DataTransferManager& data_transfer_mgr,
-                           const AllocatorMap& allocators)
+                           const AllocatorMap& allocators,
+                           const ConfigOptions& config_options)
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
@@ -24,15 +25,22 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       ort_value_name_idx_map_(ort_value_name_idx_map),
       data_transfer_mgr_(data_transfer_mgr),
       proto_helper_context_(node),
-      allocators_(allocators) {}
+      allocators_(allocators),
+      config_options_(config_options) {
+}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
-                   other.ort_value_name_idx_map_, other.data_transfer_mgr_, other.allocators_) {}
+                   other.ort_value_name_idx_map_, other.data_transfer_mgr_,
+                   other.allocators_, other.config_options_) {
+}
 
 AllocatorPtr OpKernelInfo::GetAllocator(OrtMemType mem_type) const {
   auto it = allocators_.find(execution_provider_->GetOrtDeviceByMemType(mem_type));
-  if (it != allocators_.end()) return it->second;
+  if (it != allocators_.end()) {
+    return it->second;
+  }
+
   return nullptr;
 }
 

@@ -60,6 +60,10 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #define HWCAP2_SVEI8MM (1 << 9)
 #endif
 
+#ifndef HWCAP2_BF16
+#define HWCAP2_BF16 (1 << 14)
+#endif
+
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
@@ -70,6 +74,8 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 
     has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
+
+    has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
 }
 #endif
 
@@ -482,7 +488,6 @@ Return Value:
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
-    this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -512,6 +517,9 @@ Return Value:
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
+
+        // MlasSQNBitGemmDispatchNeon has a dependency on dot product instructions
+        this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
     }
 
 #if defined(__linux__)

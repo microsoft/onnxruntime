@@ -171,10 +171,10 @@ class TrainingManager(GraphExecutionManager):
                 for idx, grad_output in enumerate(grad_outputs):
                     if idx in self._graph_info.output_grad_indices_non_differentiable:
                         assert grad_output is None, (
-                            "ORT found the {}-th module output '{}' is "
+                            f"ORT found the {idx}-th module output '{self._graph_info.user_output_names[idx]}' is "
                             "non-differentiable according to the onnx graph. "
                             "However, the gradient value is still provided by "
-                            "PyTorch's autograd engine.".format(idx, self._graph_info.user_output_names[idx])
+                            "PyTorch's autograd engine."
                         )
                         continue
 
@@ -196,18 +196,20 @@ class TrainingManager(GraphExecutionManager):
 
                 # Run and get results
                 backward_outputs = C.OrtValueVector()
-                self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
-                # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
-                # affect peak memory usage in a subsequent graph run.
-                del ctx.run_info.state
+                try:
+                    self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
+                    # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
+                    # affect peak memory usage in a subsequent graph run.
 
-                # Fast version: all backward_outputs are converted first.
-                # This version only works if backward_outputs is an OrtValueVector.
-                transferred_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
+                    # Fast version: all backward_outputs are converted first.
+                    # This version only works if backward_outputs is an OrtValueVector.
+                    transferred_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
 
-                self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_BACKWARD)
-
-                return tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
+                    self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_BACKWARD)
+                    res = tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
+                    return res
+                finally:
+                    del ctx.run_info.state
 
         return _ORTModuleFunction
 
@@ -310,11 +312,22 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
-            if self._runtime_options.enable_zero_stage3_support:
+            if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
+            param_to_append_as_onnx_graph_inputs = []
+            if self._mem_efficient_grad_management_is_enabled:
+                from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
+
+                param_to_append_as_onnx_graph_inputs = get_params_not_connected_to_pull_param_trigger(
+                    self._flattened_module.named_parameters(), self._onnx_models.exported_model
+                )
+
+            else:
+                param_to_append_as_onnx_graph_inputs = self._graph_initializers
+
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
-                self._graph_initializers,
+                param_to_append_as_onnx_graph_inputs,
                 self._graph_info.user_input_names,
                 self._input_info,
                 self._flattened_module.named_buffers(),
@@ -492,10 +505,20 @@ class TrainingManager(GraphExecutionManager):
             if param.requires_grad and name in self._graph_initializer_names
         }
 
+        if self._mem_efficient_grad_management_is_enabled:
+            from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+
+            # Remove the inputs we added during model post-processing.
+            existing_require_grad_names = [
+                n for n in self._input_info.require_grad_names if n != MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+            ]
+        else:
+            existing_require_grad_names = self._input_info.require_grad_names
+
         # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
         # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
         if (
-            input_info.require_grad_names != self._input_info.require_grad_names
+            input_info.require_grad_names != existing_require_grad_names
             or initializer_names_to_train_set_user_model != self._graph_initializer_names_to_train
         ):
             self._input_info = input_info

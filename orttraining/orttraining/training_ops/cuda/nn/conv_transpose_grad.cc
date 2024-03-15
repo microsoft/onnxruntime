@@ -53,7 +53,6 @@ Status ConvTransposeGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream, c
             algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args.y_tensor, args.y_data));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>
@@ -71,7 +70,6 @@ Status ConvTransposeGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream, 
             algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args.w_desc, args.dw_data));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>
@@ -182,7 +180,8 @@ Status ConvTransposeGrad<T>::PrepareConvForwardArgs(const Tensor& X, const Tenso
     ORT_RETURN_IF_ERROR(args.y_tensor.Set(y_dims, args.params.data_type));
     ORT_RETURN_IF_ERROR(args.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                            gsl::narrow_cast<int>(conv_attrs_.group), CUDNN_CROSS_CORRELATION,
-                                           args.params.data_type));
+                                           args.params.data_type,
+                                           UseTF32()));
   }
 
   return Status::OK();
@@ -287,7 +286,8 @@ Status ConvTransposeGrad<T>::PrepareConvBackwardFilterArgs(const Tensor& X, cons
     ORT_RETURN_IF_ERROR(args.y_tensor.Set(y_dims, args.params.data_type));
     ORT_RETURN_IF_ERROR(args.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                            gsl::narrow_cast<int>(conv_attrs_.group), CUDNN_CROSS_CORRELATION,
-                                           args.params.data_type));
+                                           args.params.data_type,
+                                           UseTF32()));
 
     if (dB) {
       const auto& b_shape = dB->Shape();
