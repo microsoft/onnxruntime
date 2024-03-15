@@ -3,12 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from collections import OrderedDict
 from logging import Logger
 from typing import Tuple
 
 import onnx
 import torch
-from collections import OrderedDict
+
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
@@ -39,7 +40,6 @@ class TrainingManager(GraphExecutionManager):
         logger: Logger,
     ):
         super().__init__(model, torch.onnx.TrainingMode.TRAINING, debug_options, fallback_manager, logger)
-
 
         self._forward_class = self._create_autofunction_class()
 
@@ -379,12 +379,17 @@ class TrainingManager(GraphExecutionManager):
         from onnxruntime.training.utils.hooks._zero_offload_subscriber import (
             ORTZeROOffloadPostForwardFunction,
             ORTZeROOffloadPreForwardFunction,
+            _get_param_names_for_current_module,
         )
-        from ._utils import get_fully_qualified_class_name
-        from ._mem_efficient_grad_mgmt import _create_param_retrieval_function
-        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_param_names_for_current_module
 
-        all_param_names = {k : v for k, v in self._flattened_module.named_parameters()}
+        from ._mem_efficient_grad_mgmt import _create_param_retrieval_function
+        from ._pythonop_helper import make_pythonop_node
+        from ._utils import get_fully_qualified_class_name
+        from ._zero_stage3_compatibility import STAGE3_PULL_WEIGHT_TRIGGER_NAME, STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE, STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE
+        from onnx import helper
+        from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
+
+        all_param_names = {k: v for k, v in self._flattened_module.named_parameters()}
         param_retrieve_func_class = _create_param_retrieval_function(all_param_names)
 
         post_forward_function_name = get_fully_qualified_class_name(ORTZeROOffloadPostForwardFunction)
@@ -392,10 +397,26 @@ class TrainingManager(GraphExecutionManager):
         backward_pull_trigger_map = OrderedDict()
 
         output_name_to_node_map = {}
+        in_bw = False
+        parameters_usage_count_bw = {}
         for node in optimized_model.graph.node:
+            if node.op_type == "YieldOp":
+                in_bw = True
+                continue
+
             for output in node.output:
                 output_name_to_node_map[output] = node
 
+            if in_bw:
+                for inp in node.input:
+                    if inp.startswith("ready_"):
+                        raw_param_name = inp[6:]
+                        if raw_param_name not in all_param_names:
+                            continue
+
+                        if raw_param_name not in parameters_usage_count_bw:
+                            parameters_usage_count_bw[raw_param_name] = 0
+                        parameters_usage_count_bw[raw_param_name] += 1
 
         node_handled = set()
         modified = True
@@ -430,17 +451,48 @@ class TrainingManager(GraphExecutionManager):
                 input_pointer_scalars = found[0].ints
                 # Restore the nn.Module from the pointer.
                 import ctypes
+
                 module = ctypes.cast(input_pointer_scalars[0], ctypes.py_object).value
 
-                partitioned_param_names = _get_param_names_for_current_module(module)
+                partitioned_param_names = module.named_parameters(prefix=module.__class__.__qualname__, recurse=False)
+                params_map = {name: param for name, param in partitioned_param_names}
+                index = 0
+                for local_name, param in params_map.items():
+                    name = None
+                    for n, v in all_param_names.items():
+                        if v is param:
+                            name = n
+                            break
 
-                for i, pair in enumerate(partitioned_param_names):
-                    name = pair[0]
+                    assert name is not None, f"Cannot find name for param {param}"
+
+                    if name not in parameters_usage_count_bw or parameters_usage_count_bw[name] == 0:
+                        continue
+
+                    print("enter iteration for param named ", name)
+                    # name = pair[0]
                     assert name not in backward_pull_trigger_map, f"Duplicate name {name} in backward_pull_trigger_map"
-                    backward_pull_trigger_map[name] = node.output[0]
+
+                    # Create the param retrieval function for this parameter.
+                    node_inputs = [
+                        helper.make_tensor_value_info(
+                            node.output[0],
+                            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
+                            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+                        ),
+                        name,  # Second param is a string, which represents the param_name
+                    ]
+
+                    node_outputs = [
+                        helper.make_tensor_value_info(
+                            f"bw_{name}",  # output use the same name as weight
+                            int(pytorch_type_to_onnx_dtype(all_param_names[name].dtype)),
+                            list(all_param_names[name].ds_shape),
+                        ),
+                    ]
 
                     new_node = make_pythonop_node(
-                        f"weight_retrieval_{graph_input.name}",
+                        f"weight_retrieval_{name}",
                         node_inputs,
                         node_outputs,
                         param_retrieve_func_class,
@@ -448,16 +500,19 @@ class TrainingManager(GraphExecutionManager):
                         safe_run_mode=0,
                     )
 
-                    optimized_model.graph.node.insert(offset + i, new_node)
+                    backward_pull_trigger_map[name] = new_node.output[1] # skip the context
+                    # print("insert name ", name, " at ", offset + 1 + index, " with ", new_node)
+
+                    optimized_model.graph.node.insert(offset + 1 + index, new_node)
                     modified = True
-                    print(f">>>>>Inserted {new_node} at {offset + i}")
-                break
+                    # print(f">>>>>Inserted {new_node} at {offset + 1 + index}")
+                    index += 1
 
 
+                if modified:
+                    break
 
-
-
-        print(backward_pull_trigger_map)
+        # print(backward_pull_trigger_map)
         in_bw = False
         for node in optimized_model.graph.node:
             if node.op_type == "YieldOp":
@@ -476,8 +531,6 @@ class TrainingManager(GraphExecutionManager):
                     new_inputs.append(inp)
 
             node.input[:] = new_inputs
-
-
 
         self._onnx_models.optimized_model = optimized_model
 

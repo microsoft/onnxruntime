@@ -53,6 +53,7 @@ class GraphExecutionManager(GraphExecutionInterface):
     def __init__(
         self,
         module: _FlattenedModule,
+        export_mode: int,
         debug_options: DebugOptions,
         fallback_manager: _FallbackManager,
         logger: logging.Logger,
@@ -88,16 +89,12 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._first_skip_check_warning = True
 
-        # Inspector for runtime information, for example input data, memory usage, etc.
-        self._runtime_inspector = RuntimeInspector(self._logger, self._original_module)
-        self._runtime_inspector.memory_ob.enable_memory_stats_by_step(self._runtime_options.print_memory_stat_by_step)
-
         # Tracker for ORTModule model export, session creation overhead.
         self.time_tracker = _logger.TimeTracker()
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
-        self._export_mode = None
+        self._export_mode = export_mode
 
         # Exporter can take extra arguments for ORTModule extensions
         # It cannot overlap with required/immutable arguments (validated in runtime)
@@ -128,6 +125,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Flag to re-export the model due to attribute change on the original module.
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
+
+        # Inspector for runtime information, for example input data, memory usage, etc.
+        self._runtime_inspector = RuntimeInspector(
+            self._logger, self._original_module, self._export_mode == torch.onnx.TrainingMode.TRAINING
+        )
+        self._runtime_inspector.memory_ob.enable_memory_stats_by_step(self._runtime_options.print_memory_stat_by_step)
 
         # Load ATen operator executor extension.
         load_aten_op_executor_cpp_extension()
@@ -520,7 +523,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             (
                 self._mem_efficient_grad_management_is_enabled,
                 exported_model,
-            ) = post_processing_enable_mem_efficient_training(exported_model, self._flattened_module.named_parameters())
+            ) = post_processing_enable_mem_efficient_training(
+                exported_model,
+                {k: v for k, v in self._flattened_module.named_parameters()},
+                {k: v for k, v in self._flattened_module.named_buffers()},
+            )
 
             if self._runtime_options.run_symbolic_shape_infer:
                 exported_model = SymbolicShapeInference.infer_shapes(

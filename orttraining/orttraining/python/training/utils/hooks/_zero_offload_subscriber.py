@@ -190,6 +190,7 @@ def _get_params_for_current_module(module: torch.nn.Module) -> List[torch.nn.par
 
     return partitioned_params
 
+
 @nvtx_function_decorator
 def _get_param_names_for_current_module(module: torch.nn.Module, recursive=False) -> List[torch.nn.parameter.Parameter]:
     """Retrieve the parameters for this module.
@@ -199,8 +200,9 @@ def _get_param_names_for_current_module(module: torch.nn.Module, recursive=False
     """
     from deepspeed.runtime.zero.partitioned_param_coordinator import get_all_parameters
 
-    return map(lambda pair: pair, get_all_parameters(module, recursive))
+    named_parms = get_all_parameters(module, recursive)
 
+    return {k: v for k, v in named_parms.items()}
 
 
 @nvtx_function_decorator
@@ -395,7 +397,6 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         """
         torch_nvtx_range_push("ORTZeROOffloadPostForwardFunction::forward")
 
-
         ctx.has_trigger_tensor = has_trigger_tensor
         ctx.trigger_tensor_shape = trigger_and_output_tensors[0].shape if has_trigger_tensor else None
         ctx.trigger_tensor_dtype = trigger_and_output_tensors[0].dtype if has_trigger_tensor else None
@@ -434,7 +435,10 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
                 updated_args = ret
         if ctx.has_trigger_tensor:
             updated_args = list(updated_args)
-            updated_args.insert(0, torch.zeros(ctx.trigger_tensor_shape, dtype=ctx.trigger_tensor_dtype, device=ctx.trigger_tensor_device))
+            updated_args.insert(
+                0,
+                torch.zeros(ctx.trigger_tensor_shape, dtype=ctx.trigger_tensor_dtype, device=ctx.trigger_tensor_device),
+            )
             updated_args = tuple(updated_args)
         torch_nvtx_range_pop()
         return (None, None, None, None, None, *updated_args)
@@ -445,7 +449,6 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         tensor_input_shapes: List[Optional[List[Union[int, str]]]],
         tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
     ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-
         input_int_scalars_attr_name = "input_int_scalars"
         found = [attr for attr in node.attribute if attr.name == input_int_scalars_attr_name]
         assert len(found) == 1
@@ -464,7 +467,6 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         found = [attr for attr in node.attribute if attr.name == input_int_scalars_attr_name]
         assert len(found) == 1
         has_trigger_tensor_input = found[0].ints[0]
-
 
         non_tensor_fw_input_count = 5
         fw_output_count = len(node.output) - 1  # exclude the first output appended in ONNX
@@ -638,7 +640,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
             _wrap_post_forward_module_hook,
             None,
             outputs_schema,
-            0, # has_trigger_tensor
+            0,  # has_trigger_tensor
             *outputs_tensors,
         )
 
@@ -675,7 +677,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
             _end_of_forward_hook,
             None,
             outputs_schema,
-            0, # has_trigger_tensor
+            0,  # has_trigger_tensor
             *outputs_tensors,
         )
 

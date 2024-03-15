@@ -28,8 +28,7 @@ class InferenceManager(GraphExecutionManager):
     """
 
     def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger):
-        super().__init__(model, debug_options, fallback_manager, logger)
-        self._export_mode = torch.onnx.TrainingMode.EVAL
+        super().__init__(model, torch.onnx.TrainingMode.EVAL, debug_options, fallback_manager, logger)
 
     @staticmethod
     def execution_session_run_forward(

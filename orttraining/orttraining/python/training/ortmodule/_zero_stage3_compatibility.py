@@ -248,7 +248,7 @@ def post_processing_enable_zero_stage3_compat(
         node.input.insert(0, STAGE3_PULL_WEIGHT_TRIGGER_NAME)
 
         updated_input_int_scalars_int64 = [1]
-        updated_input_convention_str = input_convention_str + 'd'
+        updated_input_convention_str = input_convention_str + "d"
         updated_input_tensor_ranks_int64 = [len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE)] + input_tensor_ranks_int64
         updated_input_tensor_types_int64 = [STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE] + input_tensor_types_int64
         # updated_output_tensor_ranks_int64 = [len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE)] + output_tensor_ranks_int64
