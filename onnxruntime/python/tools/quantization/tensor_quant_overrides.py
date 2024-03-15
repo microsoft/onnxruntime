@@ -187,9 +187,6 @@ class TensorQuantOverridesHelper(MutableMapping):
     def pprint_str(self, indent=None) -> str:
         return json.dumps(self.overrides, default=str, indent=indent)
 
-    def empty(self) -> bool:
-        return len(self.overrides) > 0
-
     def get_dict(self) -> dict[str, list[dict[str, Any]]]:
         return self.overrides
 
