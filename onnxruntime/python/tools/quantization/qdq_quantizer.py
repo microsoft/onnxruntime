@@ -639,7 +639,6 @@ class QDQQuantizer(BaseQuantizer):
             raise ValueError(
                 "Do not currently support converted quant_types in TensorQuantOverrides when the `dedicated_qdq_pair` extra_option is enabled"
             )
-            return
 
         # Determine which nodes consume the original quantized type and which nodes
         # consume the converted quantized type.
