@@ -39,7 +39,7 @@ jobs:
   steps:
     - template: templates/use-xcode-version.yml
       parameters:
-        xcodeVersion: 14.2
+        xcodeVersion: 13.1
     - template: templates/mac-build-step-with-cache.yml
       parameters:
         WithCache: true
