@@ -190,9 +190,6 @@ export declare namespace InferenceSession {
   // Backend WebAssembly: supports 'cpu', 'wasm', 'webgpu' and 'webnn'.
   // Backend ONNX.js: supports 'webgl'.
   // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
-  //
-  // The type names used in the following are based on the constants defined in ONNXRuntime:
-  // include/onnxruntime/core/graph/constants.h
   interface ExecutionProviderOptionMap {
     coreml: CoreMLExecutionProviderOption;
     cpu: CpuExecutionProviderOption;
