@@ -21,6 +21,11 @@ parameters:
   type: boolean
   default: false
 
+- name: onnxTensorrtOverwrite
+  displayName: Indicate onnx-tensorrt commit id to overwrite
+  type: string
+  default: ""
+
 - name: ModelGroups
   type: object
   default: 
@@ -107,7 +112,7 @@ jobs:
     
     # Build ORT with TensorRT OSS parser 
     - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, true)) }}:
-      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --use_tensorrt_oss_parser'
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --use_tensorrt_oss_parser' -o ${{parameters.onnxTensorrtOverwrite}}
         displayName: 'Build latest ORT Image with TensorRT OSS parser'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
