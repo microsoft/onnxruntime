@@ -5,7 +5,7 @@
 
 #include "core/framework/kernel_type_str_resolver_utils.h"
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/common.h"
 #include "core/flatbuffers/schema/ort.fbs.h"

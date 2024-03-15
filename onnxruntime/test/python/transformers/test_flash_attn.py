@@ -229,9 +229,11 @@ def create_group_query_attention_graph_prompt(
             [
                 config.batch_size,
                 config.q_sequence_length,
-                (config.num_heads * config.head_size)
-                if not packed
-                else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size),
+                (
+                    (config.num_heads * config.head_size)
+                    if not packed
+                    else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size)
+                ),
             ],
         ),
         helper.make_tensor_value_info(
@@ -415,9 +417,11 @@ def create_group_query_attention_graph_past(
             [
                 config.batch_size,
                 config.sequence_length,
-                (config.num_heads * config.head_size)
-                if not packed
-                else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size),
+                (
+                    (config.num_heads * config.head_size)
+                    if not packed
+                    else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size)
+                ),
             ],
         ),
         helper.make_tensor_value_info(

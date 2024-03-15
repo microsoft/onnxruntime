@@ -8,6 +8,17 @@ resources:
     name: pypa/manylinux
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
+parameters:
+  - name: SpecificArtifact
+    displayName: Use Specific Artifact
+    type: boolean
+    default: false
+
+  - name: BuildId
+    displayName: Specific Artifact's BuildId
+    type: string
+    default: '0'
+
 stages:
 - template: templates/py-packaging-training-cuda-stage.yml
   parameters:
@@ -20,3 +31,5 @@ stages:
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
     debug_build: false
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}

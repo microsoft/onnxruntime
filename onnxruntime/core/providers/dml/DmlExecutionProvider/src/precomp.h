@@ -39,7 +39,7 @@
 #include <d3d12sdklayers.h>
 #include "External/D3DX12/d3dx12.h"
 #endif
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "GraphicsUnknownHelper.h"
 

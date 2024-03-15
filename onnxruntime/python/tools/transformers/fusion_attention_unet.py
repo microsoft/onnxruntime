@@ -373,9 +373,7 @@ class FusionAttentionUnet(Fusion):
             else "MultiHeadAttention ({})".format(
                 "self attention with packed qkv"
                 if self.enable_packed_qkv
-                else "cross attention with packed kv"
-                if self.enable_packed_kv
-                else "cross attention"
+                else "cross attention with packed kv" if self.enable_packed_kv else "cross attention"
             )
         )
         self.increase_counter(counter_name)
@@ -843,9 +841,7 @@ class FusionAttentionUnet(Fusion):
             else "MultiHeadAttention ({})".format(
                 "self attention with packed qkv"
                 if self.enable_packed_qkv
-                else "cross attention with packed kv"
-                if self.enable_packed_kv
-                else "cross attention"
+                else "cross attention with packed kv" if self.enable_packed_kv else "cross attention"
             )
         )
         self.increase_counter(counter_name)
