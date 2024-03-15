@@ -54,7 +54,7 @@ Status PrepareSliceComputeMetadataFromConstantInitializers(const Node& slice_nod
       return Status::OK();
     }
 
-    const auto* tensor_proto = graph_viewer.GetConstantInitializer(input_defs[input_idx]->Name(), true);
+    const auto* tensor_proto = graph_viewer.GetConstantInitializer(input_defs[input_idx]->Name());
     ORT_RETURN_IF_NOT(tensor_proto, "Failed to get constant initializer.");
     Initializer unpacked_tensor(*tensor_proto, graph_viewer.ModelPath());
     const auto data_type = unpacked_tensor.data_type();

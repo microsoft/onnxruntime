@@ -11,6 +11,7 @@
 namespace onnxruntime {
 
 struct CudaStream;
+void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
 
 struct DeferredCpuAllocator : public OrtAllocator {
   DeferredCpuAllocator(CudaStream&);
@@ -47,6 +48,8 @@ struct CudaStream : Stream {
 
   onnxruntime::IAllocator* GetCpuAllocator() const { return cpu_allocator_.get(); }
 
+  WaitNotificationFn GetWaitNotificationFn() const override { return WaitCudaNotificationOnDevice; }
+
  private:
   std::vector<void*> deferred_cpu_buffers_;
   AllocatorPtr cpu_allocator_;
@@ -64,5 +67,4 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                cudnnHandle_t external_cudnn_handle,
                                cublasHandle_t external_cublass_handle,
                                const CUDAExecutionProviderInfo& ep_info);
-void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
 }  // namespace onnxruntime

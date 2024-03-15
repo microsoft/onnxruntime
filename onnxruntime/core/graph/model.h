@@ -8,7 +8,7 @@
 #include <climits>
 #include <string>
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"

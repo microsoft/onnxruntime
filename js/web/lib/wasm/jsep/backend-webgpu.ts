@@ -10,7 +10,7 @@ import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
+import {AdapterInfo, ComputeContext, GpuArchitecture, GpuData, GpuVendor, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
 
 interface CommandInfo {
   readonly kernelId: number;
@@ -94,11 +94,32 @@ const getProgramInfoUniqueKey =
       return key;
     };
 
+class AdapterInfoImpl implements AdapterInfo {
+  readonly architecture?: string;
+  readonly vendor?: string;
+
+  constructor(adapterInfo: GPUAdapterInfo) {
+    if (adapterInfo) {
+      this.architecture = adapterInfo.architecture;
+      this.vendor = adapterInfo.vendor;
+    }
+  }
+
+  isArchitecture(architecture: GpuArchitecture): boolean {
+    return this.architecture === architecture;
+  }
+
+  isVendor(vendor: GpuVendor): boolean {
+    return this.vendor === vendor;
+  }
+}
+
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
  * the first parameter so that it is stored for future use.
  */
 export class WebGpuBackend {
+  adapterInfo: AdapterInfoImpl;
   device: GPUDevice;
   /**
    * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
@@ -212,6 +233,7 @@ export class WebGpuBackend {
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
+    this.adapterInfo = new AdapterInfoImpl(await adapter.requestAdapterInfo());
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
@@ -231,6 +253,7 @@ export class WebGpuBackend {
     };
 
     Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
+    Object.defineProperty(this.env.webgpu, 'adapter', {value: adapter});
 
     // init queryType, which is necessary for InferenceSession.create
     this.setQueryType();

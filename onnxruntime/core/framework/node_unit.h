@@ -3,6 +3,9 @@
 
 #pragma once
 
+// QDQ models require graph modification at runtime, so we know this infrastructure is not used in a minimal build
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include <string>
 #include <optional>
 #include <vector>
@@ -18,8 +21,21 @@ class NodeArg;
 class Path;
 
 namespace QDQ {
-struct NodeGroup;
-}
+// Struct to represent a DequantizeLinear -> Op -> QuantizeLinear node group
+struct NodeGroup {
+  std::vector<NodeIndex> dq_nodes;
+  std::vector<NodeIndex> q_nodes;
+  NodeIndex target_node;
+
+  // Validator to check if the set of nodes can form a valid QDQ NodeGroup.
+  // Checks target node is only consumer of each DQ, and that the outputs remain valid if the QDQ node group was to
+  // be converted into a single node with a quantized operator.
+  static Status CanCreateNodeGroup(const GraphViewer& graph_viewer,
+                                   const Node& target_node,
+                                   gsl::span<const Node* const> dq_nodes,
+                                   gsl::span<const Node* const> q_nodes);
+};
+}  // namespace QDQ
 
 // Definition of one input or output
 // If the optional quant_param is present, then this is a quantized input,
@@ -69,26 +85,33 @@ class NodeUnit {
   const std::vector<const Node*>& GetQNodes() const noexcept { return q_nodes_; }
   std::vector<const Node*> GetAllNodesInGroup() const noexcept;
 
-  Node::EdgeConstIterator OutputEdgesBegin(size_t index) const;
-  Node::EdgeConstIterator OutputEdgesEnd(size_t index) const;
+  /// Number of input edges to the logical node. For a QDQ node this is the count of input edges to the DQ nodes
+  /// plus any other edges to the target node for inputs that are not via a DQ node.
+  size_t InputEdgeCount() const { return input_edge_count_; }
+
+  // output edges. src index is for outputs of the target node. dest index and node is for consumer of node unit
+  // output. any Q nodes are hidden.
+  Node::EdgeConstIterator OutputEdgesBegin() const;
+  Node::EdgeConstIterator OutputEdgesEnd() const;
 
  private:
-  const std::vector<const Node*> q_nodes_;   // q-nodes for this NodeUnit
-  const std::vector<const Node*> dq_nodes_;  // dq nodes for this NodeUnit, not all inputs
+  // Initialization for a NodeUnit that contains a single node
+  void InitForSingleNode();
+
+  const std::vector<const Node*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
   const Node& target_node_;
+  const std::vector<const Node*> q_nodes_;  // q-nodes for this NodeUnit. not necessarily all outputs
   const Type type_;
 
   std::vector<NodeUnitIODef> inputs_;
   std::vector<NodeUnitIODef> outputs_;
 
-  // Initializing for a single Node
-  void InitForSingleNode();
+  size_t input_edge_count_;  // total number of input edges
+
+  // output edges, hiding any Q nodes involved. src_idx will be value from target node. only used for QDQ node group.
+  Node::EdgeSet output_edges_;
 };
 
-// Get all the nodes in the given graph_viewer as NodeUnits (SingleNode or QDQGroup)
-// And return a map to quick query the NodeUnit which contains the given Node,
-// Note, the value of the map is owned by the vector of std::unique_ptr<NodeUnit>
-std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer& graph_viewer);
-
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

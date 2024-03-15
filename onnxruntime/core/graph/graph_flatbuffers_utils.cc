@@ -3,7 +3,7 @@
 
 #include "graph_flatbuffers_utils.h"
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"

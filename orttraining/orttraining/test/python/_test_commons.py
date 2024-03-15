@@ -25,5 +25,5 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, en
     completed_process = subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
 
     if log:
-        log.debug("Subprocess completed. Return code=" + str(completed_process.returncode))
+        log.debug("Subprocess completed. Return code=%s", completed_process.returncode)
     return completed_process

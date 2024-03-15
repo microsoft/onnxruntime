@@ -17,7 +17,6 @@ stages:
 # Each group has 4 jobs that cover:
 # o Windows ARM64EC
 # o Windows ARM64
-# o Windows ARM
 # o Windows x64
 # o Windows x86
 # Now we don't have coverage for ARM64EC yet. Will add it.
@@ -31,20 +30,6 @@ stages:
     packageName: x86
     buildparameter: --enable_onnx_tests
     runTests: true
-    buildJava: false
-    buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
-
-- template: templates/win-ci.yml
-  parameters:
-    DoCompliance: false
-    DoEsrp: false
-    stage_name_suffix: CPU_arm_default
-    buildArch: x64
-    msbuildPlatform: arm
-    packageName: arm
-    buildparameter: --arm  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-    runTests: false
     buildJava: false
     buildNodejs: false
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
@@ -110,21 +95,6 @@ stages:
   parameters:
     DoCompliance: false
     DoEsrp: false
-    stage_name_suffix: CPU_arm_wcos
-    artifact_name_suffix: '-wcos'
-    buildArch: x64
-    msbuildPlatform: arm
-    packageName: arm
-    buildparameter: --arm  --enable_onnx_tests --enable_wcos --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-    runTests: false
-    buildJava: false
-    buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
-
-- template: templates/win-ci.yml
-  parameters:
-    DoCompliance: false
-    DoEsrp: false
     stage_name_suffix: CPU_arm64_wcos
     artifact_name_suffix: '-wcos'
     buildArch: x64
@@ -177,21 +147,6 @@ stages:
     packageName: x86
     buildparameter: --enable_onnx_tests
     runTests: true
-    buildJava: false
-    buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
-
-- template: templates/win-ci.yml
-  parameters:
-    DoCompliance: false
-    DoEsrp: false
-    stage_name_suffix: CPU_arm_extension
-    artifact_name_suffix: '-extension'
-    buildArch: x64
-    msbuildPlatform: arm
-    packageName: arm
-    buildparameter: --arm --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-    runTests: false
     buildJava: false
     buildNodejs: false
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
@@ -462,6 +417,7 @@ stages:
     - template: templates/use-xcode-version.yml
       parameters:
         xcodeVersion: 14.3
+
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
       displayName: "Install Python requirements"
@@ -478,4 +434,41 @@ stages:
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
           --variant Mobile
-      displayName: "Test pod with iOS dynamic framework"
+      displayName: "Test pod with iOS framework"
+
+- stage: IosMinimalTrainingBuild
+  dependsOn: []
+  jobs:
+  - job: IosMinimalTrainingBuild
+    timeoutInMinutes: 120
+    pool:
+      vmImage: "macOS-13"
+
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: "3.9"
+        addToPath: true
+        architecture: "x64"
+
+    - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: 14.3
+
+    - script: |
+        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+      displayName: "Install Python requirements"
+
+    - script: |
+        python tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
+          tools/ci_build/github/apple/test_minimal_training_ios_simulator_framework_build_settings.json
+      displayName: "Build iOS framework with minimal build and training enabled"
+
+    - script: |
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Training \
+          --skip_macos_test
+      displayName: "Test pod with iOS framework"

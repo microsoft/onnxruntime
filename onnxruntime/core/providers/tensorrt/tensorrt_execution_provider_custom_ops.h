@@ -13,7 +13,8 @@ using namespace onnxruntime;
 namespace onnxruntime {
 
 common::Status LoadDynamicLibrary(onnxruntime::PathString library_name);
-common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths);
+common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list,
+                                                const std::string extra_plugin_lib_paths);
 common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info);
 void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain);
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list);
@@ -23,16 +24,22 @@ struct TensorRTCustomKernel {
       : compute_stream_(compute_stream) {
   }
 
-  void Compute(OrtKernelContext* context){};  // The implementation is in TensorRT plugin. No need to implement it here.
+  void Compute(OrtKernelContext* /*context*/){
+      // The implementation is in TensorRT plugin. No need to implement it here.
+  };
 
  private:
   void* compute_stream_;
 };
 
 struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKernel> {
-  explicit TensorRTCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+  explicit TensorRTCustomOp(const char* provider, void* compute_stream) : provider_(provider),
+                                                                          compute_stream_(compute_stream) {
+  }
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new TensorRTCustomKernel(info, compute_stream_); };
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
+    return new TensorRTCustomKernel(info, compute_stream_);
+  };
 
   const char* GetName() const { return name_; };
 
@@ -46,7 +53,9 @@ struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKern
 
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
+  };
 
   size_t GetOutputTypeCount() const { return num_outputs_; };
 
@@ -54,7 +63,9 @@ struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKern
 
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;
+  };
 
   bool GetVariadicInputHomogeneity() const {
     return false;  // heterogenous
