@@ -508,8 +508,8 @@ def main(argv=None):
             with torch.no_grad():
                 # Verify batched decoding with prompts for whisper openai implementation
                 if args.model_impl == "openai" and args.use_forced_decoder_ids:
-                    max_diff = WhisperHelper.verify_onnx_multi_batch(
-                        args.model_name_or_path, cache_dir, ort_session, device
+                    max_diff = WhisperHelper.verify_onnx(
+                        args.model_name_or_path, cache_dir, ort_session, device, batch_size=2, prompt_mode=True
                     )
                 else:
                     max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, cache_dir, ort_session, device)
