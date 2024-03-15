@@ -98,7 +98,11 @@ void RegisterCollectiveOps() {
       .Attr("local_experts_start_index",
             "The start index of local experts",
             AttributeProto::INT,
-            static_cast<int64_t>(-1))
+            static_cast<int64_t>(0))
+      .Attr("tp",
+            "Tensor parallelism. The number of shards for each expert weight and bias",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
       .Input(0,
              "input",
              "2D input tensor with shape (num_rows, hidden_size) or "

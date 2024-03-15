@@ -35,6 +35,7 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 ShardedMoE<T>::ShardedMoE(const OpKernelInfo& op_kernel_info) : NcclKernel(op_kernel_info), MoEBase(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("tp", &tp_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("local_experts_start_index", &local_experts_start_index_).IsOK());
   rank_to_experts_start_index_.resize(nccl_->Size());
   // Initialize rank_to_experts_start_index_[0] to a value to convey that it is not initialized.
@@ -66,7 +67,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
-  MoEParameters moe_params;
+  MoEParameters moe_params(tp_);
   ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
                                   fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
                                   fc3_experts_bias_optional));
@@ -128,31 +129,54 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  size_t stride_count = moe_params.hidden_size;
-  size_t stride_bytes = stride_count * sizeof(CudaT);
-  int64_t total_past_rows = 0;
-  int64_t total_covered_rows = 0;
-  if (copy_event != nullptr) {
-    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(copy_event));
+  if (moe_params.parallel_type == MoEParallelType::None) {
+    fc2_output_bc = std::move(fc2_output);
   }
-  NCCL_RETURN_IF_ERROR(ncclGroupStart());
-  for (int rank = 0; rank < nccl_->Size(); ++rank) {
-    int64_t experts_start_index = rank_to_experts_start_index_[rank];
-    moe_runner.get_total_rows_info(experts_start_index,
-                                   moe_params.local_num_experts,
-                                   total_past_rows,
-                                   total_covered_rows);
-    const char* src = reinterpret_cast<const char*>(fc2_output.get()) + total_past_rows * stride_bytes;
-    char* dst = reinterpret_cast<char*>(fc2_output_bc.get()) + total_past_rows * stride_bytes;
-    NCCL_RETURN_IF_ERROR(ncclBroadcast(src,
-                                       dst,
-                                       total_covered_rows * stride_count,
+
+  if (moe_params.parallel_type == MoEParallelType::EPAndTP) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EPAndTP is not supported yet");
+  }
+
+  if (moe_params.parallel_type == MoEParallelType::TP) {
+    ORT_ENFORCE(moe_params.tp == nccl_->Size());
+    NCCL_RETURN_IF_ERROR(ncclGroupStart());
+    NCCL_RETURN_IF_ERROR(ncclAllReduce(reinterpret_cast<const char*>(fc2_output.get()),
+                                       reinterpret_cast<char*>(fc2_output_bc.get()),
+                                       fc2_output_size / sizeof(CudaT),
                                        GetNcclDataType(input->DataType()),
-                                       rank,
+                                       ncclSum,
                                        nccl_->Comm(),
                                        Stream(context)));
+    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
   }
-  NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+
+  if (moe_params.parallel_type == MoEParallelType::EP) {
+    size_t stride_count = moe_params.hidden_size;
+    size_t stride_bytes = stride_count * sizeof(CudaT);
+    int64_t total_past_rows = 0;
+    int64_t total_covered_rows = 0;
+    if (copy_event != nullptr) {
+      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(copy_event));
+    }
+    NCCL_RETURN_IF_ERROR(ncclGroupStart());
+    for (int rank = 0; rank < nccl_->Size(); ++rank) {
+      int64_t experts_start_index = rank_to_experts_start_index_[rank];
+      moe_runner.get_total_rows_info(experts_start_index,
+                                     moe_params.local_num_experts,
+                                     total_past_rows,
+                                     total_covered_rows);
+      const char* src = reinterpret_cast<const char*>(fc2_output.get()) + total_past_rows * stride_bytes;
+      char* dst = reinterpret_cast<char*>(fc2_output_bc.get()) + total_past_rows * stride_bytes;
+      NCCL_RETURN_IF_ERROR(ncclBroadcast(src,
+                                         dst,
+                                         total_covered_rows * stride_count,
+                                         GetNcclDataType(input->DataType()),
+                                         rank,
+                                         nccl_->Comm(),
+                                         Stream(context)));
+    }
+    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  }
 
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(
       reinterpret_cast<CudaT*>(fc2_output_bc.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),

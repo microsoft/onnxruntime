@@ -13,17 +13,22 @@ namespace cuda {
 
 enum class MoEParallelType {
   None = 0,
-  ExpertSlicing = 1,
-  TensorParallel = 2,
+  EP = 1,
+  TP = 2,
+  EPAndTP = 3,
 };
 
 struct MoEParameters {
+  MoEParameters() {}
+  MoEParameters(int64_t tp) : tp(tp) {}
   int64_t num_rows;
   int64_t num_experts;
   int64_t local_num_experts;
   int64_t hidden_size;
   int64_t inter_size;
+
   MoEParallelType parallel_type;
+  int64_t tp{1};
 };
 
 class MoEBase {
@@ -148,9 +153,17 @@ class MoEBase {
     parameters.hidden_size = hidden_size;
     parameters.inter_size = inter_size;
     if (num_experts == local_num_experts) {
-      parameters.parallel_type = MoEParallelType::None;
+      if (parameters.tp == 1) {
+        parameters.parallel_type = MoEParallelType::None;
+      } else {
+        parameters.parallel_type = MoEParallelType::TP;
+      }
     } else if (num_experts > local_num_experts) {
-      parameters.parallel_type = MoEParallelType::ExpertSlicing;
+      if (parameters.tp == 1) {
+        parameters.parallel_type = MoEParallelType::EP;
+      } else {
+        parameters.parallel_type = MoEParallelType::EPAndTP;
+      }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "num_experts must be greater than or equal to local_num_experts, got ",
