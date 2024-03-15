@@ -166,16 +166,20 @@ export declare namespace Env {
      */
     forceFallbackAdapter?: boolean;
     /**
-     * Get the adapter for WebGPU.
+     * Set or get the adapter for WebGPU.
      *
-     * This property is only available after the first WebGPU inference session is created.
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as the GPU adapter for the underlying WebGPU backend to create GPU device.
+     *
+     * If this property is not set, it will be available to get after the first WebGPU inference session is created. The
+     * value will be the GPU adapter that created by the underlying WebGPU backend.
      *
      * When use with TypeScript, the type of this property is `GPUAdapter` defined in "@webgpu/types".
      * Use `const adapter = env.webgpu.adapter as GPUAdapter;` in TypeScript to access this property with correct type.
      *
      * see comments on {@link GpuBufferType}
      */
-    readonly adapter: unknown;
+    adapter: unknown;
     /**
      * Get the device for WebGPU.
      *
