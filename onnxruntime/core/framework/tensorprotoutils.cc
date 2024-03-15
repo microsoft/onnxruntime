@@ -133,8 +133,7 @@ T resolve_external_data_location(
           ", but it doesn't exist or is not accessible.");
     }
     return data_path;
-  }
-  else if constexpr (std::is_same_v<T, std::string>) {
+  } else if constexpr (std::is_same_v<T, std::string>) {
     if (location.empty()) {
       ORT_THROW("Location of external TensorProto ( tensor name: ", tensor_name, ") should not be empty.");
     } else if (location[0] == '/') {
