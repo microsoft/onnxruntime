@@ -11,7 +11,7 @@ export declare namespace TrainingSession {
   /**
    * Either URI file path (string) or Uint8Array containing model or checkpoint information.
    */
-  type UrlOrBuffer = string|Uint8Array;
+  type UriOrBuffer = string|Uint8Array;
 }
 
 /**
@@ -157,19 +157,19 @@ export interface TrainingSessionCreateOptions {
   /**
    * URI or buffer for a .ckpt file that contains the checkpoint for the training model.
    */
-  checkpointState: TrainingSession.UrlOrBuffer;
+  checkpointState: TrainingSession.UriOrBuffer;
   /**
    * URI or buffer for the .onnx training file.
    */
-  trainModel: TrainingSession.UrlOrBuffer;
+  trainModel: TrainingSession.UriOrBuffer;
   /**
    * Optional. URI or buffer for the .onnx optimizer model file.
    */
-  optimizerModel?: TrainingSession.UrlOrBuffer;
+  optimizerModel?: TrainingSession.UriOrBuffer;
   /**
    * Optional. URI or buffer for the .onnx eval model file.
    */
-  evalModel?: TrainingSession.UrlOrBuffer;
+  evalModel?: TrainingSession.UriOrBuffer;
 }
 
 /**

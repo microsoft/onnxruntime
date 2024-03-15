@@ -77,8 +77,8 @@ export interface Backend {
       Promise<InferenceSessionHandler>;
 
   createTrainingSessionHandler?
-      (checkpointStateUriOrBuffer: TrainingSession.UrlOrBuffer, trainModelUriOrBuffer: TrainingSession.UrlOrBuffer,
-       evalModelUriOrBuffer: TrainingSession.UrlOrBuffer, optimizerModelUriOrBuffer: TrainingSession.UrlOrBuffer,
+      (checkpointStateUriOrBuffer: TrainingSession.UriOrBuffer, trainModelUriOrBuffer: TrainingSession.UriOrBuffer,
+       evalModelUriOrBuffer: TrainingSession.UriOrBuffer, optimizerModelUriOrBuffer: TrainingSession.UriOrBuffer,
        options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler>;
 }
 
