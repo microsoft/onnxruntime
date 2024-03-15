@@ -45,7 +45,7 @@ __global__ void MaxPoolWithIndexKernel(
   int id = blockIdx.x * blockDim.x + threadIdx.x;
   if (id >= output_size) return;
 
-  auto compute_offset = 
+  auto compute_offset =
     [height, width, depth, channels](int n_index, int c_index, int h_index, int w_index, int d_index) -> int64_t {
     if constexpr (Layout == LAYOUT_NCHW) {
       return (((n_index * channels + c_index) * height + h_index) * width + w_index) * depth + d_index;
@@ -108,7 +108,8 @@ __global__ void MaxPoolWithIndexKernel(
       // layouts, does it make sense to do an index conversion as well?
       // Storing indices in NHWC layout isn't critical as they are supposed to be used by Unpooling operations
       // which currently assume that indices reference to Tensors in NHWC layout.
-      int64_t id_nchw = (((n_index * channels + c_index) * pooled_height + h_index) * pooled_width + w_index) * pooled_depth + d_index;
+      int64_t id_nchw = 
+        (((n_index * channels + c_index) * pooled_height + h_index) * pooled_width + w_index) * pooled_depth + d_index;
       int64_t offset_nchw = (n_index * channels + c_index) * width * height * depth;
 
       p_indices[id_nchw] = (storage_order == 0)

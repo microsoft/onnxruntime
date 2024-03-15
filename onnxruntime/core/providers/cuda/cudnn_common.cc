@@ -57,8 +57,8 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
     }
 
     // C
-    dims[1] = input_dims[rank - 1];
-    strides[1] = pitches[rank - 1];
+    dims[1] = gsl::narrow_cast<int>(input_dims[rank - 1]);
+    strides[1] = gsl::narrow_cast<int>(pitches[rank - 1]);
   }
   CUDNN_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
   return Status::OK();
