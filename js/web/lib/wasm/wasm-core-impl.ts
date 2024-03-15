@@ -93,8 +93,10 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
       if (typeof navigator === 'undefined' || !navigator.gpu) {
         throw new Error('WebGPU is not supported in current environment');
       }
+
       let adapter = env.webgpu.adapter as GPUAdapter | null;
       if (!adapter) {
+        // if adapter is not set, request a new adapter.
         const powerPreference = env.webgpu.powerPreference;
         if (powerPreference !== undefined && powerPreference !== 'low-power' &&
             powerPreference !== 'high-performance') {
@@ -111,10 +113,16 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
               'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
         }
       } else {
+        // if adapter is set, validate it.
         if (typeof adapter.limits !== 'object' || typeof adapter.features !== 'object' ||
             typeof adapter.requestDevice !== 'function') {
           throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
         }
+      }
+
+      if (!env.wasm.simd) {
+        throw new Error(
+            'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using `webgpu` EP');
       }
 
       await initJsep('webgpu', getInstance(), env, adapter);
