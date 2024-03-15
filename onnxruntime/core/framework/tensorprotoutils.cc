@@ -135,7 +135,10 @@ T resolve_external_data_location(
     return data_path;
   } else if constexpr (std::is_same_v<T, std::string>) {
     if (location.empty()) {
-      ORT_THROW("Location of external TensorProto ( tensor name: ", tensor_name, ") should not be empty.");
+      ORT_THROW(
+          "Location of external TensorProto ( tensor name: ",
+          tensor_name,
+          ") should not be empty.");
     } else if (location[0] == '/') {
       ORT_THROW(
           "Location of external TensorProto ( tensor name: ",
@@ -143,7 +146,7 @@ T resolve_external_data_location(
           ") should be a relative path, but it is an absolute path: ",
           location);
     }
-    std::string relative_path = file_path.lexically_normal().make_preferred().string();
+    std::string relative_path = clean_relative_path(location);
     // Check that normalized relative path contains ".." on POSIX
     if (relative_path.find("..", 0) != std::string::npos) {
       ORT_THROW(
@@ -155,7 +158,7 @@ T resolve_external_data_location(
           location,
           "' points outside the directory");
     }
-    std::string data_path = onnxruntime::ConcatPathComponent(base_dir, relative_path);
+    std::string data_path = path_join(base_dir, relative_path);
     // use stat64 to check whether the file exists
 #if defined(__APPLE__) || defined(__wasm__) || !defined(__GLIBC__)
     struct stat buffer;  // APPLE, wasm and non-glic stdlibs do not have stat64
@@ -168,7 +171,7 @@ T resolve_external_data_location(
           "Data of TensorProto ( tensor name: ",
           tensor_name,
           ") should be stored in ",
-          location,
+          data_path,
           ", but it doesn't exist or is not accessible.");
     }
     // Do not allow symlinks or directories.
