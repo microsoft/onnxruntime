@@ -7,7 +7,8 @@ import shutil
 import sys
 
 
-# Note: This script is mainly used for handling extracting duplicate named .o files under different subdirectories for
+# Note: This script is mainly used for sanity checking/validating the files in the .a library equal to the .o files
+# in the source dir to handle the case of source files having duplicate names under different subdirectories for
 # each onnxruntime library. (Only applicable when doing a Mac Catalyst build.)
 def main():
     source_dir = sys.argv[1]
@@ -23,16 +24,17 @@ def main():
 
                 dest_file = f"{dest_name_without_extension}.o"
                 while os.path.exists(os.path.join(dest_dir, dest_file)):
-                    print("Duplicate named files: " + os.path.join(dest_dir, dest_file))
+                    print("Duplicate file name from source: " + os.path.join(source_dir, subdir, file_name))
                     counter += 1
                     dest_file = f"{dest_name_without_extension}_{counter}.o"
+                    print("Renamed file name in destination: " + os.path.join(dest_dir, dest_file))
 
                 destination_path = os.path.join(dest_dir, dest_file)
                 source_file = os.path.join(source_dir, subdir, file_name)
                 shutil.copy(source_file, destination_path)
 
     # Sanity check to ensure the number of .o object from the original cmake source directory matches with the number
-    # of .o files extracted from each onnxruntime library
+    # of .o files extracted from each .a onnxruntime library
     file_lists_from_static_lib = []
     with open(files_from_static_lib) as file:
         filenames = file.readlines()
