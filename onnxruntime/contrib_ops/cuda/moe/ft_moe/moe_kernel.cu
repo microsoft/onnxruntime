@@ -672,12 +672,21 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   }
 
   // expanded_active_expert_rows is not used
-  moe_gemm_runner_.moe_gemm_bias_act(permuted_data_ + total_past_rows_ * hidden_size,
-                                     fc1_expert_weights, fc1_scales, fc1_expert_biases,
-                                     fc1_result_ + total_past_rows_ * inter_size,
-                                     total_rows_before_expert_ + local_experts_start_index,
-                                     expanded_active_expert_rows, inter_size, hidden_size,
-                                     local_num_experts, fc1_activation_type, stream);
+  if (fc1_expert_biases != nullptr) {
+    moe_gemm_runner_.moe_gemm_bias_act(permuted_data_ + total_past_rows_ * hidden_size,
+                                       fc1_expert_weights, fc1_scales, fc1_expert_biases,
+                                       fc1_result_ + total_past_rows_ * inter_size,
+                                       total_rows_before_expert_ + local_experts_start_index,
+                                       expanded_active_expert_rows, inter_size, hidden_size,
+                                       local_num_experts, fc1_activation_type, stream);
+  } else {
+    moe_gemm_runner_.moe_gemm_act(permuted_data_ + total_past_rows_ * hidden_size,
+                                  fc1_expert_weights, fc1_scales,
+                                  fc1_result_ + total_past_rows_ * inter_size,
+                                  total_rows_before_expert_ + local_experts_start_index,
+                                  expanded_active_expert_rows, inter_size, hidden_size,
+                                  local_num_experts, fc1_activation_type, stream);
+  }
 
   if (has_fc3_) {
     if (scales_required) {
@@ -709,7 +718,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   }
 
   moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows_ * inter_size,
-                            fc2_expert_weights, fc2_scales,
+                            fc2_expert_weights, fc2_scales, nullptr,
                             fc2_result + total_past_rows_ * hidden_size,
                             total_rows_before_expert_ + local_experts_start_index,
                             expanded_active_expert_rows, hidden_size, inter_size, local_num_experts, stream);
@@ -880,9 +889,9 @@ __global__ void finalize_moe_routing_kernel(const T* expanded_permuted_rows, T* 
       const T* expanded_permuted_rows_row_ptr = expanded_permuted_rows + expanded_permuted_row * cols;
 
       const int expert_idx = expert_for_source_row[k_offset];
-      const T* bias_ptr = bias + expert_idx * cols;
+      const T* bias_ptr = bias ? bias + expert_idx * cols : nullptr;
 
-      thread_output = thread_output + row_scale * (expanded_permuted_rows_row_ptr[tid] + bias_ptr[tid]);
+      thread_output = thread_output + row_scale * (expanded_permuted_rows_row_ptr[tid] + (bias_ptr ? bias_ptr[tid] : T(0)));
     }
     reduced_row_ptr[tid] = thread_output;
   }

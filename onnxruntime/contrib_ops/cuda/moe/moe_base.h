@@ -91,12 +91,6 @@ class MoEBase {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "router_probs_dims[0] must be equal to num_rows, got ",
                              router_probs_dims[0], " and ", num_rows);
     }
-    if (fc1_experts_bias_optional != nullptr && fc2_experts_bias_optional == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias is set but fc2_experts_bias is not set");
-    }
-    if (fc1_experts_bias_optional == nullptr && fc2_experts_bias_optional != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias is not set but fc2_experts_bias is set");
-    }
     if (fc1_experts_bias_optional != nullptr && fc2_experts_bias_optional != nullptr) {
       const auto& fc1_experts_bias_dims = fc1_experts_bias_optional->Shape().GetDims();
       const auto& fc2_experts_bias_dims = fc2_experts_bias_optional->Shape().GetDims();

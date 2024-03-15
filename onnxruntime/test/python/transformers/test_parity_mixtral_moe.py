@@ -49,9 +49,7 @@ def create_moe_onnx_graph(
     hidden_size,
     inter_size,
     fc1_experts_weights,
-    fc1_experts_bias,
     fc2_experts_weights,
-    fc2_experts_bias,
     fc3_experts_weights,
     topk,
 ):
@@ -62,9 +60,9 @@ def create_moe_onnx_graph(
                 "input",
                 "router_probs",
                 "fc1_experts_weights",
-                "fc1_experts_bias",
+                "",
                 "fc2_experts_weights",
-                "fc2_experts_bias",
+                "",
                 "fc3_experts_weights",
             ],
             ["output"],
@@ -105,27 +103,6 @@ def create_moe_onnx_graph(
             raw=False,
         ),
     ]
-
-    fc1_bias_shape = [num_experts, inter_size]
-    fc2_bias_shape = [num_experts, hidden_size]
-    initializers.extend(
-        [
-            helper.make_tensor(
-                "fc1_experts_bias",
-                ORT_DTYPE,
-                fc1_bias_shape,
-                fc1_experts_bias.to(torch_type).flatten().tolist(),
-                raw=False,
-            ),
-            helper.make_tensor(
-                "fc2_experts_bias",
-                ORT_DTYPE,
-                fc2_bias_shape,
-                fc2_experts_bias.to(torch_type).flatten().tolist(),
-                raw=False,
-            ),
-        ]
-    )
 
     graph_inputs = [
         helper.make_tensor_value_info("input", ORT_DTYPE, [num_rows, hidden_size]),
@@ -261,11 +238,9 @@ class MixtralSparseMoeBlock(nn.Module):
             w2_list.append(self.experts[i].w2.weight.transpose(0, 1))
             w3_list.append(self.experts[i].w3.weight.transpose(0, 1))
 
-        moe_experts_weight1 = torch.stack(w1_list, dim=0)
-        moe_experts_weight2 = torch.stack(w2_list, dim=0)
-        moe_experts_weight3 = torch.stack(w3_list, dim=0)
-        moe_experts_bias1 = torch.zeros(self.num_experts, self.ffn_dim)
-        moe_experts_bias2 = torch.zeros(self.num_experts, self.hidden_dim)
+        self.moe_experts_weight1 = torch.stack(w1_list, dim=0)
+        self.moe_experts_weight2 = torch.stack(w2_list, dim=0)
+        self.moe_experts_weight3 = torch.stack(w3_list, dim=0)
 
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -274,11 +249,9 @@ class MixtralSparseMoeBlock(nn.Module):
             self.num_experts,
             self.hidden_dim,
             self.ffn_dim,
-            moe_experts_weight1,
-            moe_experts_bias1,
-            moe_experts_weight2,
-            moe_experts_bias2,
-            moe_experts_weight3,
+            self.moe_experts_weight1,
+            self.moe_experts_weight2,
+            self.moe_experts_weight3,
             self.top_k,
         )
 
@@ -359,6 +332,13 @@ class MixtralSparseMoeBlock(nn.Module):
         if self.ort_sess is not None:
             ort_output = self.ort_sess.run(None, ort_inputs)
 
+        # print_tensor("input", ort_inputs["input"])
+        # print_tensor("router_probs", ort_inputs["router_probs"])
+        # print_tensor("fc1_experts_weights", self.moe_experts_weight1.detach().numpy())
+        # print_tensor("fc2_experts_weights", self.moe_experts_weight2.detach().numpy())
+        # print_tensor("fc3_experts_weights", self.moe_experts_weight3.detach().numpy())
+        # print_tensor("output", ort_output[0])
+
         return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1)  # , router_logits
 
     def parity_check(self):
@@ -370,6 +350,8 @@ class MixtralSparseMoeBlock(nn.Module):
             self.batch_size,
             " sequence_length:",
             self.sequence_length,
+            " max_diff:",
+            (torch_output - ort_output).abs().max(),
             " parity:",
             torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04),
         )
@@ -377,10 +359,10 @@ class MixtralSparseMoeBlock(nn.Module):
 
 class Test_Mixtral_MoE(unittest.TestCase):
     def test_mixtral_moe_parity(self):
-        for batch_size in [1, 8, 32]:
-            for sequence_length in [32, 128, 512, 2048]:
+        for batch_size in [1, 16]:
+            for sequence_length in [128, 1024]:
                 # use a small sizes to speed up the test
-                config = MixtralConfig(hidden_size=64, intermediate_size=256)
+                config = MixtralConfig(hidden_size=256, intermediate_size=1024)
                 mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
                 mixtral_moe.parity_check()
 
