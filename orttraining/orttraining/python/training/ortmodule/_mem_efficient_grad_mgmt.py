@@ -235,6 +235,7 @@ def _create_param_retrieval_function(trainable_named_params: dict[str, torch.nn.
 
         return tensor_output_shapes, tensor_output_dtypes
 
+    _PARAM_FUNCTION_INDEX[0] += 1
     return type(
         f"ParamRetrievalFunction_{_PARAM_FUNCTION_INDEX[0]}",
         (torch.autograd.Function,),

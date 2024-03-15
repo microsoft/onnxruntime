@@ -8,7 +8,7 @@ from typing import Tuple
 
 import onnx
 import torch
-
+from collections import OrderedDict
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
@@ -38,9 +38,9 @@ class TrainingManager(GraphExecutionManager):
         fallback_manager: _FallbackManager,
         logger: Logger,
     ):
-        super().__init__(model, debug_options, fallback_manager, logger)
+        super().__init__(model, torch.onnx.TrainingMode.TRAINING, debug_options, fallback_manager, logger)
 
-        self._export_mode = torch.onnx.TrainingMode.TRAINING
+
         self._forward_class = self._create_autofunction_class()
 
     @staticmethod
@@ -374,7 +374,112 @@ class TrainingManager(GraphExecutionManager):
         """Build an optimized gradient graph using the module_graph_builder"""
 
         super()._build_graph(graph_transformer_config)
-        self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
+        optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
+
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import (
+            ORTZeROOffloadPostForwardFunction,
+            ORTZeROOffloadPreForwardFunction,
+        )
+        from ._utils import get_fully_qualified_class_name
+        from ._mem_efficient_grad_mgmt import _create_param_retrieval_function
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_param_names_for_current_module
+
+        all_param_names = {k : v for k, v in self._flattened_module.named_parameters()}
+        param_retrieve_func_class = _create_param_retrieval_function(all_param_names)
+
+        post_forward_function_name = get_fully_qualified_class_name(ORTZeROOffloadPostForwardFunction)
+
+        backward_pull_trigger_map = OrderedDict()
+
+        output_name_to_node_map = {}
+        for node in optimized_model.graph.node:
+            for output in node.output:
+                output_name_to_node_map[output] = node
+
+
+        node_handled = set()
+        modified = True
+        while modified:
+            modified = False
+
+            offset = 0
+            for node in optimized_model.graph.node:
+                offset += 1
+                if node.op_type != "PythonOpGrad":
+                    continue
+
+                if node.name in node_handled:
+                    continue
+
+                node_handled.add(node.name)
+
+                func_name = None
+                for attr in node.attribute:
+                    if attr.name == "func_name":
+                        func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                        break
+
+                if func_name != post_forward_function_name:
+                    continue
+
+                fw_op = output_name_to_node_map[node.input[0]]
+
+                input_pointer_scalars_attr_name = "input_pointer_scalars"
+                found = [attr for attr in fw_op.attribute if attr.name == input_pointer_scalars_attr_name]
+                assert len(found) == 1
+                input_pointer_scalars = found[0].ints
+                # Restore the nn.Module from the pointer.
+                import ctypes
+                module = ctypes.cast(input_pointer_scalars[0], ctypes.py_object).value
+
+                partitioned_param_names = _get_param_names_for_current_module(module)
+
+                for i, pair in enumerate(partitioned_param_names):
+                    name = pair[0]
+                    assert name not in backward_pull_trigger_map, f"Duplicate name {name} in backward_pull_trigger_map"
+                    backward_pull_trigger_map[name] = node.output[0]
+
+                    new_node = make_pythonop_node(
+                        f"weight_retrieval_{graph_input.name}",
+                        node_inputs,
+                        node_outputs,
+                        param_retrieve_func_class,
+                        training_mode=1,
+                        safe_run_mode=0,
+                    )
+
+                    optimized_model.graph.node.insert(offset + i, new_node)
+                    modified = True
+                    print(f">>>>>Inserted {new_node} at {offset + i}")
+                break
+
+
+
+
+
+        print(backward_pull_trigger_map)
+        in_bw = False
+        for node in optimized_model.graph.node:
+            if node.op_type == "YieldOp":
+                in_bw = True
+                continue
+
+            if not in_bw:
+                continue
+
+            new_inputs = []
+            for inp in node.input:
+                if inp.startswith("ready_") and inp[6:] in backward_pull_trigger_map:
+                    new_inputs.append(backward_pull_trigger_map[inp[6:]])
+                    print(f"Replaced {inp} with {backward_pull_trigger_map[inp[6:]]}")
+                else:
+                    new_inputs.append(inp)
+
+            node.input[:] = new_inputs
+
+
+
+        self._onnx_models.optimized_model = optimized_model
 
         # Apply registered graph transformers to the optimized model
         device_type = self._device.type

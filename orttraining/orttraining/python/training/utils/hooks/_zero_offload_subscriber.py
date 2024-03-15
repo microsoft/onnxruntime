@@ -190,6 +190,18 @@ def _get_params_for_current_module(module: torch.nn.Module) -> List[torch.nn.par
 
     return partitioned_params
 
+@nvtx_function_decorator
+def _get_param_names_for_current_module(module: torch.nn.Module, recursive=False) -> List[torch.nn.parameter.Parameter]:
+    """Retrieve the parameters for this module.
+
+    Logic adapted from
+    https://github.com/microsoft/DeepSpeed/blob/9d79cfd1e90cae9306dc1b5837d374b2c9489ac8/deepspeed/runtime/zero/partitioned_param_coordinator.py#L267
+    """
+    from deepspeed.runtime.zero.partitioned_param_coordinator import get_all_parameters
+
+    return map(lambda pair: pair, get_all_parameters(module, recursive))
+
+
 
 @nvtx_function_decorator
 def _get_all_zero_stage3_params(module: torch.nn.Module) -> Dict[str, torch.nn.parameter.Parameter]:
@@ -367,7 +379,8 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         post_forward_function,
         pre_backward_function,
         output_schema,
-        *output_tensors,
+        has_trigger_tensor: int,
+        *trigger_and_output_tensors,
     ):
         """
         Args:
@@ -382,6 +395,14 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         """
         torch_nvtx_range_push("ORTZeROOffloadPostForwardFunction::forward")
 
+
+        ctx.has_trigger_tensor = has_trigger_tensor
+        ctx.trigger_tensor_shape = trigger_and_output_tensors[0].shape if has_trigger_tensor else None
+        ctx.trigger_tensor_dtype = trigger_and_output_tensors[0].dtype if has_trigger_tensor else None
+        ctx.trigger_tensor_device = trigger_and_output_tensors[0].device if has_trigger_tensor else None
+
+        output_tensors = trigger_and_output_tensors[1:] if has_trigger_tensor else trigger_and_output_tensors
+
         outputs = unflatten_data_using_schema(output_tensors, output_schema)
 
         # STAGE3WARN#3: _post_forward_module_hook's second argument `input is not used, so we just pass a None here.
@@ -395,6 +416,10 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         ctx.module = module
         ctx.pre_backward_function = pre_backward_function
         rets = [o.detach().requires_grad_(o.requires_grad) for o in updated_output_tensors]
+
+        # if has_trigger_tensor:
+        #     rets.insert(0, trigger_and_output_tensors[0])
+
         torch_nvtx_range_pop()
         return tuple(rets)
 
@@ -404,12 +429,15 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
 
         updated_args = grads
         if ctx.pre_backward_function is not None:
-            ret = ctx.pre_backward_function(ctx.module, grads)
+            ret = ctx.pre_backward_function(ctx.module, grads[1:] if ctx.has_trigger_tensor else grads)
             if ret is not None:
                 updated_args = ret
-
+        if ctx.has_trigger_tensor:
+            updated_args = list(updated_args)
+            updated_args.insert(0, torch.zeros(ctx.trigger_tensor_shape, dtype=ctx.trigger_tensor_dtype, device=ctx.trigger_tensor_device))
+            updated_args = tuple(updated_args)
         torch_nvtx_range_pop()
-        return (None, None, None, None, *updated_args)
+        return (None, None, None, None, None, *updated_args)
 
     @staticmethod
     def infer_shape(
@@ -417,24 +445,44 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         tensor_input_shapes: List[Optional[List[Union[int, str]]]],
         tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
     ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-        return tensor_input_shapes, tensor_input_dtypes
+
+        input_int_scalars_attr_name = "input_int_scalars"
+        found = [attr for attr in node.attribute if attr.name == input_int_scalars_attr_name]
+        assert len(found) == 1
+        has_trigger_tensor_input = found[0].ints[0]
+
+        tensor_output_shapes = tensor_input_shapes if not has_trigger_tensor_input else tensor_input_shapes[1:]
+        tensor_output_dtypes = tensor_input_dtypes if not has_trigger_tensor_input else tensor_input_dtypes[1:]
+        return tensor_output_shapes, tensor_output_dtypes
 
     @staticmethod
     def alias_input(node_proto_str: str):
         node = onnx.NodeProto()
         node.ParseFromString(node_proto_str)
-        non_tensor_fw_input_count = 4
+
+        input_int_scalars_attr_name = "input_int_scalars"
+        found = [attr for attr in node.attribute if attr.name == input_int_scalars_attr_name]
+        assert len(found) == 1
+        has_trigger_tensor_input = found[0].ints[0]
+
+
+        non_tensor_fw_input_count = 5
         fw_output_count = len(node.output) - 1  # exclude the first output appended in ONNX
         fw_alias_map = [-1] * fw_output_count
         bw_alias_map = [-1] * (non_tensor_fw_input_count + len(node.input))
 
         for i in range(fw_output_count):
-            fw_alias_map[i] = i + non_tensor_fw_input_count
+            fw_alias_map[i] = i + non_tensor_fw_input_count + (1 if has_trigger_tensor_input else 0)
 
         tensor_input_index = 0
         for i in range(len(bw_alias_map)):
             if i < non_tensor_fw_input_count:
                 continue
+
+            # If has_trigger_tensor_input is True, the first tensor is the trigger tensor, so we skip it.
+            if has_trigger_tensor_input and i == non_tensor_fw_input_count:
+                continue
+
             bw_alias_map[i] = tensor_input_index
             tensor_input_index += 1
 
@@ -590,6 +638,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
             _wrap_post_forward_module_hook,
             None,
             outputs_schema,
+            0, # has_trigger_tensor
             *outputs_tensors,
         )
 
@@ -626,6 +675,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
             _end_of_forward_hook,
             None,
             outputs_schema,
+            0, # has_trigger_tensor
             *outputs_tensors,
         )
 

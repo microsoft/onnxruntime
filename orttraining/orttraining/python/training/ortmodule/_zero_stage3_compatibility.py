@@ -206,6 +206,67 @@ def post_processing_enable_zero_stage3_compat(
                     node.attribute.remove(safe_run_mode_attr)
                 node.attribute.append(helper.make_attribute("safe_run_mode", 0))
 
+    post_forward_function_name = get_fully_qualified_class_name(ORTZeROOffloadPostForwardFunction)
+    idx = 0
+    for node in exported_model.graph.node:
+        if node.op_type != "PythonOp":
+            continue
+
+        func_name = None
+        input_convention_str = None
+        input_int_scalars_int64 = None
+        input_tensor_ranks_int64 = None
+        input_tensor_types_int64 = None
+        output_tensor_ranks_int64 = None
+        output_tensor_types_int64 = None
+        for attr in node.attribute:
+            if attr.name == "func_name":
+                func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+            if attr.name == "input_convention":
+                input_convention_str = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+            if attr.name == "input_int_scalars":
+                input_int_scalars_int64 = list(attr.ints)
+            if attr.name == "input_tensor_ranks":
+                input_tensor_ranks_int64 = list(attr.ints)
+            if attr.name == "input_tensor_types":
+                input_tensor_types_int64 = list(attr.ints)
+            if attr.name == "output_tensor_ranks":
+                output_tensor_ranks_int64 = list(attr.ints)
+            if attr.name == "output_tensor_types":
+                output_tensor_types_int64 = list(attr.ints)
+
+        if func_name != post_forward_function_name:
+            continue
+
+        # Modify the has_trigger_tensor attribute to 1 for ORTZeROOffloadPostForwardFunction, and add
+        # a tensor input at the beginning of the tensor inputs, and add a tensor output at the beginning of
+        # the tensor outputs.
+        assert len(input_int_scalars_int64) == 1, "input_int_scalars_int64 length is not 1"
+        if input_int_scalars_int64[0] != 0:
+            continue
+        idx += 1
+        node.input.insert(0, STAGE3_PULL_WEIGHT_TRIGGER_NAME)
+
+        updated_input_int_scalars_int64 = [1]
+        updated_input_convention_str = input_convention_str + 'd'
+        updated_input_tensor_ranks_int64 = [len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE)] + input_tensor_ranks_int64
+        updated_input_tensor_types_int64 = [STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE] + input_tensor_types_int64
+        # updated_output_tensor_ranks_int64 = [len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE)] + output_tensor_ranks_int64
+        # updated_output_tensor_types_int64 = [STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE] + output_tensor_types_int64
+
+        node.attribute.remove(helper.make_attribute("input_int_scalars", input_int_scalars_int64))
+        node.attribute.append(helper.make_attribute("input_int_scalars", updated_input_int_scalars_int64))
+        node.attribute.remove(helper.make_attribute("input_convention", input_convention_str))
+        node.attribute.append(helper.make_attribute("input_convention", updated_input_convention_str))
+        node.attribute.remove(helper.make_attribute("input_tensor_ranks", input_tensor_ranks_int64))
+        node.attribute.append(helper.make_attribute("input_tensor_ranks", updated_input_tensor_ranks_int64))
+        node.attribute.remove(helper.make_attribute("input_tensor_types", input_tensor_types_int64))
+        node.attribute.append(helper.make_attribute("input_tensor_types", updated_input_tensor_types_int64))
+        # node.attribute.remove(helper.make_attribute("output_tensor_ranks", output_tensor_ranks_int64))
+        # node.attribute.append(helper.make_attribute("output_tensor_ranks", updated_output_tensor_ranks_int64))
+        # node.attribute.remove(helper.make_attribute("output_tensor_types", output_tensor_types_int64))
+        # node.attribute.append(helper.make_attribute("output_tensor_types", updated_output_tensor_types_int64))
+
     return exported_model
 
 
