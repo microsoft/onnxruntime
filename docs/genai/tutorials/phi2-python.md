@@ -55,7 +55,7 @@ prompt = '''def print_prime(n):
 
 model=og.Model(f'example-models/phi2-int4-cpu')
 
-tokenizer = model.create_tokenizer()
+tokenizer = og.Tokenizer(model)
 
 tokens = tokenizer.encode(prompt)
 
