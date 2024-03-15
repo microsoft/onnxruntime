@@ -95,9 +95,14 @@ set(contrib_ops_excluded_files
   "bert/group_query_attention_impl.h"
   "bert/group_query_attention_impl.cu"
   "collective/distributed_*"
-  "collective/nccl_kernels.cc"
   "collective/shard*"
 )
+
+if (NOT onnxruntime_USE_NCCL)
+  # Those are string patterns to exclude. Do NOT use stars such as
+  # collective/*.cc or *.h.
+  list(APPEND contrib_ops_excluded_files "collective/nccl_kernels.cc")
+endif()
 
 if (NOT onnxruntime_ENABLE_ATEN)
   list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
