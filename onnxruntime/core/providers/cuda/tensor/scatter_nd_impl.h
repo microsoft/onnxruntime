@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/tensor/scatter_nd_kind.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -29,7 +30,7 @@ Status ScatterNDImplReduction(
     const int64_t* element_counts_and_input_dims,
     const void* updates_data,
     const size_t num_updates_elements,
-    int reduction_as_int);
+    ScatterNDReduction reduction);
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -208,6 +208,30 @@ __global__ void _ScatterNDKernelReduction(
   }
 }
 
+#define SCATTERND_TYPE_CASE(FuncReduction, T)                                           \
+  _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>( \
+      reinterpret_cast<T*>(output_data),                                                \
+      num_indices,                                                                      \
+      indices_data,                                                                     \
+      last_index_dimension,                                                             \
+      element_counts_and_input_dims,                                                    \
+      reinterpret_cast<const T*>(updates_data),                                         \
+      num_updates_elements,                                                             \
+      FuncReduction<T>());
+
+#define SCATTERND_REDUCTION_CASE(FuncReduction)                                                                   \
+  switch (element_type) {                                                                                         \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                                                              \
+      SCATTERND_TYPE_CASE(FuncReduction, float)                                                                   \
+      break;                                                                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:                                                            \
+      SCATTERND_TYPE_CASE(FuncReduction, half)                                                                    \
+      break;                                                                                                      \
+    default:                                                                                                      \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator."); \
+  }                                                                                                               \
+  break;
+
 Status ScatterNDImplReduction(
     cudaStream_t stream,
     void* output_data,
@@ -218,135 +242,28 @@ Status ScatterNDImplReduction(
     const int64_t* element_counts_and_input_dims,
     const void* updates_data,
     const size_t num_updates_elements,
-    int reduction_as_int) {
+    ScatterNDReduction reduction) {
   if (num_indices == 0)
     return Status::OK();
 
   // Parallelize on number of indices
   int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(num_indices) / GridDim::maxThreadsPerBlock));
 
-  switch (reduction_as_int) {
-    case 1:  // Reduction::Add
-      switch (element_type) {
-        case 1:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT: TODO: which header to use?
-          _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-              reinterpret_cast<float*>(output_data),
-              num_indices,
-              indices_data,
-              last_index_dimension,
-              element_counts_and_input_dims,
-              reinterpret_cast<const float*>(updates_data),
-              num_updates_elements,
-              FuncAdd<float>());
-          break;
-
-        case 10:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT16: TODO: which header to use?
-          _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-              reinterpret_cast<half*>(output_data),
-              num_indices,
-              indices_data,
-              last_index_dimension,
-              element_counts_and_input_dims,
-              reinterpret_cast<const half*>(updates_data),
-              num_updates_elements,
-              FuncAdd<half>());
-          break;
-
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator.");
-      } break;
-    case 2:  // Reduction::Mul
-      switch (element_type) {
-        case 1:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT: TODO: which header to use?
-          _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-              reinterpret_cast<float*>(output_data),
-              num_indices,
-              indices_data,
-              last_index_dimension,
-              element_counts_and_input_dims,
-              reinterpret_cast<const float*>(updates_data),
-              num_updates_elements,
-              FuncMul<float>());
-          break;
-
-        case 10:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT16: TODO: which header to use?
-          _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-              reinterpret_cast<half*>(output_data),
-              num_indices,
-              indices_data,
-              last_index_dimension,
-              element_counts_and_input_dims,
-              reinterpret_cast<const half*>(updates_data),
-              num_updates_elements,
-              FuncMul<half>());
-          break;
-
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator.");
-      } break;
-
-    case 3:  // Reduction::Min
-      switch (element_type) {
-        case 1:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT: TODO: which header to use?
-          _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-              reinterpret_cast<float*>(output_data),
-              num_indices,
-              indices_data,
-              last_index_dimension,
-              element_counts_and_input_dims,
-              reinterpret_cast<const float*>(updates_data),
-              num_updates_elements,
-              FuncMin<float>());
-          break;
-
-        case 10:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT16: TODO: which header to use?
-          _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-              reinterpret_cast<half*>(output_data),
-              num_indices,
-              indices_data,
-              last_index_dimension,
-              element_counts_and_input_dims,
-              reinterpret_cast<const half*>(updates_data),
-              num_updates_elements,
-              FuncMin<half>());
-          break;
-
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator.");
-      } break;
-
-    case 4:  // Reduction::Max
-      switch (element_type) {
-        case 1:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT: TODO: which header to use?
-          _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-              reinterpret_cast<float*>(output_data),
-              num_indices,
-              indices_data,
-              last_index_dimension,
-              element_counts_and_input_dims,
-              reinterpret_cast<const float*>(updates_data),
-              num_updates_elements,
-              FuncMax<float>());
-          break;
-
-        case 10:  // ONNXNAMESPACE::TensorProto_DataType_FLOAT16: TODO: which header to use?
-          _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-              reinterpret_cast<half*>(output_data),
-              num_indices,
-              indices_data,
-              last_index_dimension,
-              element_counts_and_input_dims,
-              reinterpret_cast<const half*>(updates_data),
-              num_updates_elements,
-              FuncMax<half>());
-          break;
-
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator.");
-      } break;
-
+  switch (reduction) {
+    case ScatterNDReduction::Add:
+      SCATTERND_REDUCTION_CASE(FuncAdd)
+      break;
+    case ScatterNDReduction::Mul:
+      SCATTERND_REDUCTION_CASE(FuncMul)
+      break;
+    case ScatterNDReduction::Min:
+      SCATTERND_REDUCTION_CASE(FuncMin)
+      break;
+    case ScatterNDReduction::Max:
+      SCATTERND_REDUCTION_CASE(FuncMax)
+      break;
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reduction ", reduction_as_int, " not implemented for ScatterND operator.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reduction ", static_cast<int>(reduction), " not implemented for ScatterND operator.");
   }
 
   return Status::OK();

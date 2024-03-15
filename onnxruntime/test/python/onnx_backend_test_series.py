@@ -37,7 +37,7 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         super().__init__(backend, parent_module=__name__)
 
     @classmethod
-    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
+    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol, model_dir=None):
         """Asserts ref_outputs and outputs match to within the given tolerances."""
 
         def assert_similar_array(ref_output, output):
@@ -86,14 +86,16 @@ def apply_filters(filters, category):
 
 def load_jsonc(basename: str):
     """Returns a deserialized object from the JSONC file in testdata/<basename>."""
-    filename = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)),
-        "testdata",
-        basename,
-    )
-    if not os.path.exists(filename):
-        raise FileNotFoundError(f"File not found {filename!r}.")
+    filenames = [
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "testdata", basename),
+        os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "test", "testdata", basename)),
+    ]
 
+    filtered = [f for f in filenames if os.path.exists(f)]
+    if not filtered:
+        raise FileNotFoundError(f"No file found in {filenames!r}.")
+
+    filename = filtered[0]
     with open(filename, encoding="utf-8") as f:  # pylint: disable=invalid-name
         lines = f.readlines()
     lines = [x.split("//")[0] for x in lines]
