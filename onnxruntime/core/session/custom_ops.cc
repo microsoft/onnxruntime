@@ -1050,6 +1050,7 @@ static void InferOutputTypes(const ONNX_NAMESPACE::OpSchema& schema, gsl::span<c
 
   const KernelDef* def_selected = nullptr;
   bool is_variadic_input = false;
+  bool is_homogeneous_input = false;
   int32_t output_propagate{0};
 
   for (size_t kernel_index = 0;
@@ -1075,9 +1076,9 @@ static void InferOutputTypes(const ONNX_NAMESPACE::OpSchema& schema, gsl::span<c
       }
 
       is_variadic_input = (param.GetOption() == ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic);
-      const bool is_homogeneous = param.GetIsHomogeneous();
+      is_homogeneous_input = param.GetIsHomogeneous();
 
-      if (!is_variadic_input || is_homogeneous) {
+      if (!is_variadic_input || is_homogeneous_input) {
         auto hit = type_constraints.find(input_name);
         if (hit != type_constraints.end()) {
           const auto& types = hit->second;
@@ -1088,11 +1089,14 @@ static void InferOutputTypes(const ONNX_NAMESPACE::OpSchema& schema, gsl::span<c
                              return type->IsCompatible(*input_type);
                            })) {
             def_selected = nullptr;
-            is_variadic_input = false;
             output_propagate = 0;
             break;
           }
 
+          // If we have multiple types possible from the constraints,
+          // record the last type and use it to guess the output type if
+          // output may have different types. Works well for symmetric single input/outputs
+          // otherwise give up and let the user supply their own function
           if (types.size() > 1) {
             output_propagate = input_type->tensor_type().elem_type();
           }
@@ -1137,8 +1141,8 @@ static void InferOutputTypes(const ONNX_NAMESPACE::OpSchema& schema, gsl::span<c
         // Use the constraint type
         output_type->mutable_tensor_type()->set_elem_type(
             types[0]->GetTypeProto()->tensor_type().elem_type());
-      } else if (!is_variadic_input) {
-        // If not variadic, and there are multiple types possible, guess from the last input type
+      } else if (!is_variadic_input || is_homogeneous_input) {
+        // If not variadic or homogeneous, and there are multiple types possible, guess from the last input type
         // as this works for symmetric varied single input/outputs
         // otherwise give up and let the user supply their own function
         output_type->mutable_tensor_type()->set_elem_type(output_propagate);

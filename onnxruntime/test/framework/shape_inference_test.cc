@@ -7,7 +7,7 @@
 #include "gtest/gtest.h"
 #include "core/common/span_utils.h"
 #include "core/graph/model.h"
-#include "core/session/experimental_onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/framework/model_builder_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_utils.h"
