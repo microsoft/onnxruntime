@@ -155,7 +155,7 @@ export const createSession =
             ensureWorker();
             return new Promise<SerializableSessionMetadata>((resolve, reject) => {
               enqueueCallbacks('create', [resolve, reject]);
-              const message: OrtWasmMessage = {type: 'create', in : {model, options}};
+              const message: OrtWasmMessage = {type: 'create', in : {model, options: {...options}}};
               const transferable: Transferable[] = [];
               if (model instanceof Uint8Array) {
                 transferable.push(model.buffer);
