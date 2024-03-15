@@ -29,7 +29,7 @@ class QDQNormalization(QDQOperatorBase):
             self.quantizer.quantize_activation_tensor(node.input[1])
 
         # Bias
-        self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1])
+        self.quantizer.quantize_bias_tensor(node.name, node.input[2], node.input[0], node.input[1])
 
         # Output
         if not self.disable_qdq_for_node_output:
