@@ -11,7 +11,7 @@
  * - [onnxruntime-react-native](https://www.npmjs.com/package/onnxruntime-react-native)
  *
  * See also:
- * - [Get Started](https://onnxruntime.ai/docs/get-started/with-javascript.html)
+ * - [Get Started](https://onnxruntime.ai/docs/get-started/with-javascript/)
  * - [Inference examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js)
  *
  * @packageDocumentation
