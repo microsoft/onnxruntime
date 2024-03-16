@@ -12,7 +12,7 @@ export interface FormatAttributes {
   readonly format: 'NHWC'|'NCHW';
 }
 
-export interface DepthToSpaceCommonAttributes extends FormatAttributes, AttributeWithCacheKey {
+export interface DepthToSpaceAttributes extends FormatAttributes, AttributeWithCacheKey {
   readonly blocksize: number;
   readonly mode: string;
 }
@@ -37,7 +37,7 @@ const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, ou
   return reverseFunc.join('\n');
 };
 
-const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: DepthToSpaceCommonAttributes): ProgramInfo => {
+const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: DepthToSpaceAttributes): ProgramInfo => {
   let [n, h, w, c] = [0, 0, 0, 0];
   let shape = [0, 0, 0, 0];
   let perm = [0, 0, 0, 0, 0, 0];
@@ -57,12 +57,12 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
   }
   const reshapedInputTensor = inputTensor.reshape(shape);
 
-  const shape_before_perm = reshapedInputTensor.dims;
-  const shape_after_perm = ShapeUtil.sortBasedOnPerm(shape_before_perm, perm);
+  const shapeBeforePerm = reshapedInputTensor.dims;
+  const shapeAfterPerm = ShapeUtil.sortBasedOnPerm(shapeBeforePerm, perm);
 
   const inputDataType = inputTensor.dataType;
-  const reshapedInput = inputVariable('a', inputDataType, shape_before_perm);
-  const permedOutput = outputVariable('output', inputDataType, shape_after_perm);
+  const reshapedInput = inputVariable('a', inputDataType, shapeBeforePerm);
+  const permedOutput = outputVariable('output', inputDataType, shapeAfterPerm);
 
   const reshapedInputRank = reshapedInputTensor.dims.length; // 6
   const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -97,12 +97,12 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
   };
 };
 
-export const depthToSpace = (context: ComputeContext, attributes: DepthToSpaceCommonAttributes): void => {
+export const depthToSpace = (context: ComputeContext, attributes: DepthToSpaceAttributes): void => {
   validateInputs(context.inputs);
   context.compute(createDepthToSpaceProgramInfo(context.inputs[0], attributes));
 };
 
-export const parseDepthToSpaceAttributes = (attributes: Record<string, unknown>): DepthToSpaceCommonAttributes =>
+export const parseDepthToSpaceAttributes = (attributes: Record<string, unknown>): DepthToSpaceAttributes =>
   createAttributeWithCacheKey({blocksize: attributes.blocksize as number,
                                mode: attributes.mode as string,
                                format: attributes.format as 'NHWC'|'NCHW'});

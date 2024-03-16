@@ -42,6 +42,5 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T", JsepSupportedDataTypes()),
     DepthToSpace<true, false>);
 
-
 }  // namespace js
 }  // namespace onnxruntime
