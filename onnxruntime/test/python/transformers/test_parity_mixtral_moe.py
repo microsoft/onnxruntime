@@ -8,16 +8,11 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
-# -------------------------------------------------------------------------
-import inspect
-import math
-import time
+# --------------------------------------------------------------------------
 import unittest
-import warnings
-from typing import List, Optional, Tuple, Union
+from collections import OrderedDict
 
 import numpy
-import pytest
 import torch
 import torch.nn.functional as F
 from onnx import TensorProto, helper
@@ -130,9 +125,6 @@ def create_moe_onnx_graph(
 
     model = helper.make_model(graph)
     return model.SerializeToString()
-
-
-from collections import OrderedDict
 
 
 class ClassInstantier(OrderedDict):
@@ -357,7 +349,7 @@ class MixtralSparseMoeBlock(nn.Module):
         )
 
 
-class Test_Mixtral_MoE(unittest.TestCase):
+class TestMixtralMoE(unittest.TestCase):
     def test_mixtral_moe_parity(self):
         for batch_size in [1, 16]:
             for sequence_length in [128, 1024]:
