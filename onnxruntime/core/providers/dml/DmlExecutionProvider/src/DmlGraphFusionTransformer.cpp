@@ -147,8 +147,8 @@ namespace Dml
                     // populate isInitializerTransferable
                     for (const auto& input : partition->GetInputs())
                     {
-                        const onnx::TensorProto* tensor = nullptr;
-                        if (graph.GetInitializedTensor(input, tensor))
+                        const onnx::TensorProto* tensor = graph.GetConstantInitializer(input, false);
+                        if (tensor != nullptr)
                         {
                             // It's only safe to transfer tensors which are used by this partition alone.
                             auto iter = initializerPartitionMap.find(tensor);
