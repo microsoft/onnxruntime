@@ -207,12 +207,10 @@ const computeMean =
     let offset = currentImageNumber * uniforms.image_size;
     var sum = ${fillVector('f32', components)};
     var squaredSum = ${fillVector('f32', components)};
-    for (var i: u32 = 0; i < ${WG}; i++) {
-      if (i < uniforms.H) {
+    for (var i: u32 = 0; i < min(${WG}, uniforms.H); i++) {
         let value = input[offset + i + currentChannelNumber * ${WG}];
         sum += value[0];
         squaredSum += value[1];
-      }
     }
     sum = sum / f32(uniforms.H);
     squaredSum = squaredSum / f32(uniforms.H);
