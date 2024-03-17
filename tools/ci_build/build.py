@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from multiprocessing import cpu_count
 
 
 def version_to_tuple(version: str) -> tuple:
@@ -166,7 +167,7 @@ def parse_arguments():
         "--parallel",
         nargs="?",
         const="0",
-        default="1",
+        default=str(cpu_count()),
         type=int,
         help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
         "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.",
