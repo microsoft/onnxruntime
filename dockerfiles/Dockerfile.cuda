@@ -4,7 +4,7 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with CUDA, CUDNN integration
 
-# nVidia cuda 11.4 Base Image
+# nVidia cuda 12.1.1 Base Image
 FROM nvcr.io/nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 ENV	    DEBIAN_FRONTEND=noninteractive
 MAINTAINER Changming Sun "chasun@microsoft.com"
