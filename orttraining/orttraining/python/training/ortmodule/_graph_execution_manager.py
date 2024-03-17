@@ -18,6 +18,7 @@ from torch.utils.cpp_extension import ROCM_HOME
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.tools import symbolic_shape_optimizer
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.training.utils import ORTModelInputOutputSchemaType, PTable, onnx_dtype_to_pytorch_dtype
 
@@ -306,9 +307,13 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
 
         if self._runtime_options.run_symbolic_shape_infer:
-            self._onnx_models.exported_model = SymbolicShapeInference.infer_shapes(
-                self._onnx_models.exported_model, auto_merge=True, guess_output_rank=True
+            symbolic_shape_inference = SymbolicShapeInference.infer_shapes(
+                self._onnx_models.exported_model, auto_merge=True, guess_output_rank=True, return_obj=True
             )
+            # TODO: Remove the following condition check if the feature is stable
+            if self._export_mode == torch.onnx.TrainingMode.EVAL:
+                symbolic_shape_optimizer.optimize_graph(symbolic_shape_inference)
+            self._onnx_models.exported_model = symbolic_shape_inference.out_mp_
 
         # Restore the recorded random states
         _utils.set_random_states(random_states)
