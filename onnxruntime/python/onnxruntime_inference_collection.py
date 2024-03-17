@@ -65,11 +65,23 @@ def check_and_normalize_provider_args(
     provider_name_to_options = collections.OrderedDict()
 
     def set_provider_options(name, options):
+        if (
+            os.environ.get("ORT_FALLBACK_CUDA_EP_TO_ROCM_EP", "0") == "1"
+            and "CUDAExecutionProvider" not in available_provider_names
+            and "ROCMExecutionProvider" in available_provider_names
+        ):
+            if name == "CUDAExecutionProvider":
+                name = "ROCMExecutionProvider"
+
         if name not in available_provider_names:
             warnings.warn(
                 "Specified provider '{}' is not in available provider names."
                 "Available providers: '{}'".format(name, ", ".join(available_provider_names))
             )
+            if name == "CUDAExecutionProvider" and "ROCMExecutionProvider" in available_provider_names:
+                warnings.warn(
+                    "Set environment variable ORT_FALLBACK_CUDA_EP_TO_ROCM_EP=1 to enable CUDA to ROCm fallback."
+                )
 
         if name in provider_name_to_options:
             warnings.warn(f"Duplicate provider '{name}' encountered, ignoring.")
