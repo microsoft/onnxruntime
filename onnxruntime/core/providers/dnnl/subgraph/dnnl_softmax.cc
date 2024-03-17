@@ -25,14 +25,21 @@ void DnnlSoftmax::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     axis = softmax_src_md.get_dims().size() + axis;
   }
 
+  // Use different propagations for training and inference
+  dnnl::prop_kind prop_kind;
+#if defined(ENABLE_TRAINING)
+  prop_kind = dnnl::prop_kind::forward_training;
+#else
+  prop_kind = dnnl::prop_kind::forward_inference;
+#endif  // ENABLE_TRAINING
+
   // Generate the dst_md
   auto dst_md = dnnl::memory::desc(softmax_src_md.get_dims(),
                                    node.Output(OUT_Y).Type(),
                                    dnnl::memory::format_tag::any);
 
-  auto softmax_pd = dnnl::softmax_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_training,
-                                                          dnnl::algorithm::softmax_accurate, softmax_src_md, dst_md,
-                                                          static_cast<int>(axis));
+  auto softmax_pd = dnnl::softmax_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::softmax_accurate,
+                                                          softmax_src_md, dst_md, static_cast<int>(axis));
 
   // If using GPU this will move the memory from the CPU to the GPU.
   softmax_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), softmax_pd.src_desc(), dnnl_engine);
