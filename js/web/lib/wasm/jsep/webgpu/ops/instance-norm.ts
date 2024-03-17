@@ -138,9 +138,6 @@ const computeMean =
       ];
 
       const getMeanShaderSource = (shaderHelper: ShaderHelper) => {
-        const outputInitial = outputType === 'vec2f' ?
-            `${outputType}(0.0);` :
-            `${outputType}(vec${components}<f32>(0.0),vec${components}<f32>(0.0));`;
         const inputHelper = inputVariable('input', input.dataType, input.dims, components);
         return `
   ${shaderHelper.declareVariables(inputHelper)}
@@ -154,7 +151,6 @@ const computeMean =
     let wgId = global_idx % ${WG};
     let wgOffset = wgId * uniforms.wg_size;
     if (wgOffset >= uniforms.H) {
-        output[global_idx] = ${outputInitial};
         return;
     }
     let wgMax = min(wgOffset + uniforms.wg_size, uniforms.H);
@@ -212,9 +208,11 @@ const computeMean =
     var sum = ${fillVector('f32', components)};
     var squaredSum = ${fillVector('f32', components)};
     for (var i: u32 = 0; i < ${WG}; i++) {
+      if (i < uniforms.H) {
         let value = input[offset + i + currentChannelNumber * ${WG}];
         sum += value[0];
         squaredSum += value[1];
+      }
     }
     sum = sum / f32(uniforms.H);
     squaredSum = squaredSum / f32(uniforms.H);
