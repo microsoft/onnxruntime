@@ -16,6 +16,7 @@ export class Model {
   constructor() {}
 
   load(buf: Uint8Array, graphInitializer?: Graph.Initializer, isOrtFormat?: boolean): void {
+    let onnxError: Error|undefined;
     if (!isOrtFormat) {
       // isOrtFormat === false || isOrtFormat === undefined
       try {
@@ -25,10 +26,20 @@ export class Model {
         if (isOrtFormat !== undefined) {
           throw e;
         }
+        onnxError = e;
       }
     }
 
-    this.loadFromOrtFormat(buf, graphInitializer);
+    try {
+      this.loadFromOrtFormat(buf, graphInitializer);
+      return;
+    } catch (e) {
+      if (isOrtFormat !== undefined) {
+        throw e;
+      }
+      // Tried both formats and failed (when isOrtFormat === undefined)
+      throw new Error(`Failed to load model as ONNX format: ${onnxError}\nas ORT format: ${e}`);
+    }
   }
 
   private loadFromOnnxFormat(buf: Uint8Array, graphInitializer?: Graph.Initializer): void {
