@@ -101,8 +101,8 @@ T resolve_external_data_location(
     const T& base_dir,
     const T& location,
     const std::string& tensor_name) {
-  auto file_path = std::filesystem::path(location);
   if constexpr (std::is_same_v<T, std::wstring>) {
+    auto file_path = std::filesystem::path(location);
     if (file_path.is_absolute()) {
       ORT_THROW(
           "Location of external TensorProto ( tensor name: ",
