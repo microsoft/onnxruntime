@@ -24,6 +24,11 @@ parameters:
   type: string
   default: ''
 
+- name: extra_build_arg
+  displayName: Extra build argument
+  type: string
+  default: ''
+
 - name: publish_executables
   # The executables will only be published if the publish_executables is set to "1"
   displayName: Publish executables such as onnxruntime_perf_test, ...
@@ -99,7 +104,7 @@ jobs:
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
           onnxruntimecpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
+            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh -x ${{parameters.extra_build_arg}}
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishBuildArtifacts@1

@@ -72,6 +72,7 @@ stages:
       artifactName: 'onnxruntime-android-mobile-aar'
       job_name_suffix: 'Mobile'
       packageName: 'onnxruntime-mobile'
+      extra_build_arg: '--use_azure'
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-mobile-aar'
@@ -89,6 +90,7 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       job_name_suffix: 'Full'
       publish_executables: '1'
+      extra_build_arg: '--use_azure'
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-full-aar'
