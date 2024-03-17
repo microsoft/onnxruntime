@@ -36,5 +36,12 @@ class Cast final : public CudaKernel {
   bool saturate_;
 };
 
+template <typename SrcT>
+class CastLike final : public CudaKernel {
+ public:
+  CastLike(const OpKernelInfo& info) : CudaKernel(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -329,5 +329,72 @@ SPECIALIZE_IMPL_19(Float8E5M2)
 
 #endif
 
+///////////////////////////////////////////////////////////////////
+// The section below implements CastLike.
+///////////////////////////////////////////////////////////////////
+
+#define REGISTER_CASTLIKE_KERNEL_TYPED(T)                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      CastLike,                                                   \
+      kOnnxDomain,                                                \
+      15,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", CastOpTypeConstraints()),         \
+      CastLike<T>);
+
+REGISTER_CASTLIKE_KERNEL_TYPED(MLFloat16)
+REGISTER_CASTLIKE_KERNEL_TYPED(float)
+REGISTER_CASTLIKE_KERNEL_TYPED(double)
+REGISTER_CASTLIKE_KERNEL_TYPED(int8_t)
+REGISTER_CASTLIKE_KERNEL_TYPED(int16_t)
+REGISTER_CASTLIKE_KERNEL_TYPED(int32_t)
+REGISTER_CASTLIKE_KERNEL_TYPED(int64_t)
+REGISTER_CASTLIKE_KERNEL_TYPED(uint8_t)
+REGISTER_CASTLIKE_KERNEL_TYPED(uint16_t)
+REGISTER_CASTLIKE_KERNEL_TYPED(uint32_t)
+REGISTER_CASTLIKE_KERNEL_TYPED(uint64_t)
+REGISTER_CASTLIKE_KERNEL_TYPED(bool)
+REGISTER_CASTLIKE_KERNEL_TYPED(BFloat16)
+
+template <typename SrcT>
+Status CastLike<SrcT>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<SrcT>::MappedType CudaSrcT;
+  const Tensor* X = context->Input<Tensor>(0);
+  const Tensor* liked = context->Input<Tensor>(1);
+  const auto liked_element_type = liked->GetElementType();
+  const TensorShape& shape = X->Shape();
+  Tensor* Y = context->Output(0, shape);
+  const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<SrcT>());
+  size_t count = shape.Size();
+
+  switch (liked_element_type) {
+    CASE(TensorProto_DataType_FLOAT16, MLFloat16)
+    CASE(TensorProto_DataType_BFLOAT16, BFloat16)
+    CASE(TensorProto_DataType_FLOAT, float)
+    CASE(TensorProto_DataType_DOUBLE, double)
+    CASE(TensorProto_DataType_INT8, int8_t)
+    CASE(TensorProto_DataType_INT16, int16_t)
+    CASE(TensorProto_DataType_INT32, int32_t)
+    CASE(TensorProto_DataType_INT64, int64_t)
+    CASE(TensorProto_DataType_UINT8, uint8_t)
+    CASE(TensorProto_DataType_UINT16, uint16_t)
+    CASE(TensorProto_DataType_UINT32, uint32_t)
+    CASE(TensorProto_DataType_UINT64, uint64_t)
+    CASE(TensorProto_DataType_BOOL, bool)
+      // By default saturate is true. Case saturate False is only supported for float, float16 for the CUDA provider.
+
+    case TensorProto_DataType_STRING:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
+    case TensorProto_DataType_UNDEFINED:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cast op must have 'to' argument of type DataType");
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", liked_element_type, ". Search for e.g., TensorProto_DataType_FLOAT for supported element type.");
+  }
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime

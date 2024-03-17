@@ -12,6 +12,7 @@
 #include "core/framework/data_types_internal.h"
 
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -274,6 +275,109 @@ TEST(CastOpTest, ToFloat8E5M2FNUZ) {
   }
 }
 
+#endif
+
+#ifdef USE_CUDA
+void RunWithSelectedExecutionProviders(OpTester& test) {
+  std::unordered_set<std::string> excluded_provider_types{
+      kCannExecutionProvider,
+      kDnnlExecutionProvider,
+      kOpenVINOExecutionProvider,
+      kTensorrtExecutionProvider,
+      kMIGraphXExecutionProvider,
+      kQnnExecutionProvider,
+      kCpuExecutionProvider,
+      kAzureExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+}
+
+TEST(CastLikeOpTest, CastFromFloatToInt32) {
+  OpTester test("CastLike", 18);
+  std::vector<int64_t> shape = {2, 3};
+  std::vector<float> input = {1.0f, 2.0f, 3.0f,
+                              4.0f, 5.0f, 6.0f};
+  std::vector<int32_t> output = {1, 2, 3,
+                                 4, 5, 6};
+
+  test.AddInput<float>("input", shape, input.data(), input.size());
+  test.AddInput<int32_t>("like", shape, output.data(), output.size());
+  test.AddOutput<int32_t>("output", shape, output.data(), output.size());
+
+  RunWithSelectedExecutionProviders(test);
+}
+
+TEST(CastLikeOpTest, CastFromInt32ToFloat) {
+  OpTester test("CastLike", 18);
+  std::vector<int64_t> shape = {2, 3};
+  std::vector<int32_t> input = {1, 2, 3,
+                                4, 5, 6};
+  std::vector<float> output = {1.0f, 2.0f, 3.0f,
+                               4.0f, 5.0f, 6.0f};
+
+  test.AddInput<int32_t>("input", shape, input.data(), input.size());
+  test.AddInput<float>("like", shape, output.data(), output.size());
+  test.AddOutput<float>("output", shape, output.data(), output.size());
+
+  RunWithSelectedExecutionProviders(test);
+}
+
+TEST(CastLikeOpTest, CastFromFloatToMLFloat16) {
+  OpTester test("CastLike", 18);
+  std::vector<int64_t> shape = {2, 3};
+  std::vector<float> input = {1.5f, 2.5f, 3.5f,
+                              4.5f, 5.5f, 6.5f};
+  std::vector<MLFloat16> output = ToFloat16(input);
+
+  test.AddInput<float>("input", shape, input.data(), input.size());
+  test.AddInput<MLFloat16>("like", shape, output.data(), output.size());
+  test.AddOutput<MLFloat16>("output", shape, output.data(), output.size());
+
+  RunWithSelectedExecutionProviders(test);
+}
+
+TEST(CastLikeOpTest, CastFromMLFloat16ToFloat) {
+  OpTester test("CastLike", 18);
+  std::vector<int64_t> shape = {2, 3};
+  std::vector<float> output = {1.5f, 2.5f, 3.5f,
+                               4.5f, 5.5f, 6.5f};
+  std::vector<MLFloat16> input = ToFloat16(output);
+
+  test.AddInput<MLFloat16>("input", shape, input.data(), input.size());
+  test.AddInput<float>("like", shape, output.data(), output.size());
+  test.AddOutput<float>("output", shape, output.data(), output.size());
+
+  RunWithSelectedExecutionProviders(test);
+}
+
+TEST(CastLikeOpTest, CastFromStringToFloat) {
+  OpTester test("CastLike", 18);
+  std::vector<int64_t> shape = {2, 3};
+  std::vector<std::string> input = {"1", "2", "3",
+                                    "4.", "5.5", "6"};
+  std::vector<float> output = {1.0f, 2.0f, 3.0f,
+                               4.0f, 5.5f, 6.0f};
+
+  test.AddInput<std::string>("input", shape, input.data(), input.size());
+  test.AddInput<float>("like", shape, output.data(), output.size());
+  test.AddOutput<float>("output", shape, output.data(), output.size());
+
+  RunWithSelectedExecutionProviders(test);
+}
+
+TEST(CastLikeOpTest, CastFromInt64ToString) {
+  OpTester test("CastLike", 18);
+  std::vector<int64_t> shape = {2, 3};
+  std::vector<int64_t> input = {1111, 222, 33,
+                                4, 55, 666};
+  std::vector<std::string> output = {"1111", "222", "33",
+                                     "4", "55", "666"};
+
+  test.AddInput<int64_t>("input", shape, input.data(), input.size());
+  test.AddInput<std::string>("like", shape, output.data(), output.size());
+  test.AddOutput<std::string>("output", shape, output.data(), output.size());
+
+  RunWithSelectedExecutionProviders(test);
+}
 #endif
 
 }  // namespace test
