@@ -1,7 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import copy
+import itertools
 import unittest
+import warnings
 
 import torch
 import torch._dynamo
@@ -24,6 +27,18 @@ def make_local_backend(dynamic: bool = False, use_aot_autograd: bool = False):
         )
     )
     return ort_backend
+
+
+class FuncModule(nn.Module):
+    def __init__(self, f, params=None):
+        if params is None:
+            params = ()
+        super().__init__()
+        self.f = f
+        self.params = nn.ParameterList(list(params))
+
+    def forward(self, *args):
+        return self.f(*itertools.chain(args, self.params))
 
 
 class TestTorchDynamoOrt(unittest.TestCase):
@@ -377,6 +392,140 @@ class TestTorchDynamoOrt(unittest.TestCase):
         # the code is correct with them.
         for _ in range(5):
             run_mnist_model()
+
+    def assertBackendONNXRT(
+        self,
+        f,
+        args,
+        params=None,
+        fullgraph: bool = False,
+        test_backend_backward: bool = True,
+        atol: float = 1e-5,
+        rtol: float = 1e-6,
+        opset_version=None,
+        use_aot_autograd=True,
+        **kwargs,
+    ):
+        if isinstance(args, torch.Tensor):
+            args = [args]
+        if params is None:
+            params = ()
+        if isinstance(f, nn.Module):
+            model = f
+        else:
+            model = FuncModule(f, params)
+        model.eval()
+
+        local_aot_ort = make_local_backend(dynamic=True, use_aot_autograd=use_aot_autograd)
+
+        if test_backend_backward and args[0].requires_grad:
+            # forward/backward
+            compiled_model = torch.compile(
+                copy.deepcopy(model),
+                backend=local_aot_ort,
+                dynamic=False,
+                fullgraph=fullgraph,
+            )
+
+            baseline_result = model(*args)
+            result = compiled_model(*args)
+
+            if isinstance(baseline_result, torch.Tensor):
+                torch.testing.assert_close(
+                    baseline_result,
+                    result,
+                    atol=atol,
+                    rtol=rtol,
+                    equal_nan=True,
+                    msg=f"{baseline_result}\n---\n{result}",
+                )
+
+                baseline_result.sum().backward()
+                result.sum().backward()
+
+                for baseline_param, param in zip(model.parameters(), compiled_model.parameters()):
+                    torch.testing.assert_close(
+                        baseline_param.grad,
+                        param.grad,
+                        atol=atol,
+                        rtol=rtol,
+                        equal_nan=True,
+                        msg=f"{baseline_param.grad}\n---\n{param.grad}",
+                    )
+            else:
+                raise AssertionError(f"Unexpected type {type(baseline_result)}.")
+        else:
+            # forward only
+            compiled_model = torch.compile(
+                copy.deepcopy(model),
+                backend=local_aot_ort,
+                dynamic=False,
+                fullgraph=fullgraph,
+            )
+
+            baseline_result = model(*args)
+            result = compiled_model(*args)
+
+            if isinstance(baseline_result, torch.Tensor):
+                torch.testing.assert_close(
+                    baseline_result,
+                    result,
+                    atol=atol,
+                    rtol=rtol,
+                    equal_nan=True,
+                    msg=f"{baseline_result}\n---\n{result}",
+                )
+
+    def assertONNX(
+        self,
+        f,
+        args,
+        params=None,
+        test_onnxrt_backend=True,
+        test_backend_backward=True,
+        **kwargs,
+    ):
+        if params is None:
+            params = ()
+        if isinstance(f, nn.Module):
+            m = f
+        else:
+            m = FuncModule(f, params)
+        m.eval()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.assertBackendONNXRT(
+                f,
+                args,
+                params=params,
+                test_backend_backward=test_backend_backward,
+                **kwargs,
+            )
+
+    def common_test_expand(self, requires_grad, test_backend_backward, use_aot_autograd):
+        if not requires_grad:
+            if test_backend_backward or use_aot_autograd:
+                return
+        x = torch.randn(6, 1, requires_grad=requires_grad)
+        self.assertONNX(
+            lambda x: x.expand(4, 6, 2),
+            x,
+            test_backend_backward=test_backend_backward,
+            use_aot_autograd=use_aot_autograd,
+        )
+
+    def test_expand(self):
+        for req, back, grad in itertools.product([False, True], [False, True], [False, True]):
+            with self.subTest(requires_grad=req, test_backend_backward=back, use_aot_autograd=grad):
+                self.common_test_expand(req, back, grad)
+
+    def test_slice(self):
+        x = torch.arange(20, requires_grad=True, dtype=torch.float32).reshape((-1, 4))
+        self.assertONNX(lambda x: x[:, 1:2], x)
+
+    def test_slice_dynamic(self):
+        x = torch.rand(3, 4, requires_grad=True)
+        self.assertONNX(lambda x: x[x.size(0) :, x.size(1) - 3], x, opset_version=10)
 
 
 if __name__ == "__main__":
