@@ -250,14 +250,24 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
 #endif
-      RegisterOnnxOperatorSetSchema();
+
+      // Call once to trigger schema static registration.
+      // Note: This is not transactional and can still collide with concurrent calls from other libs.
+      if (!OpSchemaRegistry::Schema("Add")) {
+          RegisterOnnxOperatorSetSchema();
+      }
 
 #ifndef DISABLE_ML_OPS
-      RegisterOnnxMLOperatorSetSchema();
+      if (!OpSchemaRegistry::Schema("SVMClassifier", AI_ONNX_ML_DOMAIN)) {
+          RegisterOnnxMLOperatorSetSchema();
+      }
 #endif
 
 #if defined(ENABLE_TRAINING_OPS)
-      RegisterOnnxTrainingOperatorSetSchema();
+      // No domain check needed currently because all training ops are still in preview namespace.
+      if (!OpSchemaRegistry::Schema("Add")) {
+          RegisterOnnxTrainingOperatorSetSchema();
+      }
 #endif
 
 #if defined(ENABLE_TRAINING_OPS)
