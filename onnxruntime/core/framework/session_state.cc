@@ -84,6 +84,10 @@ SessionState::SessionState(Graph& graph,
       ,
       stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>())
 #endif
+#if !defined(ORT_MINIMAL_BUILD)
+      ,
+      planned_tensor_partition_specs_(sess_options.tensor_partition_specs)
+#endif
 {
   enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
@@ -1609,6 +1613,17 @@ void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCol
   } else {
     device_stream_collection.reset(nullptr);
   }
+}
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+bool SessionState::TryGetPlannedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
+  auto iter = planned_tensor_partition_specs_.find(name);
+  if (iter != planned_tensor_partition_specs_.end()) {
+    spec = iter->second;
+    return true;
+  }
+  return false;
 }
 #endif
 

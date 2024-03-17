@@ -4,16 +4,18 @@
 // Distributed computation.
 #include "distributed_reshape.h"
 #include "sharding.h"
-#include "sharding_spec.h"
 #include "nccl_kernels.h"
 #include "mpi_include.h"
 
 // ORT system.
+#include "core/framework/sharding_spec.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 
 // std C++.
 #include <iostream>
+
+using namespace onnxruntime::distributed;
 
 namespace onnxruntime {
 namespace contrib {
@@ -825,7 +827,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     int64_t,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 1),
     DistributedReshape<int64_t>);
@@ -837,7 +838,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     float,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .InputMemoryType(OrtMemTypeCPUInput, 1),
     DistributedReshape<float>);
@@ -849,7 +849,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     MLFloat16,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .InputMemoryType(OrtMemTypeCPUInput, 1),
     DistributedReshape<MLFloat16>);

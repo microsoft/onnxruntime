@@ -4,11 +4,11 @@
 // Distributed computation.
 #include "distributed_expand.h"
 #include "sharding.h"
-#include "sharding_spec.h"
 #include "nccl_kernels.h"
 #include "mpi_include.h"
 
 // ORT system.
+#include "core/framework/sharding_spec.h"
 #include "core/providers/cuda/tensor/expand.h"
 
 // std C++.

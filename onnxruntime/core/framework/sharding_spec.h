@@ -10,10 +10,11 @@
 #include <vector>
 
 namespace onnxruntime {
-namespace contrib {
-namespace cuda {
+namespace distributed {
 
-#if defined(ORT_USE_NCCL)
+// Tensor partition spec is a concept shared by all EPs,
+// if distributed ops are implemented.
+#if !defined(ORT_MINIMAL_BUILD)
 
 class DeviceMesh {
  public:
@@ -253,7 +254,7 @@ class TensorPartitionSpec {
   static TensorPartitionSpec CreateOneTensorAxisOneDeviceMeshAxisSharding(
       const size_t rank, const DeviceMesh& device_mesh, const size_t tensor_axis, const size_t device_mesh_axis) {
     std::vector<AxisPartitionSpec> axis_specs(rank, AxisPartitionSpec::CreateReplica());
-    axis_specs[tensor_axis] = AxisPartitionSpec::CreateShard(device_mesh_axis);
+    axis_specs[tensor_axis] = AxisPartitionSpec::CreateShard(static_cast<int>(device_mesh_axis));
     return TensorPartitionSpec::Create(axis_specs, device_mesh);
   }
 
@@ -430,6 +431,9 @@ class TensorPartitionSpec {
   }
 };
 
+// Parse "S[0]R" into {AxisPartitionSpec::CreateShard(0), AxisPartitionSpec::CreateReplica()}.
+std::vector<AxisPartitionSpec> ParseStringAsAxisPartitionVector(const std::string& spec_string);
+
 // Parse "[0, 1, 2, 3]" as std::vector<int64_t>{0, 1, 2, 3}.
 std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str);
 
@@ -485,8 +489,6 @@ std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpe
 // the dimension of the axis is divisible by the number of devices along the device mesh axis.
 bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec);
 
-#endif
-
-}  // namespace cuda
-}  // namespace contrib
+#endif  // !defined(ORT_MINIMAL_BUILD)
+}  // namespace distributed
 }  // namespace onnxruntime

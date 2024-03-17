@@ -1564,6 +1564,62 @@ class TestDistributed(unittest.TestCase):
         expected = np.matmul(tensor_x, tensor_w)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
+    def test_matmul_rr_sr_rr_new(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
+        @onnxscript.script()
+        def matmul_rr_sr_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                input_shard_specs=["RR", "S[0]R"],
+                output_shard_specs=["RR"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
+            )
+
+        rank = comm.Get_rank()
+        # Shape [4, 2]
+        tensor_x = np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)
+        # Shape [2, 6]
+        tensor_w = np.array([[1, 1, 1, 1, 1, 1], [2, 2, 2, 2, 2, 2]], dtype=np.float32)
+
+        onnx_model = matmul_rr_sr_rr.to_model_proto(
+            input_types=[FLOAT[4, 2], FLOAT["s", 6]],
+            output_types=[FLOAT[4, 6]],
+        )
+
+        device_mesh_shape = [2]
+        device_mesh_elements = [0, 1]
+        session_options = ort.SessionOptions()
+        session_options.add_tensor_partition_spec(
+            onnx_model.graph.input[0].name, "RR", device_mesh_shape, device_mesh_elements
+        )
+        session_options.add_tensor_partition_spec(
+            onnx_model.graph.input[1].name, "S[0]R", device_mesh_shape, device_mesh_elements
+        )
+        session_options.add_tensor_partition_spec(
+            onnx_model.graph.output[0].name, "RR", device_mesh_shape, device_mesh_elements
+        )
+
+        sess = ort.InferenceSession(
+            onnx_model.SerializeToString(),
+            session_options,
+            providers=["CUDAExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}],
+        )
+
+        tensor_shard_x = tensor_x
+        tensor_shard_w = shard_tensor(tensor_w, rank=rank, axis=0, num_shards=2)
+
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
+
+        expected = np.matmul(tensor_x, tensor_w)
+        np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
+
     def test_slice_sr_axis1(self):
         device_mesh_shape = "[2]"
         device_mesh_elements = "[0, 1]"

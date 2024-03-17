@@ -12,6 +12,8 @@
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 
+using namespace onnxruntime::distributed;
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
