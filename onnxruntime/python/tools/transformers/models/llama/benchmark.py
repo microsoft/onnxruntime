@@ -14,7 +14,7 @@ import torch
 from benchmark_helper import measure_memory, setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
-    add_io_bindings,
+    add_io_bindings_as_ortvalues,
     get_merged_sample_with_past_kv_inputs,
     get_msft_sample_inputs,
     get_sample_inputs,
@@ -444,24 +444,12 @@ def run_hf_inference(args, init_inputs, iter_inputs, model):
 
 def run_ort_inference(args, init_inputs, iter_inputs, model):
     def prepare_ort_inputs(inputs, kv_cache_ortvalues):
-        # Check that all model inputs will be provided
-        model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
-        user_inputs = set(inputs.keys())
-        missing_inputs = model_inputs - user_inputs
-        if len(missing_inputs):
-            logger.error(f"The following model inputs are missing: {missing_inputs}")
-            raise Exception("There are missing inputs to the model. Please add them and try again.")
-
-        # Remove unnecessary inputs from model inputs
-        unnecessary_inputs = user_inputs - model_inputs
-        if len(unnecessary_inputs):
-            for unnecessary_input in unnecessary_inputs:
-                logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
-                del inputs[unnecessary_input]
+        # Verify model inputs
+        inputs = verify_ort_inputs(model, inputs)
 
         # Add IO bindings for non-CPU execution providers
         if args.device != "cpu":
-            io_binding, kv_cache_ortvalues = add_io_bindings(
+            io_binding, kv_cache_ortvalues = add_io_bindings_as_ortvalues(
                 model, inputs, args.device, int(args.rank), args.use_gqa, kv_cache_ortvalues
             )
             setattr(args, "io_binding", io_binding)  # noqa: B010

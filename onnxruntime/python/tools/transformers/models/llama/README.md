@@ -2,6 +2,9 @@
  - [LLaMA-2](#llama-2)
    - [Exporting LLaMA-2](#exporting-llama-2)
    - [Benchmarking LLaMA-2](#benchmark-llama-2)
+     - [Variants](#variants)
+     - [Benchmark All](#benchmark-all)
+     - [Benchmark E2E](#benchmark-e2e)
  - [Mistral](#mistral)
    - [Exporting Mistral](#exporting-mistral)
    - [Optimizing and Quantizing Mistral](#optimizing-and-quantizing-mistral)
@@ -364,6 +367,46 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_all \
     --warmup-runs 5 \
     --num-runs 1000 \
     --timeout 60  # number of minutes before moving to the next benchmark
+```
+
+### Benchmark E2E
+You can use `benchmark_e2e.py` to benchmark the full end-to-end scenario and automatically store the results in a CSV file. This tool uses `argmax` for sampling to standardize the benchmarking process.
+
+1. PyTorch without `torch.compile`, FP32
+```
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
+    --benchmark-type hf-pt-eager \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --precision fp32 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cpu \
+    --auth
+```
+
+2. PyTorch with `torch.compile`, FP16
+```
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
+    --benchmark-type hf-pt-compile \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --precision fp16 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cuda \
+    --auth
+```
+
+3. ONNX Runtime with `convert_to_onnx`, FP32
+```
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
+    --benchmark-type ort-convert-to-onnx \
+    --ort-model-path ./llama2-7b/rank_0_Llama-2-7b-hf_decoder_merged_model_fp32.onnx \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --precision fp32 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cpu \
+    --auth
 ```
 
 # Mistral
