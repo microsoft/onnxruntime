@@ -61,32 +61,19 @@ Status GraphInputsAreExpected(gsl::span<const std::string> actual_graph_inputs,
 }  // namespace
 
 std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
-    std::shared_ptr<Model> model, int32_t& group_count) {
+    const GraphViewer& graph_viewer, int32_t& group_count) {
   std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
-#if !defined(ORT_MINIMAL_BUILD)
-  if (model != nullptr) {
-    Graph& graph = model->MainGraph();
-    for (auto& node : graph.Nodes()) {
-      if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
-        auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
-        if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
-          opt_type_to_freq_map[domain_type_pair] = 0;
-        }
 
-        opt_type_to_freq_map[domain_type_pair] += 1;
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
+      auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
+      if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
+        opt_type_to_freq_map[domain_type_pair] = 0;
       }
+
+      opt_type_to_freq_map[domain_type_pair] += 1;
     }
-  } else {
-#else
-  ORT_UNUSED_PARAMETER(model);
-#endif
-    // TODO(baijumeswani): Figure out the best way to extract the optimizer type
-    // from the model (either onnx model or ort format model) or from the checkpoint.
-    // For now, assume that the optimizer type is AdamWOptimizer when using ort format models.
-    opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
-#if !defined(ORT_MINIMAL_BUILD)
   }
-#endif
 
   ORT_ENFORCE(opt_type_to_freq_map.size() == 1U, "Only support one type of optimizer algorithm, but got: " +
                                                      std::to_string(opt_type_to_freq_map.size()));
@@ -103,42 +90,6 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
   } else {
     ORT_NOT_IMPLEMENTED("Not implemented for optimizer algo: " + opt_it->first.second);
   }
-}
-
-std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
-    const PathString& optim_path, int32_t& group_count) {
-  std::shared_ptr<Model> model = nullptr;
-#if !defined(ORT_MINIMAL_BUILD)
-  if (!fbs::utils::IsOrtFormatModel(optim_path)) {
-    ORT_ENFORCE(Model::Load(optim_path, model, nullptr,
-                            logging::LoggingManager::DefaultLogger())
-                    .IsOK());
-  }
-#else
-  ORT_UNUSED_PARAMETER(optim_path);
-#endif
-  return CreateInstance(model, group_count);
-}
-
-std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
-    const uint8_t* optim_model_data, size_t optim_model_data_len, int32_t& group_count) {
-  std::shared_ptr<Model> model = nullptr;
-#if !defined(ORT_MINIMAL_BUILD)
-  if (!fbs::utils::IsOrtFormatModelBytes(optim_model_data, static_cast<int>(optim_model_data_len))) {
-    ONNX_NAMESPACE::ModelProto model_proto;
-    ORT_ENFORCE(model_proto.ParseFromArray(optim_model_data, static_cast<int>(optim_model_data_len)) == true,
-                "Failed to load model because protobuf parsing failed.");
-
-    ORT_ENFORCE(Model::Load(std::move(model_proto), model, nullptr,
-                            logging::LoggingManager::DefaultLogger(), ModelOptions(true, true))
-                    .IsOK());
-  }
-#else
-  ORT_UNUSED_PARAMETER(optim_model_data);
-  ORT_UNUSED_PARAMETER(optim_model_data_len);
-#endif
-
-  return CreateInstance(model, group_count);
 }
 
 Status Optimizer::GenerateMomentumNamedStates(OptimizerCheckpointState& optimizer_checkpoint_states) {
@@ -280,17 +231,15 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
     auto optimizer_model = std::get<std::optional<std::string>>(model_identifiers.optim_model);
     // The above call to IsOptimizerModelAvailable() ensures that optimizer_model is not nullopt
     ORT_THROW_IF_ERROR(optim_sess_->Load(optimizer_model.value()));
-    optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(ToWideString(optimizer_model.value()), group_count_);
   } else {
     auto optimizer_model = std::get<gsl::span<const uint8_t>>(model_identifiers.optim_model);
     ORT_THROW_IF_ERROR(optim_sess_->Load(optimizer_model.data(),
                                          static_cast<int>(optimizer_model.size())));
-    optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optimizer_model.data(),
-                                                                   optimizer_model.size(),
-                                                                   group_count_);
   }
 
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
+  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optim_sess_->GetSessionState().GetGraphViewer(),
+                                                                 group_count_);
 
   // Make sure that the checkpoint state can copy tensors
   state_->optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &optim_sess_->GetDataTransferManager();

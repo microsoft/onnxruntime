@@ -110,6 +110,11 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
+  if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cos_cache and sin_cache must be passed to GroupQueryAttention when do_rotary = 1");
+  }
+
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);

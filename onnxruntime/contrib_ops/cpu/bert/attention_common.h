@@ -98,6 +98,7 @@ struct GroupQueryAttentionParameters {
   int kv_hidden_size;
   int kv_num_heads;
   int num_splits;          // number of splits for splitkv
+  int rotary_dim;          // rotary embedding dimension
   bool is_unidirectional;  // causal
   int local_window_size;
   bool kv_share_buffer;

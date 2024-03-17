@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <optional>
+#include <list>
 
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
@@ -34,6 +35,7 @@ struct ProviderHostCPU;
 class PhiloxGenerator;
 using ProviderType = const std::string&;
 class RandomGenerator;
+class IOnnxRuntimeOpSchemaCollection;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
@@ -93,6 +95,8 @@ using NodeIndex = size_t;
 // using NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_Copyable>;
 using ModelMetaData = std::unordered_map<std::string, std::string>;
 
+using IOnnxRuntimeOpSchemaCollectionPtr = std::shared_ptr<IOnnxRuntimeOpSchemaCollection>;
+using IOnnxRuntimeOpSchemaRegistryList = std::list<IOnnxRuntimeOpSchemaCollectionPtr>;
 using InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
 
 struct Node__NodeIterator {
@@ -435,6 +439,7 @@ struct ProviderHost {
   virtual void TensorProto__clear_int64_data(ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual void TensorProto__clear_double_data(ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual void TensorProto__clear_uint64_data(ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__set_data_location(ONNX_NAMESPACE::TensorProto* p, ONNX_NAMESPACE::TensorProto_DataLocation data_location) = 0;
 
   virtual bool TensorProto_DataType_IsValid(int value) = 0;
 
@@ -480,6 +485,9 @@ struct ProviderHost {
 
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
+
+  // OrtRunOptions
+  virtual const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) = 0;
 
   // ComputeCapability
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
@@ -752,8 +760,9 @@ struct ProviderHost {
   virtual void NodeAttributes__reserve(NodeAttributes* p, size_t size) = 0;
 
   // Model
-  virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto,
-                                                  const PathString& model_path, const logging::Logger& logger) = 0;
+  virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
+                                                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                                                  const logging::Logger& logger) = 0;
   virtual void Model__operator_delete(Model* p) = 0;
   virtual Graph& Model__MainGraph(Model* p) = 0;
   virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) = 0;
@@ -811,6 +820,7 @@ struct ProviderHost {
   virtual Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept = 0;
   virtual const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const = 0;
   virtual const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const = 0;
+  virtual IOnnxRuntimeOpSchemaCollectionPtr Graph__GetSchemaRegistry(const Graph* p) const = 0;
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;

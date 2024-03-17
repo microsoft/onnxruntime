@@ -64,13 +64,7 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
             curr_time = time.time()
             elapsed_time = curr_time - start_time
             print(
-                "[{:5}/{:5} ({:2.0f}%)]\tLoss: {:.6f}\tExecution time: {:.4f}".format(
-                    iteration * len(data),
-                    len(train_loader.dataset),
-                    100.0 * iteration / len(train_loader),
-                    loss,
-                    elapsed_time,
-                )
+                f"[{iteration * len(data):5}/{len(train_loader.dataset):5} ({100.0 * iteration / len(train_loader):2.0f}%)]\tLoss: {loss:.6f}\tExecution time: {elapsed_time:.4f}"
             )
             start_time = curr_time
 
@@ -102,13 +96,7 @@ def test(args, model, device, loss_fn, test_loader):
             correct += pred.eq(target.view_as(pred)).sum().item()
     test_loss /= len(test_loader.dataset)
     print(
-        "\nTest set: Batch size: {:}, Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n".format(
-            args.test_batch_size,
-            test_loss,
-            correct,
-            len(test_loader.dataset),
-            100.0 * correct / len(test_loader.dataset),
-        )
+        f"\nTest set: Batch size: {args.test_batch_size}, Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100.0 * correct / len(test_loader.dataset):.0f}%)\n"
     )
 
     # Report the final accuracy for this validation run.
@@ -221,7 +209,7 @@ def main():
 
     # Train loop
     total_training_time, total_test_time, epoch_0_training, validation_accuracy = 0, 0, 0, 0
-    for epoch in range(0, args.epochs):
+    for epoch in range(args.epochs):
         total_training_time += train(args, model, device, optimizer, my_loss, train_loader, epoch)
         if not args.pytorch_only and epoch == 0:
             epoch_0_training = total_training_time

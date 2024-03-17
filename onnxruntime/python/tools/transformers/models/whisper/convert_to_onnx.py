@@ -414,9 +414,9 @@ def export_onnx_models(
                     quantization.quantize_dynamic(
                         onnx_path,
                         output_path,
-                        op_types_to_quantize=["MatMul", "Gemm", "Gather"]
-                        if quantize_embedding_layer
-                        else ["MatMul", "Gemm"],
+                        op_types_to_quantize=(
+                            ["MatMul", "Gemm", "Gather"] if quantize_embedding_layer else ["MatMul", "Gemm"]
+                        ),
                         use_external_data_format=use_external_data_format,
                         per_channel=quantize_per_channel,
                         reduce_range=quantize_reduce_range,

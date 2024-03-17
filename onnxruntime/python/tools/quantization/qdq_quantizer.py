@@ -11,7 +11,7 @@ import onnx.numpy_helper
 from onnx import TensorProto
 from onnx import onnx_pb as onnx_proto
 
-from .onnx_quantizer import ONNXQuantizer
+from .base_quantizer import BaseQuantizer
 from .quant_utils import (
     DEQUANT_OP_NAME,
     QUANT_OP_NAME,
@@ -46,14 +46,12 @@ class QDQTensorQuantInfo:
         self.data_type = data_type
 
 
-class QDQQuantizer(ONNXQuantizer):
+class QDQQuantizer(BaseQuantizer):
     def __init__(
         self,
         model,
         per_channel,
         reduce_range,
-        mode,
-        static,
         weight_qType,
         activation_qType,
         tensors_range,
@@ -62,13 +60,11 @@ class QDQQuantizer(ONNXQuantizer):
         op_types_to_quantize,
         extra_options=None,
     ):
-        ONNXQuantizer.__init__(
+        BaseQuantizer.__init__(
             self,
             model,
             per_channel,
             reduce_range,
-            mode,
-            static,
             weight_qType,
             activation_qType,
             tensors_range,
@@ -116,7 +112,10 @@ class QDQQuantizer(ONNXQuantizer):
         # if the activation or weight types are 16-bit integers.
         # TODO: Remove this override (and use only the 'UseQDQContribOps' option) if/when ONNX adds 16-bit support.
         int16_types = (TensorProto.UINT16, TensorProto.INT16)
-        if not self.qdq_op_domain and (self.activation_qType in int16_types or self.weight_qType in int16_types):
+        overrides_have_int16 = any(t in int16_types for t in self.tensor_quant_override_types)
+        if not self.qdq_op_domain and (
+            self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
+        ):
             logging.warning(
                 "ONNX QuantizeLinear and DequantizeLinear operators do not support 16-bit integer quantization types. "
                 f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
@@ -154,9 +153,7 @@ class QDQQuantizer(ONNXQuantizer):
                 return True
         else:
             logging.warning(
-                "failed to infer the type of tensor: {}. Skip to quantize it. Please check if it is expected.".format(
-                    tensor_name
-                )
+                f"failed to infer the type of tensor: {tensor_name}. Skip to quantize it. Please check if it is expected."
             )
 
         return False

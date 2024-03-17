@@ -230,7 +230,7 @@ def run_check_with_model(
     if unsupported_ops:
         logger.info("Unsupported operators:")
         for entry in sorted(unsupported_ops):
-            logger.info("  " + entry)
+            logger.info("  " + entry)  # noqa: G003
 
     if unsupported:
         logger.info("\nModel is not supported by the pre-built package due to unsupported types and/or operators.")

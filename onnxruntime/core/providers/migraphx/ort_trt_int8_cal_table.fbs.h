@@ -4,7 +4,7 @@
 #define ONNXRUNTIME_CORE_PROVIDERS_MIGRAPHX_ORT_TRT_INT8_CAL_TABLE_FBS_H_
 
 #include <vector>
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 namespace CalTableFlatBuffers {
 

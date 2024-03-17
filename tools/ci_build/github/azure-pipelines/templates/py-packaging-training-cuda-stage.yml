@@ -47,183 +47,42 @@ parameters:
   type: boolean
   default: false
 
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
+- name: PythonVersionList
+  displayName: Python Version List
+  type: object
+  default:
+    - name: '38'
+      version: '3.8'
+    - name: '39'
+      version: '3.9'
+    - name: '310'
+      version: '3.10'
+    - name: '311'
+      version: '3.11'
+
 stages:
-- stage: "Cuda_Python_Packaging_debug_${{ parameters.debug_build }}"
-
-  variables:
-    - name: isMain
-      value: ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}
-    - name: finalStorage
-      ${{ if eq(variables['isMain'], 'true') }}:
-        value: '--final_storage'
-      ${{ else }}:
-        value: ''
-    - name: buildConfig
-      ${{ if eq(parameters['debug_build'], 'true') }}:
-        value: 'Debug'
-      ${{ else }}:
-        value: 'Release'
-
-  dependsOn: []
-
-  jobs:
-    - job: Linux_py_Training_Cuda_Wheels
-      timeoutInMinutes: 180
-      workspace:
-        clean: all
-      pool: ${{ parameters.agent_pool }}
-      strategy:
-        matrix:
-          Python38:
-            PythonVersion: '3.8'
-            TorchVersion: ${{ parameters.torch_version }}
-            OpsetVersion: ${{ parameters.opset_version }}
-            CudaVersion: ${{ parameters.cuda_version }}
-            UploadWheel: ${{ parameters.upload_wheel }}
-          Python39:
-            PythonVersion: '3.9'
-            TorchVersion: ${{ parameters.torch_version }}
-            OpsetVersion: ${{ parameters.opset_version }}
-            CudaVersion: ${{ parameters.cuda_version }}
-            UploadWheel: ${{ parameters.upload_wheel }}
-          Python310:
-            PythonVersion: '3.10'
-            TorchVersion: ${{ parameters.torch_version }}
-            OpsetVersion: ${{ parameters.opset_version }}
-            CudaVersion: ${{ parameters.cuda_version }}
-            UploadWheel: ${{ parameters.upload_wheel }}
-          Python311:
-            PythonVersion: '3.11'
-            TorchVersion: ${{ parameters.torch_version }}
-            OpsetVersion: ${{ parameters.opset_version }}
-            CudaVersion: ${{ parameters.cuda_version }}
-            UploadWheel: ${{ parameters.upload_wheel }}
-# TODO: enable this when we have torch support pyton 3.12
-#          Python312:
-#            PythonVersion: '3.12'
-#            TorchVersion: ${{ parameters.torch_version }}
-#            OpsetVersion: ${{ parameters.opset_version }}
-#            CudaVersion: ${{ parameters.cuda_version }}
-#            UploadWheel: ${{ parameters.upload_wheel }}
-
-      steps:
-      - task: CmdLine@2
-        displayName: 'check variables'
-        inputs:
-          script: |
-            echo "Branch is "${{ variables['Build.SourceBranch'] }} && \
-            echo "isMain is "${{ variables['isMain'] }} && \
-            echo "final_storage is "${{ variables['finalStorage'] }}
-
-      - checkout: self
-        clean: true
-        submodules: recursive
-
-      - template: set-python-manylinux-variables-step.yml
-
-      - template: get-docker-image-steps.yml
-        parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/${{ parameters.docker_file }}
-          Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: >-
-            --build-arg TORCH_VERSION=$(TorchVersion)
-            --build-arg OPSET_VERSION=$(OpsetVersion)
-            --build-arg PYTHON_VERSION=$(PythonVersion)
-            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
-            --build-arg BUILD_UID=$(id -u)
-            --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
-            --build-arg DEVTOOLSET_ROOTPATH=/usr
-            --build-arg PREPEND_PATH=/usr/local/cuda/bin:
-            --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
-          Repository: onnxruntimetraininggpubuild
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-        displayName: 'Mount MNIST'
-        condition: succeededOrFailed()
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-        displayName: 'Mount bert-data'
-        condition: succeededOrFailed()
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-        displayName: 'Mount hf-models-cache'
-        condition: succeededOrFailed()
-
-      - task: CmdLine@2
-        displayName: 'build onnxruntime'
-        inputs:
-          script: |
-            set -e -x
-            mkdir -p $HOME/.onnx
-            docker run --rm -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-              -e NVIDIA_VISIBLE_DEVICES=all \
-              -e NIGHTLY_BUILD \
-              -e DEFAULT_TRAINING_PACKAGE_DEVICE \
-              -e BUILD_BUILDNUMBER \
-              -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
-              onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build \
-                  --config ${{ variables['buildConfig'] }} \
-                  --skip_submodule_sync \
-                  --parallel --use_binskim_compliant_compile_flags \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_architectures }}' onnxruntime_BUILD_UNIT_TESTS=OFF \
-                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
-          workingDirectory: $(Build.SourcesDirectory)
-
-      - task: CmdLine@2
-        displayName: 'test ortmodule'
-        inputs:
-          script: |
-            rm -rf $(Build.BinariesDirectory)/${{ variables['buildConfig'] }}/onnxruntime/ && \
-            files=($(Build.BinariesDirectory)/${{ variables['buildConfig'] }}/dist/*.whl) && \
-            echo ${files[0]} && \
-            whlfilename=$(basename ${files[0]}) && \
-            echo $whlfilename && \
-            docker run --rm \
-              --gpus all \
-              -e NVIDIA_VISIBLE_DEVICES=all \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /mnist:/mnist \
-              --volume /bert_data:/bert_data \
-              --volume /hf_models_cache:/hf_models_cache \
-              onnxruntimetraininggpubuild \
-                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/${{ variables['buildConfig'] }}/dist/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
-          workingDirectory: $(Build.SourcesDirectory)
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)'
-          Contents: "${{ variables['buildConfig'] }}/dist/*.whl"
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
-        inputs:
-          ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
-
-      - task: CmdLine@2
-        displayName: 'Upload wheel'
-        condition: and(succeeded(), and(eq(variables['UploadWheel'], 'yes'), ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')))
-        inputs:
-          script: |
-            set -e -x
-            files=($(Build.ArtifactStagingDirectory)/${{ variables['buildConfig'] }}/dist/*.whl) && \
-            echo ${files[0]} && \
-            python3 tools/ci_build/upload_python_package_to_azure_storage.py \
-                --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
-      - template: clean-agent-build-directory-step.yml
+- ${{ each python_version in parameters.PythonVersionList }}:
+  - template: py-packaging-training-cuda-stage-steps.yml
+    parameters:
+      build_py_parameters: ${{ parameters.build_py_parameters }}
+      torch_version: ${{ parameters.torch_version }}
+      opset_version: ${{ parameters.opset_version }}
+      cuda_version: ${{ parameters.cuda_version }}
+      cmake_cuda_architectures: ${{ parameters.cmake_cuda_architectures }}
+      docker_file: ${{ parameters.docker_file }}
+      upload_wheel: ${{ parameters.upload_wheel }}
+      debug_build: ${{ parameters.debug_build }}
+      stage_name: 'Linux_py_Training_Cuda_Wheels_${{ python_version.name }}'
+      python_version: ${{ python_version.version }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
