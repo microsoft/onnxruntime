@@ -89,6 +89,8 @@ def run_skip_layer_norm(
         epsilon,
         hidden_size,
         batch_size * seq_len * hidden_size,
+        0,
+        batch_size * seq_len * hidden_size,
     )
     if my_op.IsSupported():
         my_op.Run()
@@ -164,6 +166,8 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func, 
         bias_d,
         epsilon,
         hidden_size,
+        batch_size * seq_len * hidden_size,
+        0,
         batch_size * seq_len * hidden_size,
     )
 

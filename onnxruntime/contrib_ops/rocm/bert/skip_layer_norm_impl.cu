@@ -42,12 +42,13 @@ namespace rocm {
 template <typename T, typename U, typename V, bool Simplified>
 Status LaunchSkipLayerNormKernel(
     RocmTuningContext* tuning_ctx, Stream* stream, V* output, T* skip_input_bias_add_output, const T* input,
-    const T* skip, const V* gamma, const V* beta, const T* bias, float epsilon, int ld, int element_count) {
+    const T* skip, const V* gamma, const V* beta, const T* bias, float epsilon, int ld, int element_count,
+    bool skip_broadcasted, int skip_size) {
   // this must be true because element_count is the total size of the tensor
   assert(element_count % ld == 0);
 
   SkipLayerNormParams<T, V> params(tuning_ctx, stream, output, skip_input_bias_add_output, input, skip,
-                                   gamma, beta, bias, epsilon, ld, element_count);
+                                   gamma, beta, bias, epsilon, ld, element_count, skip_broadcasted, skip_size);
 
   if (tuning_ctx->IsTunableOpEnabled()) {
     static SkipLayerNormTunableOp<T, U, V, Simplified> op;
@@ -61,25 +62,25 @@ template Status LaunchSkipLayerNormKernel<float, float, float, true>(
     RocmTuningContext* tuning_ctx, Stream* stream, float* output, float* skip_input_bias_add_output, const float* input,
     const float* skip, const float* gamma, const float* beta,
     const float* bias, float epsilon, int ld,
-    int element_count);
+    int element_count, bool skip_broadcasted, int skip_size);
 
 template Status LaunchSkipLayerNormKernel<half, float, half, true>(
     RocmTuningContext* tuning_ctx, Stream* stream, half* output, half* skip_input_bias_add_output, const half* input,
     const half* skip, const half* gamma, const half* beta,
     const half* bias, float epsilon, int ld,
-    int element_count);
+    int element_count, bool skip_broadcasted, int skip_size);
 
 template Status LaunchSkipLayerNormKernel<float, float, float, false>(
     RocmTuningContext* tuning_ctx, Stream* stream, float* output, float* skip_input_bias_add_output, const float* input,
     const float* skip, const float* gamma, const float* beta,
     const float* bias, float epsilon, int ld,
-    int element_count);
+    int element_count, bool skip_broadcasted, int skip_size);
 
 template Status LaunchSkipLayerNormKernel<half, float, half, false>(
     RocmTuningContext* tuning_ctx, Stream* stream, half* output, half* skip_input_bias_add_output, const half* input,
     const half* skip, const half* gamma, const half* beta,
     const half* bias, float epsilon, int ld,
-    int element_count);
+    int element_count, bool skip_broadcasted, int skip_size);
 
 }  // namespace rocm
 }  // namespace contrib

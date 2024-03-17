@@ -17,10 +17,11 @@ class SkipLayerNormSmall : public IKernelExplorer {
  public:
   SkipLayerNormSmall(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, DeviceArray& skip,
                      DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
-                     float epsilon, int hidden_size, int element_count)
+                     float epsilon, int hidden_size, int element_count, bool skip_broadcasted, int skip_size)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
-                static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
+                static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count,
+                skip_broadcasted, skip_size) {}
 
   void Run() override {
     ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormSmallOp<T, float, T, ThreadsPerBlock, VecSize, Simplified>(&params_)));
@@ -41,10 +42,11 @@ class SkipLayerNormRegular : public IKernelExplorer {
  public:
   SkipLayerNormRegular(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, DeviceArray& skip,
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
-                       float epsilon, int hidden_size, int element_count)
+                       float epsilon, int hidden_size, int element_count, bool skip_broadcasted, int skip_size)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
-                static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
+                static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count,
+                skip_broadcasted, skip_size) {}
 
   void Run() override {
     ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormRegularOp<T, float, T, ThreadsPerBlock, VecSize, Simplified>(&params_)));
@@ -65,10 +67,11 @@ class SkipLayerNormStaticSelection : public IKernelExplorer {
  public:
   SkipLayerNormStaticSelection(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input,
                                DeviceArray& skip, DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
-                               float epsilon, int hidden_size, int element_count)
+                               float epsilon, int hidden_size, int element_count, bool skip_broadcasted, int skip_size)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
-                static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
+                static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count,
+                skip_broadcasted, skip_size) {}
 
   void Run() override {
     ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormStaticSelection<T, float, T, Simplified>(&params_)));
@@ -89,10 +92,11 @@ class SkipLayerNormTunable : public IKernelExplorer {
  public:
   SkipLayerNormTunable(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, DeviceArray& skip,
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
-                       float epsilon, int hidden_size, int element_count)
+                       float epsilon, int hidden_size, int element_count, bool skip_broadcasted, int skip_size)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
-                static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {
+                static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count,
+                skip_broadcasted, skip_size) {
     params_.TuningContext()->EnableTunableOpAndTuning();
   }
 
@@ -114,7 +118,7 @@ class SkipLayerNormTunable : public IKernelExplorer {
   py::class_<type<__VA_ARGS__>>(m, name)                                    \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, \
                     DeviceArray&, DeviceArray&, DeviceArray&,               \
-                    float, int, int>())                                     \
+                    float, int, int, bool, int>())                          \
       .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                    \
       .def("Profile", &type<__VA_ARGS__>::Profile)                          \
       .def("Run", &type<__VA_ARGS__>::Run)                                  \
@@ -152,7 +156,7 @@ class SkipLayerNormTunable : public IKernelExplorer {
   py::class_<type<__VA_ARGS__>>(m, name)                                    \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, \
                     DeviceArray&, DeviceArray&, DeviceArray&,               \
-                    float, int, int>())                                     \
+                    float, int, int, bool, int>())                          \
       .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                    \
       .def("Profile", &type<__VA_ARGS__>::Profile)                          \
       .def("Run", &type<__VA_ARGS__>::Run)                                  \
