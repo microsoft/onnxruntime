@@ -459,7 +459,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      const Path& model_path,
-                                     std::vector<uint8_t>& unpacked_tensor);
+                                     std::unique_ptr<uint8_t[]>& unpacked_tensor, size_t& unpacked_tensor_size);
 
 /**
  * Unpack the data from an internal initializer tensor, will return error when the given initializer

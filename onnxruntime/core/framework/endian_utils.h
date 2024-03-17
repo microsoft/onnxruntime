@@ -36,6 +36,8 @@ namespace detail {
 /**
  * Copies between two buffers where one is little-endian and the other has
  * native endian-ness.
+ * If source_bytes and destination_bytes is the same the operation is executed
+ * in place. Non-equal overlapping will result in undefined results.
  */
 Status CopyLittleEndian(size_t element_size_in_bytes,
                         gsl::span<const unsigned char> source_bytes,
