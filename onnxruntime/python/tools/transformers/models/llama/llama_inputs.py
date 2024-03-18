@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 from __future__ import annotations
 
 import numpy as np
@@ -368,7 +373,7 @@ def add_io_bindings_as_tensors(
             device_id=0 if v.device.type == "cpu" else v.device.index,
             element_type=pt_to_np[repr(v.dtype)],
             shape=tuple(v.shape),
-            buffer_ptr=v.data_ptr()
+            buffer_ptr=v.data_ptr(),
         )
         device = v.device
 
@@ -383,7 +388,7 @@ def add_io_bindings_as_tensors(
                 device_id=v.device.index,
                 element_type=np.float16,
                 shape=tuple(v.shape),
-                buffer_ptr=v.data_ptr()
+                buffer_ptr=v.data_ptr(),
             )
         else:
             v = outputs[name]
@@ -393,7 +398,7 @@ def add_io_bindings_as_tensors(
                 device_id=0 if device.type == "cpu" else device.index,
                 element_type=(np.float16 if use_fp16 else np.float32),
                 shape=tuple(v.shape),
-                buffer_ptr=v.data_ptr()
+                buffer_ptr=v.data_ptr(),
             )
 
     return io_binding
@@ -437,13 +442,16 @@ def get_initial_inputs_and_outputs(
             attention_mask = torch.hstack((attention_mask_first_col, attention_mask))
         position_ids = get_position_ids(attention_mask, use_past_kv=False)
 
+    tokenized_length = input_ids.shape[-1]
+    assert tokenized_length == requested_length
+
     # Create inputs
     inputs = {
-        "input_ids": input_ids.contiguous() if args.engine == "ort" else input_ids,
-        "attention_mask": attention_mask.contiguous() if args.engine == "ort" else attention_mask,
-        "position_ids": position_ids.contiguous() if args.engine == "ort" else position_ids,
+        "input_ids": input_ids.contiguous() if engine == "ort" else input_ids,
+        "attention_mask": attention_mask.contiguous() if engine == "ort" else attention_mask,
+        "position_ids": position_ids.contiguous() if engine == "ort" else position_ids,
     }
-    if args.engine != "ort":
+    if engine != "ort":
         inputs["past_key_values"] = []
 
     # Get shape of KV cache inputs
@@ -454,30 +462,47 @@ def get_initial_inputs_and_outputs(
 
     # Create KV cache inputs
     for i in range(config.num_hidden_layers):
-        past_key = torch.zeros(batch_size, num_heads, max_sequence_length if use_buffer_share else 0, head_size, device=device, dtype=torch_dtype)
-        past_value = torch.zeros(batch_size, num_heads, max_sequence_length if use_buffer_share else 0, head_size, device=device, dtype=torch_dtype)
-        if args.engine == "ort":
-            inputs.update({
-                f"past_key_values.{i}.key": past_key.contiguous(),
-                f"past_key_values.{i}.value": past_value.contiguous()
-            })
+        past_key = torch.zeros(
+            batch_size,
+            num_heads,
+            max_sequence_length if use_buffer_share else 0,
+            head_size,
+            device=device,
+            dtype=torch_dtype,
+        )
+        past_value = torch.zeros(
+            batch_size,
+            num_heads,
+            max_sequence_length if use_buffer_share else 0,
+            head_size,
+            device=device,
+            dtype=torch_dtype,
+        )
+        if engine == "ort":
+            inputs.update(
+                {
+                    f"past_key_values.{i}.key": past_key.contiguous(),
+                    f"past_key_values.{i}.value": past_value.contiguous(),
+                }
+            )
         else:
             inputs["past_key_values"].append((past_key, past_value))
 
     outputs = None
-    if args.engine == "ort":
+    if engine == "ort":
         # Create outputs
         logits = torch.zeros(batch_size, sequence_length, config.vocab_size, device=device, dtype=torch_dtype)
-        outputs = {
-            "logits": logits.contiguous()
-        }
+        outputs = {"logits": logits.contiguous()}
         if not use_buffer_share:
             for i in range(config.num_hidden_layers):
-                present_key = torch.zeros(batch_size, num_heads, sequence_length, head_size, device=device, dtype=torch_dtype)
-                present_value = torch.zeros(batch_size, num_heads, sequence_length, head_size, device=device, dtype=torch_dtype)
-                outputs.update({
-                    f"present.{i}.key": present_key.contiguous(),
-                    f"present.{i}.value": present_value.contiguous()
-                })
+                present_key = torch.zeros(
+                    batch_size, num_heads, sequence_length, head_size, device=device, dtype=torch_dtype
+                )
+                present_value = torch.zeros(
+                    batch_size, num_heads, sequence_length, head_size, device=device, dtype=torch_dtype
+                )
+                outputs.update(
+                    {f"present.{i}.key": present_key.contiguous(), f"present.{i}.value": present_value.contiguous()}
+                )
 
     return inputs, outputs

@@ -1,3 +1,9 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+
 # This is an end-to-end benchmarking script for the Hugging Face LLaMA-2 model.
 #
 # Prerequisites:
@@ -17,21 +23,21 @@
 
 from __future__ import annotations
 
-from llama_inputs import (
-    add_io_bindings_as_tensors,
-    get_initial_inputs_and_outputs,
-)
-from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
-
+import argparse
 import datetime
 import gc
 import itertools
+import json
 import logging
+import time
+
 import numpy as np
-import onnxruntime as ort
 import pandas as pd
 import torch
-import time
+from llama_inputs import add_io_bindings_as_tensors, get_initial_inputs_and_outputs
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+import onnxruntime as ort
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +57,12 @@ def get_model(args):
 
     else:
         sess_options = ort.SessionOptions()
-        ep = ("CUDAExecutionProvider", {"device_id": args.device_id}) if args.device == "cuda" else "CPUExecutionProvider"
-        model = ort.InferenceSession(onnx_model_path, sess_options=sess_options, providers=[ep])
+        ep = (
+            ("CUDAExecutionProvider", {"device_id": args.device_id})
+            if args.device == "cuda"
+            else "CPUExecutionProvider"
+        )
+        model = ort.InferenceSession(args.onnx_model_path, sess_options=sess_options, providers=[ep])
 
     return model
 
@@ -83,7 +93,9 @@ def run_inference(args, model, runs, inputs, outputs):
 
 def prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt):
     clear_cache()
-    inputs, outputs = get_initial_inputs_and_outputs(config, tokenizer, prompt_length, prompt, args.target_device, args.use_fp16, args.use_buffer_share, args.engine)
+    inputs, outputs = get_initial_inputs_and_outputs(
+        config, tokenizer, prompt_length, prompt, args.target_device, args.use_fp16, args.use_buffer_share, args.engine
+    )
     run_inference(args, model, args.warmup_runs, inputs, outputs)
     return inputs, outputs
 
@@ -155,7 +167,7 @@ def get_args():
 
     parser.add_argument(
         "-o",
-        "--ort-model-path",
+        "--onnx-model-path",
         required=False,
         help="Path to ONNX model",
     )
@@ -182,7 +194,7 @@ def get_args():
         help="Use when GroupQueryAttention (GQA) is in ONNX model",
     )
 
-     # Args for running and evaluating the model
+    # Args for running and evaluating the model
     parser.add_argument(
         "-b",
         "--batch-sizes",
@@ -222,11 +234,11 @@ def get_args():
     if "ort" in args.benchmark_type:
         setattr(args, "execution_provider", f"{args.device.upper()}ExecutionProvider")  # noqa: B010
         if args.execution_provider == "CUDAExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": rank})
+            args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
 
     # Check that paths have been specified for any benchmarking with ORT
     if args.benchmark_type == "ort-convert-to-onnx":
-        assert args.ort_model_path, "Please specify a path to `--ort-model-path`"
+        assert args.onnx_model_path, "Please specify a path to `--onnx-model-path`"
 
     args.batch_sizes = args.batch_sizes.split(" ")
     args.sequence_lengths = args.sequence_lengths.split(" ")
@@ -251,7 +263,7 @@ def main():
 
     # Get prompts and prompt sizes
     size_to_prompt = None
-    with open(args.prompts_file, "r") as f:
+    with open(args.prompts_file) as f:
         size_to_prompt = json.load(f, object_hook=lambda d: {int(k): v for k, v in d.items()})
 
     # Get config, tokenizer, and model
@@ -260,7 +272,7 @@ def main():
     model = get_model(args)
 
     all_csv_metrics = []
-    for (batch_size, prompt_length) in itertools.product(batch_sizes, prompt_lengths):
+    for batch_size, prompt_length in itertools.product(args.batch_sizes, args.prompt_lengths):
         logger.info(f"Running batch size = {batch_size}, prompt length = {prompt_length}")
         max_length = prompt_length + args.generation_length
         prompt = [size_to_prompt[prompt_length]] * batch_size
@@ -276,7 +288,9 @@ def main():
             accelerator_prompt_latency_ms = accelerator_prompt_latency_s * 1000
             accelerator_prompt_thrpt = batch_size * (prompt_length / accelerator_prompt_latency_s)
             logger.info(f"Accelerator Prompt Processing Latency: {accelerator_prompt_latency_s * 1000} ms")
-            logger.info(f"Accelerator Prompt Processing Throughput: {batch_size * (prompt_length / accelerator_prompt_latency_s)} tps")
+            logger.info(
+                f"Accelerator Prompt Processing Throughput: {batch_size * (prompt_length / accelerator_prompt_latency_s)} tps"
+            )
             csv_metrics.extend([accelerator_prompt_latency_ms, accelerator_prompt_thrpt])
 
             # Measure token generation
@@ -284,16 +298,18 @@ def main():
             inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt)
 
             all_token_ids = inputs["input_ids"].clone()
-            batch_size, sequence_length = all_token_ids.shape
+            current_length = all_token_ids.shape[-1]
             num_heads = config.num_key_value_heads
-            head_size = head_size = config.head_dim if hasattr(config, "head_dim") else config.hidden_size // config.num_attention_heads
+            head_size = (
+                config.head_dim if hasattr(config, "head_dim") else config.hidden_size // config.num_attention_heads
+            )
 
-            current_length = sequence_length
-            assert current_length == prompt_length
-            has_eos = torch.zeros(batch_size, device=device, dtype=torch.bool)
+            has_eos = torch.zeros(batch_size, device=args.target_device, dtype=torch.bool)
 
-            accelerator_times = []  # 0th entry will have prompt accelerator time, 1st entry onwards will have token generation accelerator time
+            # 0th entry will have prompt accelerator time, 1st entry onwards will have token generation accelerator time
+            accelerator_times = []
             sampling_times = []  # cost to sample after each model run
+
             wall_clock_start_time = time.perf_counter()
             while current_length <= max_length:
                 # Run inference
@@ -305,7 +321,11 @@ def main():
                 sampling_start_time = time.perf_counter()
                 if outputs["logits"].shape[1] > 1:
                     prompt_end_indices = inputs["attention_mask"].sum(1) - 1
-                    idxs = prompt_end_indices.unsqueeze(dim=1).repeat(1, config.vocab_size).view(batch_size, 1, config.vocab_size)
+                    idxs = (
+                        prompt_end_indices.unsqueeze(dim=1)
+                        .repeat(1, config.vocab_size)
+                        .view(batch_size, 1, config.vocab_size)
+                    )
                     next_token_logits = torch.gather(outputs["logits"], 1, idxs).squeeze()
                 else:
                     next_token_logits = outputs["logits"][:, -1, :]
@@ -330,7 +350,9 @@ def main():
                 # Update inputs for next inference run
                 inputs["input_ids"] = tokens_to_add
                 inputs["position_ids"] = torch.max(inputs["position_ids"], dim=1)[0].reshape(batch_size, 1) + 1
-                inputs["attention_mask"] = torch.cat([inputs["attention_mask"], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1)
+                inputs["attention_mask"] = torch.cat(
+                    [inputs["attention_mask"], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1
+                )
 
                 # Set logits to zeros for next inference run and re-use memory buffer
                 if outputs["logits"].shape[1] != 1:
@@ -341,7 +363,7 @@ def main():
                 if args.engine == "pt":
                     # Update KV caches for PyTorch
                     inputs["past_key_values"] = outputs["past_key_values"]
-                elif not use_buffer_share:
+                elif not args.use_buffer_share:
                     # Update KV caches for ONNX Runtime if buffer sharing is not used
                     for i in range(config.num_hidden_layers):
                         inputs[f"past_key_values.{i}.key"] = outputs[f"present.{i}.key"]
@@ -349,12 +371,28 @@ def main():
 
                     new_sequence_length = inputs["attention_mask"].shape[1]
                     for i in range(config.num_hidden_layers):
-                        present_key = torch.zeros(batch_size, num_heads, new_sequence_length, head_size, device=args.target_device, dtype=args.torch_dtype)
-                        present_value = torch.zeros(batch_size, num_heads, new_sequence_length, head_size, device=args.targe_device, dtype=args.torch_dtype)
-                        outputs.update({
-                            f"present.{i}.key": present_key.contiguous(),
-                            f"present.{i}.value": present_value.contiguous()
-                        })
+                        present_key = torch.zeros(
+                            batch_size,
+                            num_heads,
+                            new_sequence_length,
+                            head_size,
+                            device=args.target_device,
+                            dtype=args.torch_dtype,
+                        )
+                        present_value = torch.zeros(
+                            batch_size,
+                            num_heads,
+                            new_sequence_length,
+                            head_size,
+                            device=args.target_device,
+                            dtype=args.torch_dtype,
+                        )
+                        outputs.update(
+                            {
+                                f"present.{i}.key": present_key.contiguous(),
+                                f"present.{i}.value": present_value.contiguous(),
+                            }
+                        )
 
             wall_clock_end_time = time.perf_counter()
             wall_clock_latency_s = wall_clock_end_time - wall_clock_start_time
@@ -371,20 +409,37 @@ def main():
                 avg_accelerator_token_latency_s = accelerator_times[1] / 1
                 avg_accelerator_token_latency_ms = avg_accelerator_token_latency_s * 1000
                 avg_accelerator_token_thrpt = batch_size * (1 / avg_accelerator_token_latency_s)
-                logger.info(f"First Token Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms")
-                logger.info(f"First Token Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps")
+                logger.info(
+                    f"First Token Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms"
+                )
+                logger.info(
+                    f"First Token Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps"
+                )
 
-                csv_metrics.extend([avg_sampling_latency_ms, avg_sampling_thrpt, avg_accelerator_token_latency_ms, avg_accelerator_token_thrpt])
+                csv_metrics.extend(
+                    [
+                        avg_sampling_latency_ms,
+                        avg_sampling_thrpt,
+                        avg_accelerator_token_latency_ms,
+                        avg_accelerator_token_thrpt,
+                    ]
+                )
 
             halfway_idx = 1 + (args.generation_length // 2)  # +1 is for prompt entry
 
             if len(accelerator_times) >= halfway_idx:
                 # Calculating average of first `halfway` tokens generated metrics
-                avg_accelerator_token_latency_s = sum(accelerator_times[1 : halfway_idx]) / len(accelerator_times[1 : halfway_idx])
+                avg_accelerator_token_latency_s = sum(accelerator_times[1:halfway_idx]) / len(
+                    accelerator_times[1:halfway_idx]
+                )
                 avg_accelerator_token_latency_ms = avg_accelerator_token_latency_s * 1000
                 avg_accelerator_token_thrpt = batch_size * (1 / avg_accelerator_token_latency_s)
-                logger.info(f"First {args.generation_length // 2} Tokens Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms")
-                logger.info(f"First {args.generation_length // 2} Tokens Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps")
+                logger.info(
+                    f"First {args.generation_length // 2} Tokens Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms"
+                )
+                logger.info(
+                    f"First {args.generation_length // 2} Tokens Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps"
+                )
 
                 csv_metrics.extend([avg_accelerator_token_latency_ms, avg_accelerator_token_thrpt])
 
@@ -392,15 +447,28 @@ def main():
                 avg_accelerator_token_latency_s = sum(accelerator_times[1:]) / len(accelerator_times[1:])
                 avg_accelerator_token_latency_ms = avg_accelerator_token_latency_s * 1000
                 avg_accelerator_token_thrpt = batch_size * (1 / avg_accelerator_token_latency_s)
-                logger.info(f"First {args.generation_length} Tokens Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms")
-                logger.info(f"First {args.generation_length} Tokens Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps")
+                logger.info(
+                    f"First {args.generation_length} Tokens Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms"
+                )
+                logger.info(
+                    f"First {args.generation_length} Tokens Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps"
+                )
 
                 # Calculate wall-clock metrics
                 wall_clock_thrpt = batch_size * ((prompt_length + args.generation_length) / wall_clock_latency_s)
                 logger.info(f"Wall-Clock Latency: {wall_clock_latency_s} s")
-                logger.info(f"Wall-Clock Throughput: {batch_size * ((prompt_length + args.generation_length) / wall_clock_latency_s)} tps")
+                logger.info(
+                    f"Wall-Clock Throughput: {batch_size * ((prompt_length + args.generation_length) / wall_clock_latency_s)} tps"
+                )
 
-                csv_metrics.extend([avg_accelerator_token_latency_ms, avg_accelerator_token_thrpt, wall_clock_latency_s, wall_clock_thrpt])
+                csv_metrics.extend(
+                    [
+                        avg_accelerator_token_latency_ms,
+                        avg_accelerator_token_thrpt,
+                        wall_clock_latency_s,
+                        wall_clock_thrpt,
+                    ]
+                )
 
             # Add metrics to CSV
             if len(csv_metrics) == 14:
@@ -412,10 +480,12 @@ def main():
                 # logger.info(tokenizer.batch_decode(all_token_ids, skip_special_tokens=True))
                 # logger.info("-------------")
             else:
-                logger.info(f"Could not process token generation at batch size = {batch_size}, prompt length = {prompt_length}")
+                logger.info(
+                    f"Could not process token generation at batch size = {batch_size}, prompt length = {prompt_length}"
+                )
                 continue
 
-        except:
+        except:  # noqa: E722
             logger.info(f"Could not benchmark at batch size = {batch_size}, prompt length = {prompt_length}")
 
     filename = f"benchmark_{args.engine}_e2e_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.csv"

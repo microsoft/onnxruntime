@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 import argparse
 import datetime
 import gc
@@ -19,6 +24,7 @@ from llama_inputs import (
     get_msft_sample_inputs,
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
+    verify_ort_inputs,
 )
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
@@ -55,7 +61,11 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
     max_seq_len = (
         2048
         if args.benchmark_type == "ort-msft"
-        else 16384 if "codellama" in temp_name else 4096 if "llama2" in temp_name else 2048
+        else 16384
+        if "codellama" in temp_name
+        else 4096
+        if "llama2" in temp_name
+        else 2048
     )
 
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
