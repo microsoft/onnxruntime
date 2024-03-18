@@ -8,7 +8,7 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
-#if defined(ENABLE_CUDA_NHWC_OPS)
+#ifdef USE_CUDA
 #include <core/providers/cuda/cuda_provider_options.h>
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
@@ -113,8 +113,9 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions provider_options{};
+  OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
   if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
@@ -126,6 +127,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
 #if defined(USE_CUDA)
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
   provider_options.prefer_nhwc = true;
   if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
