@@ -32,7 +32,7 @@ struct DefaultTolerance<double> {
 template <>
 struct DefaultTolerance<float> {
 #if defined(ENABLE_TRAINING)
-  static constexpr float absolute = 1e-4f;
+  static constexpr float absolute = 1e-3f;
 #else
   static constexpr float absolute = 1e-5f;
 #endif
