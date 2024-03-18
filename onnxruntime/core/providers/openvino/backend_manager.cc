@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <utility>
+#include <exception>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "contexts.h"
@@ -85,9 +86,9 @@ BackendManager::BackendManager(const GlobalContext& global_context,
       concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                       GetGlobalContext(),
                                                       subgraph_context_);
-    } catch (std::string const& msg) {
+    } catch (const OnnxRuntimeException& ex) {
       if (device_type.find("NPU") != std::string::npos) {
-        LOGS_DEFAULT(WARNING) << msg;
+        LOGS_DEFAULT(WARNING) << ex.what();
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
         GetGlobalContext().device_type = "CPU";
@@ -100,7 +101,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
           ORT_THROW(msg);
         }
       } else {
-        ORT_THROW(msg);
+        ORT_THROW(ex.what());
       }
     }
   }
@@ -289,9 +290,9 @@ void BackendManager::Compute(OrtKernelContext* context) {
         dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
                                                       GetGlobalContext(),
                                                       subgraph_context_);
-      } catch (std::string const& msg) {
+      } catch (const OnnxRuntimeException& ex) {
         if (GetGlobalContext().device_type.find("NPU") != std::string::npos) {
-          LOGS_DEFAULT(WARNING) << msg;
+          LOGS_DEFAULT(WARNING) << ex.what();
           LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                                 << "Falling back to OV CPU for execution";
           GetGlobalContext().device_type = "CPU";
