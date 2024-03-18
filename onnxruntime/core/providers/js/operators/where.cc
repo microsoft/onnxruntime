@@ -15,6 +15,7 @@ namespace js {
       KernelDefBuilder()                                            \
           .TypeConstraint("T",                                      \
                           {DataTypeImpl::GetTensorType<float>(),    \
+                           DataTypeImpl::GetTensorType<MLFloat16>(),\
                            DataTypeImpl::GetTensorType<int32_t>(),  \
                            DataTypeImpl::GetTensorType<uint32_t>(), \
                            DataTypeImpl::GetTensorType<bool>()}),   \
@@ -29,6 +30,7 @@ namespace js {
       KernelDefBuilder()                                                                  \
           .TypeConstraint("T",                                                            \
                           {DataTypeImpl::GetTensorType<float>(),                          \
+                           DataTypeImpl::GetTensorType<MLFloat16>(),                      \
                            DataTypeImpl::GetTensorType<int32_t>(),                        \
                            DataTypeImpl::GetTensorType<uint32_t>(),                       \
                            DataTypeImpl::GetTensorType<bool>()}),                         \
