@@ -900,7 +900,7 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
     tester.AddOutput<MLFloat16>("output", input_dims, output);
     tester.AddOutput<MLFloat16>("present", past_dims, present);
 
-    tester.SetOutputTolerance(0.005f, 0.001f);
+    tester.SetOutputTolerance(0.005f);
 
     // Run - Regular kernel execution path
     {

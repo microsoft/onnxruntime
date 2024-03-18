@@ -123,8 +123,13 @@ void BaseTester::SetOutputRelErr(const char* name, float v) {
 void BaseTester::SetOutputTolerance(float abs_error, float rel_error) {
   for (auto& output : output_data_) {
     if (output.def.Exists()) {
-      output.validation_params.absolute_error = optional<float>(abs_error);
-      output.validation_params.relative_error = optional<float>(rel_error);
+      if (abs_error >= 0.0f) {
+        output.validation_params.absolute_error = optional<float>(abs_error);
+      }
+
+      if (rel_error >= 0.0f) {
+        output.validation_params.relative_error = optional<float>(rel_error);
+      }
     }
   }
 }

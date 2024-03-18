@@ -522,8 +522,10 @@ class BaseTester {
   void SetOutputAbsErr(const char* name, float v);
   void SetOutputRelErr(const char* name, float v);
 
-  // Set absolute and relative error for added outputs.
-  void SetOutputTolerance(float abs_error, float rel_error);
+  // Set absolute and relative error for existed outputs.
+  // Negative value will be ignored and fallback to default.
+  // Note that it will not set tolerance for new outputs added after this call.
+  void SetOutputTolerance(float abs_error, float rel_error = -1.0f);
 
   // Number of times to call InferenceSession::Run. The same feeds are used each time.
   // e.g. used to verify the generator ops behave as expected

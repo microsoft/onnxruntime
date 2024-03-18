@@ -888,7 +888,7 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.SetOutputTolerance(0.0001f, 0.0001f);
+  test.SetOutputTolerance(0.0001f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
 }
 

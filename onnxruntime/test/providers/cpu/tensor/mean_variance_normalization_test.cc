@@ -157,7 +157,7 @@ TEST(MeanVarianceNormalizationTest, AxesSubsets5D) {
     test.AddOutput<float>("output", shape, Y.data(), Y.size());
 
     if (DefaultDmlExecutionProvider().get() != nullptr) {
-      test.SetOutputTolerance(0.001f, 0.001f);
+      test.SetOutputTolerance(0.001f);
     }
 
     test.Run();

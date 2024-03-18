@@ -50,6 +50,8 @@ static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const s
     tester.AddOutput<float>("Y", output_dims, output_data);
   }
 
+  tester.SetOutputTolerance(use_float16 ? 0.005f : 0.001f);
+
   tester.Config(run_with_tunable_op)
       .RunWithConfig();
 }

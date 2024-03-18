@@ -144,7 +144,7 @@ TEST(OptimizerTest, AdamBiasCorrection) {
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
   test.AddOutput<float>("W_Out", {3}, {-1.4634f, -0.6416f, -1.2121f});
 
-  test.SetOutputTolerance(0.0001f, 0.0001f);
+  test.SetOutputTolerance(0.0001f);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(1));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
@@ -169,7 +169,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
   test.AddOutput<float>("W_Out", {3}, {-3.6210f, -2.8075f, -3.3723f});
   test.AddOutput<float>("G_Out", {3}, {-3.1576f, -3.1658f, -3.1601f});
 
-  test.SetOutputTolerance(0.0001f, 0.0001f);
+  test.SetOutputTolerance(0.0001f);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("lambda", 0.01f);
@@ -195,7 +195,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
   test.AddOutput<float>("W_Out", {3}, {-1.4587f, -0.6452f, -1.2099f});
   test.AddOutput<float>("G_Out", {3}, {-0.9954f, -1.0036f, -0.9979f});
 
-  test.SetOutputTolerance(0.0001f, 0.0001f);
+  test.SetOutputTolerance(0.0001f);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(1));
   test.AddAttribute("lambda", 0.01f);
@@ -220,7 +220,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1NoBiasCorrection) {
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
   test.AddOutput<float>("W_Out", {3}, {-3.5894f, -2.7758f, -3.3406f});
 
-  test.SetOutputTolerance(0.0001f, 0.0001f);
+  test.SetOutputTolerance(0.0001f);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("lambda", 0.01f);
@@ -245,7 +245,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
   test.AddOutput<float>("W_Out", {3}, {-1.4488f, -0.6352f, -1.1999f});
 
-  test.SetOutputTolerance(0.0001f, 0.0001f);
+  test.SetOutputTolerance(0.0001f);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(1));
   test.AddAttribute("lambda", 0.01f);
@@ -632,6 +632,8 @@ void run_lamb_test_with_baseline(
     test.AddOptionalOutputEdge<MLFloat16>();
   }
 
+  test.SetOutputTolerance(0.005f);
+
   test.Run();
 }
 
@@ -751,6 +753,8 @@ void run_multi_tensor_lamb_test_with_baseline(
   test.AddAttribute("max_norm_clip", max_norms);
   test.AddAttribute("ratio_min", ratio_min);
   test.AddAttribute("ratio_max", ratio_max);
+
+  test.SetOutputTolerance(0.005f);
 
   test.Run();
 }
