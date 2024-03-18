@@ -16,6 +16,13 @@ if exist PATH=%AGENT_TEMPDIRECTORY%\v12.2\ (
     set PATH=%PATH%;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\\extras\CUPTI\lib64
 )
 
+@REM Add cuda v12.3 to PATH after setting cuda 11.8/12.2
+set PATH=%PATH%;C:\local\TensorRT-10.0.0.2.Windows10.x86_64.cuda-12.4\lib
+if exist PATH=%AGENT_TEMPDIRECTORY%\v12.3\ (
+    set PATH=%PATH%;%AGENT_TEMPDIRECTORY%\v12.3\bin;%AGENT_TEMPDIRECTORY%\v12.3\extras\CUPTI\lib64
+) else (
+    set PATH=%PATH%;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\\extras\CUPTI\lib64
+)
 
 set GRADLE_OPTS=-Dorg.gradle.daemon=false
 set CUDA_MODULE_LOADING=LAZY

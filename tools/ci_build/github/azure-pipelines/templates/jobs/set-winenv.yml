@@ -10,6 +10,9 @@ parameters:
   - name: SecondaryCUDAVersion
     type: string
     default: '12.2'
+  - name: ThirdCUDAVersion
+    type: string
+    default: '12.3'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
@@ -19,6 +22,9 @@ steps:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.SecondaryCUDAVersion }}" $(Agent.TempDirectory)
         displayName: 'Download Secondary CUDA SDK v${{ parameters.SecondaryCUDAVersion }}'
+      - powershell: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.ThirdCUDAVersion }}" $(Agent.TempDirectory)
+        displayName: 'Download Secondary CUDA SDK v${{ parameters.ThirdCUDAVersion }}'
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
