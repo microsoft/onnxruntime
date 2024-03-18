@@ -5,7 +5,9 @@
 #include <stdint.h>
 #include <vector>
 #include <mutex>
+#include <limits>
 #include <assert.h>
+#include <math.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cuda_common.h"
@@ -342,11 +344,60 @@ __device__ __inline__ double _Pow(double a, double b) { return pow(a, b); }
 template <>
 __device__ __inline__ half _Pow(half a, half b) { return half(powf((float)a, (float)b)); }
 
+#define ISNAN_HALF(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~MLFloat16::kSignMask) \
+                        > MLFloat16::kPositiveInfinityBits
+
+#define ISNAN_BFLOAT16(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~BFloat16::kSignMask) \
+                        > BFloat16::kPositiveInfinityBits
+
 template <typename T>
 __device__ __inline__ T _Min(T a, T b) { return a < b ? a : b; }
 
+template <>
+__device__ __inline__ float _Min(float a, float b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : ( a < b ? a : b );
+}
+
+template <>
+__device__ __inline__ double _Min(double a, double b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : ( a < b ? a : b );
+}
+
+template <>
+__device__ __inline__ half _Min(half a, half b) {
+  return ISNAN_HALF(a) ? a : ( ISNAN_HALF(b) ? b : ( a < b ? a : b ) );
+}
+
+template <>
+__device__ __inline__ BFloat16 _Min(BFloat16 a, BFloat16 b) {
+  return ISNAN_BFLOAT16(a) ? a : ( ISNAN_BFLOAT16(b) ? b : ( a < b ? a : b ) );
+}
+
 template <typename T>
 __device__ __inline__ T _Max(T a, T b) { return a > b ? a : b; }
+
+template <>
+__device__ __inline__ float _Max(float a, float b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : ( a > b ? a : b );
+}
+
+template <>
+__device__ __inline__ double _Max(double a, double b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : ( a > b ? a : b );
+}
+
+template <>
+__device__ __inline__ half _Max(half a, half b) {
+  return ISNAN_HALF(a) ? a : ( ISNAN_HALF(b) ? b : ( a > b ? a : b ) );
+}
+
+template <>
+__device__ __inline__ BFloat16 _Max(BFloat16 a, BFloat16 b) {
+  return ISNAN_BFLOAT16(a) ? a : ( ISNAN_BFLOAT16(b) ? b : ( a > b ? a : b ) );
+}
+
+#undef ISNAN_HALF
+#undef ISNAN_BFLOAT16
 
 template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
