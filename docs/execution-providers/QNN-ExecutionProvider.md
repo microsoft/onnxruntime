@@ -114,6 +114,11 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |---|---|
 |Device ID (string)|The ID of the device to use when setting `htp_arch`. Defaults to "0" (for single device).|
 
+|`"enable_htp_fp16_precision"`|Description [Example](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification)|
+|---|---|
+|'0'|default.|
+|'1'|Enable the float32 model to be inferenced with fp16 precision.|
+
 ## Supported ONNX operators
 
 |Operator|Notes|
