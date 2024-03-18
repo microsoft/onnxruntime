@@ -158,19 +158,9 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
-  // cuDNN does not support asymmetrical padding, check for symmetry.
-  for (size_t idx = 0; idx < pool_attrs_.pads.size() / 2; ++idx) {
-    if (pool_attrs_.pads[idx] != pool_attrs_.pads[pool_attrs_.pads.size() / 2 + idx]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "pads not symmetric, unsupported");
-    }
-  }
-
   auto kernel_shape = pool_attrs_.kernel_shape;
   auto strides = pool_attrs_.strides;
   TensorShapeVector pads = pool_attrs_.pads;
-
-  // cuDNN supports only symmetric padding, cut of all x{i}_end items
-  pads.resize(pads.size() / 2);
 
   if (pool_attrs_.global_pooling) {
     if constexpr (Layout == LAYOUT_NCHW) {
@@ -178,16 +168,12 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
     } else if constexpr (Layout == LAYOUT_NHWC) {
       kernel_shape.assign(x_dims.begin() + 1, x_dims.end() - 1);
     }
-    pads.assign(kernel_shape.size(), 0);
+    pads.assign(2*kernel_shape.size(), 0);
     strides.assign(kernel_shape.size(), 1);
   }
   auto out_channel = (Layout == LAYOUT_NHWC) ? x_shape[x_dims.size() - 1] : x_shape[1];
 
-  // shape inference done in SetOutputSize requires begin + end for padding, duplicate pads vector
-  TensorShapeVector asymmetrical_pads = pads;
-  std::copy(pads.begin(), pads.end(), std::back_insert_iterator(asymmetrical_pads));
-
-  auto y_dims = pool_attrs_.SetOutputSize(x_shape, out_channel, &asymmetrical_pads, Layout == LAYOUT_NHWC);
+  auto y_dims = pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, Layout == LAYOUT_NHWC);
   TensorShape y_shape(y_dims);
   Tensor* Y = context->Output(0, y_shape);
   // special case when there is a dim value of 0 in the shape.
@@ -203,12 +189,14 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
     if constexpr (Layout == LAYOUT_NHWC) {
       x_dims_cudnn.insert(x_dims_cudnn.end() - 1, 1);
       y_dims_cudnn.insert(y_dims_cudnn.end() - 1, 1);
+      pads.insert(pads.begin() + pads.size() / 2, 0);
       pads.insert(pads.end(), 0);
       kernel_shape.insert(kernel_shape.end(), 1);
       strides.insert(strides.end(), 1);
     } else {  // Layout == LAYOUT_NCHW
       x_dims_cudnn.insert(x_dims_cudnn.end(), 1);
       y_dims_cudnn.insert(y_dims_cudnn.end(), 1);
+      pads.insert(pads.begin() + pads.size() / 2, 0);
       pads.insert(pads.end(), 0);
       kernel_shape.insert(kernel_shape.end(), 1);
       strides.insert(strides.end(), 1);
