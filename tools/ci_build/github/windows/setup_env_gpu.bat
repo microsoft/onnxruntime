@@ -17,7 +17,7 @@ if exist PATH=%AGENT_TEMPDIRECTORY%\v12.2\ (
 )
 
 @REM Add cuda v12.3 to PATH after setting cuda 11.8/12.2
-set PATH=%PATH%;C:\local\TensorRT-10.0.0.2.Windows10.x86_64.cuda-12.4\lib
+set PATH=%PATH%;C:\local\TensorRT-10.0.0.6.Windows10.x86_64.cuda-12.4\lib
 if exist PATH=%AGENT_TEMPDIRECTORY%\v12.3\ (
     set PATH=%PATH%;%AGENT_TEMPDIRECTORY%\v12.3\bin;%AGENT_TEMPDIRECTORY%\v12.3\extras\CUPTI\lib64
 ) else (
