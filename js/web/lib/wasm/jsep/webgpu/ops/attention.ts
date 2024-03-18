@@ -46,9 +46,11 @@ export interface AttentionParameters {
   headSize: number;
   vHeadSize: number;
   numHeads: number;
-  isUnidirectional: boolean;
+  kvNumHeads?: number;
+  nReps?: number;
+  isUnidirectional?: boolean;
   pastPresentShareBuffer: boolean;
-  maskFilterValue: number;
+  maskFilterValue?: number;
   maskType: AttentionMaskType;
   scale: number;
   broadcastResPosBias: boolean;
@@ -58,8 +60,9 @@ export interface AttentionParameters {
 
 export interface AttentionAttrs {
   numHeads: number;
-  isUnidirectional: number;
-  maskFilterValue: number;
+  kvNumHeads?: number;
+  isUnidirectional?: number;
+  maskFilterValue?: number;
   scale: number;
   doRotary: number;
   qkvHiddenSizes: number[];
@@ -443,17 +446,20 @@ const createVxAttentionScoreProgramInfo =
     (_context: ComputeContext, probs: TensorView, v: TensorView, params: AttentionParameters,
      pastSequenceLength: number) => {
       const totalSequenceLength = pastSequenceLength + params.kvSequenceLength;
-      const outputShape = [params.batchSize, params.sequenceLength, params.vHiddenSize];
+      const nReps = params.nReps ? params.nReps : 1;
+      const repeatedVHiddenSize = params.vHiddenSize * nReps;
+      const outputShape = [params.batchSize, params.sequenceLength, repeatedVHiddenSize];
       const TILE_SIZE = 12;
       const dispatch = {
         x: Math.ceil(params.vHeadSize / TILE_SIZE),
         y: Math.ceil(params.sequenceLength / TILE_SIZE),
         z: params.batchSize * params.numHeads
       };
+
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: params.sequenceLength}, {type: DataType.uint32, data: totalSequenceLength},
         {type: DataType.uint32, data: params.vHeadSize}, {type: DataType.uint32, data: params.numHeads},
-        {type: DataType.uint32, data: params.vHiddenSize}
+        {type: DataType.uint32, data: repeatedVHiddenSize}
       ];
 
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
@@ -524,7 +530,8 @@ export const applyAttention =
      relativePositionBias: TensorView|undefined, parameters: AttentionParameters, attributes: AttentionAttrs) => {
       const outputPresentKey = context.outputCount > 1;
       const outputPresentValue = context.outputCount > 2;
-      const pastSequenceLength = (outputPresentKey && outputPresentValue) ? parameters.pastSequenceLength : 0;
+      const pastSequenceLength =
+          parameters.kvNumHeads != null || (outputPresentKey && outputPresentValue) ? parameters.pastSequenceLength : 0;
       const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
       // Concatinate pastKey and K to produce presentKey.
       const presentKeyShape = [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize];
