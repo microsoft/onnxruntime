@@ -228,7 +228,7 @@ static void RunAttentionTest(
     }
 
     if (use_float16) {
-      tester.SetOutputTolerance(0.005f, 0.005f);
+      tester.SetOutputTolerance(0.005f);
     } else {
       tester.SetOutputTolerance(0.001f, 0.001f);
     }

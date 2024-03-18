@@ -107,7 +107,7 @@ static void RunPackedMultiHeadAttentionTest(
       }
 
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
-      tester.SetOutputTolerance(0.005f, 0.005f);
+      tester.SetOutputTolerance(0.005f);
     } else {
       if (is_packed_qkv) {
         tester.AddInput<float>("query", packed_qkv_dims, query_data);
