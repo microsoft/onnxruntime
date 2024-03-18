@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType, tensorDataTypeEnumToString} from '../../../wasm-common';
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
@@ -153,13 +153,12 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
   const inputDims = inputs[0].dims;
   const outputSize = ShapeUtil.size(outputShape);
   const programUniforms: ProgramUniform[] =
-      [{type: 'uint32', data: outputSize}, {type: 'uint32', data: attributes.pads}];
+      [{type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: attributes.pads}];
   if (attributes.mode === 0) {
-    const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
-    programUniforms.push({type: tensorDataType, data: attributes.value});
+    programUniforms.push({type: inputs[0].dataType, data: attributes.value});
   }
 
-  programUniforms.push(...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(outputShape));
+  programUniforms.push(...createTensorShapeVariables(inputs[0].dims, outputShape));
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {

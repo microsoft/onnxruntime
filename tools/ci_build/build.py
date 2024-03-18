@@ -38,8 +38,6 @@ log = get_logger("build")
 class BaseError(Exception):
     """Base class for errors originating from build.py."""
 
-    pass
-
 
 class BuildError(BaseError):
     """Error from running build steps."""
@@ -89,7 +87,7 @@ def _openvino_verify_device_type(device_read):
         res = True
     elif device_read in choices1:
         res = True
-    elif device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:"):
+    elif device_read.startswith(("HETERO:", "MULTI:", "AUTO:")):
         res = True
         comma_separated_devices = device_read.split(":")
         comma_separated_devices = comma_separated_devices[1].split(",")
@@ -118,7 +116,7 @@ def _openvino_verify_device_type(device_read):
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
-        if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):
+        if not (device_read.startswith(("HETERO", "MULTI", "AUTO"))):
             invalid_hetero_build()
         sys.exit("Wrong Build Type selected")
 
@@ -442,8 +440,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer. Windows/Linux/MacOS only."
     )
-    # The following feature requires installing some special Visual Studio components that do not get installed by default. Therefore the options is default OFF.
-    parser.add_argument("--enable_qspectre", action="store_true", help="Enable Qspectre. Windows only.")
+    # The following flag is mostly designed to be used in ONNX Runtime's Azure DevOps/Github build pipelines. Its main purpose is to make the built binaries pass BinSkim scan.
+    parser.add_argument("--use_binskim_compliant_compile_flags", action="store_true", help="Use preset compile flags.")
     parser.add_argument(
         "--disable_memleak_checker",
         action="store_true",
@@ -1236,9 +1234,15 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # TensorRT and OpenVINO providers currently only support
-    # full_protobuf option.
-    if args.use_full_protobuf or args.use_tensorrt or args.use_openvino or args.use_vitisai or args.gen_doc:
+    # VitisAI and OpenVINO providers currently only support
+    # full_protobuf option. TensorRT provider only requires it if built with oss_parser
+    if (
+        args.use_full_protobuf
+        or (args.use_tensorrt and args.use_tensorrt_oss_parser)
+        or args.use_openvino
+        or args.use_vitisai
+        or args.gen_doc
+    ):
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:
@@ -1445,6 +1449,13 @@ def generate_build_tree(
             # tools need to use the symbols.
             add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
 
+        if number_of_parallel_jobs(args) > 0:
+            # https://devblogs.microsoft.com/cppblog/improved-parallelism-in-msbuild/
+            # NOTE: this disables /MP if set (according to comments on blog post).
+            # By default, MultiProcMaxCount and CL_MPCount value are equal to the number of CPU logical processors.
+            # See logic around setting CL_MPCount below
+            cmake_args += ["-DCMAKE_VS_GLOBALS=UseMultiToolTask=true;EnforceProcessCountAcrossBuilds=true"]
+
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
@@ -1484,27 +1495,29 @@ def generate_build_tree(
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
                     f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
                 ]
-    cflags = None
-    cxxflags = None
-    ldflags = None
-    cudaflags = []
+
     for config in configs:
+        cflags = []
+        cxxflags = None
+        ldflags = None
+        cudaflags = []
+        if is_windows() and not args.ios and not args.android and not args.build_wasm:
+            njobs = number_of_parallel_jobs(args)
+            if njobs > 1:
+                if args.parallel == 0:
+                    cflags += ["/MP"]
+                else:
+                    cflags += ["/MP%d" % njobs]
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
-            "CFLAGS" not in os.environ
-            and "CXXFLAGS" not in os.environ
-            and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
+            (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
             and not args.ios
             and not args.android
             and not args.build_wasm
-            and not args.use_rocm
-            and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
-                cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
-                if args.parallel:
-                    cflags += ["/MP"]
+                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
@@ -1516,21 +1529,21 @@ def generate_build_tree(
                 # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
-                if args.enable_qspectre:
-                    cflags += ["/Qspectre"]
+                # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
+                if not args.enable_address_sanitizer:
+                    # Also enable a special perf patch that was made for Intel Meteor Lake mobile CPUs
+                    cflags += ["/Qspectre", "/DONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
                     cflags += ["/O2", "/Ob1", "/DNDEBUG"]
                 elif config == "Debug":
                     cflags += ["/Ob0", "/Od", "/RTC1"]
-                    if args.enable_address_sanitizer:
-                        cflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
                     cflags += ["/O1", "/Ob1", "/DNDEBUG"]
+                if args.enable_address_sanitizer:
+                    cflags += ["/fsanitize=address"]
                 cxxflags = cflags.copy()
-                if not args.disable_exceptions:
-                    cxxflags += ["/EHsc"]
                 if args.use_cuda:
                     # On Windows, nvcc passes /EHsc to the host compiler by default.
                     cuda_compile_flags_str = ""
@@ -1590,6 +1603,8 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 if args.use_cuda:
                     cudaflags = cflags.copy()
+        if cxxflags is None and cflags is not None and len(cflags) != 0:
+            cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1604,7 +1619,7 @@ def generate_build_tree(
             )
         preinstalled_dir = Path(build_dir) / config
         temp_cmake_args = cmake_args.copy()
-        if cflags is not None and cxxflags is not None:
+        if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
@@ -1621,9 +1636,11 @@ def generate_build_tree(
             [
                 *temp_cmake_args,
                 f"-DCMAKE_BUILD_TYPE={config}",
-                f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
-                else "",
+                (
+                    f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
+                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                    else ""
+                ),
             ],
             cwd=config_build_dir,
             cuda_home=cuda_home,
@@ -1650,15 +1667,24 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         build_tool_args = []
         if num_parallel_jobs != 1:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
+                # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
+                # not maxing out CL_MPCount
+                # Start by having one less than num_parallel_jobs (default is num logical cores),
+                # limited to a range of 1..3
+                # that gives maxcpucount projects building using up to 3 cl.exe instances each
                 build_tool_args += [
                     f"/maxcpucount:{num_parallel_jobs}",
+                    # one less than num_parallel_jobs, at least 1, up to 3
+                    f"/p:CL_MPCount={min(max(num_parallel_jobs - 1, 1), 3)}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
-                    f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
             elif args.cmake_generator == "Xcode":
-                # CMake will generate correct build tool args for Xcode
-                cmd_args += ["--parallel", str(num_parallel_jobs)]
+                build_tool_args += [
+                    "-parallelizeTargets",
+                    "-jobs",
+                    str(num_parallel_jobs),
+                ]
             else:
                 build_tool_args += [f"-j{num_parallel_jobs}"]
 
@@ -1693,9 +1719,7 @@ def setup_cuda_vars(args):
         if not cuda_home_valid or (not is_windows() and not cudnn_home_valid):
             raise BuildError(
                 "cuda_home and cudnn_home paths must be specified and valid.",
-                "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(
-                    cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid
-                ),
+                f"cuda_home='{cuda_home}' valid={cuda_home_valid}. cudnn_home='{cudnn_home}' valid={cudnn_home_valid}",
             )
 
     return cuda_home, cudnn_home
@@ -2461,11 +2485,11 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     nonlocal have_diff
                     have_diff = True
                     log.warning(
-                        "The updated document {} is different from the checked in version. "
-                        "Please regenerate the file{}, or copy the updated version from the "
-                        "CI build's published artifacts if applicable.".format(path, regenerate_qualifiers)
+                        f"The updated document {path} is different from the checked in version. "
+                        f"Please regenerate the file{regenerate_qualifiers}, or copy the updated version from the "
+                        "CI build's published artifacts if applicable."
                     )
-                    log.debug("diff:\n" + diff)
+                    log.debug("diff:\n" + diff)  # noqa: G003
 
             diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
             diff_file(contrib_op_doc_path)
@@ -2480,7 +2504,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
-    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
+    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))  # noqa: G001
 
     args = parse_arguments()
 
@@ -2533,11 +2557,15 @@ def main():
     if args.build_nuget and cross_compiling:
         raise BuildError("Currently nuget package creation is not supported while cross-compiling")
 
-    if args.enable_pybind and args.disable_rtti:
-        raise BuildError("Python bindings use typeid so you can't disable RTTI")
+    if args.enable_pybind:
+        if args.disable_rtti:
+            raise BuildError("Python bindings use typeid so you can't disable RTTI")
 
-    if args.enable_pybind and args.disable_exceptions:
-        raise BuildError("Python bindings require exceptions to be enabled.")
+        if args.disable_exceptions:
+            raise BuildError("Python bindings require exceptions to be enabled.")
+
+        if args.minimal_build is not None:
+            raise BuildError("Python bindings are not supported in a minimal build.")
 
     if args.nnapi_min_api:
         if not args.use_nnapi:
@@ -2573,7 +2601,7 @@ def main():
         raise BuildError("Using --get-api-doc requires a single build config")
 
     # Disabling unit tests for GPU on nuget creation
-    if args.use_openvino != "CPU_FP32" and args.build_nuget:
+    if args.use_openvino and args.use_openvino != "CPU_FP32" and args.build_nuget:
         args.test = False
 
     # GDK builds don't support testing

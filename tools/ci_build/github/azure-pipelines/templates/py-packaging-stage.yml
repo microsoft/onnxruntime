@@ -40,6 +40,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_x64_qnn
+  displayName: 'Whether Windows x86_64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
 # TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
 - name: cmake_build_type
   type: string
@@ -182,7 +187,7 @@ stages:
             --enable_pybind
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
-            --parallel --update
+            --parallel --use_binskim_compliant_compile_flags --update
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -388,7 +393,7 @@ stages:
           set -e -x
           export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-universal2
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --use_coreml --skip_submodule_sync --parallel --config Release --build_wheel ${{ parameters.build_py_parameters }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64" --update --build
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --use_coreml --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --config Release --build_wheel ${{ parameters.build_py_parameters }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64" --update --build
         displayName: 'Command Line Script'
 
       - script: |
@@ -459,3 +464,9 @@ stages:
           QNN_SDK: 'qnn-v2.18.0.240101_win'
           PYTHON_VERSION: '3.11'
           NUMPY_VERSION: '1.25.2'
+
+  - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
+      - template: py-win-x64-qnn.yml
+        parameters:
+          MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+          QNN_SDK: 'qnn-v2.18.0.240101_win'

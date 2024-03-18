@@ -171,10 +171,10 @@ class TrainingManager(GraphExecutionManager):
                 for idx, grad_output in enumerate(grad_outputs):
                     if idx in self._graph_info.output_grad_indices_non_differentiable:
                         assert grad_output is None, (
-                            "ORT found the {}-th module output '{}' is "
+                            f"ORT found the {idx}-th module output '{self._graph_info.user_output_names[idx]}' is "
                             "non-differentiable according to the onnx graph. "
                             "However, the gradient value is still provided by "
-                            "PyTorch's autograd engine.".format(idx, self._graph_info.user_output_names[idx])
+                            "PyTorch's autograd engine."
                         )
                         continue
 
@@ -196,18 +196,20 @@ class TrainingManager(GraphExecutionManager):
 
                 # Run and get results
                 backward_outputs = C.OrtValueVector()
-                self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
-                # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
-                # affect peak memory usage in a subsequent graph run.
-                del ctx.run_info.state
+                try:
+                    self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
+                    # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
+                    # affect peak memory usage in a subsequent graph run.
 
-                # Fast version: all backward_outputs are converted first.
-                # This version only works if backward_outputs is an OrtValueVector.
-                transferred_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
+                    # Fast version: all backward_outputs are converted first.
+                    # This version only works if backward_outputs is an OrtValueVector.
+                    transferred_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
 
-                self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_BACKWARD)
-
-                return tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
+                    self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_BACKWARD)
+                    res = tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
+                    return res
+                finally:
+                    del ctx.run_info.state
 
         return _ORTModuleFunction
 

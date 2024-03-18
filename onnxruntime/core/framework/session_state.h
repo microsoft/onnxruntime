@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/gsl.h"
 

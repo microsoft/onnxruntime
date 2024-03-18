@@ -1,6 +1,7 @@
 """
 @brief      test log(time=3s)
 """
+
 import copy
 import unittest
 
@@ -79,7 +80,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         for onnx_model in [onnx_graph_inf, onnx_graph_train]:
             for oimp in onnx_model.opset_import:
                 if oimp.domain == "":
-                    self.assertEqual(oimp.version, 15)
+                    self.assertEqual(oimp.version, 17)  # Needs to match latest default ORTModule opset
         if op_grad_type is not None:
             if isinstance(op_grad_type, tuple):
                 text = str(onnx_graph_train)

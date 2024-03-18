@@ -479,7 +479,7 @@ def quantize_static(
         del dataloader
         model = sq.transform(extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True))
         sq_path = tempfile.TemporaryDirectory(prefix="ort.quant.")
-        model_input = Path(sq_path).joinpath("sq_model.onnx").as_posix()
+        model_input = Path(sq_path.name).joinpath("sq_model.onnx").as_posix()
         model.save(model_input)
         nodes_to_exclude.extend([i.name for i in model.model.graph.node if i.name not in orig_nodes])
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
@@ -523,8 +523,6 @@ def quantize_static(
             model,
             per_channel,
             reduce_range,
-            mode,
-            True,  # static
             weight_type,
             activation_type,
             tensors_range,

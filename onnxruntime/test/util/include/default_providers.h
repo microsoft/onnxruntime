@@ -35,6 +35,9 @@ namespace test {
 // unique_ptr providers with default values for session registration
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider();
+#ifdef ENABLE_CUDA_NHWC_OPS
+std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider();
+#endif
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options);
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider();
 std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDnnlProviderOptions* provider_options);
@@ -51,7 +54,7 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op = false);
-std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram = false);
 std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider();
 std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options,

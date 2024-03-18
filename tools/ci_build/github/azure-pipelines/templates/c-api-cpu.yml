@@ -119,31 +119,32 @@ stages:
     - script: |
         set -e -x
         python3 tools/ci_build/github/apple/build_apple_framework.py \
-          --build_dir "$(Build.BinariesDirectory)/apple_framework" \
+          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
-          tools/ci_build/github/apple/default_full_apple_framework_build_settings.json
+          tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
         mkdir $(Build.BinariesDirectory)/artifacts
-        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
-        cp -R $(Build.BinariesDirectory)/apple_framework/framework_out/onnxruntime.xcframework \
-          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
+        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        cp -R $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework \
+          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
         pushd $(Build.BinariesDirectory)/artifacts_staging
         zip -vr $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
-          onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
+          onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
         popd
       displayName: "Build Apple xcframework"
 
     - script: |
         python3 tools/ci_build/github/apple/test_apple_packages.py \
           --fail_if_cocoapods_missing \
-          --framework_info_file "$(Build.BinariesDirectory)/apple_framework/xcframework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
-          --variant Full
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Full \
+          --skip_macos_test
       displayName: "Test Apple framework"
 
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
-        artifactName: 'onnxruntime-apple-full-xcframework'
+        artifactName: 'onnxruntime-ios-full-xcframework'
 
     - template: component-governance-component-detection-steps.yml
       parameters:
@@ -350,7 +351,7 @@ stages:
     - template: flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download iOS Pipeline Artifact'
-        ArtifactName: 'onnxruntime-apple-full-xcframework'
+        ArtifactName: 'onnxruntime-ios-full-xcframework'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -500,12 +501,13 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-- stage: Nodejs_Packaging_CPU
+- stage: Nodejs_Packaging
   dependsOn:
+  - Windows_CI_GPU_DML_Dev
+  - Windows_CI_GPU_DML_Dev_arm64
   - Linux_C_API_Packaging_CPU
+  - Linux_C_API_Packaging_GPU_TensorRT_x64
   - MacOS_C_API_Package_Publish
-  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
   - job:
@@ -532,17 +534,49 @@ stages:
       workingDirectory: '$(Build.SourcesDirectory)'
       displayName: 'Testing: force EOL to lf on windows for /js/**'
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
-      inputs:
-        artifactName: 'onnxruntime-win-x64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (Win ARM64)'
-      inputs:
-        artifactName: 'onnxruntime-win-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    ##################################################################
+    # Node.js binding artifacts preparation
+    #
+    # This stage prepares Node.js binding artifacts for publishing. The artifacts support the following platforms:
+    #  - Windows x64 with DML support
+    #  - Windows arm64 with DML support
+    #  - Linux x64 with TensorRT support
+    #  - Linux arm64 (CPU only)
+    #  - macOS x64 (CPU only)
+    #  - macOS arm64 (CPU only)
+    #
+    # ORT Node.js binding artifacts contain 2 parts:
+    #  1. ONNX Runtime native shared libraries and their dependencies
+    #     - Windows (x64, arm64):
+    #       - onnxruntime.dll
+    #       - DirectML.dll
+    #     - Linux (x64, arm64):
+    #       - libonnxruntime.so{.version}
+    #       - libonnxruntime_providers_shared.so
+    #       - libonnxruntime_providers_{provider}.so
+    #     - macOS (x64, arm64):
+    #       - libonnxruntime.dylib
+    #  2. ONNX Runtime Node.js binding
+    #     - onnxruntime_binding.node
+    #
+    # For windows platform, the artifact is named as 'onnxruntime-nodejs-win-x64-dml' for x64, and
+    # 'onnxruntime-nodejs-win-arm64-dml' for arm64. Each artifact contains both (1) and (2).
+    #
+    # For Linux and macOS platforms, (1) and (2) are packed into separate artifacts.
+    # The following artifacts contain (1):
+    #  - onnxruntime-osx
+    #  - onnxruntime-linux-x64-tensorrt
+    #  - onnxruntime-linux-aarch64
+    # The following artifacts contain (2):
+    #  - drop-onnxruntime-nodejs-linux-x64-tensorrt
+    #  - drop-onnxruntime-nodejs-linux-aarch64
+    #  - drop-onnxruntime-nodejs-osx-x86_64
+    #  - drop-onnxruntime-nodejs-osx-arm64
+    #
+    # All binary artifacts will eventually be put into folder before packaging 'onnxruntime-node':
+    #  $(Build.SourcesDirectory)\js\node\bin\napi-v3\{os}\{cpu_arch}\
+    #
+    # {os} is one of 'win32', 'darwin', 'linux' and {cpu_arch} is one of 'x64', 'arm64'.
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (OSX)'
@@ -553,7 +587,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Linux x64)'
       inputs:
-        artifactName: 'onnxruntime-linux-x64'
+        artifactName: 'onnxruntime-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
@@ -565,13 +599,13 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-x64'
+        artifactName: 'drop-onnxruntime-nodejs-win-x64-dml'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-arm64'
+        artifactName: 'drop-onnxruntime-nodejs-win-arm64-dml'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
 
     - task: DownloadPipelineArtifact@0
@@ -589,7 +623,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64'
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
 
     - task: DownloadPipelineArtifact@0
@@ -630,38 +664,32 @@ stages:
 
     # Node.js binding win32/x64
     - task: CopyFiles@2
-      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64\lib'
-        Contents: '*.dll'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
-    - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
+      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\x64'
-        Contents: '*.node'
+        Contents: |
+          *.dll
+          *.node
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
 
     # Node.js binding win32/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-arm64\lib'
-        Contents: '*.dll'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
-    - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
+      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\arm64'
-        Contents: '*.node'
+        Contents: |
+          *.dll
+          *.node
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
 
     # Node.js binding linux/x64
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64\lib'
-        Contents: 'libonnxruntime.so.*'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-tensorrt\lib'
+        Contents: |
+          libonnxruntime.so.*
+          libonnxruntime_providers_*.so
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
     - task: CopyFiles@2
       displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'

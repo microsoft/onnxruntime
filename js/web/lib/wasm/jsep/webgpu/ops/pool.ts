@@ -3,6 +3,7 @@
 
 import {env} from 'onnxruntime-common';
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -56,7 +57,8 @@ const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoo
   const isChannelsLast = attributes.format === 'NHWC';
   const outputSize = ShapeUtil.size(outputShape);
   const kernelSize = ShapeUtil.size(attributes.kernelShape);
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}, {type: 'uint32', data: kernelSize}];
+  const programUniforms: ProgramUniform[] =
+      [{type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: kernelSize}];
   const uniforms: UniformsArrayType = [{name: 'outputSize', type: 'u32'}, {name: 'kernelSize', type: 'u32'}];
   if (attributes.kernelShape.length <= 2) {
     const kw = attributes.kernelShape[attributes.kernelShape.length - 1];
@@ -65,10 +67,10 @@ const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoo
     const pwEnd = attributes.pads[attributes.pads.length - 1];
     const pwStartEndNotZero = !!(pwStart + pwEnd);
     programUniforms.push(
-        {type: 'uint32', data: kw},
-        {type: 'uint32', data: sw},
-        {type: 'uint32', data: pwStart},
-        {type: 'uint32', data: pwEnd},
+        {type: DataType.uint32, data: kw},
+        {type: DataType.uint32, data: sw},
+        {type: DataType.uint32, data: pwStart},
+        {type: DataType.uint32, data: pwEnd},
     );
     uniforms.push(
         {name: 'kw', type: 'u32'}, {name: 'sw', type: 'u32'}, {name: 'pwStart', type: 'u32'},
@@ -82,8 +84,8 @@ const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoo
       const phEnd = attributes.pads[attributes.pads.length - 2];
       phStartEndNotZero = !!(phStart + phEnd);
       programUniforms.push(
-          {type: 'uint32', data: kh}, {type: 'uint32', data: sh}, {type: 'uint32', data: phStart},
-          {type: 'uint32', data: phEnd});
+          {type: DataType.uint32, data: kh}, {type: DataType.uint32, data: sh}, {type: DataType.uint32, data: phStart},
+          {type: DataType.uint32, data: phEnd});
 
       uniforms.push(
           {name: 'kh', type: 'u32'}, {name: 'sh', type: 'u32'}, {name: 'phStart', type: 'u32'},
@@ -96,8 +98,8 @@ const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoo
     }
     const kernelStrides = ShapeUtil.computeStrides(attributes.kernelShape);
     programUniforms.push(
-        {type: 'uint32', data: kernelStrides}, {type: 'uint32', data: attributes.pads},
-        {type: 'uint32', data: attributes.strides});
+        {type: DataType.uint32, data: kernelStrides}, {type: DataType.uint32, data: attributes.pads},
+        {type: DataType.uint32, data: attributes.strides});
     uniforms.push(
         {name: 'kernelStrides', type: 'u32', length: kernelStrides.length},
         {name: 'pads', type: 'u32', length: attributes.pads.length},
@@ -296,7 +298,7 @@ const createAveragePoolProgramInfo =
       }
       const [programUniforms, uniforms, hasPads, pwStartEndNotZero, phStartEndNotZero] =
           getUniformAndPadInfo(outputShape, adjustedAttributes);
-      programUniforms.push(...createTensorShapeVariables(input.dims), ...createTensorShapeVariables(outputShape));
+      programUniforms.push(...createTensorShapeVariables(input.dims, outputShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       return {
         name,
@@ -368,7 +370,7 @@ const createMaxPoolProgramInfo =
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       const [programUniforms, uniforms, hasPads, pwStartEndNotZero, phStartEndNotZero] =
           getUniformAndPadInfo(outputShape, adjustedAttributes);
-      programUniforms.push(...createTensorShapeVariables(input.dims), ...createTensorShapeVariables(outputShape));
+      programUniforms.push(...createTensorShapeVariables(input.dims, outputShape));
       return {
         name,
         shaderCache:

@@ -790,7 +790,7 @@ def skip_ep(model_name, ep, model_to_fail_ep):
 
     # if ep in fail_ep_list and fail_ep_list[ep] == "runtime error":
     if ep in fail_ep_list:
-        logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")
+        logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")  # noqa: G003
         return True
 
     return False
@@ -925,7 +925,7 @@ def find_model_path(path):
 
     logger.info(target_model_path)
     if len(target_model_path) > 1:
-        logger.error("We expect to find only one model in " + path)
+        logger.error("We expect to find only one model in " + path)  # noqa: G003
         raise
 
     return target_model_path[0]
@@ -1575,15 +1575,13 @@ def output_metrics(model_to_metrics, csv_filename):
         for value in results:
             row = [
                 value["model_name"],
-                value["ratio_of_ops_in_cuda_not_fallback_cpu"]
-                if "ratio_of_ops_in_cuda_not_fallback_cpu" in value
-                else "  ",
-                value["total_ops_in_trt"] if "total_ops_in_trt" in value else "  ",
-                value["total_ops"] if "total_ops" in value else "  ",
-                value["ratio_of_ops_in_trt"] if "ratio_of_ops_in_trt" in value else "  ",
-                value["total_trt_execution_time"] if "total_trt_execution_time" in value else "  ",
-                value["total_execution_time"] if "total_execution_time" in value else "  ",
-                value["ratio_of_execution_time_in_trt"] if "ratio_of_execution_time_in_trt" in value else "  ",
+                value.get("ratio_of_ops_in_cuda_not_fallback_cpu", "  "),
+                value.get("total_ops_in_trt", "  "),
+                value.get("total_ops", "  "),
+                value.get("ratio_of_ops_in_trt", "  "),
+                value.get("total_trt_execution_time", "  "),
+                value.get("total_execution_time", "  "),
+                value.get("ratio_of_execution_time_in_trt", "  "),
             ]
             csv_writer.writerow(row)
 

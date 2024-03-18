@@ -31,6 +31,7 @@ jobs:
   variables:
     webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
     runCodesignValidationInjection: false
+    CHROME_BIN: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
   timeoutInMinutes: 60
   workspace:
     clean: all
@@ -96,18 +97,6 @@ jobs:
       flattenFolders: true
     displayName: 'Binplace js files'
   - script: |
-      npm i -g puppeteer
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Use puppeteer to prepare Chrome for tests'
-  - script: |
-      FOR /F "tokens=* USEBACKQ" %%F IN (`where /r %HOMEDRIVE%%HOMEPATH%\.cache\puppeteer chrome.exe`) DO (
-        SET var=%%F
-        ECHO found chrome.exe: %%F
-      )
-      ECHO ##vso[task.setvariable variable=CHROME_BIN;]%var%
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Set CHROME_BIN'
-  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'npm ci /js/'
@@ -155,12 +144,7 @@ jobs:
       path: $(Build.SourcesDirectory)/js/test/
       cacheHitVar: CACHE_RESTORED
     displayName: 'Cache ONNX node test data'
-  - task: Bash@3
-    inputs:
-      targetType: 'inline'
-      script: find "$(Build.SourcesDirectory)/js/test/" -type f
-    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
-    displayName: 'List ONNX node test data'
+
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
@@ -169,31 +153,31 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test -- -e=chrome -b=webgl,wasm
+     npm test -- -e=chrome -b=webgl,wasm --karma-debug
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl backend)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'false')
   - script: |
-     npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags)
+     npm test -- -e=chrome -b=webgl,wasm,webgpu --karma-debug $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
   - script: |
-     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags)
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor --karma-debug $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
   - script: |
-     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location --karma-debug $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl -e=chrome
+     npm test -- --webgl.pack -b=webgl -e=chrome --karma-debug
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm -e=chrome
+     npm test -- --wasm.proxy -b=wasm -e=chrome --karma-debug
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))

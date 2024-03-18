@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "contrib_ops/cpu/quantization/matmul_nbits_impl.h"
+
+#include <cstdint>
+#include <type_traits>
+
+#include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
@@ -9,12 +15,57 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
+
 #ifdef ORT_NEURAL_SPEED
 #include "contrib_ops/cpu/quantization/neural_speed_gemm.h"
 #endif
 
 namespace onnxruntime {
 namespace contrib {
+
+namespace {
+int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
+  const auto accuracy_level = std::clamp(accuracy_level_attr,
+                                         static_cast<int64_t>(CompMostAccurate),
+                                         static_cast<int64_t>(CompLeastAccurate));
+
+#if defined(ORT_NEURAL_SPEED)
+
+  ORT_UNUSED_PARAMETER(nbits);
+  ORT_UNUSED_PARAMETER(block_size);
+
+  // Neural Speed APIs already expect a minimum accuracy level so just use the given value.
+  return accuracy_level;
+
+#else  // defined(ORT_NEURAL_SPEED)
+
+  // Find a supported accuracy level that is not less accurate than the one given.
+  // CompMostAccurate is always supported with the fallback implementation.
+  // Note: A higher numeric accuracy level value means lower accuracy, so the comparison order is reversed.
+  int64_t effective_accuracy_level = accuracy_level;
+  for (; effective_accuracy_level > CompMostAccurate; --effective_accuracy_level) {
+    const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(effective_accuracy_level);
+    if (MlasIsSQNBitGemmAvailable(nbits, block_size, compute_type)) {
+      break;
+    }
+  }
+
+  return effective_accuracy_level;
+
+#endif  // defined(ORT_NEURAL_SPEED)
+}
+}  // namespace
+
+bool GetType(const NodeArg& node_arg, int32_t& type) {
+  type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  const auto* type_proto = node_arg.TypeAsProto();
+  if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
+    return false;
+  }
+
+  type = type_proto->tensor_type().elem_type();
+  return true;
+}
 
 class MatMulNBits final : public OpKernel {
  public:
@@ -24,7 +75,18 @@ class MatMulNBits final : public OpKernel {
         N_{narrow<size_t>(info.GetAttr<int64_t>("N"))},
         block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
-        accuracy_level_{info.GetAttr<int64_t>("accuracy_level")} {
+        accuracy_level_{GetAccuracyLevel(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
+    const auto& node = info.node();
+    auto input_defs = node.InputDefs();
+    // g_idx
+    if (input_defs.size() > 4) {
+      act_order_ = true;
+    }
+    int32_t type;
+    if (input_defs.size() > 3 && GetType(*input_defs[3], type)) {
+      zero_point_is_not_quant_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+    }
+
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
 #ifdef ORT_NEURAL_SPEED
@@ -54,21 +116,30 @@ class MatMulNBits final : public OpKernel {
   const size_t N_;
   const size_t block_size_;
   const size_t nbits_;
+  bool act_order_{false};
+  bool zero_point_is_not_quant_{false};
   const int64_t accuracy_level_;
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_;
   size_t packed_b_size_{0};
-#ifdef ORT_NEURAL_SPEED
+
+#if defined(ORT_NEURAL_SPEED)
+
   bool is_asym_{false};
   bool all_constant_{false};
-#endif
+
+#endif  // defined(ORT_NEURAL_SPEED)
 };
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                             /*out*/ bool& is_packed,
                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-#ifdef ORT_NEURAL_SPEED
+  if (act_order_ || zero_point_is_not_quant_) {
+    return Status::OK();
+  }
+#if defined(ORT_NEURAL_SPEED)
+
   if (!all_constant_) {
     return Status::OK();
   }
@@ -116,11 +187,17 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
 #else  // defined(ORT_NEURAL_SPEED)
 
   if (input_idx == 1) {
-    packed_b_size_ = MlasSQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_);
-    if (packed_b_size_ == 0) return Status::OK();
+    const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
+    if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
+      return Status::OK();
+    }
+    packed_b_size_ = MlasSQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, compute_type);
+    if (packed_b_size_ == 0) {
+      return Status::OK();
+    }
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, qptr, packed_b_.get());
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get());
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -136,7 +213,9 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
 Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                               /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
-#ifdef ORT_NEURAL_SPEED
+
+#if defined(ORT_NEURAL_SPEED)
+
   // Pack three tensors into one buffer
   if (input_idx == 1) {
     used_shared_buffers = true;
@@ -159,16 +238,18 @@ Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
   }
 
 #endif  // defined(ORT_NEURAL_SPEED)
+
   return Status::OK();
 }
 
 Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-
   const Tensor* a = ctx->Input<Tensor>(0);
   const auto* a_data = a->Data<float>();
-#ifdef ORT_NEURAL_SPEED
-  if (packed_b_.get()) {
+
+#if defined(ORT_NEURAL_SPEED)
+
+  if (packed_b_) {
     TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
 
     MatMulComputeHelper helper;
@@ -207,11 +288,14 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 #endif  // defined(ORT_NEURAL_SPEED)
 
   const Tensor* scales = ctx->Input<Tensor>(2);
-  const Tensor* zero_points = ctx->Input<Tensor>(3);
+  const Tensor* zero_points = ctx->InputCount() > 3 ? ctx->Input<Tensor>(3) : nullptr;
+  const Tensor* reorder_idx = ctx->InputCount() > 4 ? ctx->Input<Tensor>(4) : nullptr;
+
   const auto* scales_data = scales->Data<float>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -231,40 +315,47 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  const bool has_single_b_matrix = std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(),
-                                               [](size_t offset) { return offset == 0; });
+  const bool has_single_b_matrix =
+      (!act_order_) && (!zero_point_is_not_quant_) &&
+      std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(), [](size_t offset) { return offset == 0; });
 
-  if (has_single_b_matrix && packed_b_) {
-    for (int64_t accuracy_level = accuracy_level_;
-         accuracy_level >= static_cast<int64_t>(CompMostAccurate);
-         --accuracy_level) {
-      const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level);
-      if (MlasIsSQNBitGemmAvailable(M, N, K, nbits_, block_size_, compute_type)) {
-        IAllocatorUniquePtr<std::byte> workspace{};
-        if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
-                                                                           nbits_, block_size_, compute_type);
-            workspace_size > 0) {
-          AllocatorPtr allocator;
-          ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
-          workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
-        }
+  if (has_single_b_matrix) {
+    const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
 
-        InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
-        for (size_t i = 0; i < batch_count; ++i) {
-          data[i].A = a_data + helper.LeftOffsets()[i];
-          data[i].lda = lda;
-          data[i].QuantBData = packed_b_.get();
-          data[i].QuantBScale = scales_data;
-          data[i].QuantBZeroPoint = zero_points_data;
-          data[i].C = y_data + helper.OutputOffsets()[i];
-          data[i].ldc = N;
-        }
-
-        MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
-                            thread_pool);
-
-        return Status::OK();
+    if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
+      IAllocatorUniquePtr<std::byte> workspace{};
+      if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
+                                                                         nbits_, block_size_, compute_type);
+          workspace_size > 0) {
+        AllocatorPtr allocator;
+        ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+        workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
       }
+
+      const void* b_data = [&]() -> const void* {
+        if (packed_b_) {
+          return packed_b_.get();
+        }
+
+        const Tensor* b = ctx->Input<Tensor>(1);
+        return b->DataRaw();
+      }();
+
+      InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
+      for (size_t i = 0; i < batch_count; ++i) {
+        data[i].A = a_data + helper.LeftOffsets()[i];
+        data[i].lda = lda;
+        data[i].QuantBData = b_data;
+        data[i].QuantBScale = scales_data;
+        data[i].QuantBZeroPoint = zero_points_data;
+        data[i].C = y_data + helper.OutputOffsets()[i];
+        data[i].ldc = N;
+      }
+
+      MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
+                          thread_pool);
+
+      return Status::OK();
     }
   }
 
@@ -272,22 +363,50 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const uint8_t* b_data = b->Data<uint8_t>();
 
   const size_t ldb = helper.Ldb(true);
-
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
-  // dequantize b, only 4b quantization is supported for now
-  MlasDequantizeBlockwise<float, 4>(
-      tmp_b_data_ptr.get(),               // dequantized output
-      b_data,                             // quantized input
-      scales_data,                        // quantization scales
-      zero_points_data,                   // quantization zero points
-      static_cast<int32_t>(block_size_),  // quantization block size
-      column_wise_quant_,                 // columnwise quantization or row-wise
-      static_cast<int32_t>(K_),           // number of rows in quantized input
-      static_cast<int32_t>(N_),           // number of columns in quantized input
-      thread_pool);
-
+  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
+    // dequantize b, only 4b quantization is supported for now
+    MlasDequantizeBlockwise<float, 4>(
+        tmp_b_data_ptr.get(),                           // dequantized output
+        b_data,                                         // quantized input
+        scales_data,                                    // quantization scales
+        static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+        static_cast<int32_t>(block_size_),              // quantization block size
+        column_wise_quant_,                             // columnwise quantization or row-wise
+        static_cast<int32_t>(K_),                       // number of rows in quantized input
+        static_cast<int32_t>(N_),                       // number of columns in quantized input
+        thread_pool);
+  } else {
+    ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
+    // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
+    if ((zero_points && zero_points->IsDataType<float>())) {
+      DequantizeBlockwise<float, float>(
+          tmp_b_data_ptr.get(),                         // dequantized output
+          b_data,                                       // quantized input
+          scales_data,                                  // quantization scales
+          static_cast<const float*>(zero_points_data),  // quantization zero points
+          reorder_idx_data,
+          static_cast<int32_t>(block_size_),  // quantization block size
+          column_wise_quant_,                 // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),           // number of rows in quantized input
+          static_cast<int32_t>(N_),           // number of columns in quantized input
+          thread_pool);
+    } else {
+      DequantizeBlockwise<float, uint8_t>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          reorder_idx_data,
+          static_cast<int32_t>(block_size_),  // quantization block size
+          column_wise_quant_,                 // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),           // number of rows in quantized input
+          static_cast<int32_t>(N_),           // number of columns in quantized input
+          thread_pool);
+    }
+  }
 #if 0  // for debug
   auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
   MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);
@@ -318,7 +437,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<float>()})
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulNBits);
 
 }  // namespace contrib

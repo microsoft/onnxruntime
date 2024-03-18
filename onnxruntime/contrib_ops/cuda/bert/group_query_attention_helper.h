@@ -205,6 +205,7 @@ Status CheckInputs(const Tensor* query,
   int total_sequence_length = *((*total_seqlen).template Data<int32_t>());
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
 
+  int rotary_dim = 0;
   if (cos_cache != nullptr && sin_cache != nullptr) {
     const auto& cos_dims = cos_cache->Shape().GetDims();
     const auto& sin_dims = sin_cache->Shape().GetDims();
@@ -214,22 +215,27 @@ Status CheckInputs(const Tensor* query,
                              "head_size shall be a multiple of 16. Got head_size % 16 == ",
                              head_size % 16);
     }
-    if (cos_dims[0] != present_sequence_length) {
+    if (cos_dims[0] < present_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "cos_cache dimension 0 must be of present_sequence_length.");
+                             "cos_cache dimension 0 should be of max_sequence_length.");
     }
-    if (sin_dims[0] != present_sequence_length) {
+    if (sin_dims[0] < present_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "sin_cache dimension 0 must be of present_sequence_length.");
+                             "sin_cache dimension 0 should be of max_sequence_length.");
     }
-    if (cos_dims[1] != (head_size / 16) * 8) {
+    if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
     }
-    if (sin_dims[1] != (head_size / 16) * 8) {
+    if (sin_dims[1] > (head_size / 16) * 8 || sin_dims[1] % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "sin_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
     }
+    if (cos_dims[1] != sin_dims[1]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cos_cache and sin_cache dimension 1 must be the same.");
+    }
+    rotary_dim = static_cast<int>(cos_dims[1] * 2);
   } else if (cos_cache != nullptr || sin_cache != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
@@ -248,6 +254,7 @@ Status CheckInputs(const Tensor* query,
     output_parameters->head_size = head_size;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
+    output_parameters->rotary_dim = rotary_dim;
     output_parameters->is_packed_qkv = is_packed_qkv;
     output_parameters->is_unidirectional = true;
     output_parameters->is_prompt = is_prompt;

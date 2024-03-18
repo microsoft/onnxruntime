@@ -3,6 +3,7 @@
 
 #include "js_execution_provider.h"
 
+#include <emscripten.h>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -20,7 +21,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "data_transfer.h"
 
 namespace onnxruntime {
@@ -681,9 +681,13 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 using namespace js;
 
-JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
+JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info, const SessionOptions* session_options)
     : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)},
       preferred_data_layout_{info.data_layout} {
+  if (session_options) {
+    enable_graph_capture_ = session_options->config_options.GetConfigOrDefault("enableGraphCapture", "false") == "true";
+    LOGS_DEFAULT(VERBOSE) << "Graph capture enable: " << enable_graph_capture_;
+  }
 }
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
@@ -751,4 +755,46 @@ std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer
 JsExecutionProvider::~JsExecutionProvider() {
 }
 
+Status JsExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+  if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
+    LOGS(*GetLogger(), INFO) << "Capturing the webgpu graph for this model";
+    EM_ASM({ Module.jsepCaptureBegin(); });
+  }
+  return Status::OK();
+}
+
+Status JsExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
+  if (IsGraphCaptureEnabled() && !IsGraphCaptured(0)) {
+    if (IsGraphCaptureAllowed()) {
+      EM_ASM({ Module.jsepCaptureEnd(); });
+      is_graph_captured_ = true;
+    } else {
+      IncrementRegularRunCountBeforeGraphCapture();
+    }
+  }
+
+  return Status::OK();
+}
+
+bool JsExecutionProvider::IsGraphCaptureEnabled() const {
+  return enable_graph_capture_;
+}
+
+bool JsExecutionProvider::IsGraphCaptured(int) const {
+  return is_graph_captured_;
+}
+
+Status JsExecutionProvider::ReplayGraph(int) {
+  ORT_ENFORCE(IsGraphCaptured(0));
+  EM_ASM({ Module.jsepReplay(); });
+  return Status::OK();
+}
+
+bool JsExecutionProvider::IsGraphCaptureAllowed() const {
+  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+}
+
+void JsExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
+  ++regular_run_count_before_graph_capture_;
+}
 }  // namespace onnxruntime

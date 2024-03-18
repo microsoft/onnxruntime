@@ -8,31 +8,21 @@
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 #include "core/providers/shared/utils/utils.h"
 
-#ifdef __APPLE__
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
-
 namespace onnxruntime {
 namespace coreml {
 
 class ResizeOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
- private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
@@ -41,7 +31,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 11; }
 };
 
-// Helper functions
+namespace {
 bool GetResizeScales(const InitializedTensorSet& initializers,
                      const Node& node, std::vector<float>& scales,
                      const logging::Logger&) {
@@ -73,10 +63,8 @@ bool GetResizeOutputSizes(const InitializedTensorSet& initializers,
   sizes = std::vector<int64_t>(sizes_data.begin(), sizes_data.end());
   return true;
 }
+}  // namespace
 
-// Add operator related
-
-#ifdef __APPLE__
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // We don't really use ROI here, so add it to skipped list if it's an initializer tensor
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
@@ -96,7 +84,7 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& logger) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
   auto* coreml_upsample = layer->mutable_upsample();
   NodeAttrHelper helper(node);
@@ -110,7 +98,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input_defs = node.InputDefs();
   const auto& initializers(model_builder.GetInitializerTensors());
 
-  if (input_defs.size() == 3) {  // use scales
+  if (input_defs.size() >= 3 && input_defs[2]->Exists()) {  // use scales
     std::vector<float> scales;
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
     coreml_upsample->add_scalingfactor(static_cast<int64_t>(scales[2]));
@@ -131,9 +119,6 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif
-
-// Operator support related
 
 bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                         const logging::Logger& logger) const {
@@ -197,20 +182,24 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       return false;
     }
 
+    bool using_scales = input_defs.size() >= 3 && input_defs[2]->Exists();
     // scales
-    if (input_defs.size() == 3 && !Contains(initializers, input_defs[2]->Name())) {
-      LOGS(logger, VERBOSE) << "Input scales of Resize must be known";
+    if (using_scales && !input_params.graph_viewer.GetConstantInitializer(input_defs[2]->Name())) {
+      LOGS(logger, VERBOSE) << "scales input of Resize must be a constant initializer";
       return false;
     }
 
     // sizes
-    if (input_defs.size() > 3 && !Contains(initializers, input_defs[3]->Name())) {
-      LOGS(logger, VERBOSE) << "Input sizes of Resize must be known";
+    if (!using_scales &&
+        (input_defs.size() < 4 ||
+         !input_defs[3]->Exists() ||
+         !input_params.graph_viewer.GetConstantInitializer(input_defs[3]->Name()))) {
+      LOGS(logger, VERBOSE) << "sizes input of Resize must be a constant initializer";
       return false;
     }
 
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
-    if (input_defs.size() == 3) {  // we are using scales
+    if (using_scales) {
       std::vector<float> scales;
       if (!GetResizeScales(initializers, node, scales, logger))
         return false;

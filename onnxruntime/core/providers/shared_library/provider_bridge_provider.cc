@@ -24,6 +24,7 @@
 #include "core/providers/cpu/tensor/size.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cpu/tensor/tile.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -492,6 +493,10 @@ template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                             /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
+}
 
 }  // namespace utils
 
@@ -567,6 +572,11 @@ template <>
 std::unique_ptr<EinsumTypedComputeProcessor<double>> EinsumTypedComputeProcessor<double>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_double__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
 template <>
 std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProcessor<MLFloat16>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_MLFloat16__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+
+void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                            InlinedVector<float>& scales) const {
+  g_host_cpu.UpsampleBase__AdjustOutputSizeAsPolicy(this, output_dims, input_dims, scales);
+}
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
@@ -644,7 +654,6 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, c
                                             const SessionState& subgraph_session_state) {
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
-
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN

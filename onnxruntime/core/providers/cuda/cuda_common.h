@@ -71,9 +71,27 @@ class ToCudaType<Float8E4M3FN> {
 };
 
 template <>
+class ToCudaType<Float8E4M3FNUZ> {
+ public:
+  typedef Float8E4M3FNUZ MappedType;
+  static MappedType FromFloat(float f) {
+    return MappedType(f);
+  }
+};
+
+template <>
 class ToCudaType<Float8E5M2> {
  public:
   typedef Float8E5M2 MappedType;
+  static MappedType FromFloat(float f) {
+    return MappedType(f);
+  }
+};
+
+template <>
+class ToCudaType<Float8E5M2FNUZ> {
+ public:
+  typedef Float8E5M2FNUZ MappedType;
   static MappedType FromFloat(float f) {
     return MappedType(f);
   }
@@ -141,8 +159,7 @@ class HalfGemmOptions {
   }
 #else
   cublasMath_t GetMathMode() const {
-    // CublasMathModeSetter will check whether device has tensor cores later.
-    return CUBLAS_TENSOR_OP_MATH;
+    return CUBLAS_DEFAULT_MATH;
   }
 
   cudaDataType GetComputeType() const {

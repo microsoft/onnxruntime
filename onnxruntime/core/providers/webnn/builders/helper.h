@@ -54,6 +54,10 @@ std::string GetShapeString(std::vector<T>& shape) {
   return shape_info.str();
 }
 
+inline std::string GetTensorName(const ConstPointerContainer<std::vector<NodeArg*>>& input_defs, const size_t index) {
+  return (input_defs.size() > index) ? std::string(input_defs[index]->Name()) : "";
+}
+
 inline std::vector<uint32_t> GetVecUint32FromVecInt64(const std::vector<int64_t>& int64_vec) {
   std::vector<uint32_t> uint32_vec;
   uint32_vec.reserve(int64_vec.size());
@@ -191,7 +195,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"LessOrEqual", {"lesserOrEqual", false}},
     {"Log", {"log", false}},
     {"LpPool", {"l2Pool2d", false}},
-    {"MatMul", {"matmul", false}},
+    {"MatMul", {"matmul", true}},
     {"MatMulInteger", {"matmulInteger", false}},
     {"Max", {"max", true}},
     {"MaxPool", {"maxPool2d", true}},

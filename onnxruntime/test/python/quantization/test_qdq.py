@@ -20,7 +20,7 @@ from op_test_utils import (
     create_clip_node,
 )
 
-from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static
+from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import TensorData
 
 
@@ -87,14 +87,11 @@ class TestQDQExtraOptions(unittest.TestCase):
 
         op_types_to_quantize = ["Add"]
 
-        mode = QuantizationMode.QLinearOps
         model = onnx.load_model(test_model_path)
         quantizer = QDQQuantizer(
             model,
             True,  # per_channel
             False,  # reduce_range
-            mode,
-            True,  # static
             QuantType.QInt8,  # weight_type
             QuantType.QInt8,  # activation_type
             compute_data,
@@ -191,14 +188,11 @@ class TestQDQExtraOptions(unittest.TestCase):
 
         op_types_to_quantize = ["Add", "MatMul"]
 
-        mode = QuantizationMode.QLinearOps
         model = onnx.load_model(test_model_path)
         quantizer = QDQQuantizer(
             model,
             True,  # per_channel
             False,  # reduce_range
-            mode,
-            True,  # static
             QuantType.QInt8,  # weight_type
             QuantType.QInt8,  # activation_type
             compute_data,
@@ -600,6 +594,13 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             ],
         )
         check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next())
+
+        # If the model uses Q/DQ ops with "com.microsoft" domain (e.g., for int16 support),
+        # then ensure the model has the appropriate opset import.
+        if extra_options and extra_options.get("UseQDQContribOps", False):
+            qdq_model = onnx.load_model(model_qdq_path)
+            ms_opset = next((opset for opset in qdq_model.opset_import if opset.domain == "com.microsoft"), None)
+            self.assertIsNot(ms_opset, None)
 
     def verify_qop(self, per_channel, is_quant_type_int8):
         np.random.seed(1)

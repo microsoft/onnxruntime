@@ -901,6 +901,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& RegisterCustomOpsLibrary(const ORTCHAR_T* library_name, const CustomOpConfigs& custom_op_configs = {});
 
   SessionOptionsImpl& RegisterCustomOpsUsingFunction(const char* function_name);  ///< Wraps OrtApi::RegisterCustomOpsUsingFunction
+
+  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_VitisAI
+  SessionOptionsImpl& AppendExecutionProvider_VitisAI(const std::unordered_map<std::string, std::string>& provider_options = {});
 };
 }  // namespace detail
 
@@ -2052,7 +2055,11 @@ struct KernelContext {
   explicit KernelContext(OrtKernelContext* context);
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
+  // If input is optional and is not present, the method returns en empty ConstValue
+  // which can be compared to nullptr.
   ConstValue GetInput(size_t index) const;
+  // If outout is optional and is not present, the method returns en empty UnownedValue
+  // which can be compared to nullptr.
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
