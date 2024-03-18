@@ -32,7 +32,6 @@ export class Model {
 
     try {
       this.loadFromOrtFormat(buf, graphInitializer);
-      return;
     } catch (e) {
       if (isOrtFormat !== undefined) {
         throw e;
