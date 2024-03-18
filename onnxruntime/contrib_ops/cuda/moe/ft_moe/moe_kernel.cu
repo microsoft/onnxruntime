@@ -353,7 +353,7 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
       // single) thread per row of the input/output matrices.
       const int idx = k * thread_row + k_idx;
       output[idx] = T(max_val);
-      output_row_sum = output[idx] + T(max_val);
+      output_row_sum = output_row_sum + output[idx];
       indices[idx] = should_process_row ? expert : NUM_EXPERTS;
       source_rows[idx] = k_idx * num_rows + thread_row;
 
