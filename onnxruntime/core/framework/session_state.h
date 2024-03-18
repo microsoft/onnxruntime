@@ -259,7 +259,7 @@ class SessionState {
      * \param p_node0 Nullable
      * \param kci0 Nullable
      */
-    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0, const OrtDevice& device0, size_t stream_index0)
+    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0, const OrtDevice& device0, int stream_index0 = -1)
         : index(index0), p_node(p_node0), kci(kci0), device(&device0), stream_index(stream_index0) {}
 
     size_t index;
@@ -268,7 +268,7 @@ class SessionState {
     // Nullable
     const KernelCreateInfo* kci = nullptr;
     const OrtDevice* device = nullptr;
-    size_t stream_index;
+    int stream_index;
   };
 
   using NameNodeInfoMapType = InlinedHashMap<std::string, InlinedVector<NodeInfo>>;

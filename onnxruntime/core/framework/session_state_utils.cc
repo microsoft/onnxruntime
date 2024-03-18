@@ -367,6 +367,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
 
   for (auto& node : graph.Nodes()) {
     const KernelCreateInfo& kci = session_state.GetNodeKernelCreateInfo(node.Index());
+    int stream_index = static_cast<int>(exec_plan->node_stream_map_[node.Index()]);
 
     ORT_RETURN_IF_ERROR(
         onnxruntime::Node::ForEachWithIndex(
@@ -379,7 +380,6 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
               int arg_index;
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
               const auto& device = exec_plan->GetLocation(arg_index);
-              size_t stream_index = exec_plan->node_stream_map_[node.Index()];
               SessionState::NodeInfo node_info(index, &node, &kci, device, stream_index);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
@@ -419,7 +419,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
         int arg_index;
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));
         auto& device = exec_plan->GetLocation(arg_index);
-        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, &kci, device);
+        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, &kci, device, stream_index);
         ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }

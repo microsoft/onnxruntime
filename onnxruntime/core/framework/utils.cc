@@ -483,12 +483,10 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   // but we can only place the MemCpyAsync on one of the stream. Ideally we should make
   // other stream wait on the event of the memory copy stream, instead of host sync stream.
   std::unordered_set<Stream*> visited;
-  for (auto* stream : feed_streams) {
-    if (stream && visited.insert(stream).second) stream->Flush();
+  for (size_t i = 0; i < feed_streams.size(); i++) {
+    auto* stream = feed_streams[i];
+    if (stream && copy_info[i].consumed_by_ops_from_different_stream && visited.insert(stream).second) stream->Flush();
   }
-  // new logic:
-  // 1. should be only 1 stream to do all the copy inputs
-  // 2. if any feed's copy_info.consumed_by_ops_from_different_stream is true, Flush on current stream only once
   return Status::OK();
 }
 

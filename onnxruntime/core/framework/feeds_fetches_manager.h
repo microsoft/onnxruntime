@@ -73,7 +73,7 @@ struct FeedsFetchesInfo {
 struct MLValueCopyInfo {
   OrtDevice source_device{};
   OrtDevice target_device{};  // default is CPU
-  bool consumed_by_ops_from_different_stream;
+  bool consumed_by_ops_from_different_stream = false;
 };
 
 class FeedsFetchesManager {

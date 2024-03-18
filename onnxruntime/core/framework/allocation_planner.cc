@@ -175,7 +175,6 @@ class PlannerImpl {
 
   size_t num_logic_streams_{0};
   std::vector<InlinedVector<NodeIndex>> stream_nodes_;
-  InlinedVector<size_t> node_stream_map_;
 
   // dependence_graph_ keeps the dependencies combining model graph and logic streams
   // e.g. dependence_graph_[downstream_node] = [upstream_node_0, upstream_node_1, upstream_node_2 ...]
@@ -1721,9 +1720,9 @@ class PlannerImpl {
         // we actually can do better if all the consumers depends on the last consumer.
         // will optimize it later
         bool is_all_consumer_same_stream = true;
-        auto stream_idx = node_stream_map_[value_consumers[i][0]];
+        auto stream_idx = plan_.node_stream_map_[value_consumers[i][0]];
         for (size_t j = 1; j < value_consumers[i].size(); ++j) {
-          if (node_stream_map_[value_consumers[i][j]] != stream_idx) {
+          if (plan_.node_stream_map_[value_consumers[i][j]] != stream_idx) {
             is_all_consumer_same_stream = false;
             break;
           }
@@ -1748,10 +1747,10 @@ class PlannerImpl {
                             const PathString& /*partition_config_file*/) {
     if (graph_viewer_.NumberOfNodes() > 0) {
       stream_nodes_.push_back({});
-      node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
+      plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
       for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
         stream_nodes_[0].push_back(node_index);
-        node_stream_map_[node_index] = 0;
+        plan_.node_stream_map_[node_index] = 0;
       }
       num_logic_streams_ = 1;
     }
@@ -1790,10 +1789,10 @@ class PlannerImpl {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
+    plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
-        node_stream_map_[node_index] = i;
+        plan_.node_stream_map_[node_index] = i;
       }
     }
     num_logic_streams_ = stream_nodes_.size();
@@ -1856,7 +1855,7 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           // if the output node is not in the same stream, generate a trigger point
-          if (node_stream_map_[it->Index()] != i
+          if (plan_.node_stream_map_[it->Index()] != i
 #ifdef ENABLE_TRAINING
               // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
               // As in this case producer will surely be ready before the consumer is running.
@@ -1891,7 +1890,7 @@ class PlannerImpl {
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
                   OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.Type();
                   WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, output_arg_device);
-                  if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
+                  if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
                       node_to_notification[node_index] = plan_.notification_owners.size();
                       plan_.notification_owners.push_back(i);
@@ -1903,7 +1902,7 @@ class PlannerImpl {
               }  // output->Exists
             }    // for each output
             if (output_consumed_in_subgraph) {
-              const auto downstream = node_stream_map_[it->Index()];
+              const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {
                 auto downstream_device = execution_plan[downstream]->device_.Type();
                 WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
@@ -1929,7 +1928,7 @@ class PlannerImpl {
         onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
         const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
         auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
-        ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.Type());
+        ORT_ENFORCE(execution_plan[plan_.node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.Type());
       }
     }
 
@@ -2003,7 +2002,7 @@ class PlannerImpl {
         if (!node_output->Exists()) continue;
         OrtValueIndex output_idx_global;
         ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(node_output->Name(), output_idx_global));
-        plan_.value_to_stream_map[output_idx_global] = node_stream_map_[node_index];
+        plan_.value_to_stream_map[output_idx_global] = plan_.node_stream_map_[node_index];
         value_node_map_[output_idx_global] = node_index;
       }
     }
@@ -2079,7 +2078,7 @@ class PlannerImpl {
         }
         // trigger downstream
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          auto stream_idx = node_stream_map_[it->Index()];
+          auto stream_idx = plan_.node_stream_map_[it->Index()];
           if (stream_idx != i) {
             auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
             int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it));
