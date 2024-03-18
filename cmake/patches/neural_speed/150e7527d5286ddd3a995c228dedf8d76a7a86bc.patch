@@ -13,3 +13,18 @@ index 99f3ccc..a11de9d 100644
        }
      }
      if (zero_points) {
+diff --git a/bestla/bestla/kernel_avx512f.h b/bestla/bestla/kernel_avx512f.h
+index 6783ee8..59822e5 100644
+--- a/bestla/bestla/kernel_avx512f.h
++++ b/bestla/bestla/kernel_avx512f.h
+@@ -673,8 +673,8 @@ inline BTLA_CODE decompress_kblock_s3_s8fp(utils::bit2x4* bit2ptr, utils::bit1x8
+     zmm1 = _mm512_sllv_epi32(zmm1, zmm_shift);  // int3_clip => int8
+     zmm2 = _mm512_sllv_epi32(zmm2, zmm_shift);  // int3_clip => int8
+
+-    _mm512_storeu_epi8((__m512i*)dst, zmm1);
+-    _mm512_storeu_epi8((__m512i*)(dst + 64), zmm2);
++    _mm512_storeu_si512((__m512i*)dst, zmm1);
++    _mm512_storeu_si512((__m512i*)(dst + 64), zmm2);
+   };
+
+   assert(head_ignore_num % 8 == 0);
