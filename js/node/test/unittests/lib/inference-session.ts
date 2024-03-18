@@ -68,6 +68,11 @@ describe('UnitTests - InferenceSession.create()', () => {
       await InferenceSession.create(new Uint8Array(0));
     }, {name: 'Error', message: /No graph was found in the protobuf/});
   });
+  it('EXPECTED FAILURE - invalid buffer', async () => {
+    await assert.rejects(async () => {
+      await InferenceSession.create(new Uint8Array(Array.from({length: 100}, () => 42)));
+    }, {name: 'Error', message: /as ONNX.+as ORT/m});
+  });
   // #endregion
 
   it('metadata: inputNames', async () => {
