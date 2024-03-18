@@ -1,10 +1,12 @@
 # Contents
  - [LLaMA-2](#llama-2)
+   - [Prerequisites](#prerequisites)
    - [Exporting LLaMA-2](#exporting-llama-2)
    - [Benchmarking LLaMA-2](#benchmark-llama-2)
      - [Variants](#variants)
      - [Benchmark All](#benchmark-all)
      - [Benchmark E2E](#benchmark-e2e)
+   - [E2E Inference with LLaMA-2](#e2e-inference-with-llama-2)
  - [Mistral](#mistral)
    - [Exporting Mistral](#exporting-mistral)
    - [Optimizing and Quantizing Mistral](#optimizing-and-quantizing-mistral)
@@ -426,6 +428,10 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
     --use_buffer_share \
     --auth
 ```
+
+## E2E Inference with LLaMA-2
+
+For end-to-end inference, please visit [this folder](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/models/llama) in ONNX Runtime Inference Examples for a step-by-step walkthrough, code examples, and performance metrics.
 
 # Mistral
 
