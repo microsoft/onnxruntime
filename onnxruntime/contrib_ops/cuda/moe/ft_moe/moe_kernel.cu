@@ -63,7 +63,8 @@ static constexpr int WARP_SIZE = 32;
 // We have our own implementation of softmax here so we can support transposing the output
 // in the softmax kernel when we extend this module to support expert-choice routing.
 template <typename T, int TPB>
-__launch_bounds__(TPB) __global__ void moe_softmax(const T* input, const bool* finished, T* output, const int num_cols) {
+__launch_bounds__(TPB) __global__ void moe_softmax(const T* input, const bool* finished, T* output,
+                                                   const int num_cols) {
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmpStorage;
 
@@ -352,14 +353,14 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
       // single) thread per row of the input/output matrices.
       const int idx = k * thread_row + k_idx;
       output[idx] = T(max_val);
-      output_row_sum += T(max_val);
+      output_row_sum = output[idx] + T(max_val);
       indices[idx] = should_process_row ? expert : NUM_EXPERTS;
       source_rows[idx] = k_idx * num_rows + thread_row;
 
       if (normalize_routing_weights && k_idx == k - 1) {
 #pragma unroll
         for (int ki = 0; ki < k; ++ki) {
-          output[idx - ki] /= output_row_sum;
+          output[idx - ki] = output[idx - ki] / output_row_sum;
         }
       }
     }
@@ -954,8 +955,6 @@ template void topk_gating_softmax_kernelLauncher(const half*, const bool*, half*
 // ==================== Variable batched GEMM specializations ==================================
 template class CutlassMoeFCRunner<float, float>;
 template class CutlassMoeFCRunner<half, half>;
-template class CutlassMoeFCRunner<half, uint8_t>;
-template class CutlassMoeFCRunner<half, cutlass::uint4b_t>;
 
 // ===================== Specializations for init routing =========================
 template void initialize_moe_routing_kernelLauncher(const float*, float*, const int*, int*, int, int,
