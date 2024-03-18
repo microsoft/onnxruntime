@@ -1113,7 +1113,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   ArgDef grad = GO(0);
   if (!keepdims) {
     size_t numInputs = GetSrcNodeInputSize();
-    grad = IA("Unqueezed_Grad")
+    grad = IA("Unqueezed_Grad");
     if (attributes.find("axes") != attributes.end()) {
       std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
       if (SrcNodeOpsetVersion() < 13) {  // axes is attribute for unsqueeze
