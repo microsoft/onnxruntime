@@ -1113,9 +1113,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   ArgDef grad = GO(0);
   if (!keepdims) {
     size_t numInputs = GetSrcNodeInputSize();
-    grad = IA("Unqueezed_Grad");
     if (attributes.find("axes") != attributes.end()) {
       std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      grad = IA("Unqueezed_Grad");
       if (SrcNodeOpsetVersion() < 13) {  // axes is attribute for unsqueeze
         result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
       } else {
@@ -1124,6 +1124,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
         result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), axes_values_node.output_args[0]}, {grad}));
       }
     } else if (numInputs == 2) {  // optional input 'axes' is available as input I(1)
+      grad = IA("Unqueezed_Grad");
       result.push_back(NodeDef("Unsqueeze", {GO(0), I(1)}, {grad}));
     }
   }
