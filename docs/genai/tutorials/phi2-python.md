@@ -21,7 +21,7 @@ If using the `-m` option shown here, you will need to login into Hugging Face.
 
 ```bash
 pip install huggingface-hub`
-huggingface-cli --login
+huggingface-cli login
 ```
 
 You can build the model in different precisions. This command uses int4 as it produces the smallest model and can run on a CPU.
