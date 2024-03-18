@@ -375,11 +375,12 @@ You can use `benchmark_e2e.py` to benchmark the full end-to-end scenario and aut
 1. PyTorch without `torch.compile`, FP32
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
-    --benchmark-type hf-pt-eager \
+    --benchmark-type pt-eager \
     --model-name meta-llama/Llama-2-7b-hf \
+    --prompts-file ./models/llama/prompts.json \
     --precision fp32 \
     --batch-sizes "1 2" \
-    --sequence-lengths "8 16" \
+    --prompt-lengths "16 64" \
     --device cpu \
     --auth
 ```
@@ -387,11 +388,12 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
 2. PyTorch with `torch.compile`, FP16
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
-    --benchmark-type hf-pt-compile \
+    --benchmark-type pt-compile \
     --model-name meta-llama/Llama-2-7b-hf \
+    --prompts-file ./models/llama/prompts.json \
     --precision fp16 \
     --batch-sizes "1 2" \
-    --sequence-lengths "8 16" \
+    --sequence-lengths "16 64" \
     --device cuda \
     --auth
 ```
@@ -399,13 +401,29 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
 3. ONNX Runtime with `convert_to_onnx`, FP32
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
-    --benchmark-type ort-convert-to-onnx \
-    --ort-model-path ./llama2-7b/rank_0_Llama-2-7b-hf_decoder_merged_model_fp32.onnx \
+    --benchmark-type ort \
     --model-name meta-llama/Llama-2-7b-hf \
+    --onnx-model-path ./llama2-7b/rank_0_Llama-2-7b-hf_decoder_merged_model_fp32.onnx \
+    --prompts-file ./models/llama/prompts.json \
     --precision fp32 \
     --batch-sizes "1 2" \
-    --sequence-lengths "8 16" \
+    --sequence-lengths "16 64" \
     --device cpu \
+    --auth
+```
+
+4. ONNX Runtime with `convert_to_onnx`, FP16
+```
+CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
+    --benchmark-type ort \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --onnx-model-path ./llama2-7b/rank_0_Llama-2-7b-hf_decoder_merged_model_fp32.onnx \
+    --prompts-file ./models/llama/prompts.json \
+    --precision fp16 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "16 64" \
+    --device cuda \
+    --use_buffer_share \
     --auth
 ```
 

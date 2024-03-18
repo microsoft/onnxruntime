@@ -29,11 +29,13 @@ import gc
 import itertools
 import json
 import logging
+import os
 import time
 
 import numpy as np
 import pandas as pd
 import torch
+from benchmark_helper import setup_logger
 from llama_inputs import add_io_bindings_as_tensors, get_initial_inputs_and_outputs
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
@@ -43,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_model(args):
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
+    if args.benchmark_type in {"pt-eager", "pt-compile"}:
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name,
             cache_dir=args.cache_dir,
@@ -51,8 +53,9 @@ def get_model(args):
             use_auth_token=args.auth,
             use_cache=True,
         ).to(args.target_device)
+        model.eval()
 
-        if args.benchmark_type == "hf-pt-compile":
+        if args.benchmark_type == "pt-compile":
             model = torch.compile(model)
 
     else:
@@ -68,10 +71,15 @@ def get_model(args):
 
 
 def run_inference(args, model, runs, inputs, outputs):
+    if args.benchmark_type == "pt-compile":
+        with torch.no_grad():
+            outputs = model(**inputs)
+
     # Synchronize inputs
     io_binding = None
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
-        torch.cuda.synchronize(args.target_device)
+    if args.benchmark_type in {"pt-eager", "pt-compile"}:
+        if args.device != "cpu":
+            torch.cuda.synchronize(args.target_device)
     else:
         io_binding = add_io_bindings_as_tensors(model, inputs, outputs, args.use_fp16, args.use_buffer_share)
         io_binding.synchronize_inputs()
@@ -79,16 +87,18 @@ def run_inference(args, model, runs, inputs, outputs):
     # Run inference
     start = time.perf_counter()
     for _ in range(runs):
-        if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
-            _ = model(**inputs)
-            torch.cuda.synchronize(args.target_device)
+        if args.benchmark_type in {"pt-eager", "pt-compile"}:
+            with torch.no_grad():
+                outputs = model(**inputs)
+                if args.device != "cpu":
+                    torch.cuda.synchronize(args.target_device)
         else:
             model.run_with_iobinding(io_binding)
             io_binding.synchronize_outputs()
 
     end = time.perf_counter()
     avg = (end - start) / runs
-    return avg
+    return avg, outputs
 
 
 def prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt):
@@ -96,7 +106,7 @@ def prepare_model_for_inference(args, model, config, tokenizer, prompt_length, p
     inputs, outputs = get_initial_inputs_and_outputs(
         config, tokenizer, prompt_length, prompt, args.target_device, args.use_fp16, args.use_buffer_share, args.engine
     )
-    run_inference(args, model, args.warmup_runs, inputs, outputs)
+    _, outputs = run_inference(args, model, args.warmup_runs, inputs, outputs)
     return inputs, outputs
 
 
@@ -138,7 +148,7 @@ def get_args():
         "--benchmark-type",
         type=str,
         required=True,
-        choices=["hf-pt-eager", "hf-pt-compile", "ort-convert-to-onnx"],
+        choices=["pt-eager", "pt-compile", "ort"],
     )
 
     parser.add_argument(
@@ -161,7 +171,7 @@ def get_args():
         "-c",
         "--cache-dir",
         type=str,
-        default="./model_cache",
+        default=os.path.join(".", "model_cache"),
         help="Path to directory containing all Hugging Face files (e.g. config, tokenizer, PyTorch model)",
     )
 
@@ -173,18 +183,11 @@ def get_args():
     )
 
     parser.add_argument(
-        "-p",
+        "-f",
         "--prompts-file",
         required=True,
-        default="prompts.json",
+        default=os.path.join(".", "models", "llama", "prompts.json"),
         help="JSON file containing entries in the format 'prompt length: prompt' where prompt length = tokenized length of prompt",
-    )
-
-    parser.add_argument(
-        "--use_fp16",
-        default=False,
-        action="store_true",
-        help="Use float16 precision for inputs and outputs",
     )
 
     parser.add_argument(
@@ -194,17 +197,36 @@ def get_args():
         help="Use when GroupQueryAttention (GQA) is in ONNX model",
     )
 
-    # Args for running and evaluating the model
+    parser.add_argument(
+        "--anomaly-filtering",
+        default=False,
+        action="store_true",
+        help="Use this flag to filter anomaly accelerator times for tokens generated. \
+              This may give more accurate latency and throughput metrics for tokens generated. \
+              Wall-clock metrics are still reported with anomaly times though."),
+
     parser.add_argument(
         "-b",
         "--batch-sizes",
         default="1 2",
     )
+
     parser.add_argument(
         "-s",
-        "--sequence-lengths",
+        "--prompt-lengths",
         default="32 64 128 256 512",
     )
+
+    parser.add_argument(
+        "-p",
+        "--precision",
+        required=True,
+        type=str,
+        default="fp32",
+        choices=["int4", "int8", "fp16", "fp32"],
+        help="Precision for model. For ONNX models, the model's precision should be set before running this script.",
+    )
+
     parser.add_argument(
         "-g",
         "--generation-length",
@@ -212,6 +234,7 @@ def get_args():
         default=256,
         help="Number of new tokens to generate",
     )
+
     parser.add_argument(
         "-d",
         "--device",
@@ -219,6 +242,7 @@ def get_args():
         default="cuda" if torch.cuda.is_available() else "cpu",
         choices=["cpu", "cuda"],
     )
+
     parser.add_argument("-id", "--device-id", type=int, default=0)
     parser.add_argument("-w", "--warmup-runs", type=int, default=5)
     parser.add_argument("-n", "--num-runs", type=int, default=100)
@@ -237,11 +261,11 @@ def get_args():
             args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
 
     # Check that paths have been specified for any benchmarking with ORT
-    if args.benchmark_type == "ort-convert-to-onnx":
+    if args.benchmark_type == "ort":
         assert args.onnx_model_path, "Please specify a path to `--onnx-model-path`"
 
     args.batch_sizes = args.batch_sizes.split(" ")
-    args.sequence_lengths = args.sequence_lengths.split(" ")
+    args.prompt_lengths = args.prompt_lengths.split(" ")
 
     # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
     args.precision = (
@@ -249,17 +273,20 @@ def get_args():
     )
 
     target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
-    torch_dtype = torch.float16 if args.use_fp16 else torch.float32
-    engine = "ort" if args.benchmark_type == "ort-convert-to-onnx" else "pt"
+    torch_dtype = torch.float16 if args.precision == "fp16" else torch.float32
+    engine = "ort" if args.benchmark_type == "ort" else "pt"
     setattr(args, "target_device", target_device)  # noqa: B010
     setattr(args, "torch_dtype", torch_dtype)  # noqa: B010
     setattr(args, "engine", engine)  # noqa: B010
+    setattr(args, "use_fp16", args.precision == "fp16")  # noqa: B010
 
     return args
 
 
 def main():
     args = get_args()
+    setup_logger(False)
+    logger.info(args.__dict__)
 
     # Get prompts and prompt sizes
     size_to_prompt = None
@@ -273,7 +300,10 @@ def main():
 
     all_csv_metrics = []
     for batch_size, prompt_length in itertools.product(args.batch_sizes, args.prompt_lengths):
+        batch_size, prompt_length = int(batch_size), int(prompt_length)
         logger.info(f"Running batch size = {batch_size}, prompt length = {prompt_length}")
+        clear_cache()
+
         max_length = prompt_length + args.generation_length
         prompt = [size_to_prompt[prompt_length]] * batch_size
         csv_metrics = [batch_size, prompt_length]
@@ -282,20 +312,21 @@ def main():
             # Measure prompt processing
             logger.info("Measuring prompt processing...")
             inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt)
-            accelerator_prompt_latency_s = run_inference(args, model, args.num_runs, inputs, outputs)
+            accelerator_prompt_latency_s, outputs = run_inference(args, model, args.num_runs, inputs, outputs)
 
             # Calculate prompt metrics
             accelerator_prompt_latency_ms = accelerator_prompt_latency_s * 1000
             accelerator_prompt_thrpt = batch_size * (prompt_length / accelerator_prompt_latency_s)
-            logger.info(f"Accelerator Prompt Processing Latency: {accelerator_prompt_latency_s * 1000} ms")
+            logger.info(f"Average Latency of Prompt Processing: {accelerator_prompt_latency_ms} ms")
             logger.info(
-                f"Accelerator Prompt Processing Throughput: {batch_size * (prompt_length / accelerator_prompt_latency_s)} tps"
+                f"Average Throughput of Prompt Processing: {batch_size * (prompt_length / accelerator_prompt_latency_s)} tps"
             )
             csv_metrics.extend([accelerator_prompt_latency_ms, accelerator_prompt_thrpt])
 
             # Measure token generation
             logger.info("Measuring token generation...")
-            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt)
+            clear_cache()
+            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt)
 
             all_token_ids = inputs["input_ids"].clone()
             current_length = all_token_ids.shape[-1]
@@ -313,9 +344,8 @@ def main():
             wall_clock_start_time = time.perf_counter()
             while current_length <= max_length:
                 # Run inference
-                accelerator_time_latency_s = run_inference(args, model, 1, inputs, outputs)
-                accelerator_time_latency_ms = accelerator_time_latency_s * 1000
-                accelerator_times.append(accelerator_time_latency_ms)
+                accelerator_time_latency_s, outputs = run_inference(args, model, 1, inputs, outputs)
+                accelerator_times.append(accelerator_time_latency_s)
 
                 # Sample with argmax (greedy search)
                 sampling_start_time = time.perf_counter()
@@ -349,10 +379,11 @@ def main():
 
                 # Update inputs for next inference run
                 inputs["input_ids"] = tokens_to_add
-                inputs["position_ids"] = torch.max(inputs["position_ids"], dim=1)[0].reshape(batch_size, 1) + 1
                 inputs["attention_mask"] = torch.cat(
                     [inputs["attention_mask"], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1
                 )
+                if args.engine == "pt":
+                    inputs["position_ids"] = torch.max(inputs["position_ids"], dim=1)[0].reshape(batch_size, 1) + 1
 
                 # Set logits to zeros for next inference run and re-use memory buffer
                 if outputs["logits"].shape[1] != 1:
@@ -395,95 +426,96 @@ def main():
                         )
 
             wall_clock_end_time = time.perf_counter()
+
+            # Filter out any anomaly accelerator times (e.g. for `torch.compile`)
+            accelerator_times.pop(0)  # Remove prompt processing time
+            if args.anomaly_filtering:
+                anomaly_threshold_factor = 10
+                min_time_s = min(accelerator_times)
+                orig_size = len(accelerator_times)
+                accelerator_times = list(filter(lambda acc_time: acc_time < anomaly_threshold_factor * min_time_s, accelerator_times))
+                new_size = len(accelerator_times)
+                logger.info(f"Filtered out {orig_size - new_size} anomaly accelerator times that are {anomaly_threshold_factor}x greater than {min_time_s * 1000} ms...")
+
+            #######################################################
+            # Calculate sampling and first token generated metrics
+            #######################################################
+
+            # Calculate sampling metrics
+            avg_sampling_latency_s = sum(sampling_times) / len(sampling_times)
+            avg_sampling_latency_ms = avg_sampling_latency_s * 1000
+            avg_sampling_thrpt = batch_size * (1 / avg_sampling_latency_s)
+            logger.info(f"Average Latency of Sampling: {avg_sampling_latency_ms} ms")
+            logger.info(f"Average Throughput of Sampling: {avg_sampling_thrpt} tps")
+
+            # Calculate first token generated metrics
+            first_token_latency_s = accelerator_times[0]
+            first_token_latency_ms = first_token_latency_s * 1000
+            first_token_thrpt = batch_size * (1 / first_token_latency_s)
+            logger.info(
+                f"Latency of First Token Generated: {first_token_latency_ms} ms"
+            )
+            logger.info(
+                f"Throughput of First Token Generated: {first_token_thrpt} tps"
+            )
+
+            ####################################################
+            # Calculate first `halfway` token generated metrics
+            ####################################################
+
+            halfway = args.generation_length // 2
+            halfway_token_latency_s = sum(accelerator_times[: halfway]) / len(accelerator_times[: halfway])
+            halfway_token_latency_ms = halfway_token_latency_s * 1000
+            halfway_token_thrpt = batch_size * (1 / halfway_token_latency_s)
+            logger.info(
+                f"Average Latency of First {halfway} Tokens Generated: {halfway_token_latency_ms} ms"
+            )
+            logger.info(
+                f"Average Throughput of First {halfway} Tokens Generated: {halfway_token_thrpt} tps"
+            )
+
+            ####################################################
+            # Calculate all tokens generated metrics
+            ####################################################
+
+            all_token_latency_s = sum(accelerator_times) / len(accelerator_times)
+            all_token_latency_ms = all_token_latency_s * 1000
+            all_token_thrpt = batch_size * (1 / all_token_latency_s)
+            logger.info(
+                f"Average Latency of First {args.generation_length} Tokens Generated: {all_token_latency_ms} ms"
+            )
+            logger.info(
+                f"Average Throughput of First {args.generation_length} Tokens Generated: {all_token_thrpt} tps"
+            )
+
+            ####################################################
+            # Calculate wall clock metrics
+            ####################################################
+
             wall_clock_latency_s = wall_clock_end_time - wall_clock_start_time
-
-            if len(accelerator_times) > 0:
-                # Calculate sampling metrics
-                avg_sampling_latency_s = sum(sampling_times) / len(sampling_times)
-                avg_sampling_latency_ms = avg_sampling_latency_s * 1000
-                avg_sampling_thrpt = batch_size * (1 / avg_sampling_latency_s)
-                logger.info(f"Average Sampling Latency: {avg_sampling_latency_s * 1000} ms")
-                logger.info(f"Average Sampling Throughput: {batch_size * (1 / avg_sampling_latency_s)} tps")
-
-                # Calculate first token generated metrics
-                avg_accelerator_token_latency_s = accelerator_times[1] / 1
-                avg_accelerator_token_latency_ms = avg_accelerator_token_latency_s * 1000
-                avg_accelerator_token_thrpt = batch_size * (1 / avg_accelerator_token_latency_s)
-                logger.info(
-                    f"First Token Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms"
-                )
-                logger.info(
-                    f"First Token Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps"
-                )
-
-                csv_metrics.extend(
-                    [
-                        avg_sampling_latency_ms,
-                        avg_sampling_thrpt,
-                        avg_accelerator_token_latency_ms,
-                        avg_accelerator_token_thrpt,
-                    ]
-                )
-
-            halfway_idx = 1 + (args.generation_length // 2)  # +1 is for prompt entry
-
-            if len(accelerator_times) >= halfway_idx:
-                # Calculating average of first `halfway` tokens generated metrics
-                avg_accelerator_token_latency_s = sum(accelerator_times[1:halfway_idx]) / len(
-                    accelerator_times[1:halfway_idx]
-                )
-                avg_accelerator_token_latency_ms = avg_accelerator_token_latency_s * 1000
-                avg_accelerator_token_thrpt = batch_size * (1 / avg_accelerator_token_latency_s)
-                logger.info(
-                    f"First {args.generation_length // 2} Tokens Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms"
-                )
-                logger.info(
-                    f"First {args.generation_length // 2} Tokens Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps"
-                )
-
-                csv_metrics.extend([avg_accelerator_token_latency_ms, avg_accelerator_token_thrpt])
-
-            if len(accelerator_times) == args.generation_length + 1:  # +1 is for prompt entry
-                avg_accelerator_token_latency_s = sum(accelerator_times[1:]) / len(accelerator_times[1:])
-                avg_accelerator_token_latency_ms = avg_accelerator_token_latency_s * 1000
-                avg_accelerator_token_thrpt = batch_size * (1 / avg_accelerator_token_latency_s)
-                logger.info(
-                    f"First {args.generation_length} Tokens Average Accelerator Token Generation Latency: {avg_accelerator_token_latency_s * 1000} ms"
-                )
-                logger.info(
-                    f"First {args.generation_length} Tokens Average Accelerator Token Generation Throughput: {batch_size * (1 / avg_accelerator_token_latency_s)} tps"
-                )
-
-                # Calculate wall-clock metrics
-                wall_clock_thrpt = batch_size * ((prompt_length + args.generation_length) / wall_clock_latency_s)
-                logger.info(f"Wall-Clock Latency: {wall_clock_latency_s} s")
-                logger.info(
-                    f"Wall-Clock Throughput: {batch_size * ((prompt_length + args.generation_length) / wall_clock_latency_s)} tps"
-                )
-
-                csv_metrics.extend(
-                    [
-                        avg_accelerator_token_latency_ms,
-                        avg_accelerator_token_thrpt,
-                        wall_clock_latency_s,
-                        wall_clock_thrpt,
-                    ]
-                )
+            wall_clock_thrpt = batch_size * ((prompt_length + args.generation_length) / wall_clock_latency_s)
+            logger.info(f"Wall-Clock Latency: {wall_clock_latency_s} s")
+            logger.info(
+                f"Wall-Clock Throughput: {batch_size * ((prompt_length + args.generation_length) / wall_clock_latency_s)} tps"
+            )
 
             # Add metrics to CSV
-            if len(csv_metrics) == 14:
-                logger.info("Adding results to CSV")
-                all_csv_metrics.append(csv_metrics)
-
-                # Batch decoding at end of generation
-                # logger.info("-------------")
-                # logger.info(tokenizer.batch_decode(all_token_ids, skip_special_tokens=True))
-                # logger.info("-------------")
-            else:
-                logger.info(
-                    f"Could not process token generation at batch size = {batch_size}, prompt length = {prompt_length}"
-                )
-                continue
+            logger.info("Adding results to CSV")
+            csv_metrics.extend(
+                [
+                    avg_sampling_latency_ms,
+                    avg_sampling_thrpt,
+                    first_token_latency_ms,
+                    first_token_thrpt,
+                    halfway_token_latency_ms,
+                    halfway_token_thrpt,
+                    all_token_latency_ms,
+                    all_token_thrpt,
+                    wall_clock_latency_s,
+                    wall_clock_thrpt,
+                ]
+            )
+            all_csv_metrics.append(csv_metrics)
 
         except:  # noqa: E722
             logger.info(f"Could not benchmark at batch size = {batch_size}, prompt length = {prompt_length}")
