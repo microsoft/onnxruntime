@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <utility>
+
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
@@ -35,7 +37,7 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 ShardedMoE<T>::ShardedMoE(const OpKernelInfo& op_kernel_info) : NcclKernel(op_kernel_info), MoEBase(op_kernel_info) {
-  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("tp", &tp_).IsOK());
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("tensor_shards", &tensor_shards_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("local_experts_start_index", &local_experts_start_index_).IsOK());
   rank_to_experts_start_index_.resize(nccl_->Size());
   // Initialize rank_to_experts_start_index_[0] to a value to convey that it is not initialized.
@@ -67,7 +69,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
-  MoEParameters moe_params(tp_);
+  MoEParameters moe_params(tensor_shards_);
   ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
                                   fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
                                   fc3_experts_bias_optional));
@@ -138,7 +140,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (moe_params.parallel_type == MoEParallelType::TP) {
-    ORT_ENFORCE(moe_params.tp == nccl_->Size());
+    ORT_ENFORCE(moe_params.tensor_shards == nccl_->Size());
     NCCL_RETURN_IF_ERROR(ncclGroupStart());
     NCCL_RETURN_IF_ERROR(ncclAllReduce(reinterpret_cast<const char*>(fc2_output.get()),
                                        reinterpret_cast<char*>(fc2_output_bc.get()),

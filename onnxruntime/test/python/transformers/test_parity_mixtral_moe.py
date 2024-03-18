@@ -337,16 +337,17 @@ class MixtralSparseMoeBlock(nn.Module):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
         torch_output = self.forward(hidden_state)
         ort_output = self.ort_forward(hidden_state)
-        print(
-            "batch_size:",
-            self.batch_size,
-            " sequence_length:",
-            self.sequence_length,
-            " max_diff:",
-            (torch_output - ort_output).abs().max(),
-            " parity:",
-            torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04),
-        )
+        if ort_output is not None:
+            assert torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04)
+            print(
+                "batch_size:",
+                self.batch_size,
+                " sequence_length:",
+                self.sequence_length,
+                " max_diff:",
+                (torch_output - ort_output).abs().max(),
+                " parity: OK",
+            )
 
 
 class TestMixtralMoE(unittest.TestCase):

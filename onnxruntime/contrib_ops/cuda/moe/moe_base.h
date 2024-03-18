@@ -20,7 +20,7 @@ enum class MoEParallelType {
 
 struct MoEParameters {
   MoEParameters() {}
-  MoEParameters(int64_t tp) : tp(tp) {}
+  explicit MoEParameters(int64_t tensor_shards) : tensor_shards(tensor_shards) {}
   int64_t num_rows;
   int64_t num_experts;
   int64_t local_num_experts;
@@ -28,7 +28,7 @@ struct MoEParameters {
   int64_t inter_size;
 
   MoEParallelType parallel_type;
-  int64_t tp{1};
+  int64_t tensor_shards{1};
 };
 
 class MoEBase {
@@ -128,13 +128,15 @@ class MoEBase {
       }
     }
 
-    if (fc3_experts_weights_optional != nullptr && fc3_experts_weights_optional->Shape().GetDims() != fc1_experts_weights_dims) {
+    if (fc3_experts_weights_optional != nullptr &&
+        fc3_experts_weights_optional->Shape().GetDims() != fc1_experts_weights_dims) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "fc3_experts_weights_dims must be equal to fc1_experts_weights_dims, got ",
                              fc3_experts_weights_optional->Shape().GetDims(), " and ", fc1_experts_weights_dims);
     }
 
-    if (fc3_experts_bias_optional != nullptr && fc1_experts_bias_optional != nullptr && fc3_experts_bias_optional->Shape().GetDims() != fc1_experts_bias_optional->Shape().GetDims()) {
+    if (fc3_experts_bias_optional != nullptr && fc1_experts_bias_optional != nullptr &&
+        fc3_experts_bias_optional->Shape().GetDims() != fc1_experts_bias_optional->Shape().GetDims()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "fc3_experts_bias_dims must be equal to fc1_experts_bias_dims, got ",
                              fc3_experts_bias_optional->Shape().GetDims(), " and ",
@@ -147,13 +149,13 @@ class MoEBase {
     parameters.hidden_size = hidden_size;
     parameters.inter_size = inter_size;
     if (num_experts == local_num_experts) {
-      if (parameters.tp == 1) {
+      if (parameters.tensor_shards == 1) {
         parameters.parallel_type = MoEParallelType::None;
       } else {
         parameters.parallel_type = MoEParallelType::TP;
       }
     } else if (num_experts > local_num_experts) {
-      if (parameters.tp == 1) {
+      if (parameters.tensor_shards == 1) {
         parameters.parallel_type = MoEParallelType::EP;
       } else {
         parameters.parallel_type = MoEParallelType::EPAndTP;

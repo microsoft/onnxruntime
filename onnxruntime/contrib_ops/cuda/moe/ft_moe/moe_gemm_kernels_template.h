@@ -311,8 +311,8 @@ void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weig
 template <typename T, typename WeightType, typename arch, typename EpilogueTag,
           typename std::enable_if<std::is_same<T, float>::value>::type* = nullptr>
 void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
-                                  int64_t* total_rows_before_expert, int64_t /*total_rows*/, int64_t gemm_n, int64_t gemm_k,
-                                  int num_experts, CutlassGemmConfig gemm_config, int /*sm_version*/,
+                                  int64_t* total_rows_before_expert, int64_t /*total_rows*/, int64_t gemm_n,
+                                  int64_t gemm_k, int num_experts, CutlassGemmConfig gemm_config, int /*sm_version*/,
                                   int multi_processor_count, cudaStream_t stream, int* occupancy = nullptr) {
   switch (gemm_config.tile_config) {
     case CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8:
@@ -435,16 +435,16 @@ void MoeGemmRunner<T, WeightType>::moe_gemm_act(const T* A, const WeightType* B,
                                                 ActivationType activation_type, cudaStream_t stream) {
   switch (activation_type) {
     case ActivationType::Relu:
-      run_gemm<EpilogueOpNoBiasReLU>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
-                                     num_experts, stream);
+      run_gemm<EpilogueOpNoBiasReLU>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n,
+                                     gemm_k, num_experts, stream);
       break;
     case ActivationType::Gelu:
       run_gemm<EpilogueOpNoBiasFtGelu>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n,
                                        gemm_k, num_experts, stream);
       break;
     case ActivationType::Silu:
-      run_gemm<EpilogueOpNoBiasSilu>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
-                                     num_experts, stream);
+      run_gemm<EpilogueOpNoBiasSilu>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n,
+                                     gemm_k, num_experts, stream);
       break;
     case ActivationType::Identity:
       run_gemm<EpilogueOpNoBias>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,

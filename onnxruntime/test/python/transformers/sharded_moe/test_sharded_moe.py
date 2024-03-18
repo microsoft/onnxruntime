@@ -52,48 +52,50 @@ def create_moe_onnx_graph(
     topk=2,
     normalize_routing_weights=1,
     activation_type="gelu",
-    tp=1,
+    tensor_shards=1,
 ):
-    use_sharded_moe = num_experts > local_num_experts or tp > 1
+    use_sharded_moe = num_experts > local_num_experts or tensor_shards > 1
     nodes = [
-        helper.make_node(
-            "MoE",
-            [
-                "input",
-                "router_probs",
-                "fc1_experts_weights",
-                "fc1_experts_bias",
-                "fc2_experts_weights",
-                "fc2_experts_bias",
-                "fc3_experts_weights",
-            ],
-            ["output"],
-            "MoE_0",
-            k=topk,
-            normalize_routing_weights=normalize_routing_weights,
-            activation_type=activation_type,
-            domain="com.microsoft",
-        )
-        if not use_sharded_moe
-        else helper.make_node(
-            "ShardedMoE",
-            [
-                "input",
-                "router_probs",
-                "fc1_experts_weights",
-                "fc1_experts_bias",
-                "fc2_experts_weights",
-                "fc2_experts_bias",
-                "fc3_experts_weights",
-            ],
-            ["output"],
-            "MoE_0",
-            k=topk,
-            normalize_routing_weights=normalize_routing_weights,
-            activation_type=activation_type,
-            local_experts_start_index=local_experts_start_index,
-            tp=tp,
-            domain="com.microsoft",
+        (
+            helper.make_node(
+                "MoE",
+                [
+                    "input",
+                    "router_probs",
+                    "fc1_experts_weights",
+                    "fc1_experts_bias",
+                    "fc2_experts_weights",
+                    "fc2_experts_bias",
+                    "fc3_experts_weights",
+                ],
+                ["output"],
+                "MoE_0",
+                k=topk,
+                normalize_routing_weights=normalize_routing_weights,
+                activation_type=activation_type,
+                domain="com.microsoft",
+            )
+            if not use_sharded_moe
+            else helper.make_node(
+                "ShardedMoE",
+                [
+                    "input",
+                    "router_probs",
+                    "fc1_experts_weights",
+                    "fc1_experts_bias",
+                    "fc2_experts_weights",
+                    "fc2_experts_bias",
+                    "fc3_experts_weights",
+                ],
+                ["output"],
+                "MoE_0",
+                k=topk,
+                normalize_routing_weights=normalize_routing_weights,
+                activation_type=activation_type,
+                local_experts_start_index=local_experts_start_index,
+                tensor_shards=tensor_shards,
+                domain="com.microsoft",
+            )
         ),
     ]
 
@@ -299,7 +301,7 @@ def test_moe_with_tensor_parallelism(
         fc2_experts_weights,
         fc2_experts_bias_all,
         fc3_experts_weights,
-        tp=get_size(),
+        tensor_shards=get_size(),
     )
 
     run_ort_with_parity_check(

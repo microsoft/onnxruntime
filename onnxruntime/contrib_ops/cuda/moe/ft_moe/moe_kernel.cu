@@ -51,18 +51,19 @@
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda::BinaryElementWiseImpl;
+using onnxruntime::cuda::fast_divmod;
+using onnxruntime::cuda::OP_Mul;
+using onnxruntime::cuda::SimpleBroadcast;
 
 namespace ort_fastertransformer {
-
 static constexpr int WARP_SIZE = 32;
 
 // ====================== Softmax things ===============================
 // We have our own implementation of softmax here so we can support transposing the output
 // in the softmax kernel when we extend this module to support expert-choice routing.
 template <typename T, int TPB>
-__launch_bounds__(TPB) __global__
-    void moe_softmax(const T* input, const bool* finished, T* output, const int num_cols) {
+__launch_bounds__(TPB) __global__ void moe_softmax(const T* input, const bool* finished, T* output, const int num_cols) {
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmpStorage;
 
@@ -393,7 +394,7 @@ struct TopkConstants {
 
 template <typename T, int EXPERTS, int WARPS_PER_TB>
 void topk_gating_softmax_launcher_helper(const T* input, const bool* finished, T* output, int* indices, int* source_row,
-                                         int num_rows, int num_experts, int k, bool normalize_routing_weights,
+                                         int num_rows, int /*num_experts*/, int k, bool normalize_routing_weights,
                                          cudaStream_t stream) {
   static constexpr unsigned long MAX_BYTES_PER_LDG = 16;
 
@@ -461,7 +462,8 @@ void topk_gating_softmax_kernelLauncher(const T* input, const bool* finished, T*
       static constexpr int TPB = 256;
       moe_softmax<T, TPB><<<num_rows, TPB, 0, stream>>>(input, finished, softmax_temp_output, num_experts);
       moe_top_k<T, TPB>
-          <<<num_rows, TPB, 0, stream>>>(softmax_temp_output, finished, output, indices, source_row, num_experts, k, normalize_routing_weights);
+          <<<num_rows, TPB, 0, stream>>>(softmax_temp_output, finished, output, indices, source_row, num_experts, k,
+                                         normalize_routing_weights);
     }
   }
 }
@@ -611,15 +613,15 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
   total_rows_before_expert_ = (int64_t*)(permuted_data_ + buf_size);
 
   if (has_fc3_) {
-    fc3_result_ = (T*)(total_rows_before_expert_ + padded_experts);
-    fc1_result_ = (T*)(fc3_result_ + interbuf_size);
+    fc3_result_ = reinterpret_cast<T*>(total_rows_before_expert_ + padded_experts);
+    fc1_result_ = reinterpret_cast<T*>(fc3_result_ + interbuf_size);
   } else {
-    fc1_result_ = (T*)(total_rows_before_expert_ + padded_experts);
+    fc1_result_ = reinterpret_cast<T*>(total_rows_before_expert_ + padded_experts);
   }
 
   const bool is_pow_2 = (num_experts != 0) && ((num_experts & (num_experts - 1)) == 0);
   if (!is_pow_2 || num_experts > 256) {
-    softmax_out_ = (T*)(fc1_result_ + interbuf_size);
+    softmax_out_ = reinterpret_cast<T*>(fc1_result_ + interbuf_size);
   } else {
     softmax_out_ = nullptr;
   }
@@ -891,7 +893,8 @@ __global__ void finalize_moe_routing_kernel(const T* expanded_permuted_rows, T* 
       const int expert_idx = expert_for_source_row[k_offset];
       const T* bias_ptr = bias ? bias + expert_idx * cols : nullptr;
 
-      thread_output = thread_output + row_scale * (expanded_permuted_rows_row_ptr[tid] + (bias_ptr ? bias_ptr[tid] : T(0)));
+      thread_output = thread_output + row_scale * (expanded_permuted_rows_row_ptr[tid] +
+                                                   (bias_ptr ? bias_ptr[tid] : T(0)));
     }
     reduced_row_ptr[tid] = thread_output;
   }

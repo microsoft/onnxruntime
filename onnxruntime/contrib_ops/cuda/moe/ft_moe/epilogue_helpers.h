@@ -154,8 +154,9 @@ struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, Epilog
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpNoBias> {
   using Op =
-      cutlass::epilogue::thread::LinearCombination<ElementType, ElementsPerVectorAccess, ElementAccumulator,
-                                                   ElementAccumulator, cutlass::epilogue::thread::ScaleType::OnlyAlphaScaling>;
+      cutlass::epilogue::thread::LinearCombination<
+          ElementType, ElementsPerVectorAccess, ElementAccumulator,
+          ElementAccumulator, cutlass::epilogue::thread::ScaleType::OnlyAlphaScaling>;
 };
 
 }  // namespace ort_fastertransformer
