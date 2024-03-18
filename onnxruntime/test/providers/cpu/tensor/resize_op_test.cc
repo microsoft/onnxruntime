@@ -5,9 +5,11 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/trt_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
@@ -243,7 +245,10 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   std::vector<float> Y = {2.66666651f, 4.3333331f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
+  // QNN: result diff
+  // TRT: Segmentation fault in A100
+  std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
@@ -267,8 +272,9 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+  // TRT: Segmentation fault in A100
+  std::unordered_set<std::string> excluded_providers({kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
@@ -315,7 +321,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
   std::vector<int8_t> Y = {0, 0};
 
   test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Since NNAPI(TFLite) only using the scale calculate using the input/output size
@@ -347,7 +353,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
     std::vector<float> Y = {3.5f, 5.5f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -405,7 +411,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
     std::vector<float> Y = {1.0f, 4.0f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -472,7 +478,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int
 
     test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
     // TensorRT: results mismatch
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -608,7 +614,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric_scales) {
         7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -725,7 +731,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners) {
       4.0f, 4.5714290f, 5.142857f, 5.714286f, 6.285714f, 6.8571430f, 7.428571f, 8.0f};
 
   test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_3DTrilinear_pytorch_half_pixel) {
@@ -819,7 +825,7 @@ TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
                             7.0f, 11.0f};
 
     test.AddOutput<float>("Y", {N, C, H, W}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -845,7 +851,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest) {
   std::vector<float> Y = {1.0f, 3.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Opset12) {
@@ -867,7 +873,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Opset12) {
   std::vector<float> Y = {1.0f, 3.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
@@ -920,7 +926,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_half_pixel) {
                           14.0f, 16.0f};
 
   test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_crop_and_resize_with_extrapolation) {
@@ -1000,7 +1006,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest) {
                           3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_WithSizes_CeilMode) {
@@ -1093,7 +1099,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
                           13.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
@@ -1197,7 +1203,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
                             3.0f, 3.0f, 4.0f, 4.0f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -1262,7 +1268,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {
                           11.9165f, 13.2266f, 14.5278f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_exclude_outside) {
@@ -1292,7 +1298,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_exclude_outside) {
                           11.949f, 13.2503f, 14.5942f};
 
   test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
@@ -1319,7 +1325,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
                           11.8701f, 13.168f, 14.4912f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_with_roi) {
@@ -1373,7 +1379,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_asymmetric) {
                           11.375f, 12.6719f, 13.9688f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicUpSampleTest) {
@@ -1405,7 +1411,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest) {
                           13.375f, 13.7813f, 14.375f, 14.875f, 15.375f, 15.9688f, 16.375f, 16.4688f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_MultiChannel) {
@@ -1486,7 +1492,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_tf_half_pixel_for_nn) {
                           13.332f, 13.8086f, 14.4375f, 14.8438f, 15.4727f, 15.9492f, 16.2461f, 16.1758f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
@@ -1512,7 +1518,10 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
   std::vector<float> Y = {1.0f, 2.66666651f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
+  // QNN: result diff
+  // TRT: segmentation fault in A100
+  std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
@@ -1538,7 +1547,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
   std::vector<float> Y = {1.0f, 2.66666651f};
 
   test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
@@ -1574,7 +1583,10 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
+  // QNN: result diff
+  // TRT: segmentation fault in A100
+  std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
@@ -1602,7 +1614,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
       4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f};
 
   test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest_Ver10) {
@@ -1627,7 +1639,7 @@ TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest_Ver10) {
                           7.0f, 11.0f};
 
   test.AddOutput<float>("Y", {N, C, H, W}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Ver10) {
@@ -1647,7 +1659,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Ver10) {
   std::vector<float> Y = {1.0f, 3.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_Ver10) {
@@ -1668,10 +1680,10 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_Ver10) {
                           3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
-TEST(UpsampleOpTest, ResizeOpNearestNoScaleTest_Ver10) {
+TEST(ResizeOpTest, ResizeOpNearestNoScaleTest_Ver10) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
 
@@ -1686,7 +1698,7 @@ TEST(UpsampleOpTest, ResizeOpNearestNoScaleTest_Ver10) {
   std::vector<float> Y = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddOutput<float>("Y", {N, C, H, W}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOp_MissingRoiAndMissingScalesOptionalInputs) {
@@ -1737,7 +1749,7 @@ void ResizeOpTypeCheck_Ver_10() {
                       3, 3, 3, 4, 4, 4};
 
   test.AddOutput<T>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver_10) {
@@ -1768,7 +1780,7 @@ void ResizeOpTypeCheck_Ver_11_13_18(int opset_version) {
                       3, 3, 3, 4, 4, 4};
 
   test.AddOutput<T>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver11) {
