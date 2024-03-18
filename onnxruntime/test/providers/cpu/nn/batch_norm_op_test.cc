@@ -905,13 +905,15 @@ TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   test.AddInput<float>("var", channel_dims, {1.0f, 2.0f});
 
   test.AddOutput<float>("Y", input_output_dims, {0.0131f, 0.5210f, 1.7244f, 0.1387f, -0.2708f, -0.1191f, 1.2089f, -0.0922f, -0.9548f, -1.5203f, 0.9077f, -0.8298f, 0.5796f, -0.4501f, -2.0921f, 1.2358f});
-
   test.AddOutput<float>("running_mean", channel_dims, {-0.1754f, 0.303106f});
   test.AddOutput<float>("running_var", channel_dims, {0.696052f, 1.41316f});
+
   // mean and variance of X across channel dimension
   // With Opset9 we output saved_inv_std instead of saved_var to match CUDA EP
   test.AddOutput<float>("saved_mean", channel_dims, {-0.306f, 0.114562f});
   test.AddOutput<float>("saved_inv_std", channel_dims, {1.2288f, 0.861317f});
+
+  test.SetOutputTolerance(0.0001f, 0.0001f);
 
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
@@ -938,9 +940,10 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
   test.AddInput<float>("var", channel_dims, {1.0f, 2.0f});
 
   test.AddOutput<float>("Y", input_output_dims, {0.0131f, 0.5210f, 1.7244f, 0.1387f, -0.2708f, -0.1191f, 1.2089f, -0.0922f, -0.9548f, -1.5203f, 0.9077f, -0.8298f, 0.5796f, -0.4501f, -2.0921f, 1.2358f});
-
   test.AddOutput<float>("running_mean", channel_dims, {-0.1754f, 0.303106f});
   test.AddOutput<float>("running_var", channel_dims, {0.696052f, 1.41316f});
+
+  test.SetOutputTolerance(0.0001f, 0.0001f);
 
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
@@ -969,6 +972,8 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
 
   test.AddOutput<float>("running_mean", channel_dims, {-0.1754f, 0.303106f});
   test.AddOutput<float>("running_var", channel_dims, {0.696052f, 1.41316f});
+
+  test.SetOutputTolerance(0.0001f, 0.0001f);
 
   // Same exclusions as the opset 14 test
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",

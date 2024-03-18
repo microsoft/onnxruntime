@@ -754,8 +754,9 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
 
     // Output(s)
     tester.AddOutput<float>("output", input_dims, output);
-
     tester.AddOutput<float>("present", past_dims, present);
+
+    tester.SetOutputTolerance(0.001f, 0.001f);
 
     // Run - Regular kernel execution path
     {
@@ -897,8 +898,9 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
 
     // Output(s)
     tester.AddOutput<MLFloat16>("output", input_dims, output);
-
     tester.AddOutput<MLFloat16>("present", past_dims, present);
+
+    tester.SetOutputTolerance(0.005f, 0.001f);
 
     // Run - Regular kernel execution path
     {

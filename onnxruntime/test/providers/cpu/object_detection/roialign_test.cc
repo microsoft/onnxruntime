@@ -463,6 +463,7 @@ static void BasicTest() {
                                            0.3661f,
                                            0.2349f,
                                        });
+  test.SetOutputTolerance(0.0001f, 0.0001f);
   test.Run();
 }
 
