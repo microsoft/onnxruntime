@@ -47,15 +47,6 @@
 #include "cub/util_type.cuh"
 #endif
 
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
-#include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
-
-using onnxruntime::cuda::BinaryElementWiseImpl;
-using onnxruntime::cuda::fast_divmod;
-using onnxruntime::cuda::OP_Mul;
-using onnxruntime::cuda::SimpleBroadcast;
-
 namespace ort_fastertransformer {
 static constexpr int WARP_SIZE = 32;
 
@@ -312,7 +303,7 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
   int start_col = first_elt_read_by_thread;
   static constexpr int COLS_PER_GROUP_LDG = ELTS_PER_LDG * THREADS_PER_ROW;
 
-  T output_row_sum = T(0.f);
+  float output_row_sum = 0.f;
   for (int k_idx = 0; k_idx < k; ++k_idx) {
     // First, each thread does the local argmax
     float max_val = row_chunk[0];
@@ -353,14 +344,14 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
       // single) thread per row of the input/output matrices.
       const int idx = k * thread_row + k_idx;
       output[idx] = T(max_val);
-      output_row_sum = output_row_sum + output[idx];
+      output_row_sum = output_row_sum + float(max_val);
       indices[idx] = should_process_row ? expert : NUM_EXPERTS;
       source_rows[idx] = k_idx * num_rows + thread_row;
 
       if (normalize_routing_weights && k_idx == k - 1) {
 #pragma unroll
         for (int ki = 0; ki < k; ++ki) {
-          output[idx - ki] = output[idx - ki] / output_row_sum;
+          output[idx - ki] = T(float(output[idx - ki]) / output_row_sum);
         }
       }
     }
@@ -563,7 +554,6 @@ template <typename T, typename WeightType, typename Enable>
 size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(int num_rows, const int hidden_size,
                                                                    const int inter_size, int num_experts,
                                                                    int k) {
-  // bugbug: check if sharded moe works with k > 1
   total_covered_rows_ = k * num_rows;
 
   const int buf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
@@ -626,6 +616,30 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
   } else {
     softmax_out_ = nullptr;
   }
+}
+
+template <typename T>
+__global__ void elementWiseMulKernel(T* output, T const* input, size_t inter_size)
+{
+    int const tid = threadIdx.x;
+    int const token = blockIdx.x;
+
+    output = output + token * inter_size;
+    input = input + token * inter_size;
+    for (int i = tid; i < inter_size; i += blockDim.x)
+    {
+        T fc1_value = input[i];
+        output[i] = fc1_value * output[i];
+    }
+}
+
+template <typename T>
+void elementWiseMul(T* output, T const* input, int inter_size, int num_tokens, cudaStream_t stream)
+{
+    int const blocks = num_tokens;
+    int const threads = std::min(inter_size, 1024);
+
+    elementWiseMulKernel<<<blocks, threads, 0, stream>>>(output, input, inter_size);
 }
 
 template <typename T, typename WeightType, typename Enable>
@@ -711,13 +725,8 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                               expanded_active_expert_rows, inter_size, hidden_size,
                               local_num_experts, stream);
 
-    int output_rank_or_simple_broadcast = static_cast<int>(SimpleBroadcast::NoBroadcast);
-    fast_divmod fdm;
-    BinaryElementWiseImpl(stream, output_rank_or_simple_broadcast, nullptr,
-                          fc1_result_ + total_past_rows_ * inter_size, nullptr,
-                          fc3_result_ + total_past_rows_ * inter_size, nullptr,
-                          fdm, fdm, fc1_result_ + total_past_rows_ * inter_size,
-                          OP_Mul<T, T, T>(), static_cast<size_t>(total_covered_rows_ * inter_size));
+    elementWiseMul(fc1_result_ + total_past_rows_ * inter_size, fc3_result_ + total_past_rows_ * inter_size,
+                   inter_size, total_covered_rows_, stream);
   }
 
   moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows_ * inter_size,

@@ -2931,8 +2931,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MoE"></a><a name="com.microsoft.moe">**com.microsoft.MoE**</a>
 
   Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
-        GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, and Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
-        usually uses top 32 experts.
+        GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
+        usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral)
         
 
 #### Version
@@ -2946,9 +2946,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activation function to use. Choose from relu, gelu, silu and identity. Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
+<dt><tt>normalize_routing_weights</tt> : int</dt>
+<dd>Whether to normalize routing weights</dd>
 </dl>
 
-#### Inputs (4 - 6)
+#### Inputs (5 - 8)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -2957,12 +2959,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D input tensor with shape (num_rows, num_experts)</dd>
 <dt><tt>fc1_experts_weights</tt> : T</dt>
 <dd>3D input tensor with shape (num_experts, hidden_size, inter_size)</dd>
-<dt><tt>fc2_experts_weights</tt> : T</dt>
-<dd>3D input tensor with shape (num_experts, inter_size, hidden_size)</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc2_experts_weights</tt> : T</dt>
+<dd>3D input tensor with shape (num_experts, inter_size, hidden_size)</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional input tensor with shape (num_experts, hidden_size)</dd>
+<dt><tt>fc3_experts_weights</tt> (optional) : T</dt>
+<dd>3D optional input tensor with shape (num_experts, hidden_size, inter_size)</dd>
+<dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
 </dl>
 
 #### Outputs
