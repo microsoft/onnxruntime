@@ -344,14 +344,14 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
       // single) thread per row of the input/output matrices.
       const int idx = k * thread_row + k_idx;
       output[idx] = T(max_val);
-      output_row_sum = output_row_sum + float(max_val);
+      output_row_sum = output_row_sum + static_cast<float>(max_val);
       indices[idx] = should_process_row ? expert : NUM_EXPERTS;
       source_rows[idx] = k_idx * num_rows + thread_row;
 
       if (normalize_routing_weights && k_idx == k - 1) {
 #pragma unroll
         for (int ki = 0; ki < k; ++ki) {
-          output[idx - ki] = T(float(output[idx - ki]) / output_row_sum);
+          output[idx - ki] = T(static_cast<float>(output[idx - ki]) / output_row_sum);
         }
       }
     }
@@ -619,27 +619,24 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
 }
 
 template <typename T>
-__global__ void elementWiseMulKernel(T* output, T const* input, size_t inter_size)
-{
-    int const tid = threadIdx.x;
-    int const token = blockIdx.x;
+__global__ void elementWiseMulKernel(T* output, T const* input, size_t inter_size) {
+  int const tid = threadIdx.x;
+  int const token = blockIdx.x;
 
-    output = output + token * inter_size;
-    input = input + token * inter_size;
-    for (int i = tid; i < inter_size; i += blockDim.x)
-    {
-        T fc1_value = input[i];
-        output[i] = fc1_value * output[i];
-    }
+  output = output + token * inter_size;
+  input = input + token * inter_size;
+  for (int i = tid; i < inter_size; i += blockDim.x) {
+    T fc1_value = input[i];
+    output[i] = fc1_value * output[i];
+  }
 }
 
 template <typename T>
-void elementWiseMul(T* output, T const* input, int inter_size, int num_tokens, cudaStream_t stream)
-{
-    int const blocks = num_tokens;
-    int const threads = std::min(inter_size, 1024);
+void elementWiseMul(T* output, T const* input, int inter_size, int num_tokens, cudaStream_t stream) {
+  int const blocks = num_tokens;
+  int const threads = std::min(inter_size, 1024);
 
-    elementWiseMulKernel<<<blocks, threads, 0, stream>>>(output, input, inter_size);
+  elementWiseMulKernel<<<blocks, threads, 0, stream>>>(output, input, inter_size);
 }
 
 template <typename T, typename WeightType, typename Enable>
