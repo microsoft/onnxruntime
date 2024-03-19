@@ -627,7 +627,11 @@ __global__ void elementWiseMulKernel(T* output, T const* input, size_t inter_siz
   input = input + token * inter_size;
   for (int i = tid; i < inter_size; i += blockDim.x) {
     T fc1_value = input[i];
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
+    output[i] = T(float(fc1_value) * float(output[i]));
+#else
     output[i] = fc1_value * output[i];
+#endif
   }
 }
 
@@ -723,7 +727,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                               local_num_experts, stream);
 
     elementWiseMul(fc1_result_ + total_past_rows_ * inter_size, fc3_result_ + total_past_rows_ * inter_size,
-                   inter_size, total_covered_rows_, stream);
+                   static_cast<int>(inter_size), static_cast<int>(total_covered_rows_), stream);
   }
 
   moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows_ * inter_size,

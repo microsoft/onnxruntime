@@ -323,6 +323,7 @@ class MixtralSparseMoeBlock(nn.Module):
         ort_output = None
         if self.ort_sess is not None:
             ort_output = self.ort_sess.run(None, ort_inputs)
+            return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1)  # , router_logits
 
         # print_tensor("input", ort_inputs["input"])
         # print_tensor("router_probs", ort_inputs["router_probs"])
@@ -331,7 +332,7 @@ class MixtralSparseMoeBlock(nn.Module):
         # print_tensor("fc3_experts_weights", self.moe_experts_weight3.detach().numpy())
         # print_tensor("output", ort_output[0])
 
-        return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1)  # , router_logits
+        return None
 
     def parity_check(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
