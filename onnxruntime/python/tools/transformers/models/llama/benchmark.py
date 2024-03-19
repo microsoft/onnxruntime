@@ -209,6 +209,7 @@ def get_model(args: argparse.Namespace):
             torch_dtype=torch.float16 if args.use_fp16 else torch.float32,
             use_auth_token=args.auth,
             use_cache=True,
+            cache_dir=args.cache_dir,
         ).to(args.target_device)
         end_time = time.time()
 
@@ -610,6 +611,7 @@ def get_args(rank=0):
     parser.add_argument("--pt-num-rows", type=int, default=1000, help="Number of rows for PyTorch profiler to display")
     parser.add_argument("--verbose", default=False, action="store_true")
     parser.add_argument("--log-folder", type=str, default=os.path.join("."), help="Folder to cache log files")
+    parser.add_argument("--cache-dir", type=str, required=True, default="./model_cache", help="Cache dir where Hugging Face files are stored")
 
     args = parser.parse_args()
 
@@ -660,8 +662,8 @@ def main():
 
     args.rank = rank
     args.world_size = world_size
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    config = AutoConfig.from_pretrained(args.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir)
+    config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_dir)
     target_device = f"cuda:{args.rank}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 
