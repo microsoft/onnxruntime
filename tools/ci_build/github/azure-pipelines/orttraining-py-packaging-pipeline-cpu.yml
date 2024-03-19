@@ -46,7 +46,7 @@ stages:
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
             --build-arg BUILD_UID=$(id -u)
-          Repository: onnxruntimetrainingcpubuild
+          Repository: onnxruntimetrainingcpubuild_$(PythonVersion)
 
       - task: CmdLine@2
         displayName: 'build onnxruntime'
