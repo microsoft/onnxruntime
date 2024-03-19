@@ -34,7 +34,6 @@ static void RunTest(const std::vector<float>& x_vals,
 
   if (tolerance != 0.0f) {
     tester.SetOutputAbsErr("Y", tolerance);
-    tester.SetOutputRelErr("Y", tolerance);
   }
 
   std::unordered_set<std::string> excluded_providers;

@@ -690,6 +690,7 @@ TEST(RoiAlignTest, MaxModePositive) {
                                           });*/
   test.Run();
 }
+
 TEST(RoiAlignTest, AvgModeNegativeInvalidMode) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {

@@ -519,11 +519,16 @@ class BaseTester {
     custom_session_registries_.push_back(registry);
   }
 
+  // For floating types (double/float/half/bfloat16), the tolerance is:
+  //   abs(expected_value - actual_value) <= absolute + relative * expected_value
+  // For integer types, tolerance parameters are ignored except the following cases:
+  //   For uint8, tolerance is only applied to NNAPI/XNNPACK/DML providers;
+  //   For int8, only absolute is used, and relative is ignored. See checkers.cc for detail.
   void SetOutputAbsErr(const char* name, float v);
   void SetOutputRelErr(const char* name, float v);
 
-  // Set absolute and relative error for existed outputs.
-  // Negative value will be ignored and fallback to default.
+  // Set absolute and relative error for all existed outputs.
+  // Negative value will be ignored and fallback to the default (search DefaultTolerance for more details).
   // Note that it will not set tolerance for new outputs added after this call.
   void SetOutputTolerance(float abs_error, float rel_error = -1.0f);
 

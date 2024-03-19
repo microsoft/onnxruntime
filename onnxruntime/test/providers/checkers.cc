@@ -46,14 +46,14 @@ struct DefaultTolerance<float> {
 
 template <>
 struct DefaultTolerance<MLFloat16> {
+#if defined(ENABLE_TRAINING)
+  static constexpr float absolute = 0.005f;
+#else
   // The thresholds for inference are estimated with PyTorch script like the following:
   //    x = torch.rand(1000, 1000)
   //    absolute = ((x + 1e-6).to(torch.float16) - x).abs().max() * 10
   //    x[abs(x) < absolute] = absolute
   //    relative = ((x - x.to(torch.float16)) / x).abs().max() * 2
-#if defined(ENABLE_TRAINING)
-  static constexpr float absolute = 0.005f;
-#else
   static constexpr float absolute = 0.0025f;
 #endif
 
@@ -242,7 +242,10 @@ struct TensorCheck<int8_t> {
       cur_actual = actual.template Data<int8_t>();
     }
 
-    const bool has_abs_err = params.absolute_error.has_value();
+    // When absolute error is less than 1 for int8, it has same effect as no tolerance.
+    const bool has_abs_err = params.absolute_error.has_value() && *(params.absolute_error) >= 1.0f;
+
+    // TODO: the relative error is not used for int8 yet.
     if (has_abs_err) {
       double threshold = *(params.absolute_error);
 
