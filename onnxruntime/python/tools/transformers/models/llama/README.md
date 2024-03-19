@@ -431,7 +431,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
 
 ## E2E Inference with LLaMA-2
 
-For end-to-end inference, please visit [this folder](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/models/llama) in ONNX Runtime Inference Examples for a step-by-step walkthrough, code examples, and performance metrics.
+For end-to-end inference, please visit the [ONNX Runtime Inference Examples folder](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/models/llama) for a step-by-step walkthrough, code examples, and performance metrics.
 
 # Mistral
 
