@@ -63,7 +63,7 @@ ONNX Runtime Web offers the following features which may be helpful to use with 
 
 You can try the graph capture feature if your model has static shapes and all its computing kernels are running on WebGPU EP. This feature may potentially improve the performance of your model.
 
-See [Graph Capture](./env-flags-and-session-options.md#graph-capture) for more details.
+See [Graph Capture](./env-flags-and-session-options.md#enableGraphCapture) for more details.
 
 ### Using `ort.env.webgpu` flags
 
