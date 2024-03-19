@@ -1546,19 +1546,19 @@ TEST(MathOpTest, Min_12_Double) {
 TEST(MathOpTest, Min_12_Double_Nan) {
   OpTester test("Min", 12);
   test.AddInput<double>("data_2", {3, 3},
-                       {std::numeric_limits<double>::quiet_NaN(),
-                        std::numeric_limits<double>::quiet_NaN(),
-                        std::numeric_limits<double>::quiet_NaN(),
-                        -0.5, 0.0, -2.0,
-                        0.5, 0.0, 2.0});
-  test.AddInput<double>("data_1", {3, 1},
-                       {0.0, -1.0, 1.0});
-  test.AddOutput<double>("min", {3, 3},
                         {std::numeric_limits<double>::quiet_NaN(),
                          std::numeric_limits<double>::quiet_NaN(),
                          std::numeric_limits<double>::quiet_NaN(),
-                         -1.0, -1.0, -2.0,
-                         0.5, 0.0, 1.0});
+                         -0.5, 0.0, -2.0,
+                         0.5, 0.0, 2.0});
+  test.AddInput<double>("data_1", {3, 1},
+                        {0.0, -1.0, 1.0});
+  test.AddOutput<double>("min", {3, 3},
+                         {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          -1.0, -1.0, -2.0,
+                          0.5, 0.0, 1.0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
@@ -1672,21 +1672,19 @@ TEST(MathOpTest, Min_12_MLFLoat16_Scalar1) {
 TEST(MathOpTest, Min_12_MLFloat16_Nan) {
   OpTester test("Min", 12);
   test.AddInput<MLFloat16>("data_0", {3, 3},
-                       MakeMLFloat16({
-                        std::numeric_limits<float>::quiet_NaN(),
-                        std::numeric_limits<float>::quiet_NaN(),
-                        std::numeric_limits<float>::quiet_NaN(),
-                        -0.5f, 0.0f, -2.0f,
-                        0.5f, 0.0f, 2.0f}));
+                           MakeMLFloat16({std::numeric_limits<float>::quiet_NaN(),
+                                          std::numeric_limits<float>::quiet_NaN(),
+                                          std::numeric_limits<float>::quiet_NaN(),
+                                          -0.5f, 0.0f, -2.0f,
+                                          0.5f, 0.0f, 2.0f}));
   test.AddInput<MLFloat16>("data_1", {3, 1},
-                       MakeMLFloat16({0.0f, -1.0f, 1.0f}));
+                           MakeMLFloat16({0.0f, -1.0f, 1.0f}));
   test.AddOutput<MLFloat16>("min", {3, 3},
-                        MakeMLFloat16({
-                         std::numeric_limits<float>::quiet_NaN(),
-                         std::numeric_limits<float>::quiet_NaN(),
-                         std::numeric_limits<float>::quiet_NaN(),
-                         -1.0f, -1.0f, -2.0f,
-                         0.5f, 0.0f, 1.0f}));
+                            MakeMLFloat16({std::numeric_limits<float>::quiet_NaN(),
+                                           std::numeric_limits<float>::quiet_NaN(),
+                                           std::numeric_limits<float>::quiet_NaN(),
+                                           -1.0f, -1.0f, -2.0f,
+                                           0.5f, 0.0f, 1.0f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
@@ -1817,19 +1815,19 @@ TEST(MathOpTest, Max_12_Double) {
 TEST(MathOpTest, Max_12_Double_Nan) {
   OpTester test("Max", 12);
   test.AddInput<double>("data_2", {3, 3},
-                       {std::numeric_limits<double>::quiet_NaN(),
-                        std::numeric_limits<double>::quiet_NaN(),
-                        std::numeric_limits<double>::quiet_NaN(),
-                        -0.5, 0.0, -2.0,
-                        0.5, 0.0, 2.0});
-  test.AddInput<double>("data_1", {3, 1},
-                       {0.0, -1.0, 1.0});
-  test.AddOutput<double>("max", {3, 3},
                         {std::numeric_limits<double>::quiet_NaN(),
                          std::numeric_limits<double>::quiet_NaN(),
                          std::numeric_limits<double>::quiet_NaN(),
-                         -0.5, 0.0, -1.0,
-                         1.0, 1.0, 2.0});
+                         -0.5, 0.0, -2.0,
+                         0.5, 0.0, 2.0});
+  test.AddInput<double>("data_1", {3, 1},
+                        {0.0, -1.0, 1.0});
+  test.AddOutput<double>("max", {3, 3},
+                         {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          -0.5, 0.0, -1.0,
+                          1.0, 1.0, 2.0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
@@ -1943,21 +1941,19 @@ TEST(MathOpTest, Max_12_MLFLoat16_Scalar1) {
 TEST(MathOpTest, Max_12_MLFloat16_Nan) {
   OpTester test("Max", 12);
   test.AddInput<MLFloat16>("data_0", {3, 3},
-                       MakeMLFloat16({
-                        std::numeric_limits<float>::quiet_NaN(),
-                        std::numeric_limits<float>::quiet_NaN(),
-                        std::numeric_limits<float>::quiet_NaN(),
-                        -0.5f, 0.0f, -2.0f,
-                        0.5f, 0.0f, 2.0f}));
+                           MakeMLFloat16({std::numeric_limits<float>::quiet_NaN(),
+                                          std::numeric_limits<float>::quiet_NaN(),
+                                          std::numeric_limits<float>::quiet_NaN(),
+                                          -0.5f, 0.0f, -2.0f,
+                                          0.5f, 0.0f, 2.0f}));
   test.AddInput<MLFloat16>("data_1", {3, 1},
-                       MakeMLFloat16({0.0f, -1.0f, 1.0f}));
+                           MakeMLFloat16({0.0f, -1.0f, 1.0f}));
   test.AddOutput<MLFloat16>("max", {3, 3},
-                       MakeMLFloat16({
-                        std::numeric_limits<float>::quiet_NaN(),
-                        std::numeric_limits<float>::quiet_NaN(),
-                        std::numeric_limits<float>::quiet_NaN(),
-                        -0.5f, 0.0f, -1.0f,
-                        1.0f, 1.0f, 2.0f}));
+                            MakeMLFloat16({std::numeric_limits<float>::quiet_NaN(),
+                                           std::numeric_limits<float>::quiet_NaN(),
+                                           std::numeric_limits<float>::quiet_NaN(),
+                                           -0.5f, 0.0f, -1.0f,
+                                           1.0f, 1.0f, 2.0f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
