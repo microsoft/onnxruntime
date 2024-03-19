@@ -49,7 +49,7 @@
 			alt: 'Ant Group'
 		},
 		{
-			href: './testimonials#ATLAS',
+			href: './testimonials#Atlas%20Experiment',
 			src: ATLASLogo,
 			alt: 'ATLAS'
 		},
@@ -79,7 +79,7 @@
 			alt: 'Hypefactors'
 		},
 		{
-			href: './testimonials#Infarm',
+			href: './testimonials#InFarm',
 			src: infarmLogo,
 			alt: 'InFarm'
 		},
@@ -94,7 +94,7 @@
 			alt: 'Intelligenza Etica'
 		},
 		{
-			href: './testimonials#Navitaire%20Amadeus',
+			href: './testimonials#Navitaire',
 			src: navitaireAmadeusLogo,
 			alt: 'Navitaire'
 		},
@@ -109,7 +109,7 @@
 			alt: 'Oracle'
 		},
 		{
-			href: './testimonials#PeakSpeed',
+			href: './testimonials#Peakspeed',
 			src: PeakSpeedLogo,
 			alt: 'Peakspeed'
 		},
@@ -154,12 +154,12 @@
 			alt: 'Unreal Engine'
 		},
 		{
-			href: './testimonials#USDA',
+			href: './testimonials#United%20States%20Department%20of%20Agriculture,%20Agricultural%20Research%20Service',
 			src: usdaLogo,
 			alt: 'USDA'
 		},
 		{
-			href: './testimonials#Vespa',
+			href: './testimonials#Vespa.ai',
 			src: vespaLogo,
 			alt: 'Vespa'
 		},

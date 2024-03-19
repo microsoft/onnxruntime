@@ -34,10 +34,6 @@
 	/**
 	 * @type {any}
 	 */
-	export let image;
-	/**
-	 * @type {any}
-	 */
 	export let url;
 	/**
 	 * @type {any}
