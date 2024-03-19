@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/framework/node_unit.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"

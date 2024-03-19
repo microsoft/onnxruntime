@@ -324,10 +324,12 @@ def generate_metadata(line_list, args):
     generate_owners(metadata_list, "Microsoft")
     generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, "\xc2\xa9 " + "Microsoft Corporation. All rights reserved.")
-    generate_tags(
-        metadata_list, "ONNX ONNX Runtime Machine Learning"
-    ) if "Microsoft.ML.OnnxRuntime.Training." in args.package_name else generate_tags(
-        metadata_list, "native ONNX ONNXRuntime-Training Learning-on-The-Edge On-Device-Training MachineLearning"
+    (
+        generate_tags(metadata_list, "ONNX ONNX Runtime Machine Learning")
+        if "Microsoft.ML.OnnxRuntime.Training." in args.package_name
+        else generate_tags(
+            metadata_list, "native ONNX ONNXRuntime-Training Learning-on-The-Edge On-Device-Training MachineLearning"
+        )
     )
     generate_icon(metadata_list, "ORT_icon_for_light_bg.png")
     generate_license(metadata_list)

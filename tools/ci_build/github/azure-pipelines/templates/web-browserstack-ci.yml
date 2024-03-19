@@ -71,7 +71,7 @@ jobs:
     timeoutInMinutes: 20
   - script: |
       export ORT_WEB_TEST_BS_BROWSERS=BS_MAC_11_Safari_14,BS_MAC_11_Chrome_91,BS_ANDROID_11_Pixel_5
-      npm test -- suite0 --env=bs --wasm-init-timeout=30000 --file-cache
+      npm test -- suite0 -e=bs --wasm.initTimeout=30000 --file-cache
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
     displayName: 'npm test (Suite0, BS_ANDROID, BS_MAC)'
     env:
@@ -80,7 +80,7 @@ jobs:
     continueOnError: true
   - script: |
       export ORT_WEB_TEST_BS_BROWSERS=BS_IOS_14_iPhoneXS
-      npm test -- suite1 --env=bs --wasm-init-timeout=30000 --file-cache --backend=wasm
+      npm test -- suite1 -e=bs --wasm.initTimeout=30000 --file-cache --backend=wasm
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
     displayName: 'npm test (Suite1, BS_IOS)'
     continueOnError: true
@@ -95,4 +95,3 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-

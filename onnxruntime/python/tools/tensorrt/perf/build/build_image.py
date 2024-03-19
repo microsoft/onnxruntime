@@ -14,9 +14,10 @@ import sys
 from typing import List, Optional
 
 TRT_DOCKER_FILES = {
-    "8.4": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_6_tensorrt8_4",
-    "8.5": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_5",
-    "8.6": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_6",
+    "8.4.cuda_11_6_cudnn_8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_6_tensorrt8_4",
+    "8.5.cuda_11_8_cudnn_8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_5",
+    "8.6.cuda_11_8_cudnn_8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_6",
+    "8.6.cuda_12_3_cudnn_9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_3_tensorrt8_6",
     "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin",
 }
 
@@ -99,18 +100,11 @@ def docker_build_trt(args: argparse.Namespace):
     :param args: The arguments to this script.
     """
 
-    if not is_valid_ver_str(args.trt_version, min_comps=2, max_comps=4):
-        print(f"[ERROR]: Invalid TensorRT version '{args.trt_version}'", file=sys.stderr)
-        sys.exit(1)
-
-    vers_comps = args.trt_version.split(".")
-    trt_ver_key = f"{vers_comps[0]}.{vers_comps[1]}"
-
-    if trt_ver_key not in TRT_DOCKER_FILES:
+    if args.trt_version not in TRT_DOCKER_FILES:
         print(f"[ERROR]: TensorRT version '{args.trt_version}' is currently unsupported", file=sys.stderr)
         sys.exit(1)
 
-    docker_file = TRT_DOCKER_FILES[trt_ver_key]
+    docker_file = TRT_DOCKER_FILES[args.trt_version]
     docker_file_path = os.path.normpath(os.path.join(args.repo_path, docker_file))
 
     if not os.path.isfile(docker_file_path):
@@ -144,11 +138,7 @@ def docker_build_trt_bin(args: argparse.Namespace):
         sys.exit(1)
 
     if not is_valid_ver_str(args.tar_cuda_version, 2, 2):
-        print("[ERROR]: Must specify a valid CUDA version for binary TensorRT installs (e.g., 11.x)", file=sys.stderr)
-        sys.exit(1)
-
-    if not is_valid_ver_str(args.tar_cudnn_version, 2, 2):
-        print("[ERROR]: Must specify a valid cuDNN version for binary TensorRT installs (e.g., 8.x)", file=sys.stderr)
+        print("[ERROR]: Must specify a valid CUDA version for binary TensorRT installs (e.g., 12.4)", file=sys.stderr)
         sys.exit(1)
 
     if not os.path.isfile(docker_file_path):
@@ -169,8 +159,6 @@ def docker_build_trt_bin(args: argparse.Namespace):
             f"TAR_TRT_VERSION={args.trt_version}",
             "--build-arg",
             f"TAR_CUDA_VERSION={args.tar_cuda_version}",
-            "--build-arg",
-            f"TAR_CUDNN_VERSION={args.tar_cudnn_version}",
             "--build-arg",
             f"TRT_BINS_DIR={args.trt_bins_dir}",
             "-f",
@@ -195,7 +183,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("-r", "--repo_path", required=True, help="Path to the onnxruntime repository")
     parser.add_argument("-i", "--image_name", required=True, help="The resulting Docker image name")
     parser.add_argument("-b", "--branch", default="main", help="Name of the onnxruntime git branch to checkout")
-    parser.add_argument("-t", "--trt_version", default="8.6.1.6", help="TensorRT version (e.g., 8.6.1.6)")
+    parser.add_argument(
+        "-t", "--trt_version", default="8.6.cuda_11_8_cudnn_8", help="TensorRT version (e.g., 8.6.cuda_11_8_cudnn_8)"
+    )
     parser.add_argument("-a", "--cuda_arch", default="75", help="CUDA architecture (e.g., 75)")
 
     # Command-line options for installing TensorRT from binaries.
@@ -208,12 +198,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--tar_cuda_version",
         default="",
-        help="CUDA version (e.g., 11.8) used to find TensorRT EA binary tar.gz package",
-    )
-    parser.add_argument(
-        "--tar_cudnn_version",
-        default="",
-        help="CUDA version (e.g., 8.6) used to find TensorRT EA binary tar.gz package",
+        help="CUDA version (e.g., 12.4) used to find TensorRT EA binary tar.gz package",
     )
     parser.add_argument("--trt_bins_dir", default="", help="Directory containing TensorRT tar.gz package")
     parser.add_argument(

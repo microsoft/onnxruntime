@@ -802,7 +802,7 @@ def main():
         try:
             os.mkdir(args.cache_dir)
         except OSError:
-            logger.error("Creation of the directory %s failed" % args.cache_dir)
+            logger.error("Creation of the directory %s failed" % args.cache_dir)  # noqa: G002
 
     enable_torch = "torch" in args.engines
     enable_torch2 = "torch2" in args.engines
@@ -921,7 +921,7 @@ def main():
                     args,
                 )
             except Exception:
-                logger.error("Exception", exc_info=True)
+                logger.exception("Exception")
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

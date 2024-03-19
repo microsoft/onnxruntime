@@ -29,8 +29,10 @@ Options:
 *** General Options ***
 
  -h, --help                    Print this message.
- -d, --debug                   Specify to run test runner in debug mode.
-                                 Debug mode outputs verbose log for test runner, sets up environment debug flag, and keeps karma not to exit after tests completed.
+ -d, --debug                   Specify to run test runner in debug mode. Debug mode does the following:
+                                 - outputs verbose log for test runner
+                                 - sets up environment debug flag (env.debug = true)
+                                 - opens Chromium debug port at 9333 and keeps karma not to exit after tests completed.
  -b=<...>, --backend=<...>     Specify one or more backend(s) to run the test upon.
                                  Backends can be one or more of the following, splitted by comma:
                                    webgl
@@ -47,38 +49,55 @@ Options:
                                  bs         (for BrowserStack tests)
  -p, --profile                 Enable profiler.
                                  Profiler will generate extra logs which include the information of events time consumption
+ -t, --trace                   Enable trace.
  -P[=<...>], --perf[=<...>]    Generate performance number. Cannot be used with flag --debug.
                                  This flag can be used with a number as value, specifying the total count of test cases to run. The test cases may be used multiple times. Default value is 10.
  -c, --file-cache              Enable file cache.
- -i=<...>, --io-binding=<...>  Specify the IO binding testing type. Should be one of the following:
-                                 none          (default)
-                                 gpu-tensor      use pre-allocated GPU tensors for inputs and outputs
-                                 gpu-location    use pre-allocated GPU tensors for inputs and set preferredOutputLocation to 'gpu-buffer'
 
 *** Session Options ***
  -u=<...>, --optimized-model-file-path=<...>        Specify whether to dump the optimized model.
- -o=<...>, --graph-optimization-level=<...>    Specify graph optimization level.
-                                                 Default is 'all'. Valid values are 'disabled', 'basic', 'extended', 'all'.
+ -o=<...>, --graph-optimization-level=<...>         Specify graph optimization level.
+                                                      Default is 'all'. Valid values are 'disabled', 'basic', 'extended', 'all'.
+ -i=<...>, --io-binding=<...>  Specify the IO binding testing type. Should be one of the following:
+                                 none            (default)
+                                 gpu-tensor      use pre-allocated GPU tensors for inputs and outputs
+                                 gpu-location    use pre-allocated GPU tensors for inputs and set preferredOutputLocation to 'gpu-buffer'
+
 *** Logging Options ***
 
- --log-verbose=<...>           Set log level to verbose
- --log-info=<...>              Set log level to info
- --log-warning=<...>           Set log level to warning
- --log-error=<...>             Set log level to error
-                                 The 4 flags above specify the logging configuration. Each flag allows to specify one or more category(s), splitted by comma. If use the flags without value, the log level will be applied to all category.
+ --log-verbose                 Set log level to verbose
+ --log-info                    Set log level to info
+ --log-warning                 Set log level to warning
+ --log-error                   Set log level to error
+                                 The 4 flags above specify the logging configuration.
 
 *** Backend Options ***
 
- -x, --wasm-number-threads     Set the WebAssembly number of threads
- --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
- --wasm-enable-simd            Set whether to enable SIMD
- --wasm-enable-proxy           Set whether to enable proxy worker
- --webgl-context-id            Set the WebGL context ID (webgl/webgl2)
- --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
- --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
- --webgl-texture-pack-mode     Set the WebGL texture pack mode (true/false)
- --webgpu-profiling-mode       Set the WebGPU profiling mode (off/default)
+ --wasm.<...>=<...>            Set global environment flags for each backend.
+ --webgl.<...>=<...>             These flags can be used multiple times to set multiple flags. For example:
+ --webgpu.<...>=<...>            --webgpu.profiling.mode=default --wasm.numThreads=1 --wasm.simd=false
+ --webnn.<...>=<...>
+
  --webnn-device-type           Set the WebNN device type (cpu/gpu)
+
+ -x, --wasm-number-threads     Set the WebAssembly number of threads
+                                ("--wasm-number-threads" is deprecated. use "--wasm.numThreads" or "-x" instead)
+ --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
+                                (deprecated. use "--wasm.initTimeout" instead)
+ --wasm-enable-simd            Set whether to enable SIMD
+                                (deprecated. use "--wasm.simd" instead)
+ --wasm-enable-proxy           Set whether to enable proxy worker
+                                (deprecated. use "--wasm.proxy" instead)
+ --webgl-context-id            Set the WebGL context ID (webgl/webgl2)
+                                (deprecated. use "--webgl.contextId" instead)
+ --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
+                                (deprecated. use "--webgl.matmulMaxBatchSize" instead)
+ --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
+                                (deprecated. use "--webgl.textureCacheMode" instead)
+ --webgl-texture-pack-mode     Set the WebGL texture pack mode (true/false)
+                                (deprecated. use "--webgl.pack" instead)
+ --webgpu-profiling-mode       Set the WebGPU profiling mode (off/default)
+                                (deprecated. use "--webgpu.profiling.mode" instead)
 
 *** Browser Options ***
 
@@ -171,7 +190,6 @@ export interface TestRunnerCliArgs {
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
-  cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
   webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
@@ -260,40 +278,29 @@ function parseCpuOptions(_args: minimist.ParsedArgs): InferenceSession.CpuExecut
   return {name: 'cpu'};
 }
 
-function parseCpuFlags(_args: minimist.ParsedArgs): Record<string, unknown> {
-  return {};
-}
-
 function parseWasmOptions(_args: minimist.ParsedArgs): InferenceSession.WebAssemblyExecutionProviderOption {
   return {name: 'wasm'};
 }
 
 function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
-  const numThreads = args.x || args['wasm-number-threads'];
+  const wasm = args.wasm || {};
+  const numThreads = wasm.numThreads = wasm.numThreads ?? (args.x ?? args['wasm-number-threads']);
   if (typeof numThreads !== 'undefined' && typeof numThreads !== 'number') {
-    throw new Error('Flag "x"/"wasm-number-threads" must be a number value');
+    throw new Error('Flag "wasm.numThreads"/"x"/"wasm-number-threads" must be a number value');
   }
-  const initTimeout = args['wasm-init-timeout'];
+  const initTimeout = wasm.initTimeout = wasm.initTimeout ?? args['wasm-init-timeout'];
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
-    throw new Error('Flag "wasm-init-timeout" must be a number value');
+    throw new Error('Flag "wasm.initTimeout"/"wasm-init-timeout" must be a number value');
   }
-  let simd = args['wasm-enable-simd'];
-  if (simd === 'true') {
-    simd = true;
-  } else if (simd === 'false') {
-    simd = false;
-  } else if (typeof simd !== 'undefined' && typeof simd !== 'boolean') {
-    throw new Error('Flag "wasm-enable-simd" must be a boolean value');
+  const simd = wasm.simd = parseBooleanArg(wasm.simd ?? args['wasm-enable-simd']);
+  if (typeof simd !== 'undefined' && typeof simd !== 'boolean') {
+    throw new Error('Flag "wasm.simd"/"wasm-enable-simd" must be a boolean value');
   }
-  let proxy = args['wasm-enable-proxy'];
-  if (proxy === 'true') {
-    proxy = true;
-  } else if (proxy === 'false') {
-    proxy = false;
-  } else if (typeof proxy !== 'undefined' && typeof proxy !== 'boolean') {
-    throw new Error('Flag "wasm-enable-proxy" must be a boolean value');
+  const proxy = wasm.proxy = parseBooleanArg(wasm.proxy ?? args['wasm-enable-proxy']);
+  if (typeof proxy !== 'undefined' && typeof proxy !== 'boolean') {
+    throw new Error('Flag "wasm.proxy"/"wasm-enable-proxy" must be a boolean value');
   }
-  return {numThreads, initTimeout, simd, proxy};
+  return wasm;
 }
 
 function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLExecutionProviderOption {
@@ -301,39 +308,43 @@ function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLEx
 }
 
 function parseWebglFlags(args: minimist.ParsedArgs): Partial<Env.WebGLFlags> {
-  const contextId = args['webgl-context-id'];
+  const webgl = args.webgl || {};
+  const contextId = webgl.contextId = webgl.contextId ?? args['webgl-context-id'];
   if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
-    throw new Error('Flag "webgl-context-id" is invalid');
+    throw new Error('Flag "webgl.contextId"/"webgl-context-id" is invalid');
   }
-  const matmulMaxBatchSize = args['webgl-matmul-max-batch-size'];
+  const matmulMaxBatchSize = webgl.matmulMaxBatchSize = webgl.matmulMaxBatchSize ?? args['webgl-matmul-max-batch-size'];
   if (matmulMaxBatchSize !== undefined && typeof matmulMaxBatchSize !== 'number') {
-    throw new Error('Flag "webgl-matmul-max-batch-size" must be a number value');
+    throw new Error('Flag "webgl.matmulMaxBatchSize"/"webgl-matmul-max-batch-size" must be a number value');
   }
-  const textureCacheMode = args['webgl-texture-cache-mode'];
+  const textureCacheMode = webgl.textureCacheMode = webgl.textureCacheMode ?? args['webgl-texture-cache-mode'];
   if (textureCacheMode !== undefined && textureCacheMode !== 'initializerOnly' && textureCacheMode !== 'full') {
-    throw new Error('Flag "webgl-texture-cache-mode" is invalid');
+    throw new Error('Flag "webgl.textureCacheMode"/"webgl-texture-cache-mode" is invalid');
   }
-  const pack = args['webgl-texture-pack-mode'];
+  const pack = webgl.pack = parseBooleanArg(webgl.pack ?? args['webgl-texture-pack-mode']);
   if (pack !== undefined && typeof pack !== 'boolean') {
-    throw new Error('Flag "webgl-texture-pack-mode" is invalid');
+    throw new Error('Flag "webgl.pack"/"webgl-texture-pack-mode" is invalid');
   }
-  const async = args['webgl-async'];
+  const async = webgl.async = parseBooleanArg(webgl.async ?? args['webgl-async']);
   if (async !== undefined && typeof async !== 'boolean') {
-    throw new Error('Flag "webgl-async" is invalid');
+    throw new Error('Flag "webgl.async"/"webgl-async" is invalid');
   }
-  return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
+  return webgl;
 }
 
 function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
-  const profilingMode = args['webgpu-profiling-mode'];
+  const webgpu = args.webgpu || {};
+  const profilingMode = (webgpu.profiling = webgpu.profiling ?? {}).mode =
+      webgpu?.profiling?.mode ?? webgpu.profilingMode ?? args['webgpu-profiling-mode'];
   if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
     throw new Error('Flag "webgpu-profiling-mode" is invalid');
   }
-  const validateInputContent = args['webgpu-validate-input-content'];
+  const validateInputContent = webgpu.validateInputContent =
+      parseBooleanArg(webgpu.validateInputContent ?? args['webgpu-validate-input-content']);
   if (validateInputContent !== undefined && typeof validateInputContent !== 'boolean') {
     throw new Error('Flag "webgpu-validate-input-content" is invalid');
   }
-  return {profilingMode, validateInputContent};
+  return webgpu;
 }
 
 function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExecutionProviderOption {
@@ -344,12 +355,11 @@ function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExe
   return {name: 'webnn', deviceType};
 }
 
-function parseGlobalEnvFlags(args: minimist.ParsedArgs): NonNullable<TestRunnerCliArgs['globalEnvFlags']> {
+function parseGlobalEnvFlags(args: minimist.ParsedArgs) {
   const wasm = parseWasmFlags(args);
   const webgl = parseWebglFlags(args);
   const webgpu = parseWebgpuFlags(args);
-  const cpuFlags = parseCpuFlags(args);
-  return {webgl, wasm, webgpu, ...cpuFlags};
+  return {webgl, wasm, webgpu};
 }
 
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {
@@ -394,15 +404,14 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     }
   }
 
-  const globalEnvFlags = parseGlobalEnvFlags(args);
-
   // Options:
   // --log-verbose=<...>
   // --log-info=<...>
   // --log-warning=<...>
   // --log-error=<...>
   const logConfig = parseLogConfig(args);
-  globalEnvFlags.logLevel = logConfig[0]?.config.minimalSeverity;
+  let logLevel = logConfig[0]?.config.minimalSeverity;
+
   // Option: -p, --profile
   const profile = (args.profile || args.p) ? true : false;
   if (profile) {
@@ -410,8 +419,17 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig.push({category: 'Profiler.node', config: {minimalSeverity: 'verbose'}});
     logConfig.push({category: 'Profiler.op', config: {minimalSeverity: 'verbose'}});
     logConfig.push({category: 'Profiler.backend', config: {minimalSeverity: 'verbose'}});
-    globalEnvFlags.logLevel = 'verbose';
+    logLevel = 'verbose';
   }
+
+  // Option: -t, --trace
+  const trace = parseBooleanArg(args.trace || args.t, false);
+
+  // Options:
+  // --wasm.<...>=<...>
+  // --webgl.<...>=<...>
+  // --webgpu.<...>=<...>
+  const globalEnvFlags = {...parseGlobalEnvFlags(args), debug, trace, logLevel};
 
   // Option: -P[=<...>], --perf[=<...>]
   const perfArg = (args.perf || args.P);
