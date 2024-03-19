@@ -28,9 +28,14 @@ parameters:
     - "partner-models"
 
 - name: MemTest
-  displayName: Run Memory Test
+  displayName: Run Memory Test and Concurrency Test
   type: boolean
   default: true
+
+- name: ConcurrencyTest
+  displayName: Specifies the number of concurrency model test to invoke simultaneously
+  type: string
+  default: 2
 
 - name: TrtEPOptions
   displayName: TensorRT EP options
@@ -107,8 +112,8 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
     - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
-        displayName: 'Run Memory Test'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false -c ${{ parameters.ConcurrencyTest }}'
+        displayName: 'Run Memory Test and Concurrency Test'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ each option in parameters.ModelGroups }}:
@@ -152,7 +157,7 @@ jobs:
         displayName: 'Check and Install Azure CLI'
 
       - task: AzureCLI@2
-        displayName: 'Azure CLI Post to Dashboard'
+        displayName: 'Post EP Perf Results to Dashboard'
         inputs:
           azureSubscription: AIInfraBuildOnnxRuntimeOSS
           scriptLocation: inlineScript
@@ -160,8 +165,8 @@ jobs:
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
-    
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'

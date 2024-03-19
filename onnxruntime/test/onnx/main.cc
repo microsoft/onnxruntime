@@ -25,6 +25,10 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace {
@@ -341,11 +345,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     logging_level = ORT_LOGGING_LEVEL_VERBOSE;
   }
 
-  if (concurrent_session_runs > 1 && repeat_count > 1) {
-    fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
-    usage();
-    return -1;
-  }
   argc -= optind;
   argv += optind;
   if (argc < 1) {
@@ -406,12 +405,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      OrtCUDAProviderOptions cuda_options;
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+#ifdef USE_CUDA
+      OrtCUDAProviderOptionsV2 cuda_options;
       cuda_options.device_id = device_id;
       cuda_options.do_copy_in_default_stream = true;
+      cuda_options.use_tf32 = false;
       // TODO: Support arena configuration for users of test runner
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
-      sf.AppendExecutionProvider_CUDA(cuda_options);
+      sf.AppendExecutionProvider_CUDA_V2(cuda_options);
+#endif
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -429,10 +431,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      OrtCUDAProviderOptions cuda_options;
+      OrtCUDAProviderOptionsV2 cuda_options;
       cuda_options.do_copy_in_default_stream = true;
+      cuda_options.use_tf32 = false;
       // TODO: Support arena configuration for users of test runner
-      sf.AppendExecutionProvider_CUDA(cuda_options);
+      sf.AppendExecutionProvider_CUDA_V2(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;

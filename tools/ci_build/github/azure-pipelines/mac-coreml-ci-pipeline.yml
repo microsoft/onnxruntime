@@ -32,7 +32,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-13'
+    vmImage: 'macOS-latest'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '11.0'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
@@ -43,6 +43,8 @@ jobs:
     displayName: Install coreutils and ninja
 
   - template: templates/use-xcode-version.yml
+    parameters:
+      xcodeVersion: 14.2
 
   - template: templates/mac-build-step-with-cache.yml
     parameters:
