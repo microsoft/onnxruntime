@@ -6,6 +6,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/trt_op_test_utils.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <math.h>
@@ -1370,7 +1371,8 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
   test.AddOutput<element_type>("sum", dims, expected_output_data);
 
-  test.Run();
+  // TRT EP segmentation fault in A100
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(MathOpTest, SumMultipleInputsNoBroadcasting) {
@@ -2639,6 +2641,7 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
 
   test.AddInput<float>("X", dims, input);
   test.AddOutput<float>("Y", dims, output);
+
   test.Run();
 }
 
@@ -2708,6 +2711,7 @@ TEST(MathOpTest, CosFloat16) {
     TrigFloat16Test<::cosf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
   }
 }
+
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
   TrigFloatTest<::tanf>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});
