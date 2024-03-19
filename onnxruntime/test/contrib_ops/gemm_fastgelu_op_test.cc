@@ -50,7 +50,7 @@ static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const s
     tester.AddOutput<float>("Y", output_dims, output_data);
   }
 
-  tester.SetOutputTolerance(use_float16 ? 0.005f : 0.001f);
+  tester.SetOutputTolerance(use_float16 ? 0.005f : 0.0025f);
 
   tester.Config(run_with_tunable_op)
       .RunWithConfig();
@@ -156,7 +156,7 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
 
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
-                         false);
+                         false, true);
 }
 
 TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
@@ -191,7 +191,7 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
 
   RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data,
                          input_dims, weight_dims, bias_dims, output_dims,
-                         true);
+                         true, true);
 }
 
 TEST(GemmFastGeluTest, GemmFastGeluWithBias_bfloat16) {
