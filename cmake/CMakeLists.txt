@@ -1206,7 +1206,7 @@ if (onnxruntime_USE_DNNL)
   add_compile_definitions(DNNL_OPENMP)
 endif()
 
-if (onnxruntime_USE_NEURAL_SPEED AND NOT onnxruntime_MINIMAL_BUILD)
+if (onnxruntime_USE_NEURAL_SPEED AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_USE_TVM)
   include(neural_speed)
   if (USE_NEURAL_SPEED)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES neural_speed::bestla)
