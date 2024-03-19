@@ -24,7 +24,7 @@ steps:
         displayName: 'Download Secondary CUDA SDK v${{ parameters.SecondaryCUDAVersion }}'
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.ThirdCUDAVersion }}" $(Agent.TempDirectory)
-        displayName: 'Download Secondary CUDA SDK v${{ parameters.ThirdCUDAVersion }}'
+        displayName: 'Download Third CUDA SDK v${{ parameters.ThirdCUDAVersion }}'
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
