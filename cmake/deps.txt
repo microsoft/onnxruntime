@@ -57,3 +57,6 @@ cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.1.0.zip;757f90a79
 utf8_range;https://github.com/protocolbuffers/utf8_range/archive/72c943dea2b9240cd09efde15191e144bc7c7d38.zip;9925739c9debc0efa2adcb194d371a35b6a03156
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/94142d8391c9791ec71c38336436319a2d4ac7a0.zip;4365ac5140338b4cb75a39944a4be276e3829b3c
 composable_kernel;https://github.com/ROCmSoftwarePlatform/composable_kernel/archive/5356c4a943a35e74d7cdc69486afcb8703b9a59a.zip;522382c2af437e09124287e5879ab64af5b2e299
+libjpeg_turbo;https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.2.zip;c341c0f5676cc7f44f24f87619f39833e90524ad
+libpng;https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.43.zip;8a910459a262c5a5be039b7bc694a034455d63e8
+zlib;https://github.com/madler/zlib/archive/refs/tags/v1.2.13.zip;a467ab31069290abf84697e8971055b75df263fd

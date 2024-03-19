@@ -17,11 +17,60 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
   endif()
 endforeach()
 
+# FetchContent_Declare(
+#   libjpeg_turbo
+#   URL ${DEP_URL_libjpeg_turbo}
+#   URL_HASH SHA1=${DEP_SHA1_libjpeg_turbo}
+# )
+# onnxruntime_fetchcontent_makeavailable(libjpeg_turbo)
+
+include(ExternalProject)
+ExternalProject_Add(libjpeg-turbo
+    GIT_REPOSITORY  https://github.com/libjpeg-turbo/libjpeg-turbo.git
+    GIT_TAG         2.1.4
+    GIT_SHALLOW     TRUE
+    PREFIX          ${CMAKE_CURRENT_BINARY_DIR}/_deps/libjpeg-turbo
+    INSTALL_COMMAND cmake -E echo "Skipping install step for dependency libjpeg-turbo"
+    INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX}
+)
+set (libjpeg-turbo_SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/libjpeg-turbo/src/libjpeg-turbo)
+set (libjpeg-turbo_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/libjpeg-turbo/src/libjpeg-turbo-build)
+set (libjpeg-turbo_INCLUDE_DIRS ${libjpeg-turbo_SOURCE_DIR} ${libjpeg-turbo_BINARY_DIR})
+
+# adjust for diffs in output name and location
+if (MSVC)
+    link_directories(${libjpeg-turbo_BINARY_DIR}/${CMAKE_BUILD_TYPE})
+    set(libjpeg-turbo_LIB_NAME jpeg-static)
+else()
+    link_directories(${libjpeg-turbo_BINARY_DIR})
+    set(libjpeg-turbo_LIB_NAME jpeg)
+endif()
+
+
 message("Loading Dependencies ...")
 # ABSL should be included before protobuf because protobuf may use absl
 include(external/abseil-cpp.cmake)
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+  zlib
+  URL ${DEP_URL_zlib}
+  URL_HASH SHA1=${DEP_SHA1_zlib}
+)
+onnxruntime_fetchcontent_makeavailable(zlib)
+set(ZLIB_LIBRARY zlibstatic)
+set(ZLIB_INCLUDE_DIR ${zlib_SOURCE_DIR})
+
+set(ZLIB_INCLUDE_DIRS ${zlib_SOURCE_DIR} ${zlib_BINARY_DIR})
+set(ZLIB_LIBRARIES zlibstatic)
+
+FetchContent_Declare(
+  libpng
+  URL ${DEP_URL_libpng}
+  URL_HASH SHA1=${DEP_SHA1_libpng}
+)
+onnxruntime_fetchcontent_makeavailable(libpng)
 
 FetchContent_Declare(
     re2
