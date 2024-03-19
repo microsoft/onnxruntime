@@ -237,7 +237,7 @@ const mySessionOptions = {
 
 Not all models are suitable for graph capture. Some models with dynamic input shapes can use this feature together with [free dimension override](#freedimensionoverrides). Some models just don't work with this feature. You can try it out and see if it works for your model. If it doesn't work, the model initialization will fail, and you can disable this feature for this model.
 
-See [API reference: enableGraphCapture](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html#enableGraphCapture) for more details.
+See [API reference: enableGraphCapture](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html#enablegraphcapture) for more details.
 
 
 ### `optimizedModelFilePath`
