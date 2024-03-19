@@ -611,7 +611,13 @@ def get_args(rank=0):
     parser.add_argument("--pt-num-rows", type=int, default=1000, help="Number of rows for PyTorch profiler to display")
     parser.add_argument("--verbose", default=False, action="store_true")
     parser.add_argument("--log-folder", type=str, default=os.path.join("."), help="Folder to cache log files")
-    parser.add_argument("--cache-dir", type=str, required=True, default="./model_cache", help="Cache dir where Hugging Face files are stored")
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        required=True,
+        default="./model_cache",
+        help="Cache dir where Hugging Face files are stored",
+    )
 
     args = parser.parse_args()
 

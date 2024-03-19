@@ -203,7 +203,8 @@ def get_args():
         action="store_true",
         help="Use this flag to filter anomaly accelerator times for tokens generated. \
               This may give more accurate latency and throughput metrics for tokens generated. \
-              Wall-clock metrics are still reported with anomaly times though."),
+              Wall-clock metrics are still reported with anomaly times though.",
+    ),
 
     parser.add_argument(
         "-b",
@@ -300,7 +301,7 @@ def main():
 
     all_csv_metrics = []
     for batch_size, prompt_length in itertools.product(args.batch_sizes, args.prompt_lengths):
-        batch_size, prompt_length = int(batch_size), int(prompt_length)
+        batch_size, prompt_length = int(batch_size), int(prompt_length)  # noqa: PLW2901
         logger.info(f"Running batch size = {batch_size}, prompt length = {prompt_length}")
         clear_cache()
 
@@ -433,9 +434,13 @@ def main():
                 anomaly_threshold_factor = 10
                 min_time_s = min(accelerator_times)
                 orig_size = len(accelerator_times)
-                accelerator_times = list(filter(lambda acc_time: acc_time < anomaly_threshold_factor * min_time_s, accelerator_times))
+                accelerator_times = list(
+                    filter(lambda acc_time: acc_time < anomaly_threshold_factor * min_time_s, accelerator_times)
+                )
                 new_size = len(accelerator_times)
-                logger.info(f"Filtered out {orig_size - new_size} anomaly accelerator times that are {anomaly_threshold_factor}x greater than {min_time_s * 1000} ms...")
+                logger.info(
+                    f"Filtered out {orig_size - new_size} anomaly accelerator times that are {anomaly_threshold_factor}x greater than {min_time_s * 1000} ms..."
+                )
 
             #######################################################
             # Calculate sampling and first token generated metrics
@@ -452,27 +457,19 @@ def main():
             first_token_latency_s = accelerator_times[0]
             first_token_latency_ms = first_token_latency_s * 1000
             first_token_thrpt = batch_size * (1 / first_token_latency_s)
-            logger.info(
-                f"Latency of First Token Generated: {first_token_latency_ms} ms"
-            )
-            logger.info(
-                f"Throughput of First Token Generated: {first_token_thrpt} tps"
-            )
+            logger.info(f"Latency of First Token Generated: {first_token_latency_ms} ms")
+            logger.info(f"Throughput of First Token Generated: {first_token_thrpt} tps")
 
             ####################################################
             # Calculate first `halfway` token generated metrics
             ####################################################
 
             halfway = args.generation_length // 2
-            halfway_token_latency_s = sum(accelerator_times[: halfway]) / len(accelerator_times[: halfway])
+            halfway_token_latency_s = sum(accelerator_times[:halfway]) / len(accelerator_times[:halfway])
             halfway_token_latency_ms = halfway_token_latency_s * 1000
             halfway_token_thrpt = batch_size * (1 / halfway_token_latency_s)
-            logger.info(
-                f"Average Latency of First {halfway} Tokens Generated: {halfway_token_latency_ms} ms"
-            )
-            logger.info(
-                f"Average Throughput of First {halfway} Tokens Generated: {halfway_token_thrpt} tps"
-            )
+            logger.info(f"Average Latency of First {halfway} Tokens Generated: {halfway_token_latency_ms} ms")
+            logger.info(f"Average Throughput of First {halfway} Tokens Generated: {halfway_token_thrpt} tps")
 
             ####################################################
             # Calculate all tokens generated metrics
@@ -484,9 +481,7 @@ def main():
             logger.info(
                 f"Average Latency of First {args.generation_length} Tokens Generated: {all_token_latency_ms} ms"
             )
-            logger.info(
-                f"Average Throughput of First {args.generation_length} Tokens Generated: {all_token_thrpt} tps"
-            )
+            logger.info(f"Average Throughput of First {args.generation_length} Tokens Generated: {all_token_thrpt} tps")
 
             ####################################################
             # Calculate wall clock metrics
