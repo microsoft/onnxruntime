@@ -168,7 +168,7 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
     } else if constexpr (Layout == LAYOUT_NHWC) {
       kernel_shape.assign(x_dims.begin() + 1, x_dims.end() - 1);
     }
-    pads.assign(2*kernel_shape.size(), 0);
+    pads.assign(2 * kernel_shape.size(), 0);
     strides.assign(kernel_shape.size(), 1);
   }
   auto out_channel = (Layout == LAYOUT_NHWC) ? x_shape[x_dims.size() - 1] : x_shape[1];
