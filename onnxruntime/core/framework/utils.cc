@@ -270,8 +270,14 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
     }
 
     copy_info.target_device = *node_info.device;
+    copy_info.unique_stream_index_consumes_it = node_info.stream_index;
+    ORT_RETURN_IF(node_info.stream_index < 0);
     for (size_t i = 1; i < node_info_vec.size(); i++) {
-      if (node_info_vec[i].stream_index != node_info_vec[0].stream_index) copy_info.consumed_by_ops_from_different_stream = true;
+      ORT_RETURN_IF(node_info_vec[i].stream_index < 0);
+      if (node_info_vec[i].stream_index != node_info.stream_index) {
+        copy_info.unique_stream_index_consumes_it = -1;
+        break;
+      }
     }
 
 #ifdef ENABLE_TRAINING
@@ -444,11 +450,12 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
 static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
                                               gsl::span<const OrtValue> orig_feeds,
                                               std::vector<OrtValue>& new_feeds,
-                                              gsl::span<const MLValueCopyInfo> copy_info,
-                                              gsl::span<Stream* const> feed_streams) {
+#ifdef ORT_ENABLE_STREAM
+                                              DeviceStreamCollection* device_stream_collection,
+#endif
+                                              gsl::span<const MLValueCopyInfo> copy_info) {
   size_t num_feeds = orig_feeds.size();
   ORT_ENFORCE(copy_info.size() == num_feeds);
-  ORT_ENFORCE(feed_streams.size() == num_feeds);
 
   new_feeds.resize(num_feeds);
   std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
@@ -456,14 +463,30 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
 #endif
 
+  std::unordered_set<Stream*> stream_to_flush;
   for (size_t idx = 0; idx < num_feeds; ++idx) {
+    Stream* copy_this_feed = nullptr;
+#ifdef ORT_ENABLE_STREAM
+    if (copy_info[idx].unique_stream_index_consumes_it < 0) {
+      for (size_t i = 0; i < device_stream_collection->NumStreams(); i++) {
+        Stream* stream = device_stream_collection->GetStream(i);
+        if (stream && stream->GetDevice().Type() == copy_info[idx].target_device.Type()) {
+          copy_this_feed = stream;
+          stream_to_flush.insert(stream);
+          break;
+        }
+      }
+    } else {
+      copy_this_feed = device_stream_collection->GetStream(copy_info[idx].unique_stream_index_consumes_it);
+    }
+#endif
 #if !defined(DISABLE_SPARSE_TENSORS)
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
-                                           feed_streams[idx],
+                                           copy_this_feed,
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
-                                           feed_streams[idx],
+                                           copy_this_feed,
                                            &batched_data_transfers));
 #endif
   }
@@ -482,11 +505,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   // TODO: this sync is because the graph inputs can be consumed by multiple stream,
   // but we can only place the MemCpyAsync on one of the stream. Ideally we should make
   // other stream wait on the event of the memory copy stream, instead of host sync stream.
-  std::unordered_set<Stream*> visited;
-  for (size_t i = 0; i < feed_streams.size(); i++) {
-    auto* stream = feed_streams[i];
-    if (stream && copy_info[i].consumed_by_ops_from_different_stream && visited.insert(stream).second) stream->Flush();
-  }
+  for (const auto& stream : stream_to_flush) stream->Flush();
   return Status::OK();
 }
 
@@ -644,33 +663,12 @@ ExecuteGraphImpl(const SessionState& session_state,
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      InlinedVector<Stream*> feed_streams;
-      feed_streams.reserve(feed_copy_info.size());
-      // TODO: we can pre-calculate the stream index for graph inputs in execution plan
+      auto status = CopyInputsAcrossDevices(session_state, feeds, device_feeds,
 #ifdef ORT_ENABLE_STREAM
-      for (auto& copy_info : feed_copy_info) {
-        auto& device = copy_info.target_device;
-        bool found = false;
-        if (device_stream_collection) {
-          size_t num_streams = device_stream_collection->NumStreams();
-          for (size_t i = 0; i < num_streams; i++) {
-            Stream* stream = device_stream_collection->GetStream(i);
-            if (stream && stream->GetDevice().Type() == device.Type()) {
-              feed_streams.push_back(stream);
-              found = true;
-              break;
-            }
-          }
-        }
-        if (!found)
-          feed_streams.push_back(nullptr);
-      }
-#else
-      for (size_t i = 0; i < feed_copy_info.size(); ++i) {
-        feed_streams.push_back(nullptr);
-      }
+                                            device_stream_collection,
 #endif
-      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info, feed_streams));
+                                            feed_copy_info);
+      ORT_RETURN_IF_ERROR(status);
       feeds_to_use = device_feeds;
     }
 
@@ -823,27 +821,7 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      InlinedVector<Stream*> feed_streams;
-      feed_streams.reserve(feed_copy_info.size());
-      // TODO: we can pre-calculate the stream index for graph inputs in execution plan
-      for (auto& copy_info : feed_copy_info) {
-        auto& device = copy_info.target_device;
-        bool found = false;
-        if (device_stream_collection) {
-          size_t num_streams = device_stream_collection->NumStreams();
-          for (size_t i = 0; i < num_streams; i++) {
-            Stream* stream = device_stream_collection->GetStream(i);
-            if (stream && stream->GetDevice().Type() == device.Type()) {
-              feed_streams.push_back(stream);
-              found = true;
-              break;
-            }
-          }
-        }
-        if (!found)
-          feed_streams.push_back(nullptr);
-      }
-      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info, feed_streams));
+      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, device_stream_collection, feed_copy_info));
       p_feeds = device_feeds;
     }
 
