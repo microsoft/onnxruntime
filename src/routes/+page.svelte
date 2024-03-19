@@ -10,7 +10,6 @@
 	import IoIosClose from 'svelte-icons/io/IoIosClose.svelte';
 	import { onMount } from 'svelte';
 	import anime from 'animejs';
-	import Saos from 'saos';
 
 	let removetoast = (e: any) => {
 		e.target.parentNode.parentNode.remove();
@@ -49,20 +48,10 @@
 <Customers />
 <CodeBlocks />
 <VideoGallery {videos}/>
-<Saos once={true} animation={'slide-in-left 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
-	<GenerativeAi />
-</Saos>
-<Saos once={true} animation={'slide-in-right 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
-	<CrossPlatform />
-</Saos>
-<Saos once={true} animation={'slide-in-left 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
-	<Performance />
-</Saos>
-
-<Saos once={true} animation={'slide-in-bottom 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
-	<TrainingAndInference />
-</Saos>
-
+<GenerativeAi />
+<CrossPlatform />
+<Performance />
+<TrainingAndInference />
 <div class="toast z-10 opacity-0 hidden">
 	<div class="alert alert-info">
 		<svg

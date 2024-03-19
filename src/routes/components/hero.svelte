@@ -93,8 +93,8 @@
 						<button
 							aria-label="copy python code"
 							on:click={() => copy(pythonCode)}
-							class="col-span-1 btn rounded-none h-full"
-							><span class="w-6 h-6"><FaRegClipboard /></span></button
+							class="col-span-1 btn rounded-none h-full *:hover:scale-125 *:hover:transition *:hover:duration-200"
+							><span class="w-6 h-6 "><FaRegClipboard /></span></button
 						>
 					</div>
 					<div class="grid grid-cols-6 border-solid border-2 border-secondary">
@@ -104,7 +104,7 @@
 						<button
 							aria-label="copy nuget code"
 							on:click={() => copy(nugetCode)}
-							class="col-span-1 btn rounded-none h-full"
+							class="col-span-1 btn rounded-none h-full *:hover:scale-125 *:hover:transition *:hover:duration-200"
 							><span class="w-6 h-6"><FaRegClipboard /></span></button
 						>
 					</div>
@@ -118,7 +118,7 @@
 					>
 				</p>
 			</div>
-			<div class="hidden lg:inline mx-auto">
+			<div class="hidden lg:inline mx-auto hover:rotate-180 transition duration-500">
 				<OnnxLight width={300} height={300} />
 			</div>
 		</div>
