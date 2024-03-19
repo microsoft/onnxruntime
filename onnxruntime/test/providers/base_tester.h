@@ -524,11 +524,12 @@ class BaseTester {
   // For integer types, tolerance parameters are ignored except the following cases:
   //   For uint8, tolerance is only applied to NNAPI/XNNPACK/DML providers;
   //   For int8, only absolute is used, and relative is ignored. See checkers.cc for detail.
+  // If absolute or relative errors are not set, default values are used (search DefaultTolerance for details).
   void SetOutputAbsErr(const char* name, float v);
   void SetOutputRelErr(const char* name, float v);
 
   // Set absolute and relative error for all existed outputs.
-  // Negative value will be ignored and fallback to the default (search DefaultTolerance for more details).
+  // Negative value will be ignored.
   // Note that it will not set tolerance for new outputs added after this call.
   void SetOutputTolerance(float abs_error, float rel_error = -1.0f);
 
