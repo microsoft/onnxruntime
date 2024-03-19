@@ -381,7 +381,8 @@ const createMaxPoolProgramInfo =
           programUniforms
         }),
         getShaderSource: shaderHelper => generatePoolingCode(
-            shaderHelper, x, input.dims.length, outputShape.length, adjustedAttributes, op1, op2, -1e5, uniforms,
+            shaderHelper, x, input.dims.length, outputShape.length, adjustedAttributes, op1, op2,
+            (input.dataType === DataType.float16) ? -65504 : -1e5, uniforms,
             hasPads, pwStartEndNotZero, phStartEndNotZero),
       };
     };
