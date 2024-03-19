@@ -178,7 +178,7 @@ class MixtralConfig:
         self.router_aux_loss_coef = router_aux_loss_coef
 
 
-class MixtralBLockSparseTop2MLP(nn.Module):
+class MixtralBlockSparseTop2MLP(nn.Module):
     def __init__(self, config: MixtralConfig):
         super().__init__()
         self.ffn_dim = config.intermediate_size
@@ -220,7 +220,7 @@ class MixtralSparseMoeBlock(nn.Module):
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
 
-        self.experts = nn.ModuleList([MixtralBLockSparseTop2MLP(config) for _ in range(self.num_experts)])
+        self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
 
         w1_list = []
         w2_list = []

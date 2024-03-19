@@ -1383,7 +1383,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
 constexpr const char* MoE_ver1_doc = R"DOC(
       Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
       GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
-      usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral)
+      usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
       )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,

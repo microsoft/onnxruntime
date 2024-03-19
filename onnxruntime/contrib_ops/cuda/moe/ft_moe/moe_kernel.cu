@@ -127,7 +127,7 @@ __launch_bounds__(TPB) __global__ void moe_top_k(const T* inputs_after_softmax, 
 
   const bool should_process_row = finished ? !finished[block_row] : true;
   const int thread_read_offset = blockIdx.x * num_experts;
-  T output_row_sum = T(0.f);
+  float output_row_sum = 0.f;
   for (int k_idx = 0; k_idx < k; ++k_idx) {
     thread_kvp.key = 0;
     thread_kvp.value = T(-1.f);  // This is OK because inputs are probabilities
@@ -159,7 +159,7 @@ __launch_bounds__(TPB) __global__ void moe_top_k(const T* inputs_after_softmax, 
       if (normalize_routing_weights && k_idx == k - 1) {
 #pragma unroll
         for (int ki = 0; ki < k; ++ki) {
-          output[idx - ki] /= output_row_sum;
+          output[idx - ki] = T(static_cast<float>(output[idx - ki]) / output_row_sum);
         }
       }
     }
@@ -575,7 +575,7 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(size_t num_ro
   total_ws_bytes += num_softmax_outs * sizeof(T);
   const size_t bytes_for_fc1_result = has_fc3_ ? 2 * interbuf_size * sizeof(T) : interbuf_size * sizeof(T);
   const size_t sorter_ws_size_bytes = pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows));
-  sorter_.update_num_experts(num_experts);
+  sorter_.update_num_experts(static_cast<int>(num_experts));
 
   size_t bytes_for_intermediate_and_sorting = bytes_for_fc1_result;
   if (sorter_ws_size_bytes > bytes_for_fc1_result) {
@@ -618,6 +618,59 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
   }
 }
 
+namespace {
+
+struct __align__(8) Half4 {
+  half2 x;
+  half2 y;
+};
+
+// TODO(wy): move to common header
+template <typename T>
+struct T4;
+template <>
+struct T4<float> {
+  using Type = float4;
+};
+template <>
+struct T4<half> {
+  using Type = Half4;
+};
+
+template <typename T>
+struct T2;
+template <>
+struct T2<float> {
+  using Type = float2;
+};
+template <>
+struct T2<half> {
+  using Type = half2;
+};
+
+inline __device__ float2 operator*(const float2 a, const float2 b) {
+  return make_float2(a.x * b.x, a.y * b.y);
+}
+
+inline __device__ float4 operator*(const float4 a, const float4 b) {
+  return make_float4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
+}
+
+inline __device__ Half4 operator*(const Half4 a, const Half4 b) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
+  Half4 result;
+  result.x.x = (half)((float)a.x.x * (float)b.x.x);
+  result.x.y = (half)((float)a.x.y * (float)b.x.y);
+  result.y.x = (half)((float)a.y.x * (float)b.y.x);
+  result.y.y = (half)((float)a.y.y * (float)b.y.y);
+  return result;
+#else
+  return Half4{__hmul2(a.x, b.x), __hmul2(a.y, b.y)};
+#endif
+};
+
+} // anonymous namespace
+
 template <typename T>
 __global__ void elementWiseMulKernel(T* output, T const* input, size_t inter_size) {
   int const tid = threadIdx.x;
@@ -627,20 +680,30 @@ __global__ void elementWiseMulKernel(T* output, T const* input, size_t inter_siz
   input = input + token * inter_size;
   for (int i = tid; i < inter_size; i += blockDim.x) {
     T fc1_value = input[i];
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
-    output[i] = T(float(fc1_value) * float(output[i]));
-#else
     output[i] = fc1_value * output[i];
-#endif
   }
 }
 
 template <typename T>
 void elementWiseMul(T* output, T const* input, int inter_size, int num_tokens, cudaStream_t stream) {
   int const blocks = num_tokens;
-  int const threads = std::min(inter_size, 1024);
 
-  elementWiseMulKernel<<<blocks, threads, 0, stream>>>(output, input, inter_size);
+  if (inter_size & 3 == 0) {
+    using vec_type = typename T4<T>::Type;
+    int const threads = std::min(inter_size / 4, 1024);
+    elementWiseMulKernel<vec_type><<<blocks, threads, 0, stream>>>(reinterpret_cast<vec_type*>(output),
+                                                                   reinterpret_cast<vec_type const*>(input),
+                                                                   inter_size / 4);
+  } else if (inter_size & 1 == 0) {
+    using vec_type = typename T2<T>::Type;
+    int const threads = std::min(inter_size / 2, 1024);
+    elementWiseMulKernel<vec_type><<<blocks, threads, 0, stream>>>(reinterpret_cast<vec_type*>(output),
+                                                                   reinterpret_cast<vec_type const*>(input),
+                                                                   inter_size / 2);
+  } else {
+    int const threads = std::min(inter_size, 1024);
+    elementWiseMulKernel<T><<<blocks, threads, 0, stream>>>(output, input, inter_size);
+  }
 }
 
 template <typename T, typename WeightType, typename Enable>

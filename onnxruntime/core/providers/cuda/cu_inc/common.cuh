@@ -543,7 +543,7 @@ struct _IsNan {
 template <>
 struct _IsNan<half> {
   __device__ __inline__ bool operator()(half a) const {
-    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask) 
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask)
            > MLFloat16::kPositiveInfinityBits;
   }
 };
@@ -551,7 +551,7 @@ struct _IsNan<half> {
 template <>
 struct _IsNan<BFloat16> {
   __device__ __inline__ bool operator()(BFloat16 a) const {
-    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask) 
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask)
            > BFloat16::kPositiveInfinityBits;
   }
 };

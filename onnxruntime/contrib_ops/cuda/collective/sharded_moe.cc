@@ -58,7 +58,6 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   // Create a {Rank, ExpertsStartIndex} map on Host.
   AutoDestoryCudaEvent cuda_event;
   cudaEvent_t& copy_event = cuda_event.Get();
-  ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
@@ -76,6 +75,10 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0,
                     "num_experts should be divisible by world_size");
+
+  if (moe_params.parallel_type == MoEParallelType::EP || moe_params.parallel_type == MoEParallelType::EPAndTP) {
+    ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
+  }
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
                                                                      fc3_experts_weights_optional != nullptr,
@@ -136,7 +139,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (moe_params.parallel_type == MoEParallelType::EPAndTP) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EPAndTP is not supported yet");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expert and Tensor Parallelism is not supported yet");
   }
 
   if (moe_params.parallel_type == MoEParallelType::TP) {
