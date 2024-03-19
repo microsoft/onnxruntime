@@ -23,7 +23,7 @@ int GetCudaArchitecture() {
 
     // When cudaGetDeviceProperties fails, just return -1 and no error is raised.
     // If cuda device has issue, test will fail anyway so no need to raise error here.
-    if (cudaSuccess == cudaGetDeviceProperties(&prop, current_device_id)){
+    if (cudaSuccess == cudaGetDeviceProperties(&prop, current_device_id)) {
       cuda_arch = prop.major * 100 + prop.minor * 10;
     }
   }
