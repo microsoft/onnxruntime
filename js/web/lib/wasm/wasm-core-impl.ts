@@ -93,18 +93,31 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
       if (typeof navigator === 'undefined' || !navigator.gpu) {
         throw new Error('WebGPU is not supported in current environment');
       }
-      const powerPreference = env.webgpu?.powerPreference;
-      if (powerPreference !== undefined && powerPreference !== 'low-power' && powerPreference !== 'high-performance') {
-        throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
-      }
-      const forceFallbackAdapter = env.webgpu?.forceFallbackAdapter;
-      if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
-        throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
-      }
-      const adapter = await navigator.gpu.requestAdapter({powerPreference, forceFallbackAdapter});
+
+      let adapter = env.webgpu.adapter as GPUAdapter | null;
       if (!adapter) {
-        throw new Error(
-            'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+        // if adapter is not set, request a new adapter.
+        const powerPreference = env.webgpu.powerPreference;
+        if (powerPreference !== undefined && powerPreference !== 'low-power' &&
+            powerPreference !== 'high-performance') {
+          throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
+        }
+        const forceFallbackAdapter = env.webgpu.forceFallbackAdapter;
+        if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
+          throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
+        }
+        adapter = await navigator.gpu.requestAdapter({powerPreference, forceFallbackAdapter});
+        if (!adapter) {
+          throw new Error(
+              'Failed to get GPU adapter. ' +
+              'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+        }
+      } else {
+        // if adapter is set, validate it.
+        if (typeof adapter.limits !== 'object' || typeof adapter.features !== 'object' ||
+            typeof adapter.requestDevice !== 'function') {
+          throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
+        }
       }
 
       if (!env.wasm.simd) {
