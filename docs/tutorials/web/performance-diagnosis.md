@@ -101,15 +101,15 @@ See [API reference: env.wasm.proxy](https://onnxruntime.ai/docs/api/js/interface
 
 If you are using the WebGPU execution provider, you can use the following tips to improve the performance of your application:
 
-### Use capture and replay if possible
+### Use graph capture if possible
 
-See [Capture and replay](ep-webgpu.md#capture-and-replay) for feature introduction.
+See [Graph capture](env-flags-and-session-options.md#graph-capture) for feature introduction.
 
-It is always recommended to enable capture and replay feature, unless you need to feed input data with dynamic shape (eg. transformer based decoder model). Even with static shape input, this feature does not always work for all models. You can try it out and see if it works for your model. If it doesn't work, the model initialization will fail, and you can disable this feature for this model.
+It is always recommended to enable graph capture feature, unless you need to feed input data with dynamic shape (eg. transformer based decoder model). Even with static shape input, this feature does not always work for all models. You can try it out and see if it works for your model. If it doesn't work, the model initialization will fail, and you can disable this feature for this model.
 
 ### Try using free dimension override
 
-See [Free dimension override](ep-webgpu.md#free-dimension-override) for feature introduction.
+See [Free dimension override](env-flags-and-session-options.md#free-dimension-override) for feature introduction.
 
 Using free dimension override does not necessarily improve the performance. It's quite model by model. You can try it out and see if it works for your model. If you see performance degradation or larger memory usage, you may disable this feature.
 

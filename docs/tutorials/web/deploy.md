@@ -118,6 +118,12 @@ The content of this part is under construction.
 
 ## Security considerations
 
+### Secure Context
+
+WebGPU is accessible only to secure contexts. In short, a page loaded using HTTPS or using HTTP from localhost/127.0.0.1 is considered secure context.
+
+See [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) and [WebGPU: Troubleshooting tips and fixes](https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips) for more details.
+
 ### Content Security Policy (CSP) restricted environments
 
 Currently, ONNX Runtime Web uses inline web workers to enable the proxy feature and WebAssembly multi-threading feature. This means in a CSP restricted environment, the features mentioned above may not work. We are working on a solution to make it work in a CSP restricted environment.

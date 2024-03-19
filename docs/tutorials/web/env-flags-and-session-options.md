@@ -160,7 +160,7 @@ These 2 flags are used to set the power preference and force fallback adapter fo
 
 For more information, see [API reference: env.webgpu.powerPreference](https://onnxruntime.ai/docs/api/js/interfaces/Env.WebGpuFlags.html#powerPreference) and [API reference: env.webgpu.forceFallbackAdapter](https://onnxruntime.ai/docs/api/js/interfaces/Env.WebGpuFlags.html#forceFallbackAdapter).
 
-#### `env.webgpu/profiling`
+#### `env.webgpu.profiling`
 
 The `env.webgpu.profiling` flag is used to enable WebGPU profiling.
 
@@ -221,6 +221,24 @@ const mySessionOptions = {
 ```
 
 For more information, see [API reference: freeDimensionOverrides](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html#freeDimensionOverrides).
+
+### `enableGraphCapture`
+
+The `enableGraphCapture` option is used to enable graph capture feature. Currently, this feature is only available for WebGPU EP.
+
+If ONNX Runtime determines that a model has static shapes, and all its computing kernels are running on the registered EP, it can capture the kernel executions in the first run and replay them in the following runs. This can lead to better performance when CPU sometimes is the bottleneck to prepare for the commands.
+
+```js
+const mySessionOptions = {
+  ...,
+  enableGraphCapture: true
+};
+```
+
+Not all models are suitable for graph capture. Some models with dynamic input shapes can use this feature together with [free dimension override](#freedimensionoverrides). Some models just don't work with this feature. You can try it out and see if it works for your model. If it doesn't work, the model initialization will fail, and you can disable this feature for this model.
+
+See [API reference: enableGraphCapture](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html#enableGraphCapture) for more details.
+
 
 ### `optimizedModelFilePath`
 

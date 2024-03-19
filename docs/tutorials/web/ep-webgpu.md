@@ -59,20 +59,15 @@ You might also consider installing the latest nightly build version of ONNX Runt
 
 ONNX Runtime Web offers the following features which may be helpful to use with WebGPU EP:
 
-### Capture and replay
+### Graph Capture
 
-If ONNX Runtime determines that a model has static shapes, and all its computing kernels are running on WebGPU EP, it can capture the kernel executions in the first run and replay them in the following runs. This can lead to better performance when CPU sometimes is the bottleneck to prepare for the commands.
+You can try the graph capture feature if your model has static shapes and all its computing kernels are running on WebGPU EP. This feature may potentially improve the performance of your model.
 
-```js
-const mySessionOptions = {
-  ...,
-  enableGraphCapture: true
-};
-```
+See [Graph Capture](./env-flags-and-session-options.md#graph-capture) for more details.
 
-Not all models are suitable for graph capture and replay. Some models with dynamic input shapes can use this feature together with [free dimension override](./env-flags-and-session-options.md#freedimensionoverrides). Some models just don't work with this feature. You can try it out and see if it works for your model. If it doesn't work, the model initialization will fail, and you can disable this feature for this model.
+### Using `ort.env.webgpu` flags
 
-See [API reference: enableGraphCapture](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html#enableGraphCapture) for more details.
+See [`env.webgpu`](./env-flags-and-session-options.md#envwebgpu) for more details.
 
 ## Keep tensor data on GPU (IO binding)
 
@@ -172,5 +167,12 @@ const zeroSizedTensor = new ort.Tensor('float32', [], [3, 256, 0, 64]);
 It is important to understand how the underlying GPU buffer is managed so that you can avoid memory leaks and improve buffer usage efficiency.
 
 A GPU tensor is created either by user code or by ONNX Runtime Web as model's output.
-- When it is created by user code, it is always created with an existing GPU buffer using `Tensor.fromGpuBuffer()`. In this case, the tensor does not "own" the GPU buffer. It is user's responsibility to make sure the underlying buffer is valid during the inference, and call `buffer.destroy()` to dispose the buffer when it is no longer needed. Using a GPU tensor with a destroyed GPU buffer will cause the session run to fail.
-- When it is created by ONNX Runtime Web as model's output (not a pre-allocated GPU tensor), the tensor "owns" the buffer. You don't need to worry about the case that the buffer is destroyed before the tensor is used. Instead, you need to call `tensor.dispose()` explicitly to destroy the underlying GPU buffer when it is no longer needed.
+- When it is created by user code, it is always created with an existing GPU buffer using `Tensor.fromGpuBuffer()`. In this case, the tensor does not "own" the GPU buffer.
+
+  - It is user's responsibility to make sure the underlying buffer is valid during the inference, and call `buffer.destroy()` to dispose the buffer when it is no longer needed.
+  - Avoid calling `tensor.getData()` and `tensor.dispose()`. Use the GPU buffer directly.
+  - Using a GPU tensor with a destroyed GPU buffer will cause the session run to fail.
+- When it is created by ONNX Runtime Web as model's output (not a pre-allocated GPU tensor), the tensor "owns" the buffer.
+  - You don't need to worry about the case that the buffer is destroyed before the tensor is used.
+  - Call `tensor.getData()` to download the data from the GPU buffer to CPU and get the data as a typed array.
+  - Call `tensor.dispose()` explicitly to destroy the underlying GPU buffer when it is no longer needed.

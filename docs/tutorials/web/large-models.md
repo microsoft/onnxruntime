@@ -40,9 +40,9 @@ WebAssembly has a memory limit of 4GB. This is the maximum amount of memory that
 
 ## Cache the model
 
-To avoid loading the model every time the page is refreshed, you can cache the model by using the IndexedDB API. This way, the model can be loaded from the cache instead of being fetched from the server every time.
+To avoid loading the model every time the page is refreshed, you can cache the model by using the Cache API or Origin private file system. This way, the model can be loaded from the cache instead of being fetched from the server every time.
 
-IndexedDB is a low-level API for client-side storage of significant amounts of structured data, including files/blobs. It is a way for you to persistently store data inside a user's browser. For more information, see [Using IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB).
+See [Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) and [Origin private file system](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) for more details.
 
 ## External Data
 
