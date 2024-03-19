@@ -61,9 +61,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                                                                      normalize_routing_weights_);
 
   size_t ws_size =
-      moe_runner.getWorkspaceSize(static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.hidden_size),
-                                  static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
-                                  static_cast<int>(k_));
+      moe_runner.getWorkspaceSize(static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
+                                  static_cast<size_t>(moe_params.inter_size),
+                                  static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_));
   size_t fc2_output_size = k_ * moe_params.num_rows * moe_params.hidden_size * sizeof(CudaT);
   size_t expert_scales_size = k_ * moe_params.num_rows * sizeof(CudaT);
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * moe_params.num_rows * sizeof(int);

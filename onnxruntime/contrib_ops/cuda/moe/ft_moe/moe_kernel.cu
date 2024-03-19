@@ -551,20 +551,20 @@ CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version,
 }
 
 template <typename T, typename WeightType, typename Enable>
-size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(int num_rows, const int hidden_size,
-                                                                   const int inter_size, int num_experts,
-                                                                   int k) {
+size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(size_t num_rows, const size_t hidden_size,
+                                                                   const size_t inter_size, size_t num_experts,
+                                                                   size_t k) {
   total_covered_rows_ = k * num_rows;
 
-  const int buf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
-  const int interbuf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * inter_size));
-  const int padded_experts = static_cast<int>(pad_to_multiple_of_16(num_experts));
-  const int num_moe_inputs = static_cast<int>(pad_to_multiple_of_16(k * num_rows));
-  int num_softmax_outs = 0;
+  const size_t buf_size = pad_to_multiple_of_16(k * num_rows * hidden_size);
+  const size_t interbuf_size = pad_to_multiple_of_16(k * num_rows * inter_size);
+  const size_t padded_experts = pad_to_multiple_of_16(num_experts);
+  const size_t num_moe_inputs = pad_to_multiple_of_16(k * num_rows);
+  size_t num_softmax_outs = 0;
 
   const bool is_pow_2 = (num_experts != 0) && ((num_experts & (num_experts - 1)) == 0);
   if (!is_pow_2 || num_experts > 256) {
-    num_softmax_outs = static_cast<int>(pad_to_multiple_of_16(num_rows * num_experts));
+    num_softmax_outs = pad_to_multiple_of_16(num_rows * num_experts);
   }
 
   // softmax output, permuted_rows and permuted_experts have moved to outside of moe kernel, allocate them
@@ -573,13 +573,13 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(int num_rows,
   total_ws_bytes += buf_size * sizeof(T);                    // permuted_data
   total_ws_bytes += padded_experts * sizeof(int64_t);        // Hold total_rows_before_expert_
   total_ws_bytes += num_softmax_outs * sizeof(T);
-  const int bytes_for_fc1_result = has_fc3_ ? 2 * interbuf_size * sizeof(T) : interbuf_size * sizeof(T);
-  const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows)));
+  const size_t bytes_for_fc1_result = has_fc3_ ? 2 * interbuf_size * sizeof(T) : interbuf_size * sizeof(T);
+  const size_t sorter_ws_size_bytes = pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows));
   sorter_.update_num_experts(num_experts);
 
-  int bytes_for_intermediate_and_sorting = bytes_for_fc1_result;
+  size_t bytes_for_intermediate_and_sorting = bytes_for_fc1_result;
   if (sorter_ws_size_bytes > bytes_for_fc1_result) {
-    int remaining_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_ws_size_bytes - bytes_for_fc1_result));
+    size_t remaining_bytes = pad_to_multiple_of_16(sorter_ws_size_bytes - bytes_for_fc1_result);
     bytes_for_intermediate_and_sorting += remaining_bytes;
   }
 
@@ -588,13 +588,13 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(int num_rows,
 }
 
 template <typename T, typename WeightType, typename Enable>
-void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, int num_rows,
-                                                                  const int hidden_size, const int inter_size,
-                                                                  int num_experts, int k) {
-  const int buf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
-  const int interbuf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * inter_size));
-  const int padded_experts = static_cast<int>(pad_to_multiple_of_16(num_experts));
-  const int num_moe_inputs = static_cast<int>(pad_to_multiple_of_16(k * num_rows));
+void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, size_t num_rows,
+                                                                  const size_t hidden_size, const size_t inter_size,
+                                                                  size_t num_experts, size_t k) {
+  const size_t buf_size = pad_to_multiple_of_16(k * num_rows * hidden_size);
+  const size_t interbuf_size = pad_to_multiple_of_16(k * num_rows * inter_size);
+  const size_t padded_experts = pad_to_multiple_of_16(num_experts);
+  const size_t num_moe_inputs = pad_to_multiple_of_16(k * num_rows);
 
   source_rows_ = (int*)ws_ptr;
   permuted_rows_ = source_rows_ + num_moe_inputs;
@@ -669,7 +669,8 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     }
   }
 
-  configure_ws_ptrs(workspace_ptr, num_rows, hidden_size, inter_size, num_experts, k);
+  configure_ws_ptrs(workspace_ptr, static_cast<size_t>(num_rows), static_cast<size_t>(hidden_size),
+                    static_cast<size_t>(inter_size), static_cast<size_t>(num_experts), static_cast<size_t>(k));
   topk_gating_softmax_kernelLauncher<T>(gating_output, finished, expert_scales, softmax_out_, expert_for_source_row,
                                         source_rows_, num_rows, num_experts, k, normalize_routing_weights_, stream);
 

@@ -111,7 +111,7 @@ class CutlassMoeFCRunner {
  public:
   CutlassMoeFCRunner(int sm_version, bool has_fc3, bool normalize_routing_weights);
 
-  size_t getWorkspaceSize(int num_rows, int hidden_size, int inter_size, int num_experts, int k);
+  size_t getWorkspaceSize(size_t num_rows, size_t hidden_size, size_t inter_size, size_t num_experts, size_t k);
 
   void run_moe_fc(const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights,
                   const T* fc1_scales, const T* fc1_expert_biases, ActivationType fc1_activation_type,
@@ -139,7 +139,8 @@ class CutlassMoeFCRunner {
                            int64_t& total_covered_rows);
 
  private:
-  void configure_ws_ptrs(char* ws_ptr, int num_rows, int hidden_size, int inter_size, int num_experts, int k);
+  void configure_ws_ptrs(char* ws_ptr, size_t num_rows, size_t hidden_size, size_t inter_size, size_t num_experts,
+                         size_t k);
 
  private:
   CubKeyValueSorter sorter_;
@@ -176,7 +177,7 @@ class CutlassMoeFCRunner<float, WeightType, typename std::enable_if_t<!std::is_s
  public:
   CutlassMoeFCRunner(int sm_version, bool has_fc3, bool normalize_routing_weights);
 
-  size_t getWorkspaceSize(int num_rows, int hidden_size, int inter_size, int num_experts, int k) {
+  size_t getWorkspaceSize(size_t num_rows, size_t hidden_size, size_t inter_size, size_t num_experts, size_t k) {
     return 0;
   }
 };
