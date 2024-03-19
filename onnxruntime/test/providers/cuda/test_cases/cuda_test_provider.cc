@@ -98,14 +98,20 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
   }
 
   void TestAll() override {
-    // TestAll is the entry point of CUDA EP's insternal tests.
+    // TestAll is the entry point of CUDA EP's internal tests.
     // Those internal tests are not directly callable from onnxruntime_test_all
     // because CUDA EP is a shared library now.
     // Instead, this is a test provider that implements all the test cases.
     // onnxruntime_test_all is calling this function through TryGetProviderInfo_CUDA_Test.
-    int argc = 1;
-    std::string mock_exe_name = "onnxruntime_providers_cuda_ut";
-    char* argv[] = {const_cast<char*>(mock_exe_name.data())};
+    char mock_exe_name[] = "onnxruntime_providers_cuda_ut";
+
+    // InitGoogleTest decrements argc and removes args from argv if
+    // recognized. By doing so it decrements argc and shifts argv,
+    // to do so, from the code comments it expects argc + 1 with the last one always being nullptr
+    // otherwise, windows diagnostics reports stack corruption. when
+    int argc = 1;  // Change argc to 2 and edit the filter below if necessary
+    char* argv[] = {mock_exe_name, nullptr};
+    // char* argv[] = {mock_exe_name, "--gtest_filter=ReductionFunctionsTest.*", nullptr};
     ::testing::InitGoogleTest(&argc, argv);
     ORT_ENFORCE(RUN_ALL_TESTS() == 0);
   }
