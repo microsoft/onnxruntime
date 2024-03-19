@@ -939,13 +939,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_dynamic_shapes") {
           LOGS_DEFAULT(WARNING) << " Deprecation notice - 'enable_dynamic_shapes' is Deprected. Upgrade the API to disable_dynamic_shapes parameter."
-                                   "Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met." ;
+                                   "Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
           std::string value;
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
           }
-          if (option.second == "True" || option.second == "true"){
+          if (option.second == "True" || option.second == "true") {
             value = "false";
           } else {
             value = "true";
