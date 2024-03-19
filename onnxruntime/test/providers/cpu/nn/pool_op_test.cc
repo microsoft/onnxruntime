@@ -927,7 +927,7 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.SetOutputTolerance(0.0001f);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // test 'strides' attribute not specified
