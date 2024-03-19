@@ -279,7 +279,16 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int builder_optimization_level_ = 3;
   int auxiliary_streams_ = -1;
   std::string tactic_sources_;
-  std::string global_cache_path_, cache_path_, engine_decryption_lib_path_;
+  std::string global_cache_path_;
+  std::string cache_path_;
+  std::string engine_decryption_lib_path_;
+  mutable bool profile_file_exists_ = false;
+  mutable bool single_serialized_engine_exists_ = false;
+  mutable std::string serialized_engine_cache_path_;
+  mutable bool single_serialized_encrypted_engine_exists_ = false;
+  mutable std::string serialized_encrypted_engine_cache_path_;
+  mutable bool single_serialized_weightless_engine_exists_ = false;
+  mutable std::string serialized_weightless_engine_cache_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
@@ -327,9 +336,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
+  // Mutable specifier for *shapes_ data members is only to allow passing them by non-const reference
+  // in order to utilize the faster operator[] (in contrast to at())
+  mutable std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
+  mutable std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
+  mutable std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
@@ -559,7 +570,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**
    * Check if a cached engine is present on disk, to avoid creating a TRT Builder instance.
+   * The cached engine must correspond to the entire graph being TRT eligible.
+   * Currently, TRT eligibility is determined by taking into account the cached engine filename's suffix only.
    */
-  bool IsCachedEnginePresent(const std::string& sub_graph_metadef_name);
+  bool IsSingleCachedEnginePresent(const std::string& sub_graph_metadef_name) const;
 };
 }  // namespace onnxruntime

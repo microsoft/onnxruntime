@@ -98,8 +98,8 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
   return true;
 }
 
-int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
+int GetNumProfiles(const std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::const_iterator it;
   for (it = profile_shapes.begin(); it != profile_shapes.end(); it++) {
     return static_cast<int>(it->second.size());
   }
@@ -765,6 +765,7 @@ void FillCachePaths(std::string& cache_suffix,
                     std::string& cache_path_prefix,
                     std::string& engine_cache_path,
                     std::string& encrypted_engine_cache_path,
+                    std::string& weightless_engine_cache_path,
                     std::string& profile_cache_path) {
   std::string generated_cache_path;
   // Customize cache prefix if assigned
@@ -782,6 +783,7 @@ void FillCachePaths(std::string& cache_suffix,
   cache_path_prefix = generated_cache_path + "_sm" + compute_capability;
   engine_cache_path = cache_path_prefix + ".engine";
   encrypted_engine_cache_path = engine_cache_path + ".encrypted";
+  weightless_engine_cache_path = engine_cache_path + ".wtlsengine";
   profile_cache_path = cache_path_prefix + ".profile";
 }
 }  // namespace onnxruntime
