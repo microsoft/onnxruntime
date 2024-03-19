@@ -10,7 +10,7 @@ import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
-import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
+import {AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
 
@@ -54,6 +54,7 @@ class TensorViewImpl implements TensorView {
 }
 
 class ComputeContextImpl implements ComputeContext {
+  readonly adapterInfo: AdapterInfo;
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly outputCount: number;
@@ -66,6 +67,7 @@ class ComputeContextImpl implements ComputeContext {
   private customDataOffset = 0;
   private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
+    this.adapterInfo = backend.adapterInfo;
     const heapU32 = module.HEAPU32;
 
     // extract context data
@@ -104,7 +106,8 @@ class ComputeContextImpl implements ComputeContext {
         throw new Error(`Unsupported data type: ${dataType}`);
       }
       const bufferSize = elementSize * ShapeUtil.size(dims);
-      return new TensorViewImpl(this.module, dataType, this.backend.gpuDataManager.create(bufferSize).id, dims);
+      const gpuDataId = bufferSize > 0 ? this.backend.gpuDataManager.create(bufferSize).id : 0;
+      return new TensorViewImpl(this.module, dataType, gpuDataId, dims);
     };
     return this.backend.run(program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput);
   }
@@ -118,7 +121,7 @@ class ComputeContextImpl implements ComputeContext {
       for (let i = 0; i < dims.length; i++) {
         this.module.HEAPU32[offset++] = dims[i];
       }
-      return this.module._JsepOutput(this.opKernelContext, index, data);
+      return this.module._JsepOutput!(this.opKernelContext, index, data);
     } catch (e) {
       throw new Error(
           `Failed to generate kernel's output[${index}] with dims [${dims}]. ` +
@@ -133,27 +136,39 @@ class ComputeContextImpl implements ComputeContext {
 /**
  * Initialize JSEP with WebGPU backend.
  *
- * This function will be called only once after the WebAssembly module is loaded and initialized ("_OrtInit" is called).
- * This function expects:
+ * This function will be called after the WebAssembly module is loaded and initialized ("_OrtInit" is called), once for
+ * each of the following EPs if they are specified:
+ * - "webgpu"
+ * - "webnn"
+ *
+ * For WebGPU, this function expects:
  *  - WebGPU is enabled in build (BUILD_DEFS.DISABLE_WEBGPU === false).
  *  - WebGPU is available in current environment. (a valid GPUAdapter is passed in)
- * If the WebAssembly module is not built with JSEP support, this function will throw an error. This will invalidate
- * 'webgpu' backend.
  *
+ * For WebNN, this function expects:
+ * - WebNN is enabled in build (BUILD_DEFS.DISABLE_WEBGPU === false).
+ * - WebNN is available in current environment. (navigator.ml is not undefined)
+ *
+ * If the WebAssembly module is not built with JSEP support, this function will throw an error. This will invalidate
+ * 'webgpu'/'webnn' backend.
+ *
+ * @param name - the name of the EP, either "webgpu" or "webnn"
  * @param module - the ORT WebAssembly module
  * @param env - the ORT environment variable (ort.env)
  * @param gpuAdapter - the pre-created GPU adapter
  */
-export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapter): Promise<void> => {
+export const init =
+    async(name: 'webgpu'|'webnn', module: OrtWasmModule, env: Env, gpuAdapter?: GPUAdapter): Promise<void> => {
   const jsepInit = module.jsepInit;
   if (!jsepInit) {
     throw new Error('Failed to initialize JSEP. The WebAssembly module is not built with JSEP support.');
   }
 
-  const backend = new WebGpuBackend();
-  await backend.initialize(env, gpuAdapter);
+  if (name === 'webgpu') {
+    const backend = new WebGpuBackend();
+    await backend.initialize(env, gpuAdapter!);
 
-  jsepInit(
+    jsepInit('webgpu', [
       // backend
       backend,
 
@@ -187,8 +202,8 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
           },
 
       // jsepCreateKernel
-      (kernelType: string, kernelId: number, attribute: unknown) =>
-          backend.createKernel(kernelType, kernelId, attribute, module.UTF8ToString(module._JsepGetNodeName(kernelId))),
+      (kernelType: string, kernelId: number, attribute: unknown) => backend.createKernel(
+          kernelType, kernelId, attribute, module.UTF8ToString(module._JsepGetNodeName!(kernelId))),
 
       // jsepReleaseKernel
       (kernel: number) => backend.releaseKernel(kernel),
@@ -207,5 +222,9 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
       // jsepCaptureEnd
       () => backend.captureEnd(),
       // jsepReplay
-      () => backend.replay());
+      () => backend.replay()
+    ]);
+  } else {
+    jsepInit('webnn');
+  }
 };

@@ -46,9 +46,11 @@ ADD_TYPED_ISNAN_OP_9(MLFloat16);
 ADD_TYPED_ISNAN_OP_13(float);
 ADD_TYPED_ISNAN_OP_13(double);
 ADD_TYPED_ISNAN_OP_13(MLFloat16);
+ADD_TYPED_ISNAN_OP_13(BFloat16);
 ADD_TYPED_ISNAN_OP(float);
 ADD_TYPED_ISNAN_OP(double);
 ADD_TYPED_ISNAN_OP(MLFloat16);
+ADD_TYPED_ISNAN_OP(BFloat16);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 ADD_TYPED_ISNAN_OP(Float8E4M3FN);
@@ -75,9 +77,7 @@ Status IsNaN<T>::Compute(OpKernelContext* context) const {
 template <>
 Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
   const auto* X_ptr = context->Input<Tensor>(0);
-  if (!X_ptr) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Null input ptr");
-  }
+
   auto X_data = X_ptr->Data<MLFloat16>();
   auto& dims = X_ptr->Shape();
   auto shape_size = dims.Size();
@@ -87,6 +87,19 @@ Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
       ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(X_data)), onnxruntime::narrow<size_t>(shape_size))
           .array()
           .isNaN();
+
+  return Status::OK();
+}
+
+template <>
+Status IsNaN<BFloat16>::Compute(OpKernelContext* context) const {
+  const auto* X_ptr = context->Input<Tensor>(0);
+
+  auto X_data = X_ptr->DataAsSpan<BFloat16>();
+  auto& Y = *context->Output(0, X_ptr->Shape());
+
+  std::transform(X_data.begin(), X_data.end(), Y.MutableData<bool>(),
+                 [](BFloat16 x) { return x.IsNaN(); });
 
   return Status::OK();
 }

@@ -120,17 +120,17 @@ jobs:
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
-      - task: VSBuild@1
+      # building with build.py so the parallelization parameters are added to the msbuild command
+      - task: PythonScript@0
         displayName: 'Build'
         inputs:
-          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-          platform: x64
-          configuration: RelWithDebInfo
-          msbuildArchitecture: $(buildArch)
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          createLogFile: true
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: >
+            --config RelWithDebInfo
+            --build_dir $(Build.BinariesDirectory)
+            --parallel --build
+            $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
+          workingDirectory: '$(Build.BinariesDirectory)'
 
       # Esrp signing
       - template: win-esrp-dll.yml
@@ -188,7 +188,7 @@ jobs:
         condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
 
       - template: component-governance-component-detection-steps.yml
         parameters:

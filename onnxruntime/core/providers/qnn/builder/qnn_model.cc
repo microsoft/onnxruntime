@@ -9,6 +9,8 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/utils.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
@@ -95,7 +97,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
   // valid throughout the lifetime of the ModelBuilder
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
 
   // This name must be same with the EPContext node name
   const auto& graph_name = fused_node.Name();
@@ -114,6 +116,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }
 
+  std::unordered_set<const NodeUnit*> handled_node_units;
+
   // Op builer
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
@@ -122,20 +126,43 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     // Check whether it's part of NodeUnit
     const NodeUnit& node_unit = GetNodeUnit(node, node_unit_map);
     // Q, DQ nodes in the node unit only carry the quantization parameters
-    // Add the QNN node when it is the target node (It's a normal node or a singel Q/DQ node)
+    // Add the QNN node when it is the target node (It's a normal node or a single Q/DQ node)
     const std::string& op_type = node_unit.OpType();
+
+    if (node != &node_unit.GetNode()) {
+      continue;
+    }
+
+    if (handled_node_units.count(&node_unit) != 0) {
+      continue;  // Already handled.
+    }
+
+    // Try to convert particular DQ -> Q sequences into QNN Convert op
+    auto convert_result = TryHandleConvertSequence(qnn_model_wrapper,
+                                                   node_unit,
+                                                   node_unit_map,
+                                                   logger_,
+                                                   false /*do_op_validation*/);
+    ORT_RETURN_IF_ERROR(convert_result.status);
+
+    if (convert_result.q_node_unit) {
+      // Successfully merged DQ -> Q sequence into a QNN Convert op.
+      // Mark both of these node units as handled.
+      handled_node_units.insert(&node_unit);
+      handled_node_units.insert(convert_result.q_node_unit);
+      continue;
+    }
+
     LOGS(logger_, VERBOSE) << " node name: [" << node->Name()
                            << "] node optype: [" << op_type
                            << "] as part of the NodeUnit type: [" << node_unit.OpType()
                            << "] name: [" << node_unit.Name()
                            << "]";
-    if (node != &node_unit.GetNode()) {
-      continue;
-    }
-
     if (const auto* op_builder = GetOpBuilder(op_type)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_));
     }
+
+    handled_node_units.insert(&node_unit);
   }
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(), "Failed to compose Qnn graph.");

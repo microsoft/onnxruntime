@@ -34,6 +34,17 @@ parameters:
     values:
       - 11.8
       - 12.2
+
+  - name: SpecificArtifact
+    displayName: Use Specific Artifact
+    type: boolean
+    default: false
+
+  - name: BuildId
+    displayName: Specific Artifact's BuildId
+    type: string
+    default: '0'
+
 resources:
   repositories:
   - repository: manylinux
@@ -61,162 +72,201 @@ variables:
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
       value: 'onnxruntimecuda12build'
 
-jobs:
-- job: Linux_Build
-  timeoutInMinutes: 120
-  variables:
-    skipComponentGovernanceDetection: true
-    CCACHE_DIR: $(Pipeline.Workspace)/ccache
-  workspace:
-    clean: all
-  pool: onnxruntime-Ubuntu2204-AMD-CPU
+stages:
+- stage: Linux_Build
+  jobs:
+  - job: Linux_Build
+    timeoutInMinutes: 120
+    variables:
+      skipComponentGovernanceDetection: true
+      CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    workspace:
+      clean: all
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
 
-  steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+    steps:
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
-  - checkout: self
-    clean: true
-    submodules: none
+    - checkout: self
+      clean: true
+      submodules: none
 
-  - template: templates/get-docker-image-steps.yml
-    parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "
-      --network=host
-      --build-arg BASEIMAGE=$(docker_base_image)
-      --build-arg TRT_VERSION=$(linux_trt_version)
-      --build-arg BUILD_UID=$( id -u )
-      "
-      Repository: $(Repository)
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "
+        --network=host
+        --build-arg BASEIMAGE=$(docker_base_image)
+        --build-arg TRT_VERSION=$(linux_trt_version)
+        --build-arg BUILD_UID=$( id -u )
+        "
+        Repository: $(Repository)
 
-  - task: Cache@2
-    inputs:
-      key: '"ccache" | "${{parameters.CudaVersion}}" |"$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(CCACHE_DIR)
-      restoreKeys: |
-        "ccache" | "${{parameters.CudaVersion}}" | "$(Build.SourceBranch)"
-        "ccache"
-      cacheHitVar: CACHE_RESTORED
-    displayName: Cach Task
+    - task: Cache@2
+      inputs:
+        key: '"ccache" | "${{parameters.CudaVersion}}" |"$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+        path: $(CCACHE_DIR)
+        restoreKeys: |
+          "ccache" | "${{parameters.CudaVersion}}" | "$(Build.SourceBranch)"
+          "ccache"
+        cacheHitVar: CACHE_RESTORED
+      displayName: Cach Task
 
-  - script: |
-      sudo mkdir -p $(Pipeline.Workspace)/ccache
-    condition: ne(variables.CACHE_RESTORED, 'true')
-    displayName: Create Cache Dir
+    - script: |
+        sudo mkdir -p $(Pipeline.Workspace)/ccache
+      condition: ne(variables.CACHE_RESTORED, 'true')
+      displayName: Create Cache Dir
 
-  - script: |
-      set -e -x
-      mkdir -p $HOME/.onnx
-      docker run -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
-        --volume /data/onnx:/data/onnx:ro \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume $(Build.BinariesDirectory):/build \
-        --volume /data/models:/build/models:ro \
-        --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-        --volume $(Pipeline.Workspace)/ccache:/cache \
-        -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-        -e NIGHTLY_BUILD \
-        -e BUILD_BUILDNUMBER \
-        -e CCACHE_DIR=/cache \
-        $(Repository) \
-        /bin/bash -c "
-          set -ex; \
-          env; \
-          ccache -s; \
-          /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-            --build_dir /build --cmake_generator Ninja \
-            --config Release --update --build \
-            --skip_submodule_sync \
-            --build_shared_lib \
-            --parallel --use_binskim_compliant_compile_flags \
-            --build_wheel \
-            --enable_onnx_tests --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda-${{parameters.CudaVersion}} --cudnn_home=/usr/local/cuda-${{parameters.CudaVersion}} \
-            --enable_cuda_profiling --enable_cuda_nhwc_ops \
-            --enable_pybind --build_java \
-            --use_cache \
-            --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=86; \
-              ccache -sv; \
-              ccache -z"
-    workingDirectory: $(Build.SourcesDirectory)
-    displayName: Build Onnxruntime
-
-  - task: CmdLine@2
-    inputs:
-      script: |
-        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-        rm -f $(Build.BinariesDirectory)/Release/models
-        find $(Build.BinariesDirectory)/Release/_deps -mindepth 1 ! -regex '^$(Build.BinariesDirectory)/Release/_deps/onnx-src\(/.*\)?' -delete
-        cd $(Build.BinariesDirectory)/Release
-        find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
-
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline Artifact'
-    inputs:
-      artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/Release'
-
-  - template: templates/explicitly-defined-final-tasks.yml
-
-- job: Linux_Test
-  timeoutInMinutes: 180
-  variables:
-    skipComponentGovernanceDetection: true
-  workspace:
-    clean: all
-  pool: onnxruntime-Linux-GPU-A10
-  dependsOn:
-  - Linux_Build
-  steps:
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact'
-    inputs:
-      buildType: 'current'
-      artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/Release'
-
-  - checkout: self
-    clean: true
-    submodules: none
-
-  - template: templates/get-docker-image-steps.yml
-    parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "
-      --network=host
-      --build-arg BASEIMAGE=$(docker_base_image)
-      --build-arg TRT_VERSION=$(linux_trt_version)
-      --build-arg BUILD_UID=$( id -u )
-      "
-      Repository: $(Repository)
-
-  - task: CmdLine@2
-    inputs:
-      script: |
+    - script: |
         set -e -x
         mkdir -p $HOME/.onnx
-        docker run --gpus all --rm \
-          --volume  $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory)/Release:/build/Release \
+        docker run -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume /data/onnx:/data/onnx \
+          --volume $(Pipeline.Workspace)/ccache:/cache \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e CCACHE_DIR=/cache \
           $(Repository) \
           /bin/bash -c "
             set -ex; \
-            cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
-            ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
-            /tmp/python3 -m pip install -r /tmp/requirements.txt; \
-            /tmp/python3 -m pip install /build/Release/dist/*.whl; \
-            cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
-            cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
-            cd /tmp; \
-            /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
-              --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
-              --enable_pybind --build_java --ctest_path '' "
+            env; \
+            ccache -s; \
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
+              --config Release --update --build \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel --use_binskim_compliant_compile_flags \
+              --build_wheel \
+              --enable_onnx_tests --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda-${{parameters.CudaVersion}} --cudnn_home=/usr/local/cuda-${{parameters.CudaVersion}} \
+              --enable_cuda_profiling --enable_cuda_nhwc_ops \
+              --enable_pybind --build_java \
+              --use_cache \
+              --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75; \
+                ccache -sv; \
+                ccache -z"
+      workingDirectory: $(Build.SourcesDirectory)
+      displayName: Build Onnxruntime
 
-  - template: templates/clean-agent-build-directory-step.yml
+    - task: CmdLine@2
+      inputs:
+        script: |
+          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+          rm -f $(Build.BinariesDirectory)/Release/models
+          find $(Build.BinariesDirectory)/Release/_deps -mindepth 1 ! -regex '^$(Build.BinariesDirectory)/Release/_deps/onnx-src\(/.*\)?' -delete
+          cd $(Build.BinariesDirectory)/Release
+          find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.BinariesDirectory)/Release'
+
+    - template: templates/explicitly-defined-final-tasks.yml
+
+- stage: Linux_Test
+  dependsOn:
+    - Linux_Build
+  jobs:
+  - job: Linux_Test
+    timeoutInMinutes: 180
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: onnxruntime-Linux-GPU-T4
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        ArtifactName: 'drop-linux'
+        StepName: 'Download Pipeline Artifact - Linux Build'
+        TargetPath: '$(Build.BinariesDirectory)/Release'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "
+        --network=host
+        --build-arg BASEIMAGE=$(docker_base_image)
+        --build-arg TRT_VERSION=$(linux_trt_version)
+        --build-arg BUILD_UID=$( id -u )
+        "
+        Repository: $(Repository)
+
+    - task: CmdLine@2
+      inputs:
+        script: |
+          set -e -x
+          mkdir -p $HOME/.onnx
+          docker run --gpus all --rm \
+            --volume  $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory)/Release:/build/Release \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            --volume /data/onnx:/data/onnx \
+            -e NVIDIA_TF32_OVERRIDE=0 \
+            $(Repository) \
+            /bin/bash -c '
+              nvidia-smi; \
+              /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so"; \
+              cat /usr/local/cuda/include/cuda.h | grep -m1 CUDA_VERSION; \
+              cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -m1 -A 2; \
+              ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
+              /tmp/python3 -m pip install /build/Release/dist/*.whl; \
+              /tmp/python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
+                        ort_device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0); \
+                        print(ort_device); print(ort_device.device_type(), C_OrtDevice.cuda()); \
+                        assert(ort_device.device_type()==1); assert(C_OrtDevice.cuda()==1);" \
+            '
+      displayName: 'Check GPU'
+
+    - task: CmdLine@2
+      inputs:
+        script: |
+          set -e -x
+          mkdir -p $HOME/.onnx
+          docker run --gpus all --shm-size=1g --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 --rm \
+            --volume  $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory)/Release:/build/Release \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            --volume /data/onnx:/data/onnx \
+            -e NVIDIA_TF32_OVERRIDE=0 \
+            $(Repository) \
+            /bin/bash -c '
+              set -ex; \
+              cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
+              ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
+              /tmp/python3 -m pip install -r /tmp/requirements.txt; \
+              /tmp/python3 -m pip install /build/Release/dist/*.whl; \
+              cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
+              cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
+              cd /tmp; \
+              /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
+                --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
+                --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
+                --enable_pybind --build_java --ctest_path "" ; \
+              '
+      displayName: 'Run Tests'
+
+    - template: templates/check_test_result.yml
+      parameters:
+        FileName: '$(Build.BinariesDirectory)/Release/onnxruntime_test_all.Release.results.xml'
+
+    - template: templates/clean-agent-build-directory-step.yml

@@ -199,9 +199,7 @@ def find_potential_issues(root_dir, op_to_opset):
                 latest = op_to_opset[op]
                 if int(latest) != int(last_version):
                     log.warning(
-                        "Newer opset found for {}. Latest:{} Optimizer support ends at {}. File:{}".format(
-                            op, latest, last_version, file
-                        )
+                        f"Newer opset found for {op}. Latest:{latest} Optimizer support ends at {last_version}. File:{file}"
                     )
             else:
                 log.error(f"Failed to find version information for {op}. File:{file}")

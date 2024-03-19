@@ -123,6 +123,8 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
   for (auto& node : ctx_graph.Nodes()) {
     if (node.OpType() == "EPContext") {
       ++ep_context_node_count;
+      // validate the fix for the partition issue relate to QDQ model
+      ASSERT_EQ(node.InputDefs().size(), 1);
     } else {
       ++non_ep_context_node_count;
     }
@@ -463,7 +465,6 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 
-  std::string provider_type = kCpuExecutionProvider;
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(qnn_ctx_model_data.data(), static_cast<int>(qnn_ctx_model_data.size())));
   // Verify the return status with code INVALID_GRAPH
@@ -486,7 +487,6 @@ std::string CreateQnnCtxModelWithNonEmbedMode(std::string external_bin_path) {
   auto* graph_output = helper.MakeOutput<float>(shape);
   Node& ep_context_node = helper.AddNode("EPContext", {graph_input}, {graph_output}, kMSDomain);
   ep_context_node.AddAttribute("embed_mode", static_cast<int64_t>(0));
-  // The .. in the path will cause INVALID_GRAPH
   ep_context_node.AddAttribute("ep_cache_context", external_bin_path);
   ep_context_node.AddAttribute("partition_name", "QNNExecutionProvider_QNN_1110111000111000111_1_0");
   ep_context_node.AddAttribute("source", "QNN");
@@ -649,6 +649,87 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
                        context_binary_file);
   // Clean up
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
+}
+
+// Context binary only contains a single QNN graph, generated context cache model (detached mode) only has 1 EPContext node
+// Create another Onnx model which also reference to the bin file,
+// but the node name is not same with the QNN graph name inside the bin file.
+// This is to support backward compitable for the models generated before the PR that
+// make context generation support multi-partition
+TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphNameInCtx) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
+  std::filesystem::path context_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
+  std::remove(context_binary_file.c_str());
+  std::remove(context_bin.string().c_str());
+
+  std::unordered_map<std::string, std::string> session_option_pairs;
+  session_option_pairs.emplace(kOrtSessionOptionEpContextEnable, "1");
+  session_option_pairs.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
+  session_option_pairs.emplace(kOrtSessionOptionEpContextEmbedMode, "0");
+
+  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
+  const std::string op_type = "Atan";
+
+  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
+  // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All,
+                       QDQTolerance(),
+                       logging::Severity::kERROR,
+                       "",  // context model file path, not required for this inference
+                       session_option_pairs);
+
+  // Check the Onnx skeleton file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+  // Check the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_bin));
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 11}, {kMSDomain, 1}};
+  auto& logging_manager = DefaultLoggingManager();
+  onnxruntime::Model model("QNN_ctx_model", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  std::vector<int64_t> shape = {1, 2, 3};
+  NodeArg* graph_input = MakeTestInput(helper, TestInputDef<float>(shape, false, {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f}));
+  auto* graph_output = helper.MakeOutput<float>(shape);
+  Node& ep_context_node = helper.AddNode("EPContext", {graph_input}, {graph_output}, kMSDomain);
+  ep_context_node.AddAttribute("embed_mode", static_cast<int64_t>(0));
+  ep_context_node.AddAttribute("ep_cache_context", context_bin.string());
+  ep_context_node.AddAttribute("partition_name", "QNNExecutionProvider_QNN_1110111000111000111_1_0");
+  ep_context_node.AddAttribute("source", "QNNExecutionProvider");
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  // loads and run from Onnx skeleton file + Qnn context cache binary file
+
+  SessionOptions so;
+  so.session_logid = "qnn_ctx_model_logger";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  // Verify the return status with code INVALID_GRAPH
+  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::OK);
+
+  // Clean up
+  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
+  ASSERT_EQ(std::remove(context_bin.string().c_str()), 0);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

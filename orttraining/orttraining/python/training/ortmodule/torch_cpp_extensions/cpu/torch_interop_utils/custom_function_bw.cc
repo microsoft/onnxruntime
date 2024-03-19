@@ -60,9 +60,10 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
         tensor = torch::utils::tensor_fromDLPack(args[arg_index]);
       } else {
         TORCH_CHECK(args[arg_index] == Py_None, "Only None is supported for non-tensor input.");
-        PyObject* fw_kernel_invoke_id = PyObject_GetAttrString(ctx.ptr(), "fw_kernel_invoke_id");
+        py::object fw_kernel_invoke_id = PyObject_FastGetAttrString(ctx.ptr(), "fw_kernel_invoke_id");
+        TORCH_CHECK(fw_kernel_invoke_id.ptr() != nullptr, "fw_kernel_invoke_id is not found in the context.");
         std::string fw_kernel_invoke_id_str =
-            py::cast<std::string>(py::reinterpret_borrow<py::object>(fw_kernel_invoke_id));
+            py::cast<std::string>(fw_kernel_invoke_id);
         CustomFuncOpKernelInfo& fw_kernel_info =
             KernelInfoStore::GetInstance().GetKernelInfoMap().at(fw_kernel_invoke_id_str);
         if (fw_kernel_info.materialize_grads) {

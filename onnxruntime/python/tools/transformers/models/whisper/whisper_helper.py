@@ -6,12 +6,14 @@
 
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
+from float16 import float_to_float16_max_diff
+from onnx_model import OnnxModel
+from optimizer import optimize_model
 from packaging import version
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from transformers import __version__ as transformers_version
@@ -21,24 +23,20 @@ from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncod
 
 from onnxruntime import InferenceSession
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff
-from onnx_model import OnnxModel
-from optimizer import optimize_model
-
 logger = logging.getLogger(__name__)
 
 PRETRAINED_WHISPER_MODELS = [
     "whisper-tiny",
     "whisper-tiny.en",
+    "whisper-base",
+    "whisper-base.en",
     "whisper-small",
     "whisper-small.en",
     "whisper-medium",
     "whisper-medium.en",
-    "whisper-base",
-    "whisper-base.en",
     "whisper-large",
     "whisper-large-v2",
+    "whisper-large-v3",
 ]
 
 
@@ -336,7 +334,7 @@ class WhisperHelper:
         try:
             from datasets import load_dataset
         except Exception as e:
-            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)
+            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)  # noqa: G201
             install_cmd = "pip install datasets"
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
@@ -346,7 +344,12 @@ class WhisperHelper:
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
 
-        batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 26, 0, 5, 1
+        start_id = [config.decoder_start_token_id]  # ex: [50258]
+        prompt_ids = processor.get_decoder_prompt_ids(language="english", task="transcribe")
+        prompt_ids = list(map(lambda token: token[1], prompt_ids))  # ex: [50259, 50358, 50363]
+        forced_decoder_ids = start_id + prompt_ids  # ex: [50258, 50259, 50358, 50363]
+
+        batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 30, 0, 1, 1
         length_penalty, repetition_penalty = 1.0, 1.0
         inputs = {
             "input_features": input_features.to(device),
@@ -383,43 +386,51 @@ class WhisperHelper:
             elif name == "prefix_vocab_mask":
                 inputs[name] = np.ones((batch_size, config.vocab_size), dtype=ort_to_np[dtype])
             elif name == "decoder_input_ids":
-                raw_input_ids = (
-                    [[config.decoder_start_token_id]]
-                    if use_extra_decoding_ids
-                    else [[config.decoder_start_token_id, 50259, 50359, 50363]]
-                )
+                raw_input_ids = [start_id] if use_extra_decoding_ids else [forced_decoder_ids]
                 inputs[name] = np.array(raw_input_ids, dtype=ort_to_np[dtype])
             elif name == "logits_processor":
                 inputs[name] = np.array([1], dtype=ort_to_np[dtype])
             elif name == "cross_qk_layer_head":
                 inputs[name] = np.array([[0, 0]], dtype=ort_to_np[dtype])
             elif name == "extra_decoding_ids":
-                inputs[name] = np.repeat(np.array([[50259, 50359, 50363]], dtype=ort_to_np[dtype]), batch_size, 0)
+                inputs[name] = np.repeat(np.array([prompt_ids], dtype=ort_to_np[dtype]), batch_size, 0)
+            elif name == "temperature":
+                inputs[name] = np.array([1.0], dtype=ort_to_np[dtype])
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
         ort_outputs = ort_session.run(None, inputs)[0][0]
 
-        if pt_outputs.shape != ort_outputs.shape:
-            logger.warning("PyTorch and ONNX Runtime outputs do not have the same shape")
+        expected_transcription_no_comma = (
+            " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
+        )
+        expected_transcription_with_comma = (
+            " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
+        )
+        expected_transcription_with_quote_and_comma = (
+            ' "Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel.'
+        )
+        expected_transcription_options = {
+            expected_transcription_no_comma,
+            expected_transcription_with_comma,
+            expected_transcription_with_quote_and_comma,
+        }
+        pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)[0]
+        ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)[0]
 
-        diff = pt_outputs - ort_outputs
-        max_diff = max(diff.min(), diff.max(), key=abs)
+        parity = (
+            pt_transcription in expected_transcription_options and ort_transcription in expected_transcription_options
+        )
+        max_diff = 0
 
-        if max_diff > 0:
-            # For ONNX Runtime INT8 model
-            pt_expected_transcription = (
-                " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
-            )
-            pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)
-            ort_expected_transcription = (
-                " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
-            )
-            ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
+        if not parity:
+            if pt_outputs.shape != ort_outputs.shape:
+                diff = pt_outputs - ort_outputs[:, : len(pt_outputs[0])]
+            else:
+                diff = pt_outputs - ort_outputs
+            max_diff = max(diff.min(), diff.max(), key=abs)
 
-            parity = (
-                pt_expected_transcription == pt_transcription[0] and ort_expected_transcription == ort_transcription[0]
-            )
-            if parity:
-                max_diff = 0
+        if max_diff != 0:
+            logger.warning(f"PyTorch outputs: {pt_transcription}")
+            logger.warning(f"ONNX Runtime outputs: {ort_transcription}")
 
         return max_diff

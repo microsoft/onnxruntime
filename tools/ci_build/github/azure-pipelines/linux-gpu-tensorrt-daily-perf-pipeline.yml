@@ -8,15 +8,16 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 8.6.1.6
+  default: 8.6.cuda_11_8_cudnn_8
   values:
-  - 8.4.1.5
-  - 8.5.1.1
-  - 8.6.1.6
+  - 8.4.cuda_11_6_cudnn_8
+  - 8.5.cuda_11_8_cudnn_8
+  - 8.6.cuda_11_8_cudnn_8
+  - 8.6.cuda_12_3_cudnn_9
   - BIN
 
 - name: UseTensorrtOssParser
-  displayName: Use TensorRT-OSS Parser
+  displayName: Use TensorRT-OSS Parser (not compatible with BIN)
   type: boolean
   default: false
 
@@ -27,9 +28,14 @@ parameters:
     - "partner-models"
 
 - name: MemTest
-  displayName: Run Memory Test
+  displayName: Run Memory Test and Concurrency Test
   type: boolean
   default: true
+
+- name: ConcurrencyTest
+  displayName: Specifies the number of concurrency model test to invoke simultaneously
+  type: string
+  default: 2
 
 - name: TrtEPOptions
   displayName: TensorRT EP options
@@ -76,17 +82,21 @@ jobs:
 
     - name: image
       value: ort-image-$(Build.BuildId)
+    
+    - name: parser
+      ${{ if eq(parameters.UseTensorrtOssParser, true) }}:
+        value: --use_tensorrt_oss_parser $(parameters.UseTensorrtOssParser) }}
 
   steps:
     - ${{ if and(eq(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:
       - script: 'ls -al $(trtBinsDir)'
         displayName: 'Show available TensorRT .tar.gz packages'
 
-      - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion).Linux.x86_64-gnu.cuda-$(tarCudaVersion).cudnn$(tarCudnnVersion).tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
+      - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion).Linux.x86_64-gnu.cuda-$(tarCudaVersion).tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
         displayName: 'Copy TensorRT .tar.gz package into Docker build directory'
 
-      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
-        displayName: 'Install TensorRT from binaries and build latest ORT Image'
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --trt_bins_dir=.'
+        displayName: 'Install TensorRT $(tarTrtVersion) from binaries and build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
     # Build ORT with TensorRT built-in parser 
@@ -102,8 +112,8 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
     - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
-        displayName: 'Run Memory Test'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false -c ${{ parameters.ConcurrencyTest }}'
+        displayName: 'Run Memory Test and Concurrency Test'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ each option in parameters.ModelGroups }}:
@@ -147,7 +157,7 @@ jobs:
         displayName: 'Check and Install Azure CLI'
 
       - task: AzureCLI@2
-        displayName: 'Azure CLI Post to Dashboard'
+        displayName: 'Post EP Perf Results to Dashboard'
         inputs:
           azureSubscription: AIInfraBuildOnnxRuntimeOSS
           scriptLocation: inlineScript
@@ -155,8 +165,8 @@ jobs:
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database)
-    
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'

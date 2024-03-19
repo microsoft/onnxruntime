@@ -21,7 +21,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "data_transfer.h"
 
 namespace onnxruntime {
@@ -756,16 +755,16 @@ std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer
 JsExecutionProvider::~JsExecutionProvider() {
 }
 
-Status JsExecutionProvider::OnRunStart() {
-  if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+Status JsExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+  if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
     LOGS(*GetLogger(), INFO) << "Capturing the webgpu graph for this model";
     EM_ASM({ Module.jsepCaptureBegin(); });
   }
   return Status::OK();
 }
 
-Status JsExecutionProvider::OnRunEnd(bool sync_stream) {
-  if (IsGraphCaptureEnabled() && !IsGraphCaptured()) {
+Status JsExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
+  if (IsGraphCaptureEnabled() && !IsGraphCaptured(0)) {
     if (IsGraphCaptureAllowed()) {
       EM_ASM({ Module.jsepCaptureEnd(); });
       is_graph_captured_ = true;
@@ -781,12 +780,12 @@ bool JsExecutionProvider::IsGraphCaptureEnabled() const {
   return enable_graph_capture_;
 }
 
-bool JsExecutionProvider::IsGraphCaptured() const {
+bool JsExecutionProvider::IsGraphCaptured(int) const {
   return is_graph_captured_;
 }
 
-Status JsExecutionProvider::ReplayGraph() {
-  ORT_ENFORCE(IsGraphCaptured());
+Status JsExecutionProvider::ReplayGraph(int) {
+  ORT_ENFORCE(IsGraphCaptured(0));
   EM_ASM({ Module.jsepReplay(); });
   return Status::OK();
 }

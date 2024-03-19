@@ -87,7 +87,7 @@ Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context)
 
   CudnnTensor data_desc;
   vector<int64_t> new_dims;
-  BatchNormHelper::NormalizeDims(x_shape, new_dims);
+  BatchNormHelper::NormalizeDims(x_shape, new_dims, NHWC);
   ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>(), NHWC));
 
   // For half data type, the alpha, beta, scale, B, mean, var need to be float type
@@ -137,6 +137,12 @@ Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context)
     auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->MutableData<T>());
     auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->MutableData<T>());
 
+    auto stream = static_cast<cudaStream_t>(p_op_kernel_context->GetComputeStream()->GetHandle());
+    CUDA_RETURN_IF_ERROR(
+        cudaMemcpyAsync(running_mean_data, mean_data, mean->SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
+    CUDA_RETURN_IF_ERROR(
+        cudaMemcpyAsync(running_var_data, var_data, var->SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
+
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
         GetCudnnHandle(p_op_kernel_context),
         cudnn_batch_norm_mode_,
@@ -149,7 +155,7 @@ Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context)
         bn_tensor_desc,
         scale_data,
         b_data,
-        momentum_,
+        1.0 - momentum_,
         running_mean_data,
         running_var_data,
         epsilon_,
@@ -186,6 +192,7 @@ SPECIALIZED_COMPUTE(MLFloat16, kOnnxDomain, false)
 
 #ifdef ENABLE_CUDA_NHWC_OPS
 SPECIALIZED_COMPUTE(float, kMSInternalNHWCDomain, true)
+SPECIALIZED_COMPUTE(double, kMSInternalNHWCDomain, true)
 SPECIALIZED_COMPUTE(MLFloat16, kMSInternalNHWCDomain, true)
 #endif
 }  // namespace cuda

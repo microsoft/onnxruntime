@@ -130,22 +130,51 @@ def _test_apple_packages(args):
 
             simulator_device_info = json.loads(simulator_device_info)
 
-            subprocess.run(
-                [
-                    "xcrun",
-                    "xcodebuild",
-                    "test",
-                    "-workspace",
-                    "./apple_package_test.xcworkspace",
-                    "-scheme",
-                    "ios_package_test",
-                    "-destination",
-                    f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
-                ],
-                shell=False,
-                check=True,
-                cwd=target_proj_path,
-            )
+            # Xcode UI tests seem to be flaky: https://github.com/orgs/community/discussions/68807
+            # Add a couple of retries if we get this error:
+            #   ios_package_testUITests-Runner Failed to initialize for UI testing:
+            #   Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 "Timed out while loading Accessibility."
+            attempts = 0
+            cmd = [
+                "xcrun",
+                "xcodebuild",
+                "test",
+                "-workspace",
+                "./apple_package_test.xcworkspace",
+                "-scheme",
+                "ios_package_test",
+                "-destination",
+                f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
+            ]
+
+            while True:
+                attempts += 1
+                completed_process = subprocess.run(
+                    cmd,
+                    shell=False,
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    cwd=target_proj_path,
+                )
+
+                # print so it's in CI output
+                print(completed_process.stdout)
+
+                if completed_process.returncode != 0:
+                    print(f"Running ios_package_test failed. Return code was {completed_process.returncode}")
+                    print("xcrun xcodebuild test stderr:")
+                    print(completed_process.stderr)
+                    print("---")
+
+                    if "Timed out while loading Accessibility" in completed_process.stderr and attempts < 3:
+                        continue
+
+                    raise subprocess.CalledProcessError(
+                        completed_process.returncode, " ".join(cmd), completed_process.stdout, completed_process.stderr
+                    )
+
+                break
 
             if args.mac_catalyst_enabled:
                 subprocess.run(

@@ -12,14 +12,19 @@
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "HTP/QnnHtpGraph.h"
+#include <vector>
+#include <set>
+#include <unordered_map>
 
 namespace onnxruntime {
+
+void RunOnUnload(std::function<void()> function);
 
 // Logical device representation.
 class QNNExecutionProvider : public IExecutionProvider {
  public:
   explicit QNNExecutionProvider(const ProviderOptions& provider_options_map, const SessionOptions* session_options);
-  virtual ~QNNExecutionProvider() = default;
+  virtual ~QNNExecutionProvider();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QNNExecutionProvider);
 
   // we implement the Compile that takes FusedNodeAndGraph instances
@@ -40,9 +45,12 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
+
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
+
  private:
   bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                       std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
                        const logging::Logger& logger) const;
 
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
@@ -73,6 +81,69 @@ class QNNExecutionProvider : public IExecutionProvider {
   int32_t vtcm_size_in_mb_ = 0;
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
   ModelMetadefIdGenerator metadef_id_generator_;
+  uint32_t device_id_ = 0;
+  qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
+  uint32_t default_rpc_control_latency_ = 0;
+  bool enable_HTP_FP16_precision_ = false;
+
+  class PerThreadContext final {
+   public:
+    PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
+                     uint32_t device_id, uint32_t core_id,
+                     qnn::HtpPerformanceMode default_htp_performance_mode,
+                     uint32_t default_rpc_control_latency);
+    ~PerThreadContext();
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
+
+    bool IsHtpPowerConfigIdValid() { return is_htp_power_config_id_valid_; }
+
+    uint32_t GetHtpPowerConfigId() { return htp_power_config_id_; }
+
+   private:
+    bool is_htp_power_config_id_valid_ = false;
+    uint32_t htp_power_config_id_ = 0;
+    qnn::QnnBackendManager* qnn_backend_manager_;
+  };
+
+  using PerThreadContextMap = std::unordered_map<const QNNExecutionProvider*, std::weak_ptr<PerThreadContext>>;
+
+  struct ContextCacheHolder {
+    ContextCacheHolder() {
+      RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
+        if (auto lock = weak_p_.lock())
+          p.reset();
+      });
+    }
+
+    std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
+  };
+
+  static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
+    thread_local const ContextCacheHolder per_thread_context_cache;
+    return per_thread_context_cache.p;
+  }
+
+  struct PerThreadContextState {
+    // contexts that are currently active
+    std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
+    // contexts available for reuse
+    std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
+    // weak references to thread local caches from which this QNNExecutionProvider instance's entry should be removed
+    // upon destruction
+    std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
+        caches_to_update_on_destruction;
+    // synchronizes access to PerThreadContextState members
+    OrtMutex mutex;
+  };
+
+  // The execution provider maintains the PerThreadContexts in this structure.
+  // Synchronization is required to update the contained structures.
+  // On the other hand, access to an individual PerThreadContext is assumed to be from a single thread at a time,
+  // so synchronization is not required for that.
+  mutable PerThreadContextState context_state_;
+
+  PerThreadContext& GetPerThreadContext() const;
+  void ReleasePerThreadContext() const;
 };
 
 }  // namespace onnxruntime

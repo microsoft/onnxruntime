@@ -8,6 +8,9 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
+#ifdef USE_CUDA
+#include <core/providers/cuda/cuda_provider_options.h>
+#endif
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/session_options.h"
 
@@ -110,13 +113,28 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions provider_options{};
+  OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
   if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
   return nullptr;
 }
+
+#ifdef ENABLE_CUDA_NHWC_OPS
+std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
+#if defined(USE_CUDA)
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.prefer_nhwc = true;
+  if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+#endif
 
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
 #ifdef USE_CUDA
@@ -207,21 +225,21 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
+std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
-  // To test creating an ML Program, set the environment variable COREML_EP_TEST_MLPROGRAM to any value.
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
 
-  if (!Env::Default().GetEnvironmentVar("COREML_EP_TEST_MLPROGRAM").empty()) {
+  if (use_mlprogram) {
     coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
   }
 
   return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;
 #endif
 }
