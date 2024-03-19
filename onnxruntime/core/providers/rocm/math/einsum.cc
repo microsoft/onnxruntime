@@ -4,14 +4,6 @@
 #include "einsum.h"
 
 namespace onnxruntime {
-
-// This function must exist due to the C++ base class constructor needing this to be defined for the vtable, but it is never called.
-Status Einsum::DeviceCompute(OpKernelContext* /*context*/, const std::vector<const Tensor*>& /*inputs*/,
-                             AllocatorPtr /*allocator*/, concurrency::ThreadPool* /*tp*/) const {
-  assert(false);
-  return Status::OK();
-}
-
 namespace rocm {
 
 ONNX_OPERATOR_KERNEL_EX(
