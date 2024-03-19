@@ -519,8 +519,19 @@ class BaseTester {
     custom_session_registries_.push_back(registry);
   }
 
+  // For floating types (double/float/half/bfloat16), tolerance is similar to numpy.isclose:
+  //   absolute(expected_value - actual_value) <= abs_error + rel_error * absolute(expected_value)
+  // For integer types, tolerance parameters are ignored except the following cases:
+  //   For uint8, tolerance is only applied to NNAPI/XNNPACK/DML providers.
+  //   For int8, only abs_error is used, and rel_error is ignored. See checkers.cc for detail.
+  // If abs_error or rel_error is not set, a default value is used (search DefaultTolerance for detail).
   void SetOutputAbsErr(const char* name, float v);
   void SetOutputRelErr(const char* name, float v);
+
+  // Set absolute and relative tolerance for all existed outputs.
+  // Negative value will be ignored.
+  // Note that it will not set tolerance for new outputs added after this call.
+  void SetOutputTolerance(float abs_error, float rel_error = -1.0f);
 
   // Number of times to call InferenceSession::Run. The same feeds are used each time.
   // e.g. used to verify the generator ops behave as expected

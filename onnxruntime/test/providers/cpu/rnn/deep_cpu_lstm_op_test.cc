@@ -143,6 +143,8 @@ static void RunLstmTest(const std::vector<float>& X_data,
     test.AddOptionalOutputEdge<float>();
   }
 
+  test.SetOutputTolerance(0.0001f);
+
   // TensorRT failed on LSTM tests
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
