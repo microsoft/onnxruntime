@@ -155,7 +155,7 @@ export const createMatMulNBitsProgramInfo =
           var scale_index = col * ${nBlocksPerCol};
           var b_indices: ${b.type.indices};
           for (var c: u32 = 0; c < ${components}; c++) {
-            ${b.indicesSet('b_indices', '0', `col + c`)};
+            ${b.indicesSet('b_indices', '0', 'col + c')};
             var block_offset: u32 = 0;
             for (var block: u32 = 0; block < ${nBlocksPerCol}; block++) {
               // The scale and zero points are computed per block.
@@ -174,9 +174,9 @@ export const createMatMulNBitsProgramInfo =
                   // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
                   var offset: u32 = word_offset;
                   for (var j: u32 = 0; j < 8; j += ${aComponents}) {
-                    ${a.indicesSet('a_indices', aRank - 1, `offset`)};
+                    ${a.indicesSet('a_indices', aRank - 1, 'offset')};
                     for (var k: u32 = 0; k < ${outputNumber}u; k++) {
-                      ${a.indicesSet('a_indices', aRank - 2, `row + k`)};
+                      ${a.indicesSet('a_indices', aRank - 2, 'row + k')};
                       let a_data = ${a.getByIndices('a_indices')};
                       output_values[k]${components > 1 ? '[c]' : ''} += ${
             aComponents === 1 ? 'a_data * b_dequantized_values[j]' : 'dot(a_data, b_dequantized_values[j])'};
