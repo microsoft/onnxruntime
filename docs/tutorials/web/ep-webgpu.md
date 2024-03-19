@@ -4,7 +4,7 @@ description: Using WebGPU
 parent: Web
 grand_parent: Tutorials
 has_children: false
-nav_order: 2
+nav_order: 3
 ---
 {::options toc_levels="2..4" /}
 
@@ -59,25 +59,6 @@ You might also consider installing the latest nightly build version of ONNX Runt
 
 ONNX Runtime Web offers the following features which may be helpful to use with WebGPU EP:
 
-### Free dimension overrides
-
-ONNX models may have some dimensions as free dimensions, which means that the model can accept inputs of any size in that dimension. For example, an image model may define its input shape as `[batch, 3, height, width]`, which means that the model can accept any numbers of images of any size, as long as the number of channels is 3. However, if your application always uses images of a specific size, you can override the free dimensions to a specific size, which can be helpful to optimize the performance of the model. For example, if your web app always use a single image of 224x224, you can override the free dimensions to `[1, 3, 224, 224]` by specifying the following config in your session options:
-
-```js
-const mySessionOptions = {
-  ...,
-  freeDimensionOverrides: {
-    batch: 1,
-    height: 224,
-    width: 224
-  }
-};
-```
-
-Because WebGPU is shader based, if the engine knows the input shape in advance, it can do extra optimizations, which can lead to better performance.
-
-See [API reference: freeDimensionOverrides](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html#freeDimensionOverrides) for more details.
-
 ### Capture and replay
 
 If ONNX Runtime determines that a model has static shapes, and all its computing kernels are running on WebGPU EP, it can capture the kernel executions in the first run and replay them in the following runs. This can lead to better performance when CPU sometimes is the bottleneck to prepare for the commands.
@@ -89,7 +70,7 @@ const mySessionOptions = {
 };
 ```
 
-Not all models are suitable for graph capture and replay. Some models with dynamic input shapes can use this feature together with free dimension override. Some models just don't work with this feature. You can try it out and see if it works for your model. If it doesn't work, the model initialization will fail, and you can disable this feature for this model.
+Not all models are suitable for graph capture and replay. Some models with dynamic input shapes can use this feature together with [free dimension override](./env-flags-and-session-options.md#freedimensionoverrides). Some models just don't work with this feature. You can try it out and see if it works for your model. If it doesn't work, the model initialization will fail, and you can disable this feature for this model.
 
 See [API reference: enableGraphCapture](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html#enableGraphCapture) for more details.
 

@@ -4,7 +4,7 @@ description: Performance Diagnosis
 parent: Web
 grand_parent: Tutorials
 has_children: false
-nav_order: 4
+nav_order: 5
 ---
 {::options toc_levels="2..4" /}
 
@@ -127,7 +127,10 @@ Please be careful of the [GPU tensor life cycle management](ep-webgpu.md#gpu-ten
 
 You can enable profiling to get detailed information about the execution of the model. This can be helpful to understand the performance characteristics of the model and to identify potential bottlenecks.
 
+#### CPU profiling
+
 To enable CPU profiling:
+
 - step.1: Specify the `enableProfiling` option in the session options:
   ```js
   const mySessionOptions = {
@@ -146,6 +149,8 @@ To enable CPU profiling:
   After calling `endProfiling()`, the profiling data will be outputted to the console.
 
   See [In Code Performance Profiling](../../performance/tune-performance/profiling-tools.md#in-code-performance-profiling) for how to use the profiling data.
+
+#### WebGPU profiling
 
 To enable WebGPU profiling:
 
