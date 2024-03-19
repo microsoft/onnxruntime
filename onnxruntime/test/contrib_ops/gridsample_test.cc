@@ -126,6 +126,7 @@ TEST(GridsampleContribOpTest, gridsample_mode_bicubic) {
                         0.5000f, 0.5000f, 1.0000f, 1.0000f});
   test.AddAttribute("mode", "bicubic");
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {-0.1406f, 0.3828f, 1.7556f, 2.9688f, 2.9688f, 1.7556f, 5.1445f, 1.3906f});
+  test.SetOutputTolerance(0.0001f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
 }
 

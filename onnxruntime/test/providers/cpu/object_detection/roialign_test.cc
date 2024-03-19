@@ -464,6 +464,7 @@ static void BasicTest() {
                                            0.3661f,
                                            0.2349f,
                                        });
+  test.SetOutputTolerance(0.0001f);
   test.Run();
 }
 
@@ -690,6 +691,7 @@ TEST(RoiAlignTest, MaxModePositive) {
                                           });*/
   test.Run();
 }
+
 TEST(RoiAlignTest, AvgModeNegativeInvalidMode) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {

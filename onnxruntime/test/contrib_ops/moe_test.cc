@@ -47,6 +47,7 @@ static void RunMoETest(
       tester.AddInput<MLFloat16>("fc1_experts_bias", fc1_experts_bias_dims, ToFloat16(fc1_experts_bias));
       tester.AddInput<MLFloat16>("fc2_experts_bias", fc2_experts_bias_dims, ToFloat16(fc2_experts_bias));
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+      tester.SetOutputTolerance(0.005f);
     } else {
       tester.AddInput<float>("input", input_dims, input);
       tester.AddInput<float>("router_probs", router_probs_dims, router_probs);
@@ -55,6 +56,7 @@ static void RunMoETest(
       tester.AddInput<float>("fc1_experts_bias", fc1_experts_bias_dims, fc1_experts_bias);
       tester.AddInput<float>("fc2_experts_bias", fc2_experts_bias_dims, fc2_experts_bias);
       tester.AddOutput<float>("output", output_dims, output_data);
+      tester.SetOutputTolerance(0.001f);
     }
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
