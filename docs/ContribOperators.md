@@ -2932,7 +2932,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
         GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
-        usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral)
+        usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
         
 
 #### Version
