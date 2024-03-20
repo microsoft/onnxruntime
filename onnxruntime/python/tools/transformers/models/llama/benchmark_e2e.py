@@ -383,8 +383,7 @@ def main():
                 inputs["attention_mask"] = torch.cat(
                     [inputs["attention_mask"], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1
                 )
-                if args.engine == "pt":
-                    inputs["position_ids"] = torch.max(inputs["position_ids"], dim=1)[0].reshape(batch_size, 1) + 1
+                inputs["position_ids"] = None if "position_ids" not in inputs else torch.max(inputs["position_ids"], dim=1)[0].reshape(batch_size, 1) + 1
 
                 # Set logits to zeros for next inference run and re-use memory buffer
                 if outputs["logits"].shape[1] != 1:

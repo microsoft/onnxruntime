@@ -436,7 +436,7 @@ def get_initial_inputs_and_outputs(
     elif tokenized_length < requested_length:
         # Lengthen the inputs from (batch_size, tokenized_length) to (batch_size, requested_length)
         input_ids_first_col = input_ids[:, 0].unsqueeze(0).T
-        attention_mask_first_col = input_ids[:, 0].unsqueeze(0).T
+        attention_mask_first_col = attention_mask[:, 0].unsqueeze(0).T
         for _ in range(requested_length - tokenized_length):
             input_ids = torch.hstack((input_ids_first_col, input_ids))
             attention_mask = torch.hstack((attention_mask_first_col, attention_mask))
