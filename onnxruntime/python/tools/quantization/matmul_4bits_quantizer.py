@@ -325,6 +325,11 @@ class HQQWeightOnlyQuantizer:
         # reshape to the predefined shape in MatmulNbits
         scales = scales.reshape(-1)
         zero_points = zero_points.reshape(-1)
+        rows, cols = b_array_torch.shape
+        block_size = self.config.block_size
+        blob_size = block_size // 2
+        k_blocks = (rows + block_size - 1) // block_size
+        packed_torch = packed_torch.reshape(cols, k_blocks, blob_size)
 
         b_quant = onnx.numpy_helper.from_array(packed_torch.cpu().numpy())
         b_quant.name = b_pb.name + "_Q4"
