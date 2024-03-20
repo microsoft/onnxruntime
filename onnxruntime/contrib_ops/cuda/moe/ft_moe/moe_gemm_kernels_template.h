@@ -24,6 +24,16 @@
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4100)
+#pragma warning(disable : 2752)
+#pragma warning(disable : 2027)
+#pragma warning(disable : 2039)
+#pragma warning(disable : 2061)
+#pragma warning(disable : 2653)
+#pragma warning(disable : 2065)
+#pragma warning(disable : 2146)
+#pragma warning(disable : 2923)
+#pragma warning(disable : 2955)
+#pragma warning(disable : 3203)
 #endif
 
 #include "cutlass/array.h"
