@@ -68,7 +68,7 @@ stages:
       value: $(Agent.TempDirectory)\v11.8
     ${{ if eq(parameters.cuda_version, '12.2') }}:
       value: $(Agent.TempDirectory)\v12.2
-  jobs:
+
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
       - template: ../templates/py-win-gpu.yml
         parameters:
