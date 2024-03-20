@@ -37,10 +37,11 @@
 #include "cutlass/arch/arch.h"
 #include "cutlass/epilogue/thread/linear_combination_relu.h"
 
-#include "compute_occupancy.h"
-#include "epilogue_helpers.h"
-#include "layout_traits_helper.h"
-#include "moe_cutlass_kernel.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/compute_occupancy.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/epilogue_helpers.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/default_fpA_intB_traits.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/moe_cutlass_kernel.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/default_mma.h"
 
 #if defined(_MSC_VER)
 #pragma warning(pop)

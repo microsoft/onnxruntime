@@ -28,34 +28,51 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  **************************************************************************************************/
+
 /*! \file
-    \brief Defines new layouts needed for MoE
+    \brief Scheduler for grouped GEMM
 */
+
 #pragma once
 
 #include "cutlass/cutlass.h"
-#include "cutlass/fast_math.h"
+#include "cutlass/gemm/gemm.h"
+#include "cutlass/gemm/kernel/gemm_grouped_problem_visitor.h"
 #include "cutlass/matrix_coord.h"
-#include "cutlass/pitch_linear_coord.h"
+
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/gemm_moe_problem_visitor.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/moe_problem_visitor.h"
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass {
-namespace layout {
+namespace gemm {
+namespace kernel {
 
-template <int RowsPerTile, int ColumnsInterleaved>
-class ColumnMajorTileInterleave {
-  static constexpr int kRowsPerTile = RowsPerTile;
-  static constexpr int kColumnsInterleaved = ColumnsInterleaved;
+/// Visitor class to abstract away the algorithm for iterating over tiles
+template <typename ThreadblockShape, GroupScheduleMode GroupScheduleMode_, int PrefetchTileCount, int ThreadCount,
+          bool Transposed = false>
+struct GemmMoeProblemVisitor
+    : public MoeProblemVisitor<detail::GemmGroupedProblemSizeHelper<ThreadblockShape, Transposed>, ThreadblockShape,
+                               GroupScheduleMode_, PrefetchTileCount, ThreadCount> {
+  static bool const kTransposed = Transposed;
+
+  using ProblemSizeHelper = detail::GemmGroupedProblemSizeHelper<ThreadblockShape, Transposed>;
+  using Base =
+      MoeProblemVisitor<ProblemSizeHelper, ThreadblockShape, GroupScheduleMode_, PrefetchTileCount, ThreadCount>;
+  using Params = typename Base::Params;
+  using SharedStorage = typename Base::SharedStorage;
+
+  //
+  // Methods
+  //
+  CUTLASS_DEVICE
+  GemmMoeProblemVisitor(Params const& params_, SharedStorage& shared_storage_, int32_t block_idx)
+      : Base(params_, shared_storage_, block_idx) {}
 };
 
-template <class T>
-struct IsColumnMajorTileInterleave {
-  static constexpr bool value = false;
-};
+/////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <int U, int V>
-struct IsColumnMajorTileInterleave<ColumnMajorTileInterleave<U, V>> {
-  static constexpr bool value = true;
-};
-
-}  // namespace layout
+}  // namespace kernel
+}  // namespace gemm
 }  // namespace cutlass
