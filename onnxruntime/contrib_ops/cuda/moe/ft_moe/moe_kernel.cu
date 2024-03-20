@@ -659,17 +659,17 @@ inline __device__ float4 operator*(const float4 a, const float4 b) {
 inline __device__ Half4 operator*(const Half4 a, const Half4 b) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
   Half4 result;
-  result.x.x = (half)((float)a.x.x * (float)b.x.x);
-  result.x.y = (half)((float)a.x.y * (float)b.x.y);
-  result.y.x = (half)((float)a.y.x * (float)b.y.x);
-  result.y.y = (half)((float)a.y.y * (float)b.y.y);
+  result.x.x = static_cast<half>(static_cast<float>(a.x.x) * static_cast<float>(b.x.x));
+  result.x.y = static_cast<half>(static_cast<float>(a.x.y) * static_cast<float>(b.x.y));
+  result.y.x = static_cast<half>(static_cast<float>(a.y.x) * static_cast<float>(b.y.x));
+  result.y.y = static_cast<half>(static_cast<float>(a.y.y) * static_cast<float>(b.y.y));
   return result;
 #else
   return Half4{__hmul2(a.x, b.x), __hmul2(a.y, b.y)};
 #endif
-};
+}
 
-} // anonymous namespace
+}  // anonymous namespace
 
 template <typename T>
 __global__ void elementWiseMulKernel(T* output, T const* input, size_t inter_size) {
