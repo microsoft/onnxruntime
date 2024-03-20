@@ -6,6 +6,7 @@ import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
+
 import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface FormatAttributes {
@@ -46,14 +47,14 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
   const isDCRmode = attributes.mode === 'DCR';
   if (isChannelLast) {
     [n, h, w, c] = inputTensor.dims;
-    shape = isDCRmode ? [n, h, w, blocksize, blocksize, c / (blocksize**2)]
-                      : [n, h, w, c / (blocksize**2), blocksize, blocksize];
-    perm  = isDCRmode ? [0, 1, 3, 2, 4, 5] : [0, 1, 4, 2, 5, 3];
+    shape = isDCRmode ? [n, h, w, blocksize, blocksize, c / (blocksize ** 2)] :
+                        [n, h, w, c / (blocksize ** 2), blocksize, blocksize];
+    perm = isDCRmode ? [0, 1, 3, 2, 4, 5] : [0, 1, 4, 2, 5, 3];
   } else {
     [n, h, w, c] = [inputTensor.dims[0], inputTensor.dims[2], inputTensor.dims[3], inputTensor.dims[1]];
-    shape = isDCRmode ? [n, blocksize, blocksize, c / (blocksize**2), h, w]
-                      : [n, c / (blocksize**2), blocksize, blocksize, h, w];
-    perm  = isDCRmode ? [0, 3, 4, 1, 5, 2] : [0, 1, 4, 2, 5, 3];
+    shape = isDCRmode ? [n, blocksize, blocksize, c / (blocksize ** 2), h, w] :
+                        [n, c / (blocksize ** 2), blocksize, blocksize, h, w];
+    perm = isDCRmode ? [0, 3, 4, 1, 5, 2] : [0, 1, 4, 2, 5, 3];
   }
   const reshapedInputTensor = inputTensor.reshape(shape);
 
@@ -64,7 +65,7 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
   const reshapedInput = inputVariable('a', inputDataType, shapeBeforePerm);
   const permedOutput = outputVariable('output', inputDataType, shapeAfterPerm);
 
-  const reshapedInputRank = reshapedInputTensor.dims.length; // 6
+  const reshapedInputRank = reshapedInputTensor.dims.length;
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(reshapedInput, permedOutput)}
 
@@ -83,8 +84,8 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
     name: 'DepthToSpace',
     shaderCache: {hint: `${inputTensor.dims};${attributes.blocksize};${attributes.mode}`, inputDependencies: ['rank']},
     getRunData: (inputs) => {
-      const outputShape = isChannelLast ? [n, h * blocksize, w * blocksize, c / (blocksize**2)]
-                                        : [n, c / (blocksize**2), h * blocksize, w * blocksize];
+      const outputShape = isChannelLast ? [n, h * blocksize, w * blocksize, c / (blocksize ** 2)] :
+                                          [n, c / (blocksize ** 2), h * blocksize, w * blocksize];
       const outputSize = ShapeUtil.size(outputShape);
       return {
         outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
@@ -103,6 +104,8 @@ export const depthToSpace = (context: ComputeContext, attributes: DepthToSpaceAt
 };
 
 export const parseDepthToSpaceAttributes = (attributes: Record<string, unknown>): DepthToSpaceAttributes =>
-  createAttributeWithCacheKey({blocksize: attributes.blocksize as number,
-                               mode: attributes.mode as string,
-                               format: attributes.format as 'NHWC'|'NCHW'});
+    createAttributeWithCacheKey({
+      blocksize: attributes.blocksize as number,
+      mode: attributes.mode as string,
+      format: attributes.format as 'NHWC' | 'NCHW'
+    });
