@@ -192,7 +192,7 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win2022-GPU-T4
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
