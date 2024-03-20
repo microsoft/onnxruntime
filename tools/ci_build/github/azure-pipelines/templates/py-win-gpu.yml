@@ -194,6 +194,7 @@ stages:
         clean: all
       pool:
         name: onnxruntime-Win-CPU-2022
+      steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
           condition: always()
