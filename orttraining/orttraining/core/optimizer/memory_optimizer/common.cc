@@ -146,4 +146,96 @@ Status ParseOptimizationConfigFromString(std::string_view memory_optimization_co
   return Status::OK();
 }
 
+void SortNodesInTopoOrder(const InlinedHashMap<NodeIndex, ptrdiff_t>&
+                              node_index_to_its_order_in_topological_sort_map,
+                          InlinedVector<const Node*>& nodes) {
+  std::sort(nodes.begin(), nodes.end(),
+            [&node_index_to_its_order_in_topological_sort_map](const Node*& lhs, const Node*& rhs) {
+              return node_index_to_its_order_in_topological_sort_map.at(lhs->Index()) <
+                     node_index_to_its_order_in_topological_sort_map.at(rhs->Index());
+            });
+}
+
+Status FindReachableNodesFromGivenInputAndOutput(const GraphViewer& graph_viewer,
+                                                 const Node* start_node_inclusive,
+                                                 const Node* end_node_exclusive,
+                                                 InlinedVector<const Node*>& reachable_nodes,
+                                                 const Node*& end_node_input_node,
+                                                 int32_t& output_index) {
+  // Reverse BFS from end_node_exclusive by its input edges to find all reachable inputs nodes, skip if it hit the
+  // start_node_inclusive.
+  std::deque<const Node*> nodes_to_check;
+  std::set<const Node*> visited_nodes;
+
+  const NodeArg* input_arg = end_node_exclusive->InputDefs()[0];
+  ORT_ENFORCE(input_arg->Exists(), "Input arg should exist.");
+  const Node* input_node = graph_viewer.GetProducerNode(input_arg->Name());
+  end_node_input_node = input_node;
+  output_index = optimizer_utils::IndexOfNodeOutput(*end_node_input_node, *input_arg);
+
+  nodes_to_check.push_back(end_node_input_node);
+  InlinedHashSet<const Node*> reachable_input_nodes;
+
+  while (!nodes_to_check.empty()) {
+    const Node* next_node = nodes_to_check.front();
+    nodes_to_check.pop_front();
+
+    if (visited_nodes.find(next_node) != visited_nodes.end()) {
+      continue;
+    }
+
+    visited_nodes.insert(next_node);
+    if (next_node == start_node_inclusive) {
+      continue;
+    }
+
+    for (size_t input_index = 0; input_index < next_node->InputDefs().size(); ++input_index) {
+      const NodeArg* input_arg = next_node->InputDefs()[input_index];
+      if (!input_arg->Exists()) {
+        continue;
+      }
+      const Node* input_node = graph_viewer.GetProducerNode(input_arg->Name());
+      if (input_node != nullptr) {
+        nodes_to_check.push_back(input_node);
+        reachable_input_nodes.insert(input_node);
+      }
+    }
+  }
+
+  std::cout << "Foud reachable input nodes: " << reachable_input_nodes.size() << "\n";
+
+  // BFS from start_node_inclusive by its output edges to find all reachable output nodes, skip if it is not in the
+  // reachable_input_nodes.
+  nodes_to_check.clear();
+  visited_nodes.clear();
+  nodes_to_check.push_back(start_node_inclusive);
+
+  while (!nodes_to_check.empty()) {
+    const Node* next_node = nodes_to_check.front();
+    nodes_to_check.pop_front();
+
+    if (visited_nodes.find(next_node) != visited_nodes.end()) {
+      continue;
+    }
+
+    visited_nodes.insert(next_node);
+    if (reachable_input_nodes.find(next_node) == reachable_input_nodes.end()) {
+      continue;
+    }
+
+    reachable_nodes.push_back(next_node);
+    for (size_t output_index = 0; output_index < next_node->OutputDefs().size(); ++output_index) {
+      const NodeArg* output_arg = next_node->OutputDefs()[output_index];
+      if (!output_arg->Exists()) {
+        continue;
+      }
+      for (auto& consumer_node : graph_viewer.GetConsumerNodes(output_arg->Name())) {
+        nodes_to_check.push_back(consumer_node);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace onnxruntime::optimizer::memory_optimizer

@@ -13,6 +13,7 @@
 #include "core/framework/random_seed.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/utils.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
@@ -217,51 +218,17 @@ Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified) {
   return Status::OK();
 }
 
-Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
-                                      const ProbeConfig& probe_config,
-                                      const logging::Logger& logger,
-                                      InlinedHashMap<NodeIndex, ptrdiff_t>&
-                                          node_index_to_its_order_in_topological_sort_map,
-                                      ptrdiff_t& yield_op_order_in_topological_sort,
-                                      InlinedHashMap<const Node*, InlinedVector<size_t>>&
-                                          candidate_output_args_map,
-                                      MemoryOptimizationPlanner& memory_opt_planner) {
+Status FindSelectiveRecomputeOpportunity(const GraphViewer& graph_viewer,
+                                         const ProbeConfig& probe_config,
+                                         const ActivationUsedMap& fw_op_output_arg_used_map,
+                                         const InlinedHashMap<NodeIndex, ptrdiff_t>&
+                                             node_index_to_its_order_in_topological_sort_map,
+                                         const InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                             candidate_output_args_map,
+                                         const InlinedVector<const Node*>& layer_boundary_ln_nodes,
+                                         const logging::Logger& logger,
+                                         MemoryOptimizationPlanner& memory_opt_planner) {
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
-
-  // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
-  yield_op_order_in_topological_sort = -1;
-  for (size_t i = 0; i < node_ids.size(); ++i) {
-    const Node* p_node = graph_viewer.GetNode(node_ids[i]);
-    if (p_node == nullptr) { /* skip removed nodes*/
-      continue;
-    }
-
-    if (p_node->OpType() == "YieldOp") {
-      if (yield_op_order_in_topological_sort != -1) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "There are multiple YieldOps in the graph, node: ",
-                               p_node->Name(), " is the second one.");
-      }
-      yield_op_order_in_topological_sort = static_cast<ptrdiff_t>(i);
-    }
-
-    node_index_to_its_order_in_topological_sort_map[p_node->Index()] = static_cast<ptrdiff_t>(i);
-  }
-
-  ActivationUsedMap fw_op_output_arg_used_map;
-
-  InlinedHashMap<const Node*, bool> is_forward_nodes;
-  ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph_viewer,
-                                                     yield_op_order_in_topological_sort,
-                                                     fw_op_output_arg_used_map,
-                                                     candidate_output_args_map,
-                                                     is_forward_nodes,
-                                                     logger));
-
-  InlinedHashSet<const Node*> layer_boundary_ln_nodes;
-  FindLayerBoundaryLayerNormNodes(graph_viewer, logger, node_index_to_its_order_in_topological_sort_map,
-                                  yield_op_order_in_topological_sort, layer_boundary_ln_nodes);
-
-  // The first pass - find the candidate subgraphs.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     const Node* p_node = graph_viewer.GetNode(node_ids[i]);
     if (p_node == nullptr) {
@@ -306,6 +273,149 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
       }
     }
   }
+
+  return Status::OK();
+}
+
+Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
+                                               const InlinedHashMap<NodeIndex, ptrdiff_t>&
+                                                   node_index_to_its_order_in_topological_sort_map,
+                                               const InlinedVector<const Node*>& layer_boundary_ln_nodes,
+                                               MemoryOptimizationPlanner& memory_opt_planner) {
+  // Re-roder the layer boundary nodes in topological order.
+  std::cout << "FindStrictLayerwiseRecomputeOpportunity based detected " << layer_boundary_ln_nodes.size() << " boudary node " << std::endl;
+  for (size_t index = 1; index < layer_boundary_ln_nodes.size(); ++index) {
+    InlinedVector<const Node*> reachable_nodes;
+    const Node* end_node_input_node;
+    int32_t output_index = 0;
+    std::cout << "Looking for layer - start from node " << layer_boundary_ln_nodes[index - 1]->Name() << std::endl;
+    ORT_RETURN_IF_ERROR(FindReachableNodesFromGivenInputAndOutput(graph_viewer,
+                                                                  layer_boundary_ln_nodes[index - 1],
+                                                                  layer_boundary_ln_nodes[index],
+                                                                  reachable_nodes,
+                                                                  end_node_input_node, output_index));
+    if (reachable_nodes.size() > 0) {
+      std::cout << "Found layer - start from node " << layer_boundary_ln_nodes[index - 1]->Name() << " to node "
+                << layer_boundary_ln_nodes[index]->Name() << ", subgraph contains " << reachable_nodes.size() << " nodes" << std::endl;
+      SortNodesInTopoOrder(node_index_to_its_order_in_topological_sort_map, reachable_nodes);
+      InlinedVector<size_t> output_indices{static_cast<size_t>(output_index)};
+      std::unique_ptr<NodeRecomputePlan> plan = std::make_unique<NodeRecomputePlan>(end_node_input_node,
+                                                                                    output_indices,
+                                                                                    reachable_nodes,
+                                                                                    false /*compromise_stashed_activation*/,
+                                                                                    static_cast<float>(1.0f) /*save_ratio*/);
+
+      memory_opt_planner.AddNodeOptimizationPlan(end_node_input_node, std::move(plan));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
+                                      const ProbeConfig& probe_config,
+                                      const logging::Logger& logger,
+                                      InlinedHashMap<NodeIndex, ptrdiff_t>&
+                                          node_index_to_its_order_in_topological_sort_map,
+                                      ptrdiff_t& yield_op_order_in_topological_sort,
+                                      InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                          candidate_output_args_map,
+                                      MemoryOptimizationPlanner& memory_opt_planner) {
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+
+  // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
+  yield_op_order_in_topological_sort = -1;
+  for (size_t i = 0; i < node_ids.size(); ++i) {
+    const Node* p_node = graph_viewer.GetNode(node_ids[i]);
+    if (p_node == nullptr) { /* skip removed nodes*/
+      continue;
+    }
+
+    if (p_node->OpType() == "YieldOp") {
+      if (yield_op_order_in_topological_sort != -1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "There are multiple YieldOps in the graph, node: ",
+                               p_node->Name(), " is the second one.");
+      }
+      yield_op_order_in_topological_sort = static_cast<ptrdiff_t>(i);
+    }
+
+    node_index_to_its_order_in_topological_sort_map[p_node->Index()] = static_cast<ptrdiff_t>(i);
+  }
+
+  ActivationUsedMap fw_op_output_arg_used_map;
+
+  InlinedHashMap<const Node*, bool> is_forward_nodes;
+  ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph_viewer,
+                                                     yield_op_order_in_topological_sort,
+                                                     fw_op_output_arg_used_map,
+                                                     candidate_output_args_map,
+                                                     is_forward_nodes,
+                                                     logger));
+
+  InlinedVector<const Node*> layer_boundary_ln_nodes;
+  FindLayerBoundaryLayerNormNodes(graph_viewer, logger, node_index_to_its_order_in_topological_sort_map,
+                                  yield_op_order_in_topological_sort, layer_boundary_ln_nodes);
+
+  // The first pass - find the candidate subgraphs.
+  if (probe_config.enable_strict_layerwise_mode) {
+    ORT_RETURN_IF_ERROR(FindStrictLayerwiseRecomputeOpportunity(graph_viewer,
+                                                                node_index_to_its_order_in_topological_sort_map,
+                                                                layer_boundary_ln_nodes,
+                                                                memory_opt_planner));
+  } else {
+    ORT_RETURN_IF_ERROR(FindSelectiveRecomputeOpportunity(graph_viewer,
+                                                          probe_config,
+                                                          fw_op_output_arg_used_map,
+                                                          node_index_to_its_order_in_topological_sort_map,
+                                                          candidate_output_args_map,
+                                                          layer_boundary_ln_nodes,
+                                                          logger,
+                                                          memory_opt_planner));
+  }
+  // for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
+  //   const Node* p_node = graph_viewer.GetNode(node_ids[i]);
+  //   if (p_node == nullptr) {
+  //     continue;
+  //   }
+
+  //   if (candidate_output_args_map.find(p_node) == candidate_output_args_map.end()) {
+  //     continue;
+  //   }
+
+  //   bool can_compromise_stashed_activation = false;
+  //   std::unique_ptr<NodeRecomputePlan> recompute_plan =
+  //       CheckNodeForRecompute(graph_viewer,
+  //                             *p_node,
+  //                             probe_config,
+  //                             fw_op_output_arg_used_map,
+  //                             node_index_to_its_order_in_topological_sort_map,
+  //                             candidate_output_args_map,
+  //                             layer_boundary_ln_nodes,
+  //                             logger, false,
+  //                             can_compromise_stashed_activation);
+  //   if (recompute_plan != nullptr) {
+  //     memory_opt_planner.AddNodeOptimizationPlan(p_node, std::move(recompute_plan));
+  //   }
+
+  //   // Only detect compromise recompute when recompute is not found, in case there are multiple recompute plans
+  //   // for the same named activations, then user might enable those conflicting recompute plans by mistakes.
+  //   if (recompute_plan == nullptr && can_compromise_stashed_activation) {
+  //     MO_LOG_DEBUG_INFO(logger, "Searching Node " + p_node->Name() + "(" + p_node->OpType() +
+  //                                   ") for compromised recompute");
+  //     // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
+  //     // during backward pass, then we can consider to recompute them.
+  //     std::unique_ptr<NodeRecomputePlan> recompute_with_compromise_plan =
+  //         CheckNodeForRecompute(graph_viewer, *p_node, probe_config, fw_op_output_arg_used_map,
+  //                               node_index_to_its_order_in_topological_sort_map,
+  //                               candidate_output_args_map,
+  //                               layer_boundary_ln_nodes,
+  //                               logger, true,
+  //                               can_compromise_stashed_activation);
+  //     if (recompute_with_compromise_plan != nullptr) {
+  //       memory_opt_planner.AddNodeOptimizationPlan(p_node, std::move(recompute_with_compromise_plan));
+  //     }
+  //   }
+  // }
 
   return Status::OK();
 }

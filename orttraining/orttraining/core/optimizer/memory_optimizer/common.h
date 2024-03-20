@@ -73,4 +73,15 @@ int ParseIntValueFromString(std::string_view str);
 Status ParseOptimizationConfigFromString(std::string_view memory_optimization_config,
                                          InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map);
 
+void SortNodesInTopoOrder(const InlinedHashMap<NodeIndex, ptrdiff_t>&
+                              node_index_to_its_order_in_topological_sort_map,
+                          InlinedVector<const Node*>& nodes);
+
+Status FindReachableNodesFromGivenInputAndOutput(const GraphViewer& graph_viewer,
+                                                 const Node* start_node_inclusive,
+                                                 const Node* end_node_exclusive,
+                                                 InlinedVector<const Node*>& reachable_nodes,
+                                                 const Node*& end_node_input_node,
+                                                 int32_t& output_index);
+
 }  // namespace onnxruntime::optimizer::memory_optimizer
