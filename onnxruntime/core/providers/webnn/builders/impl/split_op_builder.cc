@@ -28,8 +28,6 @@ class SplitOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-
-  int GetMinSupportedOpSet(const Node& node) const override;
 };
 
 // Add operator related.
@@ -57,12 +55,18 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
   options.set("axis", axis);
 
-  if (!GetTensorName(input_defs, 1).empty()) {
-    // Inputs contains optional 'split' input
-    std::vector<int32_t> splits;
-    const auto& initializers(model_builder.GetInitializerTensors());
-    const auto& split_tensor = *initializers.at(input_defs[1]->Name());
-    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(split_tensor, splits, logger), "Cannot get split.");
+  // Inputs contains optional 'split' input or attribute.
+  if (!GetTensorName(input_defs, 1).empty() || node.SinceVersion() < 13) {
+    std::vector<uint32_t> splits;
+    // Before opset13, split is an attribute.
+    if (node.SinceVersion() < 13) {
+      ORT_RETURN_IF_NOT(helper.HasAttr("split"), "Cannot get split.");
+      splits = helper.Get("split", std::vector<uint32_t>{});
+    } else {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& split_tensor = *initializers.at(input_defs[1]->Name());
+      ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(split_tensor, splits, logger), "Cannot get split.");
+    }
     output_array = model_builder.GetBuilder().call<emscripten::val>("split",
                                                                     input,
                                                                     emscripten::val::array(splits),
@@ -111,11 +115,6 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-
-int SplitOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // Since opset 13, Split has optional 'split' input.
-  return 13;
-}
 
 bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                        const Node& node,
