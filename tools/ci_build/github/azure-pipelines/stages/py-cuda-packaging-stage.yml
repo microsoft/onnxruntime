@@ -34,6 +34,16 @@ parameters:
    - 11.8
    - 12.2
 
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
 stages:
 - stage: Python_Packaging
   dependsOn: []
@@ -67,6 +77,8 @@ stages:
           EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           EP_NAME: gpu
           CudaVersion: ${{ parameters.cuda_version }}
+          SpecificArtifact: ${{ parameters.SpecificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
 
       - template: ../templates/py-win-gpu.yml
         parameters:
