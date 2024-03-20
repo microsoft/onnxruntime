@@ -21,6 +21,15 @@ parameters:
     values:
       - 11.8
       - 12.2
+  - name: SpecificArtifact
+    displayName: Use Specific Artifact
+    type: boolean
+    default: false
+
+  - name: BuildId
+    displayName: Specific Artifact's BuildId
+    type: string
+    default: '0'
 
 resources:
   repositories:
