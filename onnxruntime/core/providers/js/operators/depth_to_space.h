@@ -13,7 +13,7 @@ class DepthToSpace final : public JsKernel {
  public:
   DepthToSpace(const OpKernelInfo& info) : JsKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("blocksize", &blocksize_).IsOK(), "Attribute blocksize is not set.");
-    std::string mode = has_mode? info.GetAttrOrDefault<std::string>("mode", "DCR") : "DCR";
+    std::string mode = has_mode ? info.GetAttrOrDefault<std::string>("mode", "DCR") : "DCR";
 
     if (mode != "DCR" && mode != "CRD") {
       ORT_THROW("Invalid mode attribute value: ", mode);
