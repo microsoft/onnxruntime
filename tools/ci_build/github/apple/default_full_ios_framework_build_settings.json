@@ -6,25 +6,35 @@
         "iphonesimulator": [
             "arm64",
             "x86_64"
+        ],
+        "macabi": [
+            "arm64",
+            "x86_64"
         ]
     },
     "build_params": {
         "base": [
             "--parallel",
-            "--use_xcode",
             "--build_apple_framework",
             "--use_coreml",
-            "--use_xnnpack",
             "--skip_tests",
             "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
         ],
         "iphoneos": [
             "--ios",
+            "--use_xcode",
+            "--use_xnnpack",
             "--apple_deploy_target=12.0"
         ],
         "iphonesimulator": [
             "--ios",
+            "--use_xcode",
+            "--use_xnnpack",
             "--apple_deploy_target=12.0"
+        ],
+        "macabi":[
+            "--macos=Catalyst",
+            "--apple_deploy_target=14.0"
         ]
     }
 }
