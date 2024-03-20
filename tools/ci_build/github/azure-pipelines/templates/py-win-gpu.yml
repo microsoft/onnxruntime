@@ -219,9 +219,10 @@ stages:
         - powershell: |
             python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
             Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-            Remove-Item -Recurse -Force onnxruntime
+            pushd onnxruntime/test/python/
+            python -m pip install requirements.txt
             python onnx_backend_test_series.py
-          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Run Python Tests'
 
         - task: TSAUpload@2
