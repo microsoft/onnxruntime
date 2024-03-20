@@ -1,8 +1,4 @@
 parameters:
-
-- name: MACHINE_POOL
-  type: string
-
 - name: EP_NAME
   type: string
 
