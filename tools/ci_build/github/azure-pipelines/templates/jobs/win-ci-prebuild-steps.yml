@@ -13,6 +13,10 @@ parameters:
   type: boolean
   default: false
 
+- name: DownloadTRT
+  type: boolean
+  default: false
+
 - name: WITHCACHE
   type: boolean
   default: false
