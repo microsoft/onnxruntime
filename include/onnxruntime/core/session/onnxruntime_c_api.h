@@ -1837,14 +1837,28 @@ struct OrtApi {
 
   /** \brief Used for custom operators, get an input of a kernel
    *
-   * \see ::OrtCustomOp
+   * The function attempts fetches the input of the kernel. If the input is optional
+   * and not present, the function returns success and out is set to nullptr.
+   *
+   * \param[in] context ::OrtKernelContext instance
+   * \param[in] input index. See KernelContext_GetInputCount for boundaries check.
+   * \param[in, out] returns a ptr to OrtValue if the input is present
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index,
                   _Out_ const OrtValue** out);
 
   /** \brief Used for custom operators, get an output of a kernel
    *
-   * \see ::OrtCustomOp
+   * The function attempts fetches the output of the kernel. If the output is optional
+   * and not present, the function returns success and out is set to nullptr.
+   *
+   * \param[in] context ::OrtKernelContext instance
+   * \param[in] output index. See KernelContext_GetOutputCount for boundaries check.
+   * \param[in, out] returns a ptr to OrtValue if the output is present
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
                   _In_ const int64_t* dim_values, size_t dim_count, _Outptr_ OrtValue** out);

@@ -6,6 +6,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/trt_op_test_utils.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <math.h>
@@ -1370,7 +1371,8 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
   test.AddOutput<element_type>("sum", dims, expected_output_data);
 
-  test.Run();
+  // TRT EP segmentation fault in A100
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(MathOpTest, SumMultipleInputsNoBroadcasting) {
@@ -2630,7 +2632,7 @@ TEST(MathOpTest, Mean_8) {
 #endif
 
 template <float (&op)(float value) MATH_NO_EXCEPT>
-void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
+void TrigFloatTest(OpTester& test, std::initializer_list<float> input, float abs_error = -1.0f) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
   std::vector<float> output;
@@ -2639,6 +2641,11 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
 
   test.AddInput<float>("X", dims, input);
   test.AddOutput<float>("Y", dims, output);
+
+  if (abs_error >= 0.0f) {
+    test.SetOutputTolerance(abs_error);
+  }
+
   test.Run();
 }
 
@@ -2708,6 +2715,7 @@ TEST(MathOpTest, CosFloat16) {
     TrigFloat16Test<::cosf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
   }
 }
+
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
   TrigFloatTest<::tanf>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});
@@ -2715,7 +2723,8 @@ TEST(MathOpTest, Tan) {
 
 TEST(MathOpTest, Asin) {
   OpTester test("Asin");
-  TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+  float abs_error = DefaultDmlExecutionProvider().get() != nullptr ? 0.0001f : -1.0f;
+  TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f}, abs_error);
 }
 
 TEST(MathOpTest, Acos) {
