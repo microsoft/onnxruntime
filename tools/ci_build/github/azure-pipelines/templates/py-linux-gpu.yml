@@ -38,7 +38,6 @@ parameters:
 
 stages:
 - stage: Linux_py_GPU_Wheels_${{ parameters.arch }}
-  displayName: 'Build'
   dependsOn: []
   jobs:
   - job: Linux_py_GPU_Wheels_${{ parameters.arch }}
