@@ -184,17 +184,17 @@ def optimize_by_onnxruntime(
     if isinstance(onnx_model, str):
         onnxruntime.InferenceSession(onnx_model, sess_options, providers=providers, **kwargs)
     elif isinstance(onnx_model, ModelProto):
-        load_infer_session_from_modelproto(onnx_model, save_as_external_data, sess_options, providers, kwargs)
+        _load_infer_session_from_modelproto(onnx_model, save_as_external_data, sess_options, providers, kwargs)
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
     return optimized_model_path
 
 
-def load_infer_session_from_modelproto(model, has_external_data, sess_options, providers, kwargs) -> None:
+def _load_infer_session_from_modelproto(model, has_external_data, sess_options, providers, kwargs) -> None:
     import onnxruntime
-    from onnxruntime.python.onnxruntime_inference_collection import OrtValue
-    from onnxruntime.python.tools.transformers.fusion_utils import NumpyHelper
+    from onnxruntime_inference_collection import OrtValue
+    from fusion_utils import NumpyHelper
 
     external_data = []
     for tensor in model.graph.initializer:
