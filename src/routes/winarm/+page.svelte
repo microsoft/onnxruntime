@@ -1,4 +1,5 @@
 <script>
-	import Winarm from "../components/winarm.svelte";
+	import Winarm from '../components/winarm.svelte';
 </script>
-<Winarm/>
+
+<Winarm />

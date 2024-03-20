@@ -11,7 +11,19 @@
 	import { fade, fly, blur } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 
-	let words = ['Cross-Platform', 'GPU', 'Python', 'CPU', 'Mobile', 'C#', 'Edge', 'JavaScript', 'Java', 'C++', 'Browser'];
+	let words = [
+		'Cross-Platform',
+		'GPU',
+		'Python',
+		'CPU',
+		'Mobile',
+		'C#',
+		'Edge',
+		'JavaScript',
+		'Java',
+		'C++',
+		'Browser'
+	];
 	let activeWord = 'Cross-Platform';
 	let currentWord = 0;
 	let cycleWord = () => {
@@ -69,20 +81,21 @@
 	<div class="hero-content md:my-20">
 		<div class="grid grid-cols-2 md:grid-cols-5 gap-4">
 			<div class="col-span-4 self-center md:mr-20">
-				<h1 class="text-5xl">Accelerated
-				{#key activeWord}
-					<span
-						class="text-5xl"
-						in:fly={{ delay: 0, duration: 300, x: 200, y: 0, opacity: 1, easing: quintOut }}
-					>
-						{activeWord}
-					</span>
-				{/key}
+				<h1 class="text-5xl">
+					Accelerated
+					{#key activeWord}
+						<span
+							class="text-5xl"
+							in:fly={{ delay: 0, duration: 300, x: 200, y: 0, opacity: 1, easing: quintOut }}
+						>
+							{activeWord}
+						</span>
+					{/key}
 				</h1>
 				<h1 class="text-5xl">Machine Learning</h1>
 				<p class="py-3">
-					Production-grade AI engine to speed up training and inferencing in your existing technology
-					stack.
+					Production-grade AI engine to speed up training and inferencing in your existing
+					technology stack.
 				</p>
 				<p class="text-xl my-4">In a rush? Get started easily:</p>
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -94,7 +107,7 @@
 							aria-label="copy python code"
 							on:click={() => copy(pythonCode)}
 							class="col-span-1 btn rounded-none h-full *:hover:scale-125 *:hover:transition *:hover:duration-200"
-							><span class="w-6 h-6 "><FaRegClipboard /></span></button
+							><span class="w-6 h-6"><FaRegClipboard /></span></button
 						>
 					</div>
 					<div class="grid grid-cols-6 border-solid border-2 border-secondary">

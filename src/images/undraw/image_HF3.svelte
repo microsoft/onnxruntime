@@ -2,6 +2,7 @@
 	export let widthscale = 1;
 	export let heightscale = 1;
 </script>
+
 <svg
 	stroke="currentColor"
 	width={110 * widthscale}

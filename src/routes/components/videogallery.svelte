@@ -29,9 +29,9 @@
 			</div>
 		{/each}
 	</div>
-    {#if title == true}
-	<a href="https://www.youtube.com/@ONNXRuntime" class="btn rounded-sm btn-primary mr-4">
-		ONNX Runtime YouTube channel →
-	</a>
-    {/if}
+	{#if title == true}
+		<a href="https://www.youtube.com/@ONNXRuntime" class="btn rounded-sm btn-primary mr-4">
+			ONNX Runtime YouTube channel →
+		</a>
+	{/if}
 </div>

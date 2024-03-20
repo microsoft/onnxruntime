@@ -37,8 +37,7 @@
 			title: 'Adobe',
 			quote:
 				'With ONNX Runtime, Adobe Target got flexibility and standardization in one package: flexibility for our customers to train ML models in the frameworks of their choice, and standardization to robustly deploy those models at scale for fast inference, to deliver true, real-time personalized experiences.',
-			author:
-				'Georgiana Copil, Senior Computer Scientist, Adobe',
+			author: 'Georgiana Copil, Senior Computer Scientist, Adobe',
 			imgsrc: adobelogo,
 			imgalt: 'Adobe logo'
 		},

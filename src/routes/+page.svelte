@@ -16,19 +16,19 @@
 	};
 
 	let videos = [
-        {
-            title: 'What is ONNX Runtime (ORT)?',
-            link: 'https://www.youtube-nocookie.com/embed/M4o4YRVba4o?si=LHc-2AhKt3TrY60g'
-        },
-        {
-            title: 'Converting Models to ONNX Format',
-            link: 'https://www.youtube-nocookie.com/embed/lRBsmnBE9ZA?si=l5i0Q2P7VtSJyGK1'
-        },
-        {
-            title: 'Optimize Training and Inference with ONNX Runtime (ORT/ACPT/DeepSpeed)',
-            link: 'https://www.youtube-nocookie.com/embed/lC7d_7waHLM?si=U4252VEd1t5ioZUN'
-        }
-    ];
+		{
+			title: 'What is ONNX Runtime (ORT)?',
+			link: 'https://www.youtube-nocookie.com/embed/M4o4YRVba4o?si=LHc-2AhKt3TrY60g'
+		},
+		{
+			title: 'Converting Models to ONNX Format',
+			link: 'https://www.youtube-nocookie.com/embed/lRBsmnBE9ZA?si=l5i0Q2P7VtSJyGK1'
+		},
+		{
+			title: 'Optimize Training and Inference with ONNX Runtime (ORT/ACPT/DeepSpeed)',
+			link: 'https://www.youtube-nocookie.com/embed/lC7d_7waHLM?si=U4252VEd1t5ioZUN'
+		}
+	];
 
 	onMount(() => {
 		anime({
@@ -47,7 +47,7 @@
 <Hero />
 <Customers />
 <CodeBlocks />
-<VideoGallery {videos}/>
+<VideoGallery {videos} />
 <GenerativeAi />
 <CrossPlatform />
 <Performance />

@@ -50,8 +50,9 @@
 			<a href="https://huggingface.co/spaces/onnx/export" class="btn btn-primary rounded-sm"
 				>Export PyTorch models to ONNX →</a
 			>
-			<a href="https://huggingface.co/docs/transformers/serialization" class="btn btn-primary rounded-sm"
-				>Other ONNX export options →</a
+			<a
+				href="https://huggingface.co/docs/transformers/serialization"
+				class="btn btn-primary rounded-sm">Other ONNX export options →</a
 			>
 		</div>
 		<div class="mx-auto md:pt-10">

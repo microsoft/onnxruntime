@@ -78,20 +78,19 @@
 			}
 		};
 
-		
-			WcpConsent.init(
-				'en-US',
-				'cookie-banner',
-				function (err, _siteConsent) {
-					if (!err) {
-						siteConsent = _siteConsent; //siteConsent is used to get the current consent
-					} else {
-						console.log('Error initializing WcpConsent: ' + err);
-					}
-				},
-				onConsentChanged,
-				WcpConsent.themes.light
-			);
+		WcpConsent.init(
+			'en-US',
+			'cookie-banner',
+			function (err, _siteConsent) {
+				if (!err) {
+					siteConsent = _siteConsent; //siteConsent is used to get the current consent
+				} else {
+					console.log('Error initializing WcpConsent: ' + err);
+				}
+			},
+			onConsentChanged,
+			WcpConsent.themes.light
+		);
 
 		function onConsentChanged(categoryPreferences) {
 			if (categoryPreferences.Analytics) {

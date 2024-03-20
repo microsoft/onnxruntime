@@ -98,7 +98,8 @@
 				<div class="card-actions">
 					<a
 						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"
-						class="btn btn-primary hidden md:grid rounded-sm">Check out the Windows ML Sample Gallery →</a
+						class="btn btn-primary hidden md:grid rounded-sm"
+						>Check out the Windows ML Sample Gallery →</a
 					>
 					<a
 						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"

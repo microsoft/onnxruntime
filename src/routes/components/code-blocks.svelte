@@ -76,10 +76,7 @@
 				>
 					Python
 				</p>
-				<p
-					on:mouseenter={handleClick}
-					class="tab tab-lg {activeTab === 'C#' ? 'tab-active' : ''}"
-				>
+				<p on:mouseenter={handleClick} class="tab tab-lg {activeTab === 'C#' ? 'tab-active' : ''}">
 					C#
 				</p>
 				<p
@@ -94,16 +91,12 @@
 				>
 					Java
 				</p>
-				<p
-					on:mouseenter={handleClick}
-					class="tab tab-lg {activeTab === 'C++' ? 'tab-active' : ''}"
-				>
+				<p on:mouseenter={handleClick} class="tab tab-lg {activeTab === 'C++' ? 'tab-active' : ''}">
 					C++
 				</p>
 				<button
 					on:click={handleClick}
-					class="tab tab-lg {activeTab === 'More..' ? 'tab-active' : ''}"
-					>More..</button
+					class="tab tab-lg {activeTab === 'More..' ? 'tab-active' : ''}">More..</button
 				>
 			</div>
 			{#if activeTab === 'Python'}

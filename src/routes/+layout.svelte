@@ -10,7 +10,7 @@
 
 <svelte:head>
 	{@html oneLight}
-	
+
 	<title
 		>ONNX Runtime | {data.pathname == '/'
 			? 'Home'
