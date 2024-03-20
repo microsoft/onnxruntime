@@ -271,9 +271,9 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
 
     copy_info.target_device = *node_info.device;
     copy_info.unique_stream_index_consumes_it = node_info.stream_index;
-    ORT_RETURN_IF(node_info.stream_index < 0);
+    ORT_RETURN_IF(node_info.stream_index < 0, "node_info.stream_index < 0");
     for (size_t i = 1; i < node_info_vec.size(); i++) {
-      ORT_RETURN_IF(node_info_vec[i].stream_index < 0);
+      ORT_RETURN_IF(node_info_vec[i].stream_index < 0, "node_info_vec[i].stream_index < 0");
       if (node_info_vec[i].stream_index != node_info.stream_index) {
         copy_info.unique_stream_index_consumes_it = -1;
         break;
