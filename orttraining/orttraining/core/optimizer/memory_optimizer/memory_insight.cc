@@ -297,6 +297,24 @@ Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
     if (reachable_nodes.size() > 0) {
       std::cout << "Found layer - start from node " << layer_boundary_ln_nodes[index - 1]->Name() << " to node "
                 << layer_boundary_ln_nodes[index]->Name() << ", subgraph contains " << reachable_nodes.size() << " nodes" << std::endl;
+      // Check the input node of layer_boundary_ln_nodes[index] is PythonOp with its func_name to be
+      // "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction".
+      // The whole layer should start with PreForwardFunction and end with PostForwardFunction.
+      const NodeArg* start_node_input_node_arg = layer_boundary_ln_nodes[index]->InputDefs()[0];
+      const Node* start_node_input_node = graph_viewer.GetProducerNode(start_node_input_node_arg->Name());
+      if (start_node_input_node != nullptr && start_node_input_node->OpType() == "Python" &&
+          start_node_input_node->Domain() == kMSDomain &&
+          start_node_input_node->GetAttributes().count("func_name") &&
+          start_node_input_node->GetAttributes().at("func_name").s() ==
+              "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction" &&
+          end_node_input_node != nullptr &&
+          end_node_input_node->OpType() == "Python" &&
+          end_node_input_node->Domain() == kMSDomain &&
+          end_node_input_node->GetAttributes().count("func_name") &&
+          end_node_input_node->GetAttributes().at("func_name").s() ==
+              "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPostForwardFunction") {
+        reachable_nodes.push_back(start_node_input_node);
+      }
       SortNodesInTopoOrder(node_index_to_its_order_in_topological_sort_map, reachable_nodes);
       InlinedVector<size_t> output_indices{static_cast<size_t>(output_index)};
       std::unique_ptr<NodeRecomputePlan> plan = std::make_unique<NodeRecomputePlan>(end_node_input_node,
