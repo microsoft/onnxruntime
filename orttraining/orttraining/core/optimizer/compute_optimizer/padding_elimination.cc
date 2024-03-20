@@ -17,8 +17,12 @@ namespace onnxruntime {
 namespace {
 
 // TODO(pengwa): remove this once customized PythonOp shape inference is supported.
-constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
-constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
+constexpr const char* kInspectActivationFuncName =
+    "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kIncrementStepFuncName =
+    "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
+constexpr const char* kFlagPaddingEliminationFuncName =
+    "onnxruntime.training.ortmodule._graph_execution_manager._FlagPaddingElimination";
 
 void PushAllOutputNode(Graph& graph, std::queue<Node*>& q, Node* node, std::unordered_set<Node*>& visited) {
   for (auto iter = node->OutputNodesBegin(); iter != node->OutputNodesEnd(); ++iter) {
@@ -311,7 +315,7 @@ void IterateSubgraphFromNode(Graph& graph,
         candidate_outputs.insert(cur);
         continue;
       }
-      auto func_name = static_cast<std::string>(cur->GetAttributes().at("name").s());
+      auto func_name = static_cast<std::string>(cur->GetAttributes().at("func_name").s());
       if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
         subgraph.insert(cur->MutableOutputDefs()[1]);
         PushAllOutputNode(graph, to_visit, cur, visited);
@@ -353,11 +357,6 @@ void IterateSubgraphFromNode(Graph& graph,
 Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "Enter PaddingElimination");
 
-  if (sparse_embedding_input_names_.size() == 0) {
-    LOG_DEBUG_INFO(logger, "Exit PaddingElimination, no sparse embedding input names.");
-    return Status::OK();
-  }
-
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   Node* embedding_node = nullptr;
@@ -386,13 +385,31 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         node.InputDefs()[2]->Exists() &&
         graph_utils::IsConstantInitializer(graph, node.InputDefs()[2]->Name()) &&
         node.InputDefs()[1]->Exists() &&
-        graph_utils::IsGraphInput(graph, node.InputDefs()[1]) &&
         node.InputDefs()[1]->Shape() &&
         node.InputDefs()[1]->Shape()->dim_size() >= 2) {
-      if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
-                    node.InputDefs()[1]->Name()) == sparse_embedding_input_names_.end()) {
-        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                   ") due to embedding input is not in the sparse embedding input list.");
+      const auto outputNodeCount = std::distance(node.OutputEdgesBegin(), node.OutputEdgesEnd());
+      if (outputNodeCount != 1) {
+        continue;
+      }
+      auto embedding_output_node = graph.GetNode(node.OutputNodesBegin()->Index());
+      if (embedding_output_node == nullptr ||
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*embedding_output_node, "PythonOp", {1}, kMSDomain) ||
+          static_cast<std::string>(embedding_output_node->GetAttributes().at("func_name").s()) !=
+              kFlagPaddingEliminationFuncName) {
+        LOG_DEBUG_INFO(logger, "not find PythonOp of flagPaddingElimination after embedding node");
+        continue;
+      }
+      if (graph_utils::CanRemoveNode(graph, *embedding_output_node, logger)) {
+        if (graph_utils::RemoveNode(graph, *embedding_output_node)) {
+          modified = true;
+        } else {
+          LOG_DEBUG_INFO(logger, "Failed to remove node " + embedding_output_node->Name() +
+                                     "(" + embedding_output_node->OpType() + ")");
+          continue;
+        }
+      } else {
+        LOG_DEBUG_INFO(logger, "Can not remove node " + embedding_output_node->Name() +
+                                   "(" + embedding_output_node->OpType() + ")");
         continue;
       }
       const ONNX_NAMESPACE::TensorProto* padding_initializer =
@@ -479,7 +496,6 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   // to flattern the shape of [batch_size, seqlen, ...] to [valid_token_count, ...]
   InsertFlattenPatternForInput(graph, *embedding_node, 1, squeeze_out_arg, logger);
   handled_input_count++;
-  modified = true;
   for (auto& node : candidate_inputs) {
     for (uint32_t i = 0; i < node->InputDefs().size(); ++i) {
       if (subgraph.find(node->MutableInputDefs()[i]) == subgraph.end()) {

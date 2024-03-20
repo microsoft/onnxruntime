@@ -253,6 +253,10 @@ class TrainingManager(GraphExecutionManager):
             ):
                 self.time_tracker.start(ORTModuleInitPhase.EndToEnd)
 
+                # need to set device before check embedding sparsity because it uses device
+                self._set_device_from_module(inputs, kwargs)
+                self._check_embedding_sparsity()
+
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
 
                 if build_gradient_graph:

@@ -5724,8 +5724,6 @@ def test_gradient_correctness_bce_with_logits():
 @pytest.mark.parametrize("label_is_sparse", [False, True])
 @pytest.mark.parametrize("rank", [1, 2])
 def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank, caplog):
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
-
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
             super().__init__()
@@ -5820,7 +5818,6 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     ],
 )
 def test_ops_for_padding_elimination(test_cases):
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     test_op = test_cases[0]
     case = test_cases[1]
 
@@ -5981,11 +5978,8 @@ def test_ops_for_padding_elimination(test_cases):
         else:
             assert "ATen" in recover_pad_input_optypes
 
-    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
-
 
 def test_e2e_padding_elimination():
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     seed = 5033
     random.seed(seed)
     np.random.seed(seed)
@@ -6128,7 +6122,6 @@ def test_e2e_padding_elimination():
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "FlattenAndUnpad" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
-    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
 
 
 @pytest.mark.skipif(
