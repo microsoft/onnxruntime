@@ -67,7 +67,8 @@ struct MixedGemmArchTraits<
     TypeA,
     TypeB,
     cutlass::arch::Sm70,
-    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value ||
+                                          cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm70>;
 
@@ -94,7 +95,8 @@ struct MixedGemmArchTraits<
     TypeA,
     TypeB,
     cutlass::arch::Sm75,
-    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value ||
+                                          cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm75>;
 
@@ -119,7 +121,8 @@ struct MixedGemmArchTraits<
     TypeA,
     TypeB,
     cutlass::arch::Sm80,
-    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value ||
+                                          cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm80>;
 

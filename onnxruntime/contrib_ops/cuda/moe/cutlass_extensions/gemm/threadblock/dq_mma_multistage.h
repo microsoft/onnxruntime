@@ -218,7 +218,10 @@ class DqMmaMultistage : public DqMmaBase<Shape_, Policy_, typename IteratorScale
                                         lane_idx),
                       smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
                       smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
-                      smem_iterator_scale_(LayoutScale(Shape::kN), shared_storage.operand_scale.data(), {1, Shape::kN}, thread_idx) {
+                      smem_iterator_scale_(LayoutScale(Shape::kN),
+                                           shared_storage.operand_scale.data(),
+                                           {1, Shape::kN},
+                                           thread_idx) {
     // Compute warp location within threadblock tile by mapping the warp_id to
     // three coordinates:
     //   _m: the warp's position within the threadblock along the M dimension
@@ -249,7 +252,10 @@ class DqMmaMultistage : public DqMmaBase<Shape_, Policy_, typename IteratorScale
         typename IteratorA::AccessType* dst_ptr =
             reinterpret_cast<typename IteratorA::AccessType*>(this->smem_iterator_A_.get());
 
-        int const kSrcBytes = sizeof_bits<typename IteratorA::Element>::value * IteratorA::ThreadMap::kElementsPerAccess / IteratorA::kAccessesPerVector / 8;
+        int const kSrcBytes =
+            sizeof_bits<
+                typename IteratorA::Element>::value *
+            IteratorA::ThreadMap::kElementsPerAccess / IteratorA::kAccessesPerVector / 8;
 
         CUTLASS_PRAGMA_UNROLL
         for (int v = 0; v < IteratorA::kAccessesPerVector; ++v) {
@@ -278,7 +284,10 @@ class DqMmaMultistage : public DqMmaBase<Shape_, Policy_, typename IteratorScale
         typename IteratorB::AccessType* dst_ptr =
             reinterpret_cast<typename IteratorB::AccessType*>(this->smem_iterator_B_.get());
 
-        int const kSrcBytes = sizeof_bits<typename IteratorB::Element>::value * IteratorB::ThreadMap::kElementsPerAccess / IteratorB::kAccessesPerVector / 8;
+        int const kSrcBytes =
+            sizeof_bits<
+                typename IteratorB::Element>::value *
+            IteratorB::ThreadMap::kElementsPerAccess / IteratorB::kAccessesPerVector / 8;
 
         CUTLASS_PRAGMA_UNROLL
         for (int v = 0; v < IteratorB::kAccessesPerVector; ++v) {
@@ -344,7 +353,10 @@ class DqMmaMultistage : public DqMmaBase<Shape_, Policy_, typename IteratorScale
 
         CUTLASS_PRAGMA_UNROLL
         for (int v = 0; v < IteratorA::kAccessesPerVector; ++v) {
-          int const kSrcBytes = sizeof_bits<typename IteratorA::Element>::value * IteratorA::ThreadMap::kElementsPerAccess / IteratorA::kAccessesPerVector / 8;
+          int const kSrcBytes =
+              sizeof_bits<
+                  typename IteratorA::Element>::value *
+              IteratorA::ThreadMap::kElementsPerAccess / IteratorA::kAccessesPerVector / 8;
 
           int src_bytes = (iterator_A.valid() ? kSrcBytes : 0);
 
@@ -368,7 +380,10 @@ class DqMmaMultistage : public DqMmaBase<Shape_, Policy_, typename IteratorScale
 
         CUTLASS_PRAGMA_UNROLL
         for (int v = 0; v < IteratorB::kAccessesPerVector; ++v) {
-          int const kSrcBytes = sizeof_bits<typename IteratorB::Element>::value * IteratorB::ThreadMap::kElementsPerAccess / IteratorB::kAccessesPerVector / 8;
+          int const kSrcBytes =
+              sizeof_bits<
+                  typename IteratorB::Element>::value *
+              IteratorB::ThreadMap::kElementsPerAccess / IteratorB::kAccessesPerVector / 8;
 
           cutlass::arch::cp_async_zfill<kSrcBytes, kCacheOpB>(
               dst_ptr + v, iterator_B.get(), iterator_B.valid());

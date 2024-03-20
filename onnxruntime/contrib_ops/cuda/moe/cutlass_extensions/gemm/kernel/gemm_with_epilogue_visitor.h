@@ -315,7 +315,8 @@ struct GemmWithEpilogueVisitor {
       isAMisaligned = problem_size.k() % kAlignmentA;
     } else if (platform::is_same<LayoutA, layout::ColumnMajor>::value) {
       isAMisaligned = problem_size.m() % kAlignmentA;
-    } else if (platform::is_same<LayoutA, layout::ColumnMajorInterleaved<32>>::value || platform::is_same<LayoutA, layout::ColumnMajorInterleaved<64>>::value) {
+    } else if (platform::is_same<LayoutA, layout::ColumnMajorInterleaved<32>>::value ||
+               platform::is_same<LayoutA, layout::ColumnMajorInterleaved<64>>::value) {
       isAMisaligned = problem_size.k() % kAlignmentA;
     }
 
@@ -323,7 +324,8 @@ struct GemmWithEpilogueVisitor {
       isBMisaligned = problem_size.n() % kAlignmentB;
     } else if (platform::is_same<LayoutB, layout::ColumnMajor>::value) {
       isBMisaligned = problem_size.k() % kAlignmentB;
-    } else if (platform::is_same<LayoutB, layout::RowMajorInterleaved<32>>::value || platform::is_same<LayoutB, layout::RowMajorInterleaved<64>>::value) {
+    } else if (platform::is_same<LayoutB, layout::RowMajorInterleaved<32>>::value ||
+               platform::is_same<LayoutB, layout::RowMajorInterleaved<64>>::value) {
       isBMisaligned = problem_size.k() % kAlignmentB;
     }
 
@@ -331,7 +333,8 @@ struct GemmWithEpilogueVisitor {
       isCMisaligned = problem_size.n() % kAlignmentC;
     } else if (platform::is_same<LayoutC, layout::ColumnMajor>::value) {
       isCMisaligned = problem_size.m() % kAlignmentC;
-    } else if (platform::is_same<LayoutC, layout::ColumnMajorInterleaved<32>>::value || platform::is_same<LayoutC, layout::ColumnMajorInterleaved<64>>::value) {
+    } else if (platform::is_same<LayoutC, layout::ColumnMajorInterleaved<32>>::value ||
+               platform::is_same<LayoutC, layout::ColumnMajorInterleaved<64>>::value) {
       isCMisaligned = problem_size.n() % kAlignmentC;
     }
 
@@ -374,7 +377,8 @@ struct GemmWithEpilogueVisitor {
     cutlass::gemm::GemmCoord threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
     // Early exit if CTA is out of range
-    if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() || params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
+    if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() ||
+        params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
       return;
     }
 

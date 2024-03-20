@@ -96,7 +96,10 @@ class EpilogueVisitorPerRowPerCol {
     //
     Arguments() : batch_stride_alpha(0), batch_stride_C(0), batch_stride_D(0) {}
 
-    Arguments(typename ElementwiseFunctor::Params elementwise_) : elementwise(elementwise_), batch_stride_alpha(0), batch_stride_C(0), batch_stride_D(0) {
+    Arguments(typename ElementwiseFunctor::Params elementwise_) : elementwise(elementwise_),
+                                                                  batch_stride_alpha(0),
+                                                                  batch_stride_C(0),
+                                                                  batch_stride_D(0) {
     }
 
     Arguments(typename ElementwiseFunctor::Params elementwise_,
@@ -161,34 +164,36 @@ class EpilogueVisitorPerRowPerCol {
 
  public:
   CUTLASS_DEVICE
-  EpilogueVisitorPerRowPerCol(Params const& params,
-                              SharedStorage& shared_storage,
-                              cutlass::MatrixCoord const& problem_size,
-                              int thread_idx,
-                              int warp_idx,
-                              int lane_idx,
-                              typename ScaleTileIterator::Params params_alpha_col,
-                              typename OutputTileIterator::Params params_C,
-                              typename OutputTileIterator::Params params_D,
-                              QuantMode quant_mode,
-                              AlphaScaleElementType* ptr_alpha_row,
-                              AlphaScaleElementType* ptr_alpha_col,
-                              typename OutputTileIterator::Element* ptr_C,
-                              typename OutputTileIterator::Element* ptr_D,
-                              cutlass::MatrixCoord const& threadblock_offset = cutlass::MatrixCoord(0, 0),
-                              int column_offset = 0,
-                              cutlass::MatrixCoord const& problem_size_real = cutlass::MatrixCoord(0, 0)) : params_(params),
-                                                                                                            shared_storage_(shared_storage),
-                                                                                                            extent_(problem_size),
-                                                                                                            elementwise_(params.elementwise),
-                                                                                                            per_token_quant_(quant_mode == QuantMode::PerTokenQuant || quant_mode == QuantMode::PerTokenChannelQuant),
-                                                                                                            per_channel_quant_(quant_mode == QuantMode::PerChannelQuant || quant_mode == QuantMode::PerTokenChannelQuant),
-                                                                                                            ptr_alpha_row_(ptr_alpha_row),
-                                                                                                            ptr_alpha_col_(ptr_alpha_col),
-                                                                                                            iterator_alpha_col_(params_alpha_col, ptr_alpha_col, problem_size, thread_idx, threadblock_offset),
-                                                                                                            iterator_C_(params_C, ptr_C, problem_size, thread_idx, threadblock_offset),
-                                                                                                            iterator_D_(params_D, ptr_D, problem_size, thread_idx, threadblock_offset),
-                                                                                                            extent_real_(problem_size_real) {
+  EpilogueVisitorPerRowPerCol(
+      Params const& params,
+      SharedStorage& shared_storage,
+      cutlass::MatrixCoord const& problem_size,
+      int thread_idx,
+      int warp_idx,
+      int lane_idx,
+      typename ScaleTileIterator::Params params_alpha_col,
+      typename OutputTileIterator::Params params_C,
+      typename OutputTileIterator::Params params_D,
+      QuantMode quant_mode,
+      AlphaScaleElementType* ptr_alpha_row,
+      AlphaScaleElementType* ptr_alpha_col,
+      typename OutputTileIterator::Element* ptr_C,
+      typename OutputTileIterator::Element* ptr_D,
+      cutlass::MatrixCoord const& threadblock_offset = cutlass::MatrixCoord(0, 0),
+      int column_offset = 0,
+      cutlass::MatrixCoord const& problem_size_real = cutlass::MatrixCoord(0, 0))
+      : params_(params),
+        shared_storage_(shared_storage),
+        extent_(problem_size),
+        elementwise_(params.elementwise),
+        per_token_quant_(quant_mode == QuantMode::PerTokenQuant || quant_mode == QuantMode::PerTokenChannelQuant),
+        per_channel_quant_(quant_mode == QuantMode::PerChannelQuant || quant_mode == QuantMode::PerTokenChannelQuant),
+        ptr_alpha_row_(ptr_alpha_row),
+        ptr_alpha_col_(ptr_alpha_col),
+        iterator_alpha_col_(params_alpha_col, ptr_alpha_col, problem_size, thread_idx, threadblock_offset),
+        iterator_C_(params_C, ptr_C, problem_size, thread_idx, threadblock_offset),
+        iterator_D_(params_D, ptr_D, problem_size, thread_idx, threadblock_offset),
+        extent_real_(problem_size_real) {
     beta_ = (params.elementwise.beta_ptr ? *params.elementwise.beta_ptr : params.elementwise.beta);
 
     if (beta_ == ElementAccumulator()) {

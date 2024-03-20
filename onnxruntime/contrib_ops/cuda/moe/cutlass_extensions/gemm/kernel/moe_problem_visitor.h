@@ -59,7 +59,8 @@ struct BaseMoeProblemVisitor {
     ProblemInfo() : problem_idx(kNoPrefetchEntry), problem_start(kNoPrefetchEntry) {}
 
     CUTLASS_DEVICE
-    ProblemInfo(int32_t problem_idx_, int32_t problem_start_) : problem_idx(problem_idx_), problem_start(problem_start_) {
+    ProblemInfo(int32_t problem_idx_, int32_t problem_start_) : problem_idx(problem_idx_),
+                                                                problem_start(problem_start_) {
     }
   };
 
@@ -77,7 +78,12 @@ struct BaseMoeProblemVisitor {
 
     /// Ctor
     CUTLASS_HOST_DEVICE
-    Params() : last_row_for_problem(nullptr), gemm_n(0), gemm_k(0), problem_count(0), workspace(nullptr), tile_count(0) {
+    Params() : last_row_for_problem(nullptr),
+               gemm_n(0),
+               gemm_k(0),
+               problem_count(0),
+               workspace(nullptr),
+               tile_count(0) {
     }
 
     /// Ctor
@@ -105,7 +111,10 @@ struct BaseMoeProblemVisitor {
   // Methods
   //
   CUTLASS_DEVICE
-  BaseMoeProblemVisitor(Params const& params_, int32_t block_idx) : params(params_), tile_idx(block_idx), problem_tile_start(0), problem_idx(0) {
+  BaseMoeProblemVisitor(Params const& params_, int32_t block_idx) : params(params_),
+                                                                    tile_idx(block_idx),
+                                                                    problem_tile_start(0),
+                                                                    problem_idx(0) {
   }
 
   /// Get the grid shape
@@ -213,7 +222,11 @@ struct MoeProblemVisitor<ProblemSizeHelper,
   // Methods
   //
   CUTLASS_DEVICE
-  MoeProblemVisitor(Params const& params_, SharedStorage& shared_storage_, int32_t block_idx) : Base(params_, block_idx), problem_ending_tile(0), shared_storage(shared_storage_) {
+  MoeProblemVisitor(Params const& params_,
+                    SharedStorage& shared_storage_,
+                    int32_t block_idx) : Base(params_, block_idx),
+                                         problem_ending_tile(0),
+                                         shared_storage(shared_storage_) {
     this->problem_idx = -1 * kThreadsPerWarp;
     this->problem_tile_start = 0;
   }

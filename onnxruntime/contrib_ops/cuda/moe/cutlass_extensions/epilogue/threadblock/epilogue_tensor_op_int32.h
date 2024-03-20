@@ -151,7 +151,8 @@ class SharedLoadIteratorMixed<ThreadMap_, int32_t, 32, 16, 8, 8> {
 
   /// Fragment object
   using Fragment = Array<Element,
-                         ThreadMap::Iterations::kColumn * ThreadMap::Iterations::kRow * ThreadMap::Iterations::kGroup * ThreadMap::Iterations::kCluster * ThreadMap::kElementsPerAccess>;
+                         ThreadMap::Iterations::kColumn * ThreadMap::Iterations::kRow * ThreadMap::Iterations::kGroup *
+                             ThreadMap::Iterations::kCluster * ThreadMap::kElementsPerAccess>;
 
   /// Memory access size
   using AccessType = AlignedArray<Element, ThreadMap::kElementsPerAccess, kAlignment>;
@@ -226,7 +227,8 @@ class SharedLoadIteratorMixed<ThreadMap_, int32_t, 32, 16, 8, 8> {
         CUTLASS_PRAGMA_UNROLL
         for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
           int row_ptr_offset =
-              row * ThreadMap::Delta::kRow * stride_ + group * ThreadMap::Delta::kGroup * stride_ + cluster * ThreadMap::Delta::kCluster * stride_ + pointer_offset / LoadType::kElements;
+              row * ThreadMap::Delta::kRow * stride_ + group * ThreadMap::Delta::kGroup * stride_ +
+              cluster * ThreadMap::Delta::kCluster * stride_ + pointer_offset / LoadType::kElements;
 
           int frag_row_idx =
               (row + ThreadMap::Iterations::kRow * (group + ThreadMap::Iterations::kGroup * cluster));

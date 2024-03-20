@@ -201,7 +201,8 @@ class MmaTensorOpDequantizer<
     layout::RowMajor,
     32,
     typename platform::enable_if<
-        MmaOperator_::ArchTag::kMinComputeCapability >= 75 && platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
+        MmaOperator_::ArchTag::kMinComputeCapability >= 75 &&
+        platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
  public:
   /// Mma Operator
   using MmaOperator = MmaOperator_;
@@ -255,8 +256,9 @@ class MmaTensorOpDequantizer<
   void dequantize(FragmentDequantizedOperand& operand_frag, const FragmentScale& scale_frag) {
     using _MmaOperandB = typename ArchMmaOperator::FragmentB;
     using ExpandedMmaOperandB = Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
-    static_assert(ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
-                  "");
+    static_assert(
+        ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
+        "");
 
     multiplies<ExpandedMmaOperandB> mul_op;
 
@@ -287,7 +289,9 @@ class MmaTensorOpDequantizer<
     layout::RowMajor,
     32,
     typename platform::enable_if<
-        platform::is_same<typename MmaOperator_::ArchTag, arch::Sm70>::value && platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::RowMajor>::value>::type> {
+        platform::is_same<
+            typename MmaOperator_::ArchTag, arch::Sm70>::value &&
+        platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::RowMajor>::value>::type> {
  public:
   static_assert(platform::is_same<typename MmaOperator_::InterleavedTileShape, GemmShape<32, 32, 4>>::value, "");
 
@@ -369,7 +373,9 @@ class MmaTensorOpDequantizer<
     layout::RowMajor,
     32,
     typename platform::enable_if<
-        platform::is_same<typename MmaOperator_::ArchTag, arch::Sm70>::value && platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
+        platform::is_same<
+            typename MmaOperator_::ArchTag, arch::Sm70>::value &&
+        platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
  public:
   static_assert(platform::is_same<typename MmaOperator_::InterleavedTileShape, GemmShape<32, 32, 4>>::value, "");
 

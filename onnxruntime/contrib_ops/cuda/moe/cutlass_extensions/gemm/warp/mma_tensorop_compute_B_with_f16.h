@@ -123,10 +123,16 @@ class MmaTensorOpComputeBWithF16 {
 
   /// Architecture tag from underlying instruction
   using ArchTag = typename ArchMmaOperator::ArchTag;
-  static_assert((platform::is_same<typename ArchMmaOperator::ElementA, half_t>::value && platform::is_same<typename ArchMmaOperator::ElementB, half_t>::value) || (platform::is_same<typename ArchMmaOperator::ElementA, bfloat16_t>::value && platform::is_same<typename ArchMmaOperator::ElementB, bfloat16_t>::value && ArchTag::kMinComputeCapability >= 80),
+  static_assert((platform::is_same<typename ArchMmaOperator::ElementA, half_t>::value &&
+                 platform::is_same<typename ArchMmaOperator::ElementB, half_t>::value) ||
+                    (platform::is_same<typename ArchMmaOperator::ElementA, bfloat16_t>::value &&
+                     platform::is_same<typename ArchMmaOperator::ElementB, bfloat16_t>::value &&
+                     ArchTag::kMinComputeCapability >= 80),
                 "MmaTensorOpCvtBToA only supports underlying HMMA");
 
-  static_assert(platform::is_same<ElementA, half_t>::value || (platform::is_same<ElementA, bfloat16_t>::value && ArchTag::kMinComputeCapability >= 80),
+  static_assert(platform::is_same<ElementA, half_t>::value ||
+                    (platform::is_same<ElementA, bfloat16_t>::value &&
+                     ArchTag::kMinComputeCapability >= 80),
                 "MmaTensorOpCvtBToA only supports Fp16 A or Bf16 A on Ampere+");
 
   /// Indicates class of matrix operator

@@ -53,8 +53,8 @@ namespace kernel {
 template <typename Mma_,                 ///! Threadblock-scoped matrix multiply-accumulate
           typename Epilogue_,            ///! Epilogue
           typename ThreadblockSwizzle_,  ///! Threadblock swizzling function
-          typename KernelArch,           ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose top-level
-                                         /// arch.
+          typename KernelArch,           ///! The Architecture this kernel is compiled for. Used since SIMT kernels
+                                         /// lose top-level arch.
           bool SplitKSerial              ///! If true, code supporting split-K via serial reduction is enabled.
           >
 struct GemmFpAIntB {
@@ -223,11 +223,17 @@ struct GemmFpAIntB {
   CUTLASS_HOST_DEVICE
   static Status can_implement(Arguments const& args) {
     static int const kAlignmentA =
-        (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32 : (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<64>>::value) ? 64
-                                                                                                                                                                                                               : Mma::IteratorA::AccessType::kElements;
+        (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value)
+            ? 32
+        : (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<64>>::value)
+            ? 64
+            : Mma::IteratorA::AccessType::kElements;
     static int const kAlignmentB =
-        (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<32>>::value) ? 32 : (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<64>>::value) ? 64
-                                                                                                                                                                                                         : Mma::IteratorB::AccessType::kElements;
+        (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<32>>::value)
+            ? 32
+        : (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<64>>::value)
+            ? 64
+            : Mma::IteratorB::AccessType::kElements;
 
     static int const kAlignmentScale = Mma::IteratorScale::AccessType::kElements;
 
@@ -282,7 +288,8 @@ struct GemmFpAIntB {
     CUTLASS_DEVICE
     static void run_kernel(Params const& params, SharedStorage& shared_storage) {
       using LayoutB = typename Mma::IteratorB::Layout;
-      static_assert(platform::is_same<LayoutB, layout::RowMajor>::value && kInterleave == 1 || platform::is_same<LayoutB, layout::ColumnMajor>::value && kInterleave >= 1,
+      static_assert(platform::is_same<LayoutB, layout::RowMajor>::value && kInterleave == 1 ||
+                        platform::is_same<LayoutB, layout::ColumnMajor>::value && kInterleave >= 1,
                     "B must be row major/col major OR col major interleaved.");
 
       // Compute threadblock location
@@ -292,7 +299,8 @@ struct GemmFpAIntB {
           threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
       // Early exit if CTA is out of range
-      if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() || params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
+      if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() ||
+          params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
         return;
       }
 

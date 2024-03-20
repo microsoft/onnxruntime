@@ -189,7 +189,10 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
                                        lane_idx),
                      smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
                      smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
-                     smem_iterator_scale_(LayoutScale(Shape::kN), shared_storage.operand_scale.data(), {1, Shape::kN}, thread_idx) {
+                     smem_iterator_scale_(LayoutScale(Shape::kN),
+                                          shared_storage.operand_scale.data(),
+                                          {1, Shape::kN},
+                                          thread_idx) {
     // Compute warp location within threadblock tile by mapping the warp_id to
     // three coordinates:
     //   _m: the warp's position within the threadblock along the M dimension

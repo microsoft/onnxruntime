@@ -79,7 +79,8 @@ CUTLASS_DEVICE static void run_mma(Mma mma,
 }
 
 // SFINAE overload for normal gemm. This completely ignores the scale parameters
-template <typename Mma, typename ElementScale, typename platform::enable_if<!use_dq_gemm<Mma>::value, bool>::type = true>
+template <typename Mma, typename ElementScale,
+          typename platform::enable_if<!use_dq_gemm<Mma>::value, bool>::type = true>
 CUTLASS_DEVICE static void run_mma(Mma mma,
                                    int gemm_k_iterations,
                                    typename Mma::FragmentC& accum,
@@ -98,8 +99,8 @@ CUTLASS_DEVICE static void run_mma(Mma mma,
 template <typename Mma_,                        ///! Threadblock-scoped matrix multiply-accumulate
           typename Epilogue_,                   ///! Epilogue
           typename ThreadblockSwizzle_,         ///! Threadblock swizzling function
-          typename KernelArch,                  ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose top-level
-                                                /// arch.
+          typename KernelArch,                  ///! The Architecture this kernel is compiled for. Used since SIMT
+                                                ///  kernels lose top-level arch.
           GroupScheduleMode GroupScheduleMode_  ///! Type of scheduling to perform
           >
 struct MoeFCGemm {
@@ -260,15 +261,21 @@ struct MoeFCGemm {
     Params() : ptr_A(nullptr), ptr_B(nullptr), weight_scales(nullptr), ptr_C(nullptr), ptr_D(nullptr) {}
 
     CUTLASS_HOST_DEVICE
-    Params(Arguments const& args, void* workspace = nullptr, int tile_count = 0) : problem_visitor(
-                                                                                       args.total_rows_before_expert, args.gemm_n, args.gemm_k, args.problem_count, workspace, tile_count),
-                                                                                   threadblock_count(args.threadblock_count),
-                                                                                   output_op(args.output_op),
-                                                                                   ptr_A(args.ptr_A),
-                                                                                   ptr_B(args.ptr_B),
-                                                                                   weight_scales(args.weight_scales),
-                                                                                   ptr_C(args.ptr_C),
-                                                                                   ptr_D(args.ptr_D) {
+    Params(Arguments const& args,
+           void* workspace = nullptr,
+           int tile_count = 0) : problem_visitor(args.total_rows_before_expert,
+                                                 args.gemm_n,
+                                                 args.gemm_k,
+                                                 args.problem_count,
+                                                 workspace,
+                                                 tile_count),
+                                 threadblock_count(args.threadblock_count),
+                                 output_op(args.output_op),
+                                 ptr_A(args.ptr_A),
+                                 ptr_B(args.ptr_B),
+                                 weight_scales(args.weight_scales),
+                                 ptr_C(args.ptr_C),
+                                 ptr_D(args.ptr_D) {
     }
 
     CUTLASS_HOST_DEVICE
@@ -349,7 +356,8 @@ struct MoeFCGemm {
       using ElementC = typename Epilogue::OutputTileIterator::Element;
       using LayoutC = typename Epilogue::OutputTileIterator::Layout;
       static constexpr int kInterleave = Mma::IteratorB::Shape::kRow / Mma::Shape::kK;
-      static_assert(platform::is_same<LayoutB, layout::RowMajor>::value && kInterleave == 1 || platform::is_same<LayoutB, layout::ColumnMajor>::value && kInterleave >= 1,
+      static_assert(platform::is_same<LayoutB, layout::RowMajor>::value && kInterleave == 1 ||
+                        platform::is_same<LayoutB, layout::ColumnMajor>::value && kInterleave >= 1,
                     "B must be row major/col major OR col major interleaved.");
 
       //

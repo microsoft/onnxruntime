@@ -82,9 +82,13 @@ struct DqMma<ElementA,
   static_assert(platform::is_same<ElementB, uint8_t>::value || platform::is_same<ElementB, uint4b_t>::value,
                 "Element B must be uint8 or uint4");
 
-  static cutlass::arch::CacheOperation::Kind const CacheOpA = ((sizeof_bits<ElementA>::value * kAlignmentA) == 128) ? cutlass::arch::CacheOperation::Global : cutlass::arch::CacheOperation::Always;
+  static cutlass::arch::CacheOperation::Kind const CacheOpA =
+      ((sizeof_bits<ElementA>::value * kAlignmentA) == 128) ? cutlass::arch::CacheOperation::Global
+                                                            : cutlass::arch::CacheOperation::Always;
 
-  static cutlass::arch::CacheOperation::Kind const CacheOpB = ((sizeof_bits<ElementB>::value * kAlignmentB) == 128) ? cutlass::arch::CacheOperation::Global : cutlass::arch::CacheOperation::Always;
+  static cutlass::arch::CacheOperation::Kind const CacheOpB =
+      ((sizeof_bits<ElementB>::value * kAlignmentB) == 128) ? cutlass::arch::CacheOperation::Global
+                                                            : cutlass::arch::CacheOperation::Always;
 
   // Define the MmaCore components
   // Mma core does not depend on stages, so pass in at least 3 here to mma multistage pieces are created
@@ -234,9 +238,13 @@ struct DqMma<ElementA,
   static_assert(platform::is_same<ElementB, uint8_t>::value || platform::is_same<ElementB, uint4b_t>::value,
                 "Element B must be uint8 or uint4");
 
-  static cutlass::arch::CacheOperation::Kind const CacheOpA = ((sizeof_bits<ElementA>::value * kAlignmentA) == 128) ? cutlass::arch::CacheOperation::Global : cutlass::arch::CacheOperation::Always;
+  static cutlass::arch::CacheOperation::Kind const CacheOpA =
+      ((sizeof_bits<ElementA>::value * kAlignmentA) == 128) ? cutlass::arch::CacheOperation::Global
+                                                            : cutlass::arch::CacheOperation::Always;
 
-  static cutlass::arch::CacheOperation::Kind const CacheOpB = ((sizeof_bits<ElementB>::value * kAlignmentB) == 128) ? cutlass::arch::CacheOperation::Global : cutlass::arch::CacheOperation::Always;
+  static cutlass::arch::CacheOperation::Kind const CacheOpB =
+      ((sizeof_bits<ElementB>::value * kAlignmentB) == 128) ? cutlass::arch::CacheOperation::Global
+                                                            : cutlass::arch::CacheOperation::Always;
 
   // Define the MmaCore components
   // Mma core does not depend on stages, so pass in at least 3 here to mma multistage pieces are created
