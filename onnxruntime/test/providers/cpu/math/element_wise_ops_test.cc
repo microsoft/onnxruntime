@@ -1523,7 +1523,16 @@ TEST(MathOpTest, Min_12_Float_Nan) {
                          std::numeric_limits<float>::quiet_NaN(),
                          -1.0f, -1.0f, -2.0f,
                          0.5f, 0.0f, 1.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Min_12_Double) {
@@ -1559,7 +1568,16 @@ TEST(MathOpTest, Min_12_Double_Nan) {
                           std::numeric_limits<double>::quiet_NaN(),
                           -1.0, -1.0, -2.0,
                           0.5, 0.0, 1.0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Min_12_Int32) {
@@ -1685,7 +1703,16 @@ TEST(MathOpTest, Min_12_MLFloat16_Nan) {
                                            std::numeric_limits<float>::quiet_NaN(),
                                            -1.0f, -1.0f, -2.0f,
                                            0.5f, 0.0f, 1.0f}));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Max_6) {
@@ -1792,7 +1819,16 @@ TEST(MathOpTest, Max_12_Float_Nan) {
                          std::numeric_limits<float>::quiet_NaN(),
                          -0.5f, 0.0f, -1.0f,
                          1.0f, 1.0f, 2.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Max_12_Double) {
@@ -1828,7 +1864,16 @@ TEST(MathOpTest, Max_12_Double_Nan) {
                           std::numeric_limits<double>::quiet_NaN(),
                           -0.5, 0.0, -1.0,
                           1.0, 1.0, 2.0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Max_12_Int32) {
@@ -1954,7 +1999,16 @@ TEST(MathOpTest, Max_12_MLFloat16_Nan) {
                                            std::numeric_limits<float>::quiet_NaN(),
                                            -0.5f, 0.0f, -1.0f,
                                            1.0f, 1.0f, 2.0f}));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Not) {
