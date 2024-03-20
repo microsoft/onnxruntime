@@ -20,7 +20,7 @@ The onnxruntime-genai package contains a model builder that generates the phi-2 
 If using the `-m` option shown here, you will need to login into Hugging Face.
 
 ```bash
-pip install huggingface-hub`
+pip install huggingface-hub
 huggingface-cli login
 ```
 
