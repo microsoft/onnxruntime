@@ -28,16 +28,15 @@ parameters:
     - 11.8
     - 12.2
 
-parameters:
-  - name: SpecificArtifact
-    displayName: Use Specific Artifact
-    type: boolean
-    default: false
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
 
-  - name: BuildId
-    displayName: Specific Artifact's BuildId
-    type: string
-    default: '0'
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
 
 stages:
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
