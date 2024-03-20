@@ -202,11 +202,11 @@ stages:
           clean: true
           submodules: none
 
-          - task: UsePythonVersion@0
-            inputs:
-              versionSpec: ${{ parameters.PYTHON_VERSION }}
-              addToPath: true
-              architecture: 'x64'
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: ${{ parameters.PYTHON_VERSION }}
+            addToPath: true
+            architecture: 'x64'
 
         - template: flex-downloadPipelineArtifact.yml
           parameters:
