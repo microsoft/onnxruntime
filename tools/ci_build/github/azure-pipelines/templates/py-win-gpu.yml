@@ -212,11 +212,11 @@ stages:
             BuildId: ${{ parameters.BuildId }}
 
         - powershell: |
-          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
-          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-          Remove-Item -Recurse -Force onnxruntime
-          python onnx_backend_test_series.py
-          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+            Remove-Item -Recurse -Force onnxruntime
+            python onnx_backend_test_series.py
+            workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           displayName: 'Run Python Tests'
 
         - task: TSAUpload@2
