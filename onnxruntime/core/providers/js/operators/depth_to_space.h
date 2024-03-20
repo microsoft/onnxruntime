@@ -5,6 +5,9 @@
 
 #include "core/providers/js/js_kernel.h"
 
+#include <string>
+#include <utility>
+
 namespace onnxruntime {
 namespace js {
 
