@@ -38,9 +38,9 @@ const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, ou
 };
 
 const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: DepthToSpaceAttributes): ProgramInfo => {
-  let [n, h, w, c] = [0, 0, 0, 0];
-  let shape = [0, 0, 0, 0];
-  let perm = [0, 0, 0, 0, 0, 0];
+  let n: number, h: number, w: number, c: number;
+  let shape: number[];
+  let perm: number[];
   const isChannelLast = attributes.format === 'NHWC';
   const blocksize = attributes.blocksize;
   const isDCRmode = attributes.mode === 'DCR';
