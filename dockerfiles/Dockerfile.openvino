@@ -1,9 +1,9 @@
 #-------------------------------------------------------------------------
-# Copyright(C) 2021-2023 Intel Corporation.
+# Copyright(C) 2021-2024 Intel Corporation.
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2023.3.0
+ARG OPENVINO_VERSION=2024.0.0
 
 
 # Build stage
