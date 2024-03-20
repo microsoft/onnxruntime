@@ -467,17 +467,19 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   for (size_t idx = 0; idx < num_feeds; ++idx) {
     Stream* copy_this_feed = nullptr;
 #ifdef ORT_ENABLE_STREAM
-    if (copy_info[idx].unique_stream_index_consumes_it < 0) {
-      for (size_t i = 0; i < device_stream_collection->NumStreams(); i++) {
-        Stream* stream = device_stream_collection->GetStream(i);
-        if (stream && stream->GetDevice().Type() == copy_info[idx].target_device.Type()) {
-          copy_this_feed = stream;
-          stream_to_flush.insert(stream);
-          break;
+    if (device_stream_collection) {
+      if (copy_info[idx].unique_stream_index_consumes_it < 0) {
+        for (size_t i = 0; i < device_stream_collection->NumStreams(); i++) {
+          Stream* stream = device_stream_collection->GetStream(i);
+          if (stream && stream->GetDevice().Type() == copy_info[idx].target_device.Type()) {
+            copy_this_feed = stream;
+            stream_to_flush.insert(stream);
+            break;
+          }
         }
+      } else {
+        copy_this_feed = device_stream_collection->GetStream(copy_info[idx].unique_stream_index_consumes_it);
       }
-    } else {
-      copy_this_feed = device_stream_collection->GetStream(copy_info[idx].unique_stream_index_consumes_it);
     }
 #endif
 #if !defined(DISABLE_SPARSE_TENSORS)
