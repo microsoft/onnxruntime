@@ -220,6 +220,7 @@ stages:
             python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
             Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
             pushd onnxruntime/test/python
+            python -m pip install upgrade pip
             python -m pip install -r requirements.txt
             popd
             mkdir -p $(Agent.TempDirectory)\ort_test_data
