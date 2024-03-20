@@ -458,7 +458,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
     --prompts-file ./models/llama/prompts.json \
     --precision fp16 \
     --batch-sizes "1 2" \
-    --sequence-lengths "16 64" \
+    --prompt-lengths "16 64" \
     --device cuda \
     --auth
 ```
@@ -473,7 +473,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
     --prompts-file ./models/llama/prompts.json \
     --precision fp32 \
     --batch-sizes "1 2" \
-    --sequence-lengths "16 64" \
+    --prompt-lengths "16 64" \
     --device cpu \
     --auth
 ```
@@ -488,7 +488,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
     --prompts-file ./models/llama/prompts.json \
     --precision fp16 \
     --batch-sizes "1 2" \
-    --sequence-lengths "16 64" \
+    --prompt-lengths "16 64" \
     --device cuda \
     --use_buffer_share \
     --auth
