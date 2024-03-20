@@ -79,6 +79,23 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return nullptr;
   }
 
+  OrtStatus* GetCurrentGpuDeviceVersion(_Out_ int* major, _Out_ int* minor) override {
+    int device_id;
+    auto cuda_err = cudaGetDevice(&device_id);
+    if (cuda_err != cudaSuccess) {
+      return CreateStatus(ORT_FAIL, "Failed to get device id.");
+    }
+    cudaDeviceProp prop;
+    cuda_err = cudaGetDeviceProperties(&prop, device_id);
+    if (cuda_err != cudaSuccess) {
+      return CreateStatus(ORT_FAIL, "Failed to get device properties.");
+    }
+    *major = prop.major;
+    *minor = prop.minor;
+
+    return nullptr;
+  }
+
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
     return std::make_unique<CUDAAllocator>(device_id, name);
   }

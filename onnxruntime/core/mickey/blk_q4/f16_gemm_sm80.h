@@ -11,8 +11,18 @@
 
 #pragma once
 
+// Ignore CUTLASS warning C4100: unreferenced formal parameter
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
+
 #include "cutlass/cutlass.h"
 #include "cutlass_ext/q4gemm/device/quantb_gemm.h"
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 namespace onnxruntime {
 namespace cuda {

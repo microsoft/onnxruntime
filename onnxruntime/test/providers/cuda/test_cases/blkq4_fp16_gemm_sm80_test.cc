@@ -33,6 +33,9 @@ void testPrepack(int rows, int columns) {
       4,
       col_blocking>;
 
+  EXPECT_TRUE(Base::weight_dimension_supported(rows, columns))
+      << "Test setup problem, unsupported weight dimension: [" << rows << ", " << columns << "]";
+
   using QuantBlocking = typename Base::QuantBlocking;
   using ElementW = typename Base::ElementW;
   using LayoutWPack = typename Base::LayoutWPack;
@@ -47,7 +50,7 @@ void testPrepack(int rows, int columns) {
   std::vector<ElementT> q_scales;
   std::vector<ElementQOffset> q_zp;
   std::vector<ElementT> dequants;
-  onnxruntime::cuda::test::blkq4_weights_gen<ElementT, block_size, col_blocking, has_offset>(
+  blkq4_weights_gen<ElementT, block_size, col_blocking, has_offset>(
       rows, columns, dequants, q_weights, q_scales, q_zp);
 
   // for quantization tool, the input is row major, all outputs are column major
