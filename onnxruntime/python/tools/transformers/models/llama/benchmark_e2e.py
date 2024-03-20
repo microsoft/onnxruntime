@@ -471,9 +471,9 @@ def main():
             logger.info(f"Average Latency of First {halfway} Tokens Generated: {halfway_token_latency_ms} ms")
             logger.info(f"Average Throughput of First {halfway} Tokens Generated: {halfway_token_thrpt} tps")
 
-            ####################################################
+            #########################################
             # Calculate all tokens generated metrics
-            ####################################################
+            #########################################
 
             all_token_latency_s = sum(accelerator_times) / len(accelerator_times)
             all_token_latency_ms = all_token_latency_s * 1000
@@ -483,9 +483,9 @@ def main():
             )
             logger.info(f"Average Throughput of First {args.generation_length} Tokens Generated: {all_token_thrpt} tps")
 
-            ####################################################
+            ###############################
             # Calculate wall clock metrics
-            ####################################################
+            ###############################
 
             wall_clock_latency_s = wall_clock_end_time - wall_clock_start_time
             wall_clock_thrpt = batch_size * ((prompt_length + args.generation_length) / wall_clock_latency_s)
