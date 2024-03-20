@@ -202,6 +202,12 @@ stages:
           clean: true
           submodules: none
 
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: ${{ parameters.PYTHON_VERSION }}
+              addToPath: true
+              architecture: 'x64'
+
         - template: flex-downloadPipelineArtifact.yml
           parameters:
             ArtifactName: "onnxruntime_${{ parameters.EP_NAME }}"
@@ -215,7 +221,7 @@ stages:
             Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
             Remove-Item -Recurse -Force onnxruntime
             python onnx_backend_test_series.py
-            workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           displayName: 'Run Python Tests'
 
         - task: TSAUpload@2
