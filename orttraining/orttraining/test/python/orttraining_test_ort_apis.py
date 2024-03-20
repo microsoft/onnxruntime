@@ -42,6 +42,18 @@ def run_onnxblock_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_aggressive_cpu_fallback_test(cwd, log):
+    log.debug("Running: Aggressive CPU Fallback")
+
+    command = [
+        "python3",
+        "orttraining_test_aggressive_cpu_fallback.py",
+    ]
+
+    env = {"ORT_AGGRESSIVE_CPU_FALLBACK": "1"}
+    run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -51,6 +63,8 @@ def main():
     run_onnxblock_tests(cwd, log)
 
     run_training_apis_python_api_tests(cwd, log)
+
+    run_aggressive_cpu_fallback_test(cwd, log)
 
     return 0
 

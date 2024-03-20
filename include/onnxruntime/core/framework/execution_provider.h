@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/session_options.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
@@ -277,6 +278,14 @@ class IExecutionProvider {
     return logger_;
   }
 
+  void SetSessionOptions(const SessionOptions* session_options) {
+    session_options_ = session_options;
+  }
+
+  const SessionOptions* GetSessionOptions() const {
+    return session_options_;
+  }
+
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
   }
@@ -330,5 +339,6 @@ class IExecutionProvider {
 
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
+  const SessionOptions* session_options_ = nullptr;
 };
 }  // namespace onnxruntime
