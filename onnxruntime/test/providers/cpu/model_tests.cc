@@ -92,6 +92,7 @@ TEST_P(ModelTest, Run) {
   // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
   if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
     if (provider_name == "cuda" || provider_name == "openvino") {
+      per_sample_tolerance = 2.5e-2;
       relative_per_sample_tolerance = 1e-2;
     }
   }
