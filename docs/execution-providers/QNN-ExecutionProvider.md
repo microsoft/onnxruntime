@@ -100,15 +100,11 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 
 |`"soc_model"`|Description|
 |---|---|
-|Model number (string)|The SoC model number. Refer to the QNN SDK documentation for valid values.  Defaults to "0" (unknown).|
+|Model number (string)|The SoC model number. Refer to the [QNN SDK documentation](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/overview.html#supported-snapdragon-devices) for valid values.  Defaults to "0" (unknown).|
 
 |`"htp_arch"`|Description|
 |---|---|
-|"0"|Default (none)|
-|"68"||
-|"69"||
-|"73"||
-|"75"||
+|Hardware Architecture|HTP Architecture number. Refer to the [QNN SDK documentation](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/enum_QnnHtpDevice_8h_1a0ed976142af98a86143459dfd326f717.html#exhale-enum-qnnhtpdevice-8h-1a0ed976142af98a86143459dfd326f717) for valid values. Default (none)|
 
 |`"device_id"`|Description|
 |---|---|
