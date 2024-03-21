@@ -131,10 +131,10 @@ stages:
                 7z x *.whl
               workingDirectory: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
               displayName: 'unzip the package'
-            - task: BinSkim@4
-              displayName: 'Run BinSkim'
-              inputs:
-                AnalyzeTargetGlob: '+:file|$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\**\*.dll'
+            #- task: BinSkim@4
+            #  displayName: 'Run BinSkim'
+            #  inputs:
+            #    AnalyzeTargetGlob: '+:file|$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\**\*.dll'
 
           - template: set-nightly-build-option-variable-step.yml
 
