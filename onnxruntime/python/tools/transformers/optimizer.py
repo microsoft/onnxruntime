@@ -42,7 +42,7 @@ from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
 
 import onnxruntime
-from onnxruntime.transformers.optimizer_utils import extract_external_data_from_model, has_external_data
+from onnxruntime.transformers.optimizer_utils import extract_raw_data_from_model, has_external_data
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +191,7 @@ def optimize_by_onnxruntime(
                 "Please load external data before calling this function. "
                 "See https://onnx.ai/onnx/repo-docs/ExternalData.html for more information."
             )
-        external_names, external_values = extract_external_data_from_model(onnx_model)
+        external_names, external_values = extract_raw_data_from_model(onnx_model)
         sess_options.add_external_initializers(list(external_names), list(external_values))
 
     # Inference session is only used to optimize the model.

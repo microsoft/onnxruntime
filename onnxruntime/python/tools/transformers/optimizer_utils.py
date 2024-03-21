@@ -10,9 +10,10 @@ from onnx_model import OnnxModel
 from onnxruntime import OrtValue
 
 
-def extract_external_data_from_model(model: ModelProto):
+def extract_raw_data_from_model(model: ModelProto):
     """
     Extract external data from model and return the external data as a list of tuples (name, value).
+    Note this function does not handle external data that is not loaded into the model as raw data.
 
     Args:
         model (ModelProto): the model proto to extract external data from.
@@ -46,7 +47,9 @@ def has_external_data(model: ModelProto):
     Returns:
         bool: True if the model has external data, False otherwise.
     """
-    return any(
-        initializer.HasField("data_location") and initializer.data_location == TensorProto.EXTERNAL
-        for initializer in model.graph.initializer
-    )
+    onnx_model = OnnxModel(model)
+    for graph in onnx_model.graphs():
+        for initializer in graph.initializer:
+            if initializer.HasField("data_location") and initializer.data_location == TensorProto.EXTERNAL:
+                return True
+    return False
