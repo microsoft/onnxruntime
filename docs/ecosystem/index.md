@@ -18,8 +18,6 @@ ONNX Runtime functions as part of an ecosystem of tools and platforms to deliver
 
 ## Azure Machine Learning Services
 * [Azure Container Instance: BERT](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers/notebooks/Inference_Bert_with_OnnxRuntime_on_AzureML.ipynb){:target="_blank"}
-* [Azure Container Instance: Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb){:target="_blank"}
-* [Azure Container Instance: MNIST](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb){:target="_blank"}
 * [Azure Container Instance: Image classification (Resnet)](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb){:target="_blank"}
 * [Azure Kubernetes Services: FER+](https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb){:target="_blank"}
 * [Azure IoT Sedge (Intel UP2 device with OpenVINO)](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md){:target="_blank"}

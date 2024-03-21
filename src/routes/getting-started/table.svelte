@@ -52,12 +52,12 @@
 	// Training
 	const TrainingScenarios = ['Large Model Training', 'On-Device Training'];
 	const TrainingScenarioIds = ['ot_large_model', 'ot_on_device'];
-	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS'];
-	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios'];
-	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C'];
-	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc'];
-	const TrainingVersions = ['CUDA 11.8', 'ROCm', 'CPU'];
-	const TrainingVersionIds = ['ot_CUDA118', 'ot_ROCm', 'ot_CPU'];
+	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS', 'Web browser'];
+	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios', 'ot_web'];
+	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C', 'JavaScript'];
+	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc', 'ot_js'];
+	const TrainingVersions = ['CUDA 11.8', 'CUDA 12.2', 'ROCm', 'CPU'];
+	const TrainingVersionIds = ['ot_CUDA118', 'ot_CUDA122', 'ot_ROCm', 'ot_CPU'];
 	const TrainingBuilds = ['Stable', 'Preview (Nightly)'];
 	const TrainingBuildIds = ['ot_stable', 'ot_nightly'];
 	const validCombos = {
@@ -143,11 +143,11 @@
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
 		'mac,C-API,X64,DefaultCPU':
-			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C++,X64,DefaultCPU':
-			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
+		"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+		
 		'mac,C#,X64,DefaultCPU':
 			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
@@ -157,6 +157,22 @@
 		'windows,Python,X64,DefaultCPU': 'pip install onnxruntime',
 
 		'mac,Python,X64,DefaultCPU': 'pip install onnxruntime',
+
+		'mac,Python,X64,CoreML': 'pip install onnxruntime',
+
+		'mac,Python,ARM64,CoreML': 'pip install onnxruntime',
+
+		'mac,objectivec,X64,DefaultCPU': "Add 'onnxruntime-objc' using CocoaPods.",
+		
+		'mac,objectivec,ARM64,DefaultCPU': "Add 'onnxruntime-objc' using CocoaPods.",
+		
+		'mac,objectivec,X64,CoreML': "Add 'onnxruntime-objc' using CocoaPods.",
+		
+		'mac,objectivec,ARM64,CoreML': "Add 'onnxruntime-objc' using CocoaPods.",
+
+		'mac,C-API,X64,CoreML': "Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+
+		'mac,C++,X64,CoreML': "Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'linux,Python,X64,DefaultCPU': 'pip install onnxruntime',
 
@@ -566,13 +582,13 @@
 
 		//mac m1
 		'mac,C-API,ARM64,CoreML':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+		"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C#,ARM64,CoreML':
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'mac,C++,ARM64,CoreML':
-			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,Java,ARM64,CoreML':
 			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
@@ -586,10 +602,10 @@
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
 		'mac,C-API,ARM64,DefaultCPU':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C++,ARM64,DefaultCPU':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		//power
 		'linux,C-API,Power,DefaultCPU':
@@ -669,7 +685,7 @@
 			"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 
 		'linux,Python,X64,CANN':
-			"pip install onnxruntime-cann <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"pip install onnxruntime-cann <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,C-API,X64,CANN':
 			"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
@@ -690,6 +706,12 @@
 		'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_nightly':
 			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
 
+		'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA122,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
+
+		'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA122,ot_nightly':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
+
 		'ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_stable':
 			"pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
@@ -707,6 +729,12 @@
 
 		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_nightly':
 			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training',
+
+		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA122,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ onnxruntime-training',
+
+		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA122,ot_nightly':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/simple/ onnxruntime-training',
 
 		'ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
 			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
@@ -793,7 +821,14 @@
 			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
 
 		'ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly':
-			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>"
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
+
+		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_stable':
+			"npm install onnxruntime-web",
+
+		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_nightly':
+			"npm install onnxruntime-web@dev",
+
 	};
 	onMount(() => {
 		var supportedOperatingSystemsNew = [
@@ -1786,10 +1821,10 @@
 		Select the configuration you want to use and run the corresponding installation script.
 	</p>
 	<div>
-		<div class="tabs">
+		<div class="tabs tabs-bordered ">
 			{#each tabs as tab, index}
 				<li
-					class="nav-item tab tab-bordered tab-lg"
+					class="nav-item tab tab-lg"
 					class:tab-active={activeTab == index}
 					on:click={() => (activeTab = index)}
 					on:keypress={() => (activeTab = index)}
@@ -1959,7 +1994,7 @@
 			</div>
 			<div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 				<h3 id="ot_selectOS">Platform</h3>
-				<p id="ot_decriptionOS" class="sr-only">Platform list contains five items</p>
+				<p id="ot_decriptionOS" class="sr-only">Platform list contains six items</p>
 			</div>
 			<div
 				class="col-span-4 w-full r-content"
@@ -1968,7 +2003,7 @@
 				aria-labelledby="ot_selectOS"
 				aria-describedby="ot_decriptionOS"
 			>
-				<div class="grid grid-cols-5 gap-4 ot_os">
+				<div class="grid grid-cols-6 gap-4 ot_os">
 					{#each TrainingPlatforms as trainingplatform, i}
 						<a
 							class="r-option version join-item btn rounded"
@@ -1983,7 +2018,7 @@
 
 			<div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 				<h3 id="ot_selectLanguage">API</h3>
-				<p id="ot_decriptionLanguage" class="sr-only">API list contains six items</p>
+				<p id="ot_decriptionLanguage" class="sr-only">API list contains seven items</p>
 			</div>
 			<div
 				class="col-span-4 w-full r-content"
@@ -1992,7 +2027,7 @@
 				aria-labelledby="ot_selectLanguage"
 				aria-describedby="ot_decriptionLanguage"
 			>
-				<div class="grid grid-cols-6 gap-4 ot_language">
+				<div class="grid grid-cols-7 gap-4 ot_language">
 					{#each TrainingAPIs as trainingapi, i}
 						<a
 							class="r-option version join-item btn rounded"
@@ -2018,7 +2053,7 @@
 				aria-labelledby="ot_selectHardwareAcceleration"
 				aria-describedby="ot_decriptionHardwareAcceleration"
 			>
-				<div class="grid grid-cols-3 gap-4 ot_hardwareAcceleration">
+				<div class="grid grid-cols-4 gap-4 ot_hardwareAcceleration">
 					{#each TrainingVersions as version, i}
 						<a
 							class="r-option version join-item btn rounded"

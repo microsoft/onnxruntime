@@ -98,6 +98,7 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:Abs||
 |ai.onnx:Add||
 |ai.onnx:AveragePool|Only 2D Pool is supported.|
+|ai.onnx:BatchNormalization||
 |ai.onnx:Cast||
 |ai.onnx:Clip||
 |ai.onnx:Concat||
@@ -114,7 +115,9 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
 |ai.onnx:Identity||
+|ai.onnx:LeakyRelu||
 |ai.onnx:Log||
+|ai.onnx:LRN||
 |ai.onnx:MatMul||
 |ai.onnx:MaxPool|Only 2D Pool is supported.|
 |ai.onnx:Max||
@@ -127,6 +130,7 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:QLinearConv|Only 2D Conv is supported.<br/>Weights and bias should be constant.<br/>All quantization scales and zero points should be constant.|
 |ai.onnx:QLinearMatMul|All quantization scales and zero points should be constant.|
 |ai.onnx:QuantizeLinear|All quantization scales and zero points should be constant.|
+|ai.onnx:ReduceMean||
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize|Only 2D Resize is supported.|
@@ -134,6 +138,7 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:Sin||
 |ai.onnx:Slice||
 |ai.onnx:Softmax||
+|ai.onnx:Split|Number of splits must evenly divide split axis size. Input split should be constant if provided.|
 |ai.onnx:Sqrt||
 |ai.onnx:Squeeze|Input axes should be constant.|
 |ai.onnx:Sub||

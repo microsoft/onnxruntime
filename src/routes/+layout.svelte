@@ -11,6 +11,7 @@
 
 <svelte:head>
 	{@html oneLight}
+	
 	<title
 		>ONNX Runtime | {data.pathname == '/'
 			? 'Home'
@@ -42,7 +43,7 @@
 	<meta property="og:type" content="website" />
 </svelte:head>
 <Analytics />
-<div class="selection:bg-primary">
+<div class="selection:bg-info">
 	{#if !$page.url.pathname.startsWith('/blogs/')}
 		<Header />
 	{/if}

@@ -69,7 +69,7 @@
 						exporter APIs to ensure a high level of compatibility with PyTorch models.
 					</p>
 					<div class="card-actions">
-						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"
+						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary rounded-sm"
 							><span class="hidden md:grid">Get your PyTorch Models ready for</span> optimized deployment
 							→</a
 						>
@@ -91,7 +91,7 @@
 					<div class="card-actions">
 						<a
 							href="https://techcommunity.microsoft.com/t5/ai-machine-learning-blog/azure-container-for-pytorch-is-now-generally-available-in-azure/ba-p/3774616"
-							class="btn btn-primary">Learn about ACPT →</a
+							class="btn btn-primary rounded-sm">Learn about ACPT →</a
 						>
 					</div>
 				</div>
@@ -119,12 +119,12 @@
 					</p>
 					<div class="card-actions">
 						<a
-							class="btn btn-primary hidden md:grid"
+							class="btn btn-primary hidden md:grid rounded-sm"
 							href="https://cloudblogs.microsoft.com/opensource/tag/onnx"
 							>Check the latest on performance enhancements →</a
 						>
 						<a
-							class="btn btn-primary md:hidden"
+							class="btn btn-primary md:hidden rounded-sm"
 							href="https://cloudblogs.microsoft.com/opensource/tag/onnx"
 							>Performance enhancements →</a
 						>
@@ -145,10 +145,10 @@
 						days.
 					</p>
 					<div class="card-actions">
-						<a href="./testimonials" class="btn btn-primary hidden md:grid"
+						<a href="./testimonials" class="btn btn-primary hidden md:grid rounded-sm"
 							>See what ONNX Runtime users are saying →</a
 						>
-						<a href="./testimonials" class="btn btn-primary md:hidden">Testimonials →</a>
+						<a href="./testimonials" class="btn btn-primary md:hidden rounded-sm">Testimonials →</a>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last pr-5">

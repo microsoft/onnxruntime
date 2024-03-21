@@ -28,7 +28,7 @@ The source code for this sample is available [here](https://github.com/microsoft
 To run this sample, you'll need the following things:
 
 1. Install [.NET Core 3.1](https://dotnet.microsoft.com/download/dotnet-core/3.1) or higher for you OS (Mac, Windows or Linux).
-2. Download the [Faster R-CNN](https://github.com/onnx/models/blob/master/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.onnx) ONNX model to your local system.
+2. Download the [Faster R-CNN](https://github.com/onnx/models/blob/main/validated/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.onnx) ONNX model to your local system.
 3. Download [this demo image](/images/demo.jpg) to test the model. You can also use any image you like.
 
 ## Get started
@@ -68,7 +68,7 @@ image.Save(imageStream, format);
 
 ### Preprocess image
 
-Next, we will preprocess the image according to the [requirements of the model](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/faster-rcnn#preprocessing-steps):
+Next, we will preprocess the image according to the [requirements of the model](https://github.com/onnx/models/tree/main/validated/vision/object_detection_segmentation/faster-rcnn#preprocessing-steps):
 
 ```cs
 var paddedHeight = (int)(Math.Ceiling(image.Height / 32f) * 32f);

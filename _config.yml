@@ -35,3 +35,8 @@ gh_edit_repository: 'https://github.com/microsoft/onnxruntime' # the github URL 
 gh_edit_branch: 'gh-pages' # the branch that your docs is served from
 # gh_edit_source: docs # the source that your files originate from
 gh_edit_view_mode: 'tree' # "tree" or "edit" if you want the user to jump into the editor immediately
+nav_external_links:
+  - title: ONNX Runtime Docs on GitHub
+    url: https://github.com/microsoft/onnxruntime/tree/gh-pages
+    hide_icon: true # set to true to hide the external link icon - defaults to false
+    opens_in_new_tab: true # set to true to open this link in a new tab - defaults to false

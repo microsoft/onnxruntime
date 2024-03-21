@@ -49,6 +49,10 @@ redirect_from: /docs/how-to/build/training
 
     Refer to the [iOS build instructions](./ios.md) and add the ```--enable_training_apis``` build flag.
 
+   f. For web
+
+    Refer to the [web build instructions](./web.md).
+
 > **Note**
 >
 > - To build the C# bindings, add the ```--build_nuget``` flag to the build command above.
@@ -130,7 +134,7 @@ That's it! Once the build is complete, you should be able to use the ONNX Runtim
 
 The default AMD GPU build requires ROCm software toolkit installed on the system:
 
-* [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4/page/How_to_Install_ROCm.html#_How_to_Install) 5.4
+* [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/) 6.0.0
 
 ### Build instructions
 {: .no_toc }

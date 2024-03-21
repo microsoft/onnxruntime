@@ -3,7 +3,7 @@ title: Mobile objection detection on iOS
 description: Build an iOS object detection application with ONNX Runtime
 parent: Deploy on mobile
 grand_parent: Tutorials
-nav_order: 1
+nav_order: 4
 ---
 
 # Write a mobile object detection iOS application

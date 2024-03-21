@@ -84,7 +84,7 @@ When building on x86 Windows without  "--arm" or "--arm64" or "--arm64ec" args, 
 By default, ONNX Runtime is configured to be built for a minimum target macOS version of 10.12.
 The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
 
-If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the --user_xcode argument in the command line.
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the `--use_xcode` argument in the command line.
 
 Without this flag, the cmake build generator will be Unix makefile by default.
 
@@ -144,7 +144,7 @@ Note: unit tests will be skipped due to the incompatible CPU instruction set whe
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
-|Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
+|Windows 10   | YES          | YES         | VS2019 through the latest VS2022 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 20.x/22.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 |CentOS 7/8/9  | YES          | YES         | Also supported on ARM32v7 (experimental) |

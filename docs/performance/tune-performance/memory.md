@@ -2,7 +2,7 @@
 title: Memory consumption
 grand_parent: Performance
 parent: Tune performance
-nav_order: 2
+nav_order: 3
 ---
 
 # Reduce memory consumption

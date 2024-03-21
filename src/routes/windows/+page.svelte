@@ -26,7 +26,7 @@
 			<br />
 			<a
 				href="https://onnxruntime.ai/docs/get-started/with-windows.html#windows-os-integration"
-				class="btn btn-primary">Get started with ONNX Runtime for Windows →</a
+				class="btn btn-primary rounded-sm">Get started with ONNX Runtime for Windows →</a
 			>
 		</div>
 		<div class="m-auto">
@@ -62,12 +62,12 @@
 		recent blogs:
 	</p>
 	<a
-		class="btn btn-primary mb-4 md:mb:0"
+		class="btn btn-primary rounded-sm mb-4 md:mb:0"
 		href="https://blogs.windows.com/windowsdeveloper/2023/05/23/unlocking-the-end-to-end-windows-ai-developer-experience-using-onnx-runtime-and-olive/"
 		>Unlocking the end-to-end Windows AI developer experience using ONNX Runtime and Olive →</a
 	>
 	<a
-		class="btn btn-primary"
+		class="btn btn-primary rounded-sm"
 		href="https://blogs.windows.com/windowsdeveloper/2023/05/23/bringing-the-power-of-ai-to-windows-11-unlocking-a-new-era-of-productivity-for-customers-and-developers-with-windows-copilot-and-dev-home/"
 		>Bringing the power of AI to Windows 11 →</a
 	>
@@ -98,11 +98,11 @@
 				<div class="card-actions">
 					<a
 						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"
-						class="btn btn-primary hidden md:grid">Check out the Windows ML Sample Gallery →</a
+						class="btn btn-primary hidden md:grid rounded-sm">Check out the Windows ML Sample Gallery →</a
 					>
 					<a
 						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"
-						class="btn btn-primary md:hidden">Windows ML Sample Gallery →</a
+						class="btn btn-primary md:hidden rounded-sm">Windows ML Sample Gallery →</a
 					>
 				</div>
 			</div>
@@ -117,7 +117,7 @@
 				<div class="card-actions">
 					<a
 						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"
-						class="btn btn-primary">Check out SqueezeNet →</a
+						class="btn btn-primary rounded-sm">Check out SqueezeNet →</a
 					>
 				</div>
 			</div>

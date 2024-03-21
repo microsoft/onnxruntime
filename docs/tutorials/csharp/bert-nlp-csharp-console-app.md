@@ -138,8 +138,8 @@ Now that we have tested the model in Python its time to build it out in C#. The 
 ```PowerShell
 dotnet add package Microsoft.ML.OnnxRuntime --version 1.16.0
 dotnet add package Microsoft.ML.OnnxRuntime.Managed --version 1.16.0
-dotnet add package dotnet add package Microsoft.ML
-dotnet add package dotnet add package BERTTokenizers --version 1.1.0
+dotnet add package Microsoft.ML
+dotnet add package BERTTokenizers --version 1.1.0
 ```
 
 ### Create the App

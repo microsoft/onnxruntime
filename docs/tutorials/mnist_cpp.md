@@ -5,7 +5,7 @@ nav_exclude: true
 # Number recognition with MNIST in C++
 {: .no_toc }
 
-This sample uses the MNIST model from the Model Zoo: https://github.com/onnx/models/tree/master/vision/classification/mnist
+This sample uses the MNIST model from the Model Zoo: https://github.com/onnx/models/tree/main/validated/vision/classification/mnist
 
 ![Screenshot](../../../images/mnist-screenshot.png)
 

@@ -1,0 +1,32 @@
+<meta property="og:image" content="/images/logos/onnxruntime/ORT_icon_for_light_bg.png" />
+
+<script
+	type="text/javascript"
+	src="https://js.monitor.azure.com/scripts/c/ms.analytics-web-3.min.js"
+></script>
+
+<script type="text/javascript">
+	const config = {
+		instrumentationKey:
+			'360b0e675e0044398fd28c8bdf711b8e-1fe5434d-ee99-4837-99cc-a3a16462d82d-7262',
+		channelConfiguration: {
+			eventsLimitInMem: 50
+		},
+		propertyConfiguration: {
+			env: 'PROD'
+		},
+		webAnalyticsConfiguration: {
+			autoCapture: {
+				scroll: true,
+				pageView: true,
+				onLoad: true,
+				onUnload: true,
+				click: true,
+				resize: true,
+				jsError: true
+			}
+		}
+	};
+	const analytics = new oneDS.ApplicationInsights();
+	analytics.initialize(config, []);
+</script>

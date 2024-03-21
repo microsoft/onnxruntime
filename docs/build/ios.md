@@ -51,14 +51,14 @@ Run one of the following build scripts from the ONNX Runtime repository root:
 
 ```bash
 ./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target <minimal iOS version>
+           --ios --apple_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target <minimal iOS version>
 ```
 
 ### Cross compile for iOS device
 
 ```bash
 ./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
+           --ios --apple_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
 ```
 
 ### CoreML Execution Provider

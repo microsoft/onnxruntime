@@ -68,41 +68,41 @@
 				>
 			</div>
 		</div>
-		<div class="hidden lg:block col-span-2 mx-auto tab-container">
-			<div class="tabs">
+		<div class="hidden lg:block col-span-2 mx-auto min-w-[675px] min-h-[400px]">
+			<div class="tabs tabs-bordered">
 				<p
 					on:mouseenter={handleClick}
-					class="tab tab-lg tab-bordered {activeTab === 'Python' ? 'tab-active' : ''}"
+					class="tab tab-lg {activeTab === 'Python' ? 'tab-active' : ''}"
 				>
 					Python
 				</p>
 				<p
 					on:mouseenter={handleClick}
-					class="tab tab-lg tab-bordered {activeTab === 'C#' ? 'tab-active' : ''}"
+					class="tab tab-lg {activeTab === 'C#' ? 'tab-active' : ''}"
 				>
 					C#
 				</p>
 				<p
 					on:mouseenter={handleClick}
-					class="tab tab-lg tab-bordered {activeTab === 'JavaScript' ? 'tab-active' : ''}"
+					class="tab tab-lg {activeTab === 'JavaScript' ? 'tab-active' : ''}"
 				>
 					JavaScript
 				</p>
 				<p
 					on:mouseenter={handleClick}
-					class="tab tab-lg tab-bordered {activeTab === 'Java' ? 'tab-active' : ''}"
+					class="tab tab-lg {activeTab === 'Java' ? 'tab-active' : ''}"
 				>
 					Java
 				</p>
 				<p
 					on:mouseenter={handleClick}
-					class="tab tab-lg tab-bordered {activeTab === 'C++' ? 'tab-active' : ''}"
+					class="tab tab-lg {activeTab === 'C++' ? 'tab-active' : ''}"
 				>
 					C++
 				</p>
 				<button
 					on:click={handleClick}
-					class="tab tab-lg tab-bordered {activeTab === 'More..' ? 'tab-active' : ''}"
+					class="tab tab-lg {activeTab === 'More..' ? 'tab-active' : ''}"
 					>More..</button
 				>
 			</div>
@@ -158,11 +158,5 @@
 			{/if}
 		</div>
 	</div>
+	<div class="divider px-6" />
 </div>
-
-<style>
-	.tab-container {
-		min-width: 675px;
-		min-height: 400px;
-	}
-</style>
