@@ -37,7 +37,7 @@ struct LayoutDetailsB<TypeB, arch::Sm70> {
 };
 
 // Specializations for Turing+ when B is FP16. These are currently only used for MoE networks.
-// TODO - Switch this to column major for weights since gemms should be more performant.
+// Switch this to column major for weights since gemms should be more performant.
 template <typename Arch>
 struct LayoutDetailsB<half_t, Arch, typename platform::enable_if<Arch::kMinComputeCapability >= 75>::type> {
   static constexpr int ThreadblockK = 64;

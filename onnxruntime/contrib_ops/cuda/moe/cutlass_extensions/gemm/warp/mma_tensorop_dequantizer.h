@@ -52,6 +52,8 @@
 #include "cutlass/functional.h"
 #include "cutlass/platform/platform.h"
 
+#include <functional>
+
 // #include "src/fastertransformer/utils/cuda_bf16_wrapper.h"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,7 +156,8 @@ class MmaTensorOpDequantizer;
 //     {
 // #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800) && defined(ENABLE_BF16))
 //         using _MmaOperandB        = typename ArchMmaOperator::FragmentB;
-//         using ExpandedMmaOperandB = Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
+//         using ExpandedMmaOperandB =
+//               Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
 //         static_assert(ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn
 //                           == FragmentDequantizedOperand::kElements,
 //                       "");

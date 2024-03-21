@@ -10,6 +10,8 @@
 
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/default_dq_mma.h"
 
+#include <algorithm>
+
 namespace cutlass {
 namespace gemm {
 namespace threadblock {

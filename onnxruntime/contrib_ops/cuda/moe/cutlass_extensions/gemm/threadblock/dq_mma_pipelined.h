@@ -182,17 +182,17 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
                      shared_storage,  ///< Shared storage needed for internal use by threadblock-scoped GEMM
                  int thread_idx,      ///< ID within the threadblock
                  int warp_idx,        ///< ID of warp
-                 int lane_idx         ///< ID of each thread within a warp
-                 ) : Base(shared_storage, thread_idx, warp_idx, lane_idx),
-                     warp_dequantizer_({shared_storage.operand_scale.data(), LayoutScale(Shape::kN)},
-                                       (warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN)) / Base::WarpCount::kM,
-                                       lane_idx),
-                     smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
-                     smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
-                     smem_iterator_scale_(LayoutScale(Shape::kN),
-                                          shared_storage.operand_scale.data(),
-                                          {1, Shape::kN},
-                                          thread_idx) {
+                 int lane_idx)        ///< ID of each thread within a warp
+      : Base(shared_storage, thread_idx, warp_idx, lane_idx),
+        warp_dequantizer_({shared_storage.operand_scale.data(), LayoutScale(Shape::kN)},
+                          (warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN)) / Base::WarpCount::kM,
+                          lane_idx),
+        smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
+        smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
+        smem_iterator_scale_(LayoutScale(Shape::kN),
+                             shared_storage.operand_scale.data(),
+                             {1, Shape::kN},
+                             thread_idx) {
     // Compute warp location within threadblock tile by mapping the warp_id to
     // three coordinates:
     //   _m: the warp's position within the threadblock along the M dimension
@@ -218,7 +218,6 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
                   IteratorB iterator_B,          ///< iterator over B operand in global memory
                   IteratorScale iterator_scale,  ///< iterator over scale operand in global memory
                   FragmentC const& src_accum) {  ///< source accumulator tile
-
     //
     // Prologue
     //

@@ -378,7 +378,9 @@ struct MoeFCGemm {
         GemmCoord grid_shape = problem_visitor.grid_shape(problem_size);
 
         cutlass::gemm::GemmCoord threadblock_offset(
-            int(cta_idx / grid_shape.n()) * Mma::Shape::kM, int(cta_idx % grid_shape.n()) * Mma::Shape::kN, 0);
+            static_cast<int>(cta_idx / grid_shape.n()) *
+                Mma::Shape::kM,
+            int(cta_idx % grid_shape.n()) * Mma::Shape::kN, 0);
 
         // Load element pointers. Exchange pointers and strides if working on the transpose
         const int64_t rows_to_jump =

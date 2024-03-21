@@ -96,10 +96,10 @@ class EpilogueVisitorPerRowPerCol {
     //
     Arguments() : batch_stride_alpha(0), batch_stride_C(0), batch_stride_D(0) {}
 
-    Arguments(typename ElementwiseFunctor::Params elementwise_) : elementwise(elementwise_),
-                                                                  batch_stride_alpha(0),
-                                                                  batch_stride_C(0),
-                                                                  batch_stride_D(0) {
+    explicit Arguments(typename ElementwiseFunctor::Params elementwise_) : elementwise(elementwise_),
+                                                                           batch_stride_alpha(0),
+                                                                           batch_stride_C(0),
+                                                                           batch_stride_D(0) {
     }
 
     Arguments(typename ElementwiseFunctor::Params elementwise_,
@@ -124,10 +124,10 @@ class EpilogueVisitorPerRowPerCol {
     Params() {}
 
     CUTLASS_HOST_DEVICE
-    Params(Arguments const& args) : elementwise(args.elementwise),
-                                    batch_stride_alpha(args.batch_stride_alpha),
-                                    batch_stride_C(args.batch_stride_C),
-                                    batch_stride_D(args.batch_stride_D) {
+    explicit Params(Arguments const& args) : elementwise(args.elementwise),
+                                             batch_stride_alpha(args.batch_stride_alpha),
+                                             batch_stride_C(args.batch_stride_C),
+                                             batch_stride_D(args.batch_stride_D) {
     }
   };
 
@@ -272,16 +272,7 @@ class EpilogueVisitorPerRowPerCol {
       result = per_token_scale_accumulator_(result, element_alpha_col_, element_alpha_row_);
     }
 
-    /* printf("%d %e\n", accum[0], result[0]); */
-    /* scale_accumulator_(result, alpha_row_vector[0]); //TODO(mseznec) */
-
-    /* if (elementwise_.kScale == cutlass::epilogue::thread::ScaleType::OnlyAlphaScaling) { */
-    /*   result = source_converter(elementwise_(result)); */
-    /* } else { */
-    /*   result = source_converter(elementwise_(result, source_vector)); */
-    /* } */
-
-    /* // Convert to the output */
+    // Convert to the output
     NumericArrayConverter<ElementOutput, ElementCompute, kElementsPerAccess> output_converter;
     OutputVector& output = reinterpret_cast<OutputVector*>(&fragment_D_)[frag_idx];
     output = output_converter(result);
@@ -290,38 +281,6 @@ class EpilogueVisitorPerRowPerCol {
   /// Called at the end of a row
   CUTLASS_DEVICE
   void end_row(int row_idx) {
-    /* using ConvertSumOutput = cutlass::NumericConverter<ElementSum, ElementSoftmaxCompute>; */
-    /* using ConvertNormOutput = cutlass::NumericConverter<ElementNorm, ElementSoftmaxCompute>; */
-
-    /* ConvertSumOutput   convert_sum_output; */
-    /* ConvertNormOutput  convert_norm_output; */
-
-    /* // Compute accumulate sum only in the last step */
-    /* accum_sum_ = warp_reduce_sum_(accum_sum_); */
-
-    /* bool is_first_thread_in_tile = ((threadIdx.x % kThreadsPerRow) == 0); */
-    /* bool row_guard = thread_offset_.row() < extent_.row(); */
-    /* bool is_write_thread = row_guard && is_first_thread_in_tile; */
-
-    /* int block_batch = blockIdx.z; */
-
-    /* ElementNorm *curr_ptr_max = ptr_Max_ + thread_offset_.row() + column_offset_ + block_batch *
-     * params_.batch_stride_Max; */
-    /* ElementSum *curr_ptr_sum = ptr_Sum_ + thread_offset_.row() + column_offset_ + block_batch *
-     * params_.batch_stride_Sum; */
-
-    /* arch::global_store<ElementNorm, sizeof(ElementNorm)>( */
-    /*           convert_norm_output(accum_max_), */
-    /*           (void *)curr_ptr_max, */
-    /*           is_write_thread); */
-
-    /* arch::global_store<ElementSum, sizeof(ElementSum)>( */
-    /*           convert_sum_output(accum_sum_), */
-    /*           (void *)curr_ptr_sum, */
-    /*           is_write_thread); */
-
-    /* // Clear accumulators for max and sum when finishing a whole row */
-    /* clear_accum_(); */
   }
 
   /// Called after all accumulator elements have been visited

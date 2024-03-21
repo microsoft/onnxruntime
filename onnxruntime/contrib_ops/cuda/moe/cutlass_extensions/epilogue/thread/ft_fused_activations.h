@@ -72,11 +72,12 @@ struct GELU_taylor<float> {
   static const bool kIsHeavy = true;
   CUTLASS_DEVICE
   float operator()(float const& z) const {
-    float k0 = float(0.7978845608028654);
-    float k1 = float(0.044715);
+    float k0 = static_cast<float>(0.7978845608028654);
+    float k1 = static_cast<float>(0.044715);
 
-    return float(
-        cutlass::constants::half<float>() * z * (cutlass::constants::one<float>() + tanh_opt(k0 * z * (cutlass::constants::one<float>() + k1 * z * z))));
+    return static_cast<float>(
+        cutlass::constants::half<float>() * z *
+        (cutlass::constants::one<float>() + tanh_opt(k0 * z * (cutlass::constants::one<float>() + k1 * z * z))));
   }
 
   using Params = LinearCombinationGenericParams<float>;

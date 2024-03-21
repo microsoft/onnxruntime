@@ -191,7 +191,7 @@ class SharedLoadIteratorMixed<ThreadMap_, int32_t, 32, 16, 8, 8> {
       pointers_[i] = reinterpret_cast<LoadType const*>(ref.data());
 
       int col_idx = (thread_offset.column() / kElementsPerAccess) * kLoadsPerAccess;
-      int bank_offset = (col_idx * int(sizeof(LoadType)) / 128) % kLoadsPerAccess;
+      int bank_offset = (col_idx * static_cast<int>(sizeof(LoadType)) / 128) % kLoadsPerAccess;
 
       col_idx += (bank_offset + i) % kLoadsPerAccess;
 
