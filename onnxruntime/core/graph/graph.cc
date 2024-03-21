@@ -1334,7 +1334,7 @@ Graph::Graph(const Model& owning_model,
       checker::check_node(node_proto, ctx, lsc);
       SetOpSchemaFromRegistryForNode(node);
     }
-    ORT_CATCH(const std::exception& ex) {}
+    ORT_CATCH(...) {}
   }
 
   if (is_loaded_from_model_file_) {
