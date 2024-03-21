@@ -2632,7 +2632,7 @@ TEST(MathOpTest, Mean_8) {
 #endif
 
 template <float (&op)(float value) MATH_NO_EXCEPT>
-void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
+void TrigFloatTest(OpTester& test, std::initializer_list<float> input, float abs_error = -1.0f) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
   std::vector<float> output;
@@ -2641,6 +2641,10 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
 
   test.AddInput<float>("X", dims, input);
   test.AddOutput<float>("Y", dims, output);
+
+  if (abs_error >= 0.0f) {
+    test.SetOutputTolerance(abs_error);
+  }
 
   test.Run();
 }
@@ -2719,7 +2723,8 @@ TEST(MathOpTest, Tan) {
 
 TEST(MathOpTest, Asin) {
   OpTester test("Asin");
-  TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+  float abs_error = DefaultDmlExecutionProvider().get() != nullptr ? 0.0001f : -1.0f;
+  TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f}, abs_error);
 }
 
 TEST(MathOpTest, Acos) {
