@@ -1,0 +1,27 @@
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubi8
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN yum install -y zlib-devel python39-devel python39-numpy python39-setuptools python39-wheel python39-pip git unzip wget java-1.8.0-devel patch && \
+    wget https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-linux-x86_64.tar.gz && \
+    tar -zxf cmake-3.27.3-linux-x86_64.tar.gz --strip=1 -C /usr && rm -f cmake-3.27.3-linux-x86_64.tar.gz && \
+    wget https://services.gradle.org/distributions/gradle-8.6-bin.zip && unzip gradle-8.6-bin.zip -d /opt/ && rm -f gradle-8.6-bin.zip
+
+ENV JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.402.b06-2.el8.x86_64
+
+RUN ln -s /usr/lib64 /usr/lib/x86_64-linux-gnu && /bin/bash -c 'for f in $(find $JAVA_HOME -name "*.h"); do ln -s $f /usr/include/$(basename $f); done' && \
+    git clone https://github.com/protocolbuffers/protobuf.git && cd protobuf && git checkout v21.12 && git submodule update --init --recursive && mkdir build_source && cd build_source && \
+    cmake ../cmake  -DCMAKE_INSTALL_LIBDIR=lib64 -Dprotobuf_BUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release && \
+    make -j$(nproc) && make install
+
+ENV GRADLE_HOME=/opt/gradle-8.6
+ENV PATH=${GRADLE_HOME}/bin:${PATH}
+
+COPY ./onnxruntime /onnxruntime
+WORKDIR /onnxruntime
+
+RUN python3 -m pip install -r tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/requirements.txt && \
+    ./build.sh --allow_running_as_root --compile_no_warning_as_error --skip_tests \
+               --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib64/ --config Release --build_java --update --build --parallel --cmake_extra_defines \
+               ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) CMAKE_CUDA_ARCHITECTURES="52;60;61;70;75;86" CMAKE_CXX_STANDARD=17 CMAKE_CXX_STANDARD_REQUIRED=ON \
+               ONNX_USE_PROTOBUF_SHARED_LIBS=OFF onnxruntime_BUILD_UNIT_TESTS=OFF
