@@ -183,7 +183,7 @@ def optimize_by_onnxruntime(
         else:
             providers.append("CUDAExecutionProvider")
 
-    # For ModelProto, we need to extract external data and add them to the session options.
+    # For large model, extract external data from model and add to session options
     if isinstance(onnx_model, ModelProto):
         if save_as_external_data:
             raise ValueError("Model has external data, model path is required to load the inference session.")
