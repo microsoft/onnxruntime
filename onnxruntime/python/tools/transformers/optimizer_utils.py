@@ -3,8 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from fusion_utils import NumpyHelper
-from onnx import ModelProto
+from onnx import ModelProto, TensorProto
 from onnx.external_data_helper import set_external_data
+from onnx_model import OnnxModel
 
 from onnxruntime import OrtValue
 
@@ -19,16 +20,33 @@ def extract_external_data_from_model(model: ModelProto):
         (external_names, external_values): a tuple of two lists of external data names and values.
     """
     external_data = []
-    for tensor in model.graph.initializer:
-        name = tensor.name
+    onnx_model = OnnxModel(model)
+    for graph in onnx_model.graphs():
+        for initializer in graph.initializer:
+            name = initializer.name
 
-        if tensor.HasField("raw_data"):
-            numpy_tensor = NumpyHelper.to_array(tensor)
-            ort_value = OrtValue.ortvalue_from_numpy(numpy_tensor)
-            external_data.append((name, ort_value))
-            # mimic set_external_data
-            set_external_data(tensor, location="foo.bin")
-            tensor.name = name
-            tensor.ClearField("raw_data")
+            if initializer.HasField("raw_data"):
+                numpy_tensor = NumpyHelper.to_array(initializer)
+                ort_value = OrtValue.ortvalue_from_numpy(numpy_tensor)
+                external_data.append((name, ort_value))
+                # mimic set_external_data
+                set_external_data(initializer, location="foo.bin")
+                initializer.name = name
+                initializer.ClearField("raw_data")
 
     return zip(*external_data)
+
+
+def has_external_data(model: ModelProto):
+    """
+    Check if the model has external data.
+
+    Args:
+        model (ModelProto): the model proto to check for external data.
+    Returns:
+        bool: True if the model has external data, False otherwise.
+    """
+    return any(
+        initializer.HasField("data_location") and initializer.data_location == TensorProto.EXTERNAL
+        for initializer in model.graph.initializer
+    )

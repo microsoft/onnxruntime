@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Union
 
 import coloredlogs
 from fusion_options import FusionOptions
-from onnx import ModelProto, TensorProto, load_model
+from onnx import ModelProto, load_model
 from onnx_model import OnnxModel
 from onnx_model_bart import BartOnnxModel
 from onnx_model_bert import BertOnnxModel
@@ -42,7 +42,7 @@ from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
 
 import onnxruntime
-from onnxruntime.transformers.optimizer_utils import extract_external_data_from_model
+from onnxruntime.transformers.optimizer_utils import extract_external_data_from_model, has_external_data
 
 logger = logging.getLogger(__name__)
 
@@ -185,8 +185,12 @@ def optimize_by_onnxruntime(
 
     # For large model, extract external data from model and add to session options
     if isinstance(onnx_model, ModelProto):
-        if save_as_external_data:
-            raise ValueError("Model has external data, model path is required to load the inference session.")
+        if has_external_data(onnx_model):
+            raise ValueError(
+                "ModelProto has external data not loaded into memory, ORT cannot create session. "
+                "Please load external data before calling this function. "
+                "See https://onnx.ai/onnx/repo-docs/ExternalData.html for more information."
+            )
         external_names, external_values = extract_external_data_from_model(onnx_model)
         sess_options.add_external_initializers(list(external_names), list(external_values))
 
@@ -334,10 +338,8 @@ def optimize_model(
     # Auto detect if input model has external data
     has_external_data_file = False
     original_model = load_model(input, load_external_data=False) if isinstance(input, str) else input
-    for initializer in original_model.graph.initializer:
-        if initializer.HasField("data_location") and initializer.data_location == TensorProto.EXTERNAL:
-            has_external_data_file = True
-            break
+    if has_external_data(original_model):
+        has_external_data_file = True
     del original_model
 
     if opt_level > 1:
