@@ -48,8 +48,6 @@ class MemoryOptimizer : public GraphTransformer {
    * @param graph Graph to iterate and modify.
    * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
    *   Used to re-order the collected subgraph nodes.
-   * @param candidate_output_args_map  A map from node to its candidate activations, which are consumed by both fw and
-   *  bw ops.
    * @param logger Logger.
    * @param boundary_op_order_in_topological_sort index of the boundary op between fw and bw.
    * @param subgraph_stores  A store to maintain all found subgraphs.
@@ -60,8 +58,6 @@ class MemoryOptimizer : public GraphTransformer {
   bool ModifyGraph(Graph& graph,
                    const InlinedHashMap<NodeIndex, ptrdiff_t>&
                        node_index_to_its_order_in_topological_sort_map,
-                   const InlinedHashMap<const Node*, InlinedVector<size_t>>&
-                       candidate_output_args_map,
                    const logging::Logger& logger,
                    ptrdiff_t boundary_op_order_in_topological_sort,
                    Node* node,

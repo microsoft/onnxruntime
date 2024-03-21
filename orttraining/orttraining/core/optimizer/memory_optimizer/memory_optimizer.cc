@@ -70,8 +70,6 @@ Status MemoryOptimizer::ParseOptimizationConfigFromString(const std::string& mem
 bool MemoryOptimizer::ModifyGraph(Graph& graph,
                                   const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                       node_index_to_its_order_in_topological_sort_map,
-                                  const InlinedHashMap<const Node*, InlinedVector<size_t>>&
-                                      candidate_output_args_map,
                                   const logging::Logger& logger,
                                   ptrdiff_t boundary_op_order_in_topological_sort,
                                   Node* node,
@@ -97,47 +95,62 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
           dynamic_cast<optimizer::memory_optimizer::NodeRecomputePlan*>(node_plan.get());
       ORT_ENFORCE(recompute_plan != nullptr);
       ORT_ENFORCE(CreateRecomputeGraph(graph, recompute_plan->GetNodesInTopoOrder(), logger, replacement_node_ptr).IsOK());
+
+      ORT_ENFORCE(replacement_node_ptr);
+
+      graph_is_modified = true;
+
+      auto connect_bw_ops_to_recomputed_activation = [&graph, &node_index_to_its_order_in_topological_sort_map, boundary_op_order_in_topological_sort, replacement_node_ptr](Node* node, size_t output_index) {
+        // Collect output edges (connecting to backward ops), to remove.
+        std::vector<graph_utils::GraphEdge> output_edges;
+        for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+          size_t src_output_idx = static_cast<size_t>(it->GetSrcArgIndex());
+          if (src_output_idx != output_index) {
+            continue;
+          }
+
+          auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
+          // It is possible the consumer node is newly added as the recompute node, so we need a check here.
+          // For those kinds of ops, we can treat them as backward ops.
+          if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
+              !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
+                                     boundary_op_order_in_topological_sort)) {
+            // Remove the edge only connecting to backward op.
+            output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(*node, *it, false));
+          }
+        }
+
+        if (!output_edges.empty()) {
+          // Remove the output edges of the node first
+          graph_utils::GraphEdge::RemoveGraphEdges(graph, output_edges);
+
+          // Create connections between the replacement node and the outgoing nodes.
+          for (const auto& output_edge : output_edges) {
+            graph.RemoveConsumerNode(node->MutableOutputDefs()[output_index]->Name(), node);
+
+            // Add new edge connecting the input with the output nodes directly.
+            // This also updates the destination node's input node args
+            graph.AddEdge(replacement_node_ptr->Index(), output_edge.dst_node, static_cast<int>(output_index),
+                          output_edge.dst_arg_index);
+          }
+        }
+      };
+
+      if (recompute_probe_config_.enable_strict_layerwise_mode) {
+        // For strict layerwise mode, we will collect all outputs of the layers as the recomputed outputs.
+        for (const Node* n : recompute_plan->GetNodesInTopoOrder()) {
+          for (size_t output_index = 0; output_index < n->OutputDefs().size(); ++output_index) {
+            connect_bw_ops_to_recomputed_activation(node, output_index);
+          }
+        }
+      } else {
+        for (size_t output_index : apply_context->output_indices) {
+          connect_bw_ops_to_recomputed_activation(node, output_index);
+        }
+      }
+
     } else {
       ORT_THROW("unsupported optimization type found.");
-    }
-    ORT_ENFORCE(replacement_node_ptr);
-
-    graph_is_modified = true;
-
-    for (size_t output_index : candidate_output_args_map.at(node)) {
-      // Collect output edges (connecting to backward ops), to remove.
-      std::vector<graph_utils::GraphEdge> output_edges;
-      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-        size_t src_output_idx = static_cast<size_t>(it->GetSrcArgIndex());
-        if (src_output_idx != output_index) {
-          continue;
-        }
-
-        auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
-        // It is possible the consumer node is newly added as the recompute node, so we need a check here.
-        // For those kinds of ops, we can treat them as backward ops.
-        if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
-            !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
-                                   boundary_op_order_in_topological_sort)) {
-          // Remove the edge only connecting to backward op.
-          output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(*node, *it, false));
-        }
-      }
-
-      if (!output_edges.empty()) {
-        // Remove the output edges of the node first
-        graph_utils::GraphEdge::RemoveGraphEdges(graph, output_edges);
-
-        // Create connections between the replacement node and the outgoing nodes.
-        for (const auto& output_edge : output_edges) {
-          graph.RemoveConsumerNode(node->MutableOutputDefs()[output_index]->Name(), node);
-
-          // Add new edge connecting the input with the output nodes directly.
-          // This also updates the destination node's input node args
-          graph.AddEdge(replacement_node_ptr->Index(), output_edge.dst_node, static_cast<int>(output_index),
-                        output_edge.dst_arg_index);
-        }
-      }
     }
   }
 
@@ -235,8 +248,9 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
     bool has_been_modified = false;
     if (node_to_opt_plan_map.find(p_node) != node_to_opt_plan_map.end()) {
-      has_been_modified = ModifyGraph(graph, node_index_to_its_order_in_topological_sort_map,
-                                      candidate_output_args_map, logger,
+      has_been_modified = ModifyGraph(graph,
+                                      node_index_to_its_order_in_topological_sort_map,
+                                      logger,
                                       yield_op_order_in_topological_sort,
                                       p_node,
                                       node_to_opt_plan_map[p_node],

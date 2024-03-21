@@ -277,6 +277,28 @@ Status FindSelectiveRecomputeOpportunity(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
+// void PPNodesInTopoOrderToString(gsl::span<const Node* const> nodes_in_topological_order,
+//                                 std::string& subgraph_string_representation,
+//                                 std::string& log_info) {
+//   std::ostringstream oss;
+//   std::ostringstream subgraph_string_representation_oss;
+//   size_t node_count = nodes_in_topological_order.size();
+//   for (size_t i = 0; i < node_count; ++i) {
+//     if (i < node_count - 1) {  // Ignore the last node.
+//       oss << "(name:" << nodes_in_topological_order[i]->Name() << ", type:" << nodes_in_topological_order[i]->OpType()
+//           << "),";
+//     }
+
+//     subgraph_string_representation_oss << nodes_in_topological_order[i]->OpType() << "+";
+//   }
+
+//   subgraph_string_representation = subgraph_string_representation_oss.str();
+//   log_info = oss.str();
+//   if (log_info.size() > 0) {
+//     log_info = " with its precedent nodes: " + log_info;
+//   }
+// }
+
 Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
                                                const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                                    node_index_to_its_order_in_topological_sort_map,
@@ -300,22 +322,161 @@ Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
       // Check the input node of layer_boundary_ln_nodes[index] is PythonOp with its func_name to be
       // "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction".
       // The whole layer should start with PreForwardFunction and end with PostForwardFunction.
-      const NodeArg* start_node_input_node_arg = layer_boundary_ln_nodes[index]->InputDefs()[0];
+      const NodeArg* start_node_input_node_arg = layer_boundary_ln_nodes[index - 1]->InputDefs()[0];
       const Node* start_node_input_node = graph_viewer.GetProducerNode(start_node_input_node_arg->Name());
-      if (start_node_input_node != nullptr && start_node_input_node->OpType() == "Python" &&
-          start_node_input_node->Domain() == kMSDomain &&
-          start_node_input_node->GetAttributes().count("func_name") &&
-          start_node_input_node->GetAttributes().at("func_name").s() ==
-              "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction" &&
-          end_node_input_node != nullptr &&
-          end_node_input_node->OpType() == "Python" &&
-          end_node_input_node->Domain() == kMSDomain &&
-          end_node_input_node->GetAttributes().count("func_name") &&
-          end_node_input_node->GetAttributes().at("func_name").s() ==
-              "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPostForwardFunction") {
-        reachable_nodes.push_back(start_node_input_node);
+      //
+      //  Check whether stage3 related PythonOp nodes are inserted before and after each module forward run.
+      //  One classical layer includes 1). input layer norm, 2). attention, 3). residual add (input layer norm input + attention output),
+      //  4). post attention layer norm feedforward, and 5). residual add (post attention layer norm input + feedforward out).
+      //
+      //  The pattern graph looks like below for each transformer layer (taking the example of MistralDecoderLayer):
+      //           PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - Embedding
+      //                          |
+      //           PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction) - Embedding
+      //                          |
+      //                       Embedding
+      //                          |
+      //           PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPostForwardFunction) - Embedding
+      //                          |
+      //           PythonOp(deepspeed.runtime.zero.parameter_offload.PreBackwardFunction) - Embedding
+      //                          |
+      //           PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - MistralDecoderLayer
+      //                          |
+      //           PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction) - MistralDecoderLayer
+      //                          |
+      //                      (real layer boudary)
+      //     ---------------------|
+      //     |                    |
+      //     |             PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |             PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |                           SimplifiedLayerNormalization (layer boudary node S we found eariler)
+      //     |                                   |
+      //     |             PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPostForwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |             PythonOp(deepspeed.runtime.zero.parameter_offload.PreBackwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |             PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - MistralAttention (not found, why??????)
+      //     |                                   |
+      //     |             PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction) - MistralAttention
+      //     |                                   |
+      //     |                           MistralAttention
+      //     |                                   |
+      //     |             PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPostForwardFunction) - MistralAttention
+      //     |                                   |
+      //     |             PythonOp(deepspeed.runtime.zero.parameter_offload.PreBackwardFunction) - MistralAttention
+      //     |                                 ... (similar case for other inner modules including linear, dropout, etc.)
+      //     |                                   |
+      //     |__________________________________Add
+      //                                         |
+      //     ------------------------------------|
+      //     |                                   |
+      //     |             PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |             PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |                           SimplifiedLayerNormalization
+      //     |                                   |
+      //     |             PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPostForwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |             PythonOp(deepspeed.runtime.zero.parameter_offload.PreBackwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |                         ... (similar case feedforward)
+      //     |                                   |
+      //     |__________________________________Add
+      //                                         |
+      //           PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPostForwardFunction) - MistralDecoderLayer
+      //                                        |
+      //           PythonOp(deepspeed.runtime.zero.parameter_offload.PreBackwardFunction) - MistralDecoderLayer
+      //                                        |
+      //                         (Another new layer)
+      //                      (real layer boudary)
+      //                          |
+      //           PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - MistralDecoderLayer
+      //                          |
+      //           PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction) - MistralDecoderLayer
+      //                          |
+      //     ---------------------|
+      //     |                    |
+      //     |             PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |             PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction) - SimplifiedLayerNormalization
+      //     |                                   |
+      //     |                           SimplifiedLayerNormalization (layer boudary node E we found earlier)
+      //                                 ....
+      //
+      // Be noted: we need shift a bit around the layer boundary node S and E, as the layer boundary node S and E are not the real boundary nodes now.
+      // Specifically, we shift two nodes (PostBackwardFunction and ORTZeROOffloadPreForwardFunction) before S and E as the real boundary nodes.
+
+      auto is_preforward_function = [](const Node* node) -> bool {
+        return node->OpType() == "PythonOp" &&
+               node->Domain() == kMSDomain &&
+               node->GetAttributes().count("func_name") &&
+               node->GetAttributes().at("func_name").s() ==
+                   "onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction";
+      };
+
+      auto is_postbackward_function = [](const Node* node) -> bool {
+        return node->OpType() == "PythonOp" &&
+               node->Domain() == kMSDomain &&
+               node->GetAttributes().count("func_name") &&
+               node->GetAttributes().at("func_name").s() ==
+                   "deepspeed.runtime.zero.parameter_offload.PostBackwardFunction";
+      };
+
+      bool stage_pattern_match = true;
+      InlinedVector<const Node*> nodes_to_append;
+      InlinedVector<const Node*> nodes_to_remove;
+      if (start_node_input_node != nullptr && is_preforward_function(start_node_input_node) &&
+          end_node_input_node != nullptr && is_preforward_function(end_node_input_node)) {
+        nodes_to_append.push_back(start_node_input_node);
+
+        const Node* updated_start_node_input_node = graph_viewer.GetProducerNode(start_node_input_node->InputDefs()[0]->Name());
+        if (updated_start_node_input_node != nullptr && is_postbackward_function(updated_start_node_input_node)) {
+          updated_start_node_input_node = graph_viewer.GetProducerNode(updated_start_node_input_node->InputDefs()[0]->Name());
+          std::cout << "Update the start node input node to " << updated_start_node_input_node->Name() << std::endl;
+          nodes_to_append.push_back(updated_start_node_input_node);
+        } else {
+          stage_pattern_match = false;
+        }
+
+        // reachable_nodes.erase(std::remove(reachable_nodes.begin(), reachable_nodes.end(), end_node_input_node), reachable_nodes.end());
+        nodes_to_remove.push_back(end_node_input_node);
+        const Node* updated_end_node_input_node = graph_viewer.GetProducerNode(end_node_input_node->InputDefs()[0]->Name());
+        if (updated_end_node_input_node != nullptr && is_postbackward_function(updated_end_node_input_node)) {
+          updated_end_node_input_node = graph_viewer.GetProducerNode(updated_end_node_input_node->InputDefs()[0]->Name());
+          nodes_to_remove.push_back(updated_end_node_input_node);
+          std::cout << "Update the end node input node to " << updated_end_node_input_node->Name() << std::endl;
+        } else {
+          stage_pattern_match = false;
+        }
+        std::cout << "Append PreForwardFunction (" << start_node_input_node->Name() << ") to the subgraph, subgraph contains " << reachable_nodes.size() << " nodes" << std::endl;
+      } else {
+        stage_pattern_match = false;
       }
+
+      if (stage_pattern_match) {
+        ORT_ENFORCE(nodes_to_append.size() == nodes_to_remove.size(), "The number of nodes to append and remove should be the same.");
+        for (size_t i = 0; i < nodes_to_append.size(); ++i) {
+          reachable_nodes.push_back(nodes_to_append[i]);
+        }
+        // remove the nodes to remove from reachable_nodes.
+        for (size_t i = 0; i < nodes_to_remove.size(); ++i) {
+          reachable_nodes.erase(std::remove(reachable_nodes.begin(), reachable_nodes.end(), nodes_to_remove[i]), reachable_nodes.end());
+        }
+
+        std::cout << "Find Stage3 recomputable pattern" << std::endl;
+      }
+
       SortNodesInTopoOrder(node_index_to_its_order_in_topological_sort_map, reachable_nodes);
+      // std::string subgraph_string_representation, log_info;
+
+      // PPNodesInTopoOrderToString(reachable_nodes, subgraph_string_representation, log_info);
+      // std::cout << "Sorted subgraph: " << subgraph_string_representation << ", details: " << reachable_nodes.size() << std::endl;
+      // for (const Node* node : reachable_nodes) {
+      //   std::cout << "Node: " << node->Name() << ", op type: " << node->OpType() << ", node index: " << node_index_to_its_order_in_topological_sort_map.at(node->Index()) << std::endl;
+      // }
       InlinedVector<size_t> output_indices{static_cast<size_t>(output_index)};
       std::unique_ptr<NodeRecomputePlan> plan = std::make_unique<NodeRecomputePlan>(end_node_input_node,
                                                                                     output_indices,

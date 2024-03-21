@@ -19,6 +19,8 @@ class ClusterApplyContext {
  public:
   ClusterApplyContext() = default;
 
+  InlinedVector<size_t> output_indices;
+
   OptimizationType type;
   int requested_count{0};
   int total_frequency{0};  // The occurrence of this subgraph pattern in the graph.

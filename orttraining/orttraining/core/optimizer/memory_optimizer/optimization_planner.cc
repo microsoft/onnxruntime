@@ -93,6 +93,9 @@ Status MemoryOptimizationPlanner::FinalizeNodePlansFromUserConfig(
           apply_context->requested_count = user_config.requested_count;
           apply_context->type = user_config.type;
           apply_context->total_frequency++;
+          for (const auto& output_index : node_plan->GetActivationOutputIndices()) {
+            apply_context->output_indices.push_back(output_index);
+          }
           cluster_id_to_apply_contexts_map.insert({cluster_id, apply_context});
         }
 
