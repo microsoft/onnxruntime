@@ -75,15 +75,28 @@ def build_torch_cpp_extensions():
     ############################################################################
     # Pytorch CPP Extensions that DO require CUDA/ROCM
     ############################################################################
-    if is_gpu_available or force_cuda:
-        for ext_setup in _list_cuda_extensions():
-            _install_extension(ext_setup.split(os.sep)[-2], ext_setup, ortmodule.ORTMODULE_TORCH_CPP_DIR)
+    # if is_gpu_available or force_cuda:
+    #     for ext_setup in _list_cuda_extensions():
+    #         _install_extension(ext_setup.split(os.sep)[-2], ext_setup, ortmodule.ORTMODULE_TORCH_CPP_DIR)
 
     ############################################################################
     # Pytorch CPP Extensions that DO NOT require CUDA/ROCM
     ############################################################################
-    for ext_setup in _list_cpu_extensions():
-        _install_extension(ext_setup.split(os.sep)[-2], ext_setup, ortmodule.ORTMODULE_TORCH_CPP_DIR)
+    args_list1 = [
+        (ext_setup.split(os.sep)[-2], ext_setup, ortmodule.ORTMODULE_TORCH_CPP_DIR)
+        for ext_setup in _list_cuda_extensions()
+    ]
+    args_list2 = [
+        (ext_setup.split(os.sep)[-2], ext_setup, ortmodule.ORTMODULE_TORCH_CPP_DIR)
+        for ext_setup in _list_cpu_extensions()
+    ]
+    from multiprocessing import Pool
+
+    pool = Pool(processes=20)
+    pool.starmap(_install_extension, args_list1)
+    pool.starmap(_install_extension, args_list2)
+    # for ext_setup in _list_cpu_extensions():
+    #     _install_extension(ext_setup.split(os.sep)[-2], ext_setup, ortmodule.ORTMODULE_TORCH_CPP_DIR)
 
     ############################################################################
     # Install Pytorch CPP Extensions into local onnxruntime package folder
