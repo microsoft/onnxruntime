@@ -369,15 +369,12 @@ const computeAttentionProbs =
     let headIdx = workgroup_id.z;
     let m = workgroup_id.y * TILE_SIZE;
     let n = workgroup_id.x * TILE_SIZE;
-    let lm = m + local_id.y;
-    let ln = n + local_id.x;
-
     let qOffset = uniforms.M * uniforms.K * headIdx + m * uniforms.K;
     let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx + n * uniforms.K;
 
     var value = ${fillVector(dataType, components)};
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-      if (m + local_id.y < uniforms.M && w + local_id.x < uniforms.K) {
+      if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
       }
       if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {
@@ -393,8 +390,8 @@ const computeAttentionProbs =
     }
 
     let headOffset = headIdx * uniforms.M * uniforms.N;
-    if (lm < uniforms.M && ln < uniforms.N) {
-      let outputIdx = headOffset + lm * uniforms.N + ln;
+    if (global_id.y < uniforms.M && global_id.x < uniforms.N) {
+      let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;
       output[outputIdx] = ${sumVector('value', components)} * uniforms.alpha;
     }
   }`;
@@ -452,8 +449,8 @@ const computeVxAttentionScore =
           TILE_SIZE, TILE_SIZE, 1
         ])}
    let headIdx = workgroup_id.z;
-   let m = workgroup_id.y * TILE_SIZE + local_id.y;
-   let n = workgroup_id.x * TILE_SIZE + local_id.x;
+   let m = global_id.y;
+   let n = global_id.x;
 
    let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
    let offsetB = headIdx * (uniforms.N * uniforms.K) + n;
@@ -557,8 +554,8 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
     ])}
     let batchIndex = workgroup_id.z / uniforms.num_heads;
     let headNumber = workgroup_id.z % uniforms.num_heads;
-    let m = workgroup_id.y * TILE_SIZE + local_id.y;
-    let n = workgroup_id.x * TILE_SIZE + local_id.x;
+    let m = global_id.y;
+    let n = global_id.x;
 
     let inputOffset = batchIndex * (uniforms.M * uniforms.K) + m * uniforms.K;
     let biasOffsetQ = headNumber * uniforms.head_size;
