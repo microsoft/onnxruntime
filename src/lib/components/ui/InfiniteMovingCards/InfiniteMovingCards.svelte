@@ -59,7 +59,7 @@
 	};
 </script>
 
-<div bind:this={containerRef} class={cn('scroller relative z-20 overflow-hidden ', className)}>
+<div bind:this={containerRef} class={cn('scroller relative z-2 overflow-hidden ', className)}>
 	<ul
 		bind:this={scrollerRef}
 		class={cn(
