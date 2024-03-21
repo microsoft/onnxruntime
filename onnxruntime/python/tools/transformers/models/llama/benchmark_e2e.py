@@ -30,6 +30,7 @@ import itertools
 import json
 import logging
 import os
+import textwrap
 import time
 
 import numpy as np
@@ -304,8 +305,20 @@ def main():
         batch_size, prompt_length = int(batch_size), int(prompt_length)  # noqa: PLW2901
         logger.info(f"Running batch size = {batch_size}, prompt length = {prompt_length}")
         clear_cache()
-
         max_length = prompt_length + args.generation_length
+
+        if prompt_length not in size_to_prompt:
+            raise NotImplementedError(
+                textwrap.dedent(
+                    f"""
+                                A prompt of size {prompt_length} was not found in '{args.prompts_file}'. There are a couple of solutions to fix this.
+                                1) You can change one of the keys in '{args.prompts_file}' to be {prompt_length}.
+                                    If {prompt_length} < actual prompt's length, the benchmark E2E tool will repeat the first word in the prompt until {prompt_length} = actual prompt's length.
+                                    If {prompt_length} > actual prompt's length, the benchmark E2E tool will automatically trim the actual prompt's length so that {prompt_length} = actual prompt's length.
+                                2) You can add a new key-value entry in '{args.prompts_file}' of the form '{prompt_length}': 'your prompt goes here'.
+                """
+                )
+            )
         prompt = [size_to_prompt[prompt_length]] * batch_size
         csv_metrics = [batch_size, prompt_length]
 
