@@ -173,14 +173,14 @@ def get_args():
         "--cache-dir",
         type=str,
         default=os.path.join(".", "model_cache"),
-        help="Path to directory containing all Hugging Face files (e.g. config, tokenizer, PyTorch model)",
+        help="Path to directory containing all Hugging Face files (e.g. config, tokenizer, PyTorch model). Use when loading model as `AutoModel.from_pretrained(model_name, cache_dir=cache_dir)`.",
     )
 
     parser.add_argument(
         "--hf-dir-path",
         type=str,
         default="",
-        help="Path to directory containing all Hugging Face files (e.g. tokenizer, PyTorch model)",
+        help="Path to directory containing all Hugging Face files (e.g. config, tokenizer, PyTorch model). Use when loading model as `AutoModel.from_pretrained(model_path)`.",
     )
 
     parser.add_argument(
