@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import MutableMapping
+from dataclasses import dataclass
 from typing import Any
 
 from .quant_utils import QuantType

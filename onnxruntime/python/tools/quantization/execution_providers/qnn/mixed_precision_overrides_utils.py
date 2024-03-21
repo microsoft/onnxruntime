@@ -5,9 +5,9 @@
 # --------------------------------------------------------------------------
 from __future__ import annotations
 
-import onnx
 from dataclasses import dataclass
-from typing import Any
+
+import onnx
 
 from ...quant_utils import QuantType
 from ...tensor_quant_overrides import QuantTypeInfo, TensorQuantOverridesHelper
@@ -258,4 +258,3 @@ class MixedPrecisionTensorQuantOverridesFixer:
                 return True
 
         return False
-

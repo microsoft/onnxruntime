@@ -15,13 +15,17 @@ if os.environ.get("LOCAL_IMPORT") == "1":
     import sys
 
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "python", "tools"))
+    from quantization.execution_providers.qnn.mixed_precision_overrides_utils import (
+        MixedPrecisionTensorQuantOverridesFixer,
+    )
     from quantization.quant_utils import QuantType
     from quantization.tensor_quant_overrides import TensorQuantOverridesHelper
-    from quantization.execution_providers.qnn.mixed_precision_overrides_utils import MixedPrecisionTensorQuantOverridesFixer
 else:
     from onnxruntime.quantization import QuantType
+    from onnxruntime.quantization.execution_providers.qnn.mixed_precision_overrides_utils import (
+        MixedPrecisionTensorQuantOverridesFixer,
+    )
     from onnxruntime.quantization.tensor_quant_overrides import TensorQuantOverridesHelper
-    from onnxruntime.quantization.execution_providers.qnn.mixed_precision_overrides_utils import MixedPrecisionTensorQuantOverridesFixer
 
 
 class TestMixedPrecisionQuantOverridesFixer(unittest.TestCase):
