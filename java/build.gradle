@@ -12,8 +12,23 @@ allprojects {
 	}
 }
 
-project.group = "com.microsoft.onnxruntime"
-version = rootProject.file('../VERSION_NUMBER').text.trim()
+def getCUDAVersion = {
+	def nvccStdout = new ByteArrayOutputStream()
+	exec {
+		commandLine 'nvcc', '--version'
+		standardOutput = nvccStdout
+	}
+
+	for (line in nvccStdout.toString().trim().split("\n")) {
+		if (line.contains("release")) {
+			def fromIndex = line.indexOf("release") + 7
+			def toIndex = line.indexOf(".", fromIndex)
+			return Integer.parseInt(line.substring(fromIndex, toIndex).trim())
+		}
+	}
+
+	throw new IllegalArgumentException("Unexpected output of \"nvcc --version\" command");
+}
 
 // cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
@@ -36,6 +51,14 @@ def defaultDescription = 'ONNX Runtime is a performance-focused inference engine
 def trainingDescription = 'ONNX Runtime Training is a training and inference package for ONNX ' +
 	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
+
+project.group = "com.microsoft.onnxruntime"
+version = rootProject.file('../VERSION_NUMBER').text.trim()
+if (useCUDA != null) {
+        version += "-cu" + getCUDAVersion()
+} else if (useROCM != null) {
+        version += "-rocm"
+}
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
