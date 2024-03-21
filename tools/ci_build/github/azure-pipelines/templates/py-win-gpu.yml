@@ -127,15 +127,6 @@ stages:
                 targetPath: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
                 publishLocation: 'pipeline'
                 artifactName: onnx_py12_wheel
-            - script: |
-                7z x *.whl
-              workingDirectory: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
-              displayName: 'unzip the package'
-            - task: BinSkim@4
-              displayName: 'Run BinSkim'
-              inputs:
-                AnalyzeTargetGlob: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\**\*.dll'
-              continueOnError: true
 
           - template: set-nightly-build-option-variable-step.yml
 
