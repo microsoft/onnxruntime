@@ -179,22 +179,22 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float))) {
     fmha_buffer_bytes = (parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size * sizeof(float));
   }
-  size_t packed_qkv_bytes = 0;
+  size_t unpacked_qkv_bytes = 0;
   if (use_memory_efficient_attention && parameters.is_packed_qkv) {
-    packed_qkv_bytes = (parameters.batch_size * parameters.sequence_length * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T));
+    unpacked_qkv_bytes = (parameters.batch_size * parameters.sequence_length * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T));
   }
   auto k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
   auto fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, context->GetComputeStream());
-  auto packed_qkv_buffer = GetScratchBuffer<void>(packed_qkv_bytes, context->GetComputeStream());
+  auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
 #else
   constexpr bool use_memory_efficient_attention = false;
   auto k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto v_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto rotary_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto fmha_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
-  auto packed_qkv_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
+  auto unpacked_qkv_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
 
   // seqlens_k buffer
@@ -262,8 +262,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (fmha_buffer != nullptr) {
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
   }
-  if (packed_qkv_buffer != nullptr) {
-    data.packed_qkv = reinterpret_cast<CudaT*>(packed_qkv_buffer.get());
+  if (unpacked_qkv_buffer != nullptr) {
+    data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
   if (rotary_buffer != nullptr) {
     data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());

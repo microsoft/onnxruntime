@@ -502,8 +502,8 @@ __global__ void UnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* 
 // Unpack packed qkv
 template <typename T>
 Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
-                const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
-                cudaStream_t stream, const int max_threads_per_block) {
+                       const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
+                       cudaStream_t stream, const int max_threads_per_block) {
   const int threads = max_threads_per_block;
   const int blocks = (batch_size * sequence_length * (num_heads + 2 * kv_num_heads) * head_size + threads - 1) / threads;
   UnpackQKV<<<blocks, threads, 0, stream>>>(packed_qkv, unpacked_q, unpacked_k, unpacked_v, num_heads, kv_num_heads, head_size, sequence_length, batch_size);
@@ -653,11 +653,11 @@ Status EfficientAttention(
   } else {
     size_t q_size = static_cast<size_t>(batch_size * sequence_length * num_heads * head_size);
     size_t k_size = static_cast<size_t>(batch_size * sequence_length * kv_num_heads * head_size);
-    auto q = reinterpret_cast<T*>(data.packed_qkv);
-    auto k = reinterpret_cast<T*>(data.packed_qkv + q_size);
-    auto v = reinterpret_cast<T*>(data.packed_qkv + q_size + k_size);
+    auto q = reinterpret_cast<T*>(data.unpacked_qkv_buffer);
+    auto k = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size);
+    auto v = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size + k_size);
     ORT_RETURN_IF_ERROR(LaunchUnpackQKV(reinterpret_cast<const T*>(data.query), q, k, v, num_heads, kv_num_heads, head_size,
-                        sequence_length, batch_size, stream, max_threads_per_block));
+                                        sequence_length, batch_size, stream, max_threads_per_block));
     query = reinterpret_cast<const void*>(q);
     key = reinterpret_cast<const void*>(k);
     value = reinterpret_cast<const void*>(v);
@@ -675,13 +675,13 @@ Status EfficientAttention(
     DUMP_TENSOR("position_ids", position_ids_buff, batch_size, sequence_length);
     // Launch rotary embedding kernel
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(stream, q_buffer, reinterpret_cast<const T*>(query),
-        position_ids_buff, data.cos_cache, data.sin_cache, parameters.batch_size, parameters.sequence_length,
-        parameters.num_heads, parameters.head_size, parameters.rotary_dim, parameters.seqlen_present_kv_cache,
-        /*position_ids_format*/1, parameters.rotary_interleaved, device_prop.maxThreadsPerBlock, /*transposed*/false));
+                                                       position_ids_buff, data.cos_cache, data.sin_cache, parameters.batch_size, parameters.sequence_length,
+                                                       parameters.num_heads, parameters.head_size, parameters.rotary_dim, parameters.seqlen_present_kv_cache,
+                                                       /*position_ids_format*/ 1, parameters.rotary_interleaved, device_prop.maxThreadsPerBlock, /*transposed*/ false));
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(stream, k_buffer, reinterpret_cast<const T*>(key),
-        position_ids_buff, data.cos_cache, data.sin_cache, parameters.batch_size, parameters.sequence_length,
-        parameters.kv_num_heads, parameters.head_size, parameters.rotary_dim, parameters.seqlen_present_kv_cache,
-        /*position_ids_format*/1, parameters.rotary_interleaved, device_prop.maxThreadsPerBlock, /*transposed*/false));
+                                                       position_ids_buff, data.cos_cache, data.sin_cache, parameters.batch_size, parameters.sequence_length,
+                                                       parameters.kv_num_heads, parameters.head_size, parameters.rotary_dim, parameters.seqlen_present_kv_cache,
+                                                       /*position_ids_format*/ 1, parameters.rotary_interleaved, device_prop.maxThreadsPerBlock, /*transposed*/ false));
     query = reinterpret_cast<const void*>(q_buffer);
     key = reinterpret_cast<const void*>(k_buffer);
   }
