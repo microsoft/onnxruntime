@@ -216,12 +216,32 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
+        - ${{ if eq(parameters.PYTHON_VERSION, '3.12') }}:
+          - template: download-deps.yml
+
+          - task: PowerShell@2
+            displayName: 'Install ONNX'
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+              workingDirectory: '$(Build.BinariesDirectory)'
+              arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
+
+          - powershell: |
+              python -m pip install upgrade pip
+              python -m pip install pytest
+            workingDirectory: '$(Build.SourcesDirectory)'
+            displayName: 'Install pytest'
+        - ${{ else }}:
+          - powershell: |
+              python -m pip install upgrade pip
+              python -m pip install -r requirements.txt
+            workingDirectory: '$(Build.SourcesDirectory)'
+            displayName: 'Install ONNX'
+
         - powershell: |
             python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
             Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
             pushd onnxruntime/test/python
-            python -m pip install upgrade pip
-            python -m pip install -r requirements.txt
             popd
             mkdir -p $(Agent.TempDirectory)\ort_test_data
             Copy-Item -Path $(Build.sourcesDirectory)/onnxruntime/test/python/onnx_backend_test_series.py -Destination $(Agent.TempDirectory)\ort_test_data
