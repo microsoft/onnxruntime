@@ -81,7 +81,7 @@ stages:
                 np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.26'
                 import subprocess
                 try:
-                  subprocess.check_call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version], check=True)
+                  subprocess.check_call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
                 except subprocess.CalledProcessError:
                   sys.exit(1)
               workingDirectory: '$(Build.BinariesDirectory)'
