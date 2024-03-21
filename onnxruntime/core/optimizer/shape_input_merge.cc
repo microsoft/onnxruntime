@@ -54,19 +54,17 @@ Status ShapeInputMerge::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (auto& kv : input_hash_to_nodes) {
     if (kv.second.size() < 2) continue;
     NodeArg* first_input_arg = kv.second[0]->MutableInputDefs()[0];
-    bool is_first_input_arg_graph_input = graph.IsInputsIncludingInitializers(first_input_arg);
+    const Node::EdgeEnd* first_input_edge = graph_utils::GetInputEdge(*kv.second[0], 0);
     for (size_t i = 1; i < kv.second.size(); ++i) {
       Node* p_node = kv.second[i];
-      const NodeArg* input_arg = p_node->InputDefs()[0];
       if (p_node->InputDefs()[0]->Name() == first_input_arg->Name()) continue;
-      if (!graph.IsInputsIncludingInitializers(input_arg)) {
-        const Node::EdgeEnd& input_edge = *p_node->InputEdgesBegin();
-        graph.RemoveEdge(input_edge.GetNode().Index(), p_node->Index(), input_edge.GetSrcArgIndex(), 0);
+      const Node::EdgeEnd* edge = graph_utils::GetInputEdge(*p_node, 0);
+      if (edge) {
+        graph.RemoveEdge(edge->GetNode().Index(), p_node->Index(), edge->GetSrcArgIndex(), 0);
       }
       graph_utils::ReplaceNodeInput(*p_node, 0, *first_input_arg);
-      if (!is_first_input_arg_graph_input) {
-        const Node::EdgeEnd& first_input_edge = *kv.second[0]->InputEdgesBegin();
-        graph.AddEdge(first_input_edge.GetNode().Index(), p_node->Index(), first_input_edge.GetSrcArgIndex(), 0);
+      if (first_input_edge) {
+        graph.AddEdge(first_input_edge->GetNode().Index(), p_node->Index(), first_input_edge->GetSrcArgIndex(), 0);
       }
       modified = true;
     }
