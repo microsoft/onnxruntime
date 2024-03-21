@@ -12,6 +12,42 @@ from typing import Any
 from .quant_utils import QuantType
 
 
+@dataclass
+class QuantTypeInfo:
+    quant_type: QuantType
+    symmetric: bool | None = None
+    reduce_range: bool | None = None
+
+    def __eq__(self, other: object):
+        if isinstance(other, QuantTypeInfo):
+            return (
+                self.quant_type == other.quant_type
+                and (self.symmetric is None or other.symmetric is None or self.symmetric == other.symmetric)
+                and (self.reduce_range is None or other.reduce_range is None or self.reduce_range == other.reduce_range)
+            )
+        return NotImplemented
+
+    @staticmethod
+    def load_from_dict(
+        raw_dict: dict[str, Any],
+        default_activation_qtype: QuantType | None = None,
+        default_activation_symmetric: bool | None = None,
+        default_activation_reduce_range: bool | None = None,
+    ) -> QuantTypeInfo:
+        return QuantTypeInfo(
+            raw_dict.get("quant_type", default_activation_qtype),
+            raw_dict.get("symmetric", default_activation_symmetric),
+            raw_dict.get("reduce_range", default_activation_reduce_range),
+        )
+
+    def save_to_dict(self, raw_dict: dict[str, Any]):
+        raw_dict["quant_type"] = self.quant_type
+        if self.symmetric is not None:
+            raw_dict["symmetric"] = self.symmetric
+        if self.reduce_range is not None:
+            raw_dict["reduce_range"] = self.reduce_range
+
+
 class TensorQuantOverridesHelper(MutableMapping):
     """
     Utility wrapper over the tensor quantization overrides passed via extra_options.
@@ -184,8 +220,98 @@ class TensorQuantOverridesHelper(MutableMapping):
 
         return True, None
 
+    def update_tensor_overrides(
+        self,
+        tensor_name: str,
+        new_vals: dict[str, Any],
+        channels: list[int] | None = None,
+        overwrite: bool = True,
+    ) -> bool:
+        if not new_vals:
+            return False
+
+        channels = set(channels) if channels is not None else None
+        have_overrides = self.overrides.get(tensor_name)
+
+        # If `overwrite` is False, check if we would overwrite anything.
+        do_update = True
+        if not overwrite and have_overrides:
+            for channel, overrides in enumerate(self.overrides[tensor_name]):
+                if channels is not None and channel not in channels:
+                    continue
+                if set(new_vals).intersection(set(overrides)):
+                    do_update = False
+                    break
+
+        # Do the update if `overwrite` is True or if nothing is overwritten (do not want partial overwrites).
+        if do_update:
+            if not have_overrides:
+                self.overrides[tensor_name] = [{}]
+
+            for channel, overrides in enumerate(self.overrides[tensor_name]):
+                if channels is not None and channel not in channels:
+                    continue
+                overrides.update(new_vals)
+
+        return do_update
+
+    def get_node_output_qtype_info(
+        self,
+        output_name: str,
+        default_qtype: QuantType | None,
+        default_symmetric: bool | None = None,
+    ) -> QuantTypeInfo:
+        if output_name not in self.overrides:
+            return QuantTypeInfo(default_qtype, default_symmetric)
+
+        # Get the first overrides dict in the list. This works for both per-tensor and per-channel
+        # quantization because all channels must use the same quant type.
+        tensor_overrides = self.overrides[output_name][0]
+
+        return QuantTypeInfo(
+            tensor_overrides.get("quant_type", default_qtype),
+            tensor_overrides.get("symmetric", default_symmetric),
+        )
+
+    def get_node_input_qtype_info(
+        self,
+        input_name: str,
+        node_name: str,
+        default_qtype: QuantType | None,
+        default_symmetric: bool | None = None,
+        default_reduce_range: bool | None = None,
+    ) -> QuantTypeInfo:
+        if input_name not in self.overrides or not self.overrides[input_name]:
+            return QuantTypeInfo(default_qtype, default_symmetric, default_reduce_range)
+
+        # Get the first overrides dict in the list. This works for both per-tensor and per-channel
+        # quantization because all channels must use the same quant type.
+        tensor_overrides = self.overrides[input_name][0]
+        producer_type = tensor_overrides.get("quant_type", default_qtype)
+
+        if "convert" not in tensor_overrides:
+            return QuantTypeInfo(producer_type, default_symmetric, default_reduce_range)
+
+        # This tensor is converted. Check if the node gets the original qtype or the converted qtype.
+        convert_dict = tensor_overrides["convert"]
+        qtype_info = QuantTypeInfo(
+            producer_type,
+            convert_dict.get("symmetric", default_symmetric),
+            convert_dict.get("reduce_range", default_reduce_range),
+        )
+
+        # Check if all nodes receive the coverted type (i.e., recv_nodes is None) or this node
+        # is in the list of consumers (recv_nodes).
+        if ("recv_nodes" not in convert_dict) or (node_name in convert_dict["recv_nodes"]):
+            qtype_info.quant_type = convert_dict["quant_type"]
+
+        return qtype_info
+
     def pprint_str(self, indent=None) -> str:
         return json.dumps(self.overrides, default=str, indent=indent)
+
+    def empty(self) -> bool:
+        return not self.overrides
 
     def get_dict(self) -> dict[str, list[dict[str, Any]]]:
         return self.overrides
