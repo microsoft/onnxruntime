@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 def get_model(args):
     if args.benchmark_type in {"pt-eager", "pt-compile"}:
         model = AutoModelForCausalLM.from_pretrained(
-            args.model_name,
+            args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
             cache_dir=args.cache_dir,
             torch_dtype=args.torch_dtype,
             use_auth_token=args.auth,
@@ -156,7 +156,7 @@ def get_args():
         "-m",
         "--model-name",
         type=str,
-        required=True,
+        required=False,
         help="Hugging Face name of model (e.g. 'meta-llama/Llama-2-7b-hf')",
     )
 
@@ -174,6 +174,13 @@ def get_args():
         type=str,
         default=os.path.join(".", "model_cache"),
         help="Path to directory containing all Hugging Face files (e.g. config, tokenizer, PyTorch model)",
+    )
+
+    parser.add_argument(
+        "--hf-dir-path",
+        type=str,
+        default="",
+        help="Path to directory containing all Hugging Face files (e.g. tokenizer, PyTorch model)",
     )
 
     parser.add_argument(
@@ -296,8 +303,16 @@ def main():
         size_to_prompt = json.load(f, object_hook=lambda d: {int(k): v for k, v in d.items()})
 
     # Get config, tokenizer, and model
-    config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth)
+    config = AutoConfig.from_pretrained(
+        args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
+        cache_dir=args.cache_dir,
+        use_auth_token=args.auth,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
+        cache_dir=args.cache_dir,
+        use_auth_token=args.auth,
+    )
     model = get_model(args)
 
     all_csv_metrics = []
