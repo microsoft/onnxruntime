@@ -3,6 +3,9 @@
 
 import {env} from './env-impl.js';
 
+/**
+ * @ignore
+ */
 export const TRACE = (deviceType: string, label: string) => {
   if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
     return;
@@ -29,6 +32,9 @@ const TRACE_FUNC = (msg: string, extraMsg?: string) => {
   }
 };
 
+/**
+ * @ignore
+ */
 export const TRACE_FUNC_BEGIN = (extraMsg?: string) => {
   if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
     return;
@@ -36,6 +42,9 @@ export const TRACE_FUNC_BEGIN = (extraMsg?: string) => {
   TRACE_FUNC('BEGIN', extraMsg);
 };
 
+/**
+ * @ignore
+ */
 export const TRACE_FUNC_END = (extraMsg?: string) => {
   if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
     return;

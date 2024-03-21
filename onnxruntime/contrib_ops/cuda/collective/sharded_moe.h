@@ -26,6 +26,7 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
   Status SynchronizeExpertsStartIndex(AllocatorPtr& alloc, OpKernelContext* ctx, cudaEvent_t& cuda_event) const;
 
   int64_t local_experts_start_index_;
+  int64_t tensor_shards_;
   std::vector<int64_t> rank_to_experts_start_index_;
 };
 

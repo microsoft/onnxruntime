@@ -918,11 +918,7 @@ class HistogramCollector(CalibrationDataCollector):
         thresholds_dict = {}  # per tensor thresholds
 
         print(f"Number of tensors : {len(histogram_dict)}")
-        print(
-            "Number of histogram bins : {} (The number may increase depends on the data it collects)".format(
-                self.num_bins
-            )
-        )
+        print(f"Number of histogram bins : {self.num_bins} (The number may increase depends on the data it collects)")
         print(f"Number of quantized bins : {self.num_quantized_bins}")
 
         for tensor, histogram in histogram_dict.items():

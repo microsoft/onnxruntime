@@ -216,7 +216,7 @@ class HQQWeightOnlyQuantizer:
             pack_tensor = pack_tensor.T
         if bits in [2, 4, 8]:
             compress_ratio = pack_tensor.element_size() * 8 // bits
-            for j in range(0, compress_ratio):
+            for j in range(compress_ratio):
                 pack_tensor[0:] |= ori_int_tensor[j::compress_ratio] << (bits * (j))
         else:
             raise NotImplementedError("Only 2,4,8 bits are supported.")
