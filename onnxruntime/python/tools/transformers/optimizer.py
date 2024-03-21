@@ -42,7 +42,7 @@ from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
 
 import onnxruntime
-from onnxruntime.python.tools.transformers.optimizer_utils import extract_external_data_from_model
+from onnxruntime.transformers.optimizer_utils import extract_external_data_from_model
 
 logger = logging.getLogger(__name__)
 

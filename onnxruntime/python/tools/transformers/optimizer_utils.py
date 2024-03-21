@@ -1,7 +1,13 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
 from fusion_utils import NumpyHelper
-from onnxruntime import OrtValue
-from onnx.external_data_helper import set_external_data
 from onnx import ModelProto
+from onnx.external_data_helper import set_external_data
+
+from onnxruntime import OrtValue
+
 
 def extract_external_data_from_model(model: ModelProto):
     """
