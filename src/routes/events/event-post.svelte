@@ -6,7 +6,7 @@
 	export let link: string;
 	export let image: string;
 	export let imagealt: string;
-	export let linkarr: { name: string, link: string}[];
+	export let linkarr: { name: string; link: string }[];
 	let handleEnter = (e: any) => {
 		anime({
 			targets: e.target,

@@ -26,11 +26,12 @@
 			<h1 class="text-3xl">Large Model Training</h1>
 			<br /><br />
 			<p class="text-xl">
-				ORTModule accelerates training of large transformer based PyTorch models. The training time and
-				training cost is reduced with a few lines of code change. It is built on top of highly successful and
-				proven technologies of ONNX Runtime and ONNX format. It is composable with technologies like DeepSpeed and 
-				accelerates pre-training and finetuning for state of the art LLMs. It is integrated in the Hugging Face Optimum
-				library which provides an ORTTrainer API to use ONNX Runtime as the backend for training acceleration. 
+				ORTModule accelerates training of large transformer based PyTorch models. The training time
+				and training cost is reduced with a few lines of code change. It is built on top of highly
+				successful and proven technologies of ONNX Runtime and ONNX format. It is composable with
+				technologies like DeepSpeed and accelerates pre-training and finetuning for state of the art
+				LLMs. It is integrated in the Hugging Face Optimum library which provides an ORTTrainer API
+				to use ONNX Runtime as the backend for training acceleration.
 			</p>
 			<br />
 			<div class="bg-white w-100 md:w-1/2 p-4">
@@ -146,16 +147,16 @@
 <div class="container mx-auto px-10 my-10">
 	<div class="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-10">
 		<div class="col-span-2">
-			<h1 class="text-4xl" id = "on-device-training">On-Device Training</h1>
+			<h1 class="text-4xl" id="on-device-training">On-Device Training</h1>
 			<br /><br />
 			<p class="text-xl">
 				On-Device Training refers to the process of training a model on an edge device, such as
 				mobile phones, embedded devices, gaming consoles, web browsers, etc. This is in contrast to
 				training a model on a server or a cloud. On-Device Training extends the Inference ecosystem
-				 to leverage data on the device for providing customized user experiences on the edge. Once the model 
-				 is trained on the device, it can be used to get an Inference model for deployment, update 
-				 global weights for federated learning or create a checkpoint for future use. It 
-				 also preserves user privacy by training on the device.
+				to leverage data on the device for providing customized user experiences on the edge. Once
+				the model is trained on the device, it can be used to get an Inference model for deployment,
+				update global weights for federated learning or create a checkpoint for future use. It also
+				preserves user privacy by training on the device.
 			</p>
 			<br />
 			<a

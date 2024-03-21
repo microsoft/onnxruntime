@@ -53,9 +53,24 @@
 	const TrainingScenarios = ['Large Model Training', 'On-Device Training'];
 	const TrainingScenarioIds = ['ot_large_model', 'ot_on_device'];
 	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS', 'Web browser'];
-	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios', 'ot_web'];
+	const TrainingPlatformIds = [
+		'ot_linux',
+		'ot_windows',
+		'ot_mac',
+		'ot_android',
+		'ot_ios',
+		'ot_web'
+	];
 	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C', 'JavaScript'];
-	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc', 'ot_js'];
+	const TrainingAPIIds = [
+		'ot_python',
+		'ot_c',
+		'ot_cplusplus',
+		'ot_csharp',
+		'ot_java',
+		'ot_objc',
+		'ot_js'
+	];
 	const TrainingVersions = ['CUDA 11.8', 'CUDA 12.2', 'ROCm', 'CPU'];
 	const TrainingVersionIds = ['ot_CUDA118', 'ot_CUDA122', 'ot_ROCm', 'ot_CPU'];
 	const TrainingBuilds = ['Stable', 'Preview (Nightly)'];
@@ -146,8 +161,8 @@
 			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C++,X64,DefaultCPU':
-		"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
-		
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+
 		'mac,C#,X64,DefaultCPU':
 			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
@@ -163,16 +178,18 @@
 		'mac,Python,ARM64,CoreML': 'pip install onnxruntime',
 
 		'mac,objectivec,X64,DefaultCPU': "Add 'onnxruntime-objc' using CocoaPods.",
-		
+
 		'mac,objectivec,ARM64,DefaultCPU': "Add 'onnxruntime-objc' using CocoaPods.",
-		
+
 		'mac,objectivec,X64,CoreML': "Add 'onnxruntime-objc' using CocoaPods.",
-		
+
 		'mac,objectivec,ARM64,CoreML': "Add 'onnxruntime-objc' using CocoaPods.",
 
-		'mac,C-API,X64,CoreML': "Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+		'mac,C-API,X64,CoreML':
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
-		'mac,C++,X64,CoreML': "Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+		'mac,C++,X64,CoreML':
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'linux,Python,X64,DefaultCPU': 'pip install onnxruntime',
 
@@ -582,7 +599,7 @@
 
 		//mac m1
 		'mac,C-API,ARM64,CoreML':
-		"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
+			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C#,ARM64,CoreML':
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
@@ -823,12 +840,9 @@
 		'ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly':
 			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
 
-		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_stable':
-			"npm install onnxruntime-web",
+		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_stable': 'npm install onnxruntime-web',
 
-		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_nightly':
-			"npm install onnxruntime-web@dev",
-
+		'ot_web,ot_on_device,ot_js,ot_X64,ot_CPU,ot_nightly': 'npm install onnxruntime-web@dev'
 	};
 	onMount(() => {
 		var supportedOperatingSystemsNew = [
@@ -1821,7 +1835,7 @@
 		Select the configuration you want to use and run the corresponding installation script.
 	</p>
 	<div>
-		<div class="tabs tabs-bordered ">
+		<div class="tabs tabs-bordered">
 			{#each tabs as tab, index}
 				<li
 					class="nav-item tab tab-lg"

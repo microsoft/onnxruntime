@@ -42,7 +42,9 @@
 	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 mx-auto">
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
-				<h2 class="card-title">Improve inference latency, throughput, memory utilization, and binary size</h2>
+				<h2 class="card-title">
+					Improve inference latency, throughput, memory utilization, and binary size
+				</h2>
 			</div>
 		</div>
 		<div class="card bg-base-300">
@@ -62,7 +64,6 @@
 				<h2 class="card-title">Deploy a classic ML Python model in a C#/C++/Java app</h2>
 			</div>
 		</div>
-		
 	</div>
 </div>
 
@@ -79,9 +80,8 @@
 			<div class="card bg-base-300">
 				<div class="card-body items-center text-center">
 					<h2 class="card-title">Image Classification</h2>
-					This example app uses image classification to continuously classify the objects
-					detected from the device's camera in real-time and displays the most probable inference results
-					on the screen.
+					This example app uses image classification to continuously classify the objects detected from
+					the device's camera in real-time and displays the most probable inference results on the screen.
 					<div class="card-actions mt-auto mb-2 justify-center">
 						<a
 							href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/mobile/examples/image_classification/android"
@@ -93,7 +93,8 @@
 			<div class="card bg-base-300">
 				<div class="card-body items-center text-center">
 					<h2 class="card-title">Speech Recognition</h2>
-					This example app uses speech recognition to transcribe speech from the audio recorded by the device.
+					This example app uses speech recognition to transcribe speech from the audio recorded by the
+					device.
 					<div class="card-actions mt-auto mb-2 justify-center">
 						<!-- <a
 							href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/mobile/examples/speech_recognition/android"
@@ -109,9 +110,9 @@
 			<div class="card bg-base-300">
 				<div class="card-body items-center text-center">
 					<h2 class="card-title">Object Detection</h2>
-					This example app uses object detection to continuously detect the objects in the
-					frames seen by the iOS device's back camera and display the detected object's bounding boxes,
-					detected class, and corresponding inference confidence.
+					This example app uses object detection to continuously detect the objects in the frames seen
+					by the iOS device's back camera and display the detected object's bounding boxes, detected
+					class, and corresponding inference confidence.
 					<div class="card-actions mt-auto mb-2 justify-center">
 						<a
 							href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/mobile/examples/object_detection/android"
@@ -143,8 +144,7 @@
 		</div>
 		<a
 			href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile"
-			class="text-2xl text-blue-500"
-			>See more examples of ONNX Runtime Mobile on GitHub. →</a
+			class="text-2xl text-blue-500">See more examples of ONNX Runtime Mobile on GitHub. →</a
 		>
 	</div>
 </div>
@@ -155,7 +155,9 @@
 			<br /><br />
 			<p class="text-xl">
 				ONNX Runtime Web allows JavaScript developers to run and deploy machine learning models in
-				browsers, which provides cross-platform portability with a common implementation. This can simplify the distribution experience as it avoids additional libraries and driver installations.
+				browsers, which provides cross-platform portability with a common implementation. This can
+				simplify the distribution experience as it avoids additional libraries and driver
+				installations.
 			</p>
 			<br />
 			<a href="https://www.youtube.com/watch?v=vYzWrT3A7wQ" class="btn btn-primary"
@@ -170,7 +172,8 @@
 		<h1 class="text-3xl">Examples</h1>
 		<div class="grid gap-10 grid-cols-1 md:grid-cols-2">
 			<div class="">
-				<p><br/>
+				<p>
+					<br />
 					<b>ONNX Runtime Web Demo</b> is an interactive demo portal that showcases live use of ONNX
 					Runtime Web in VueJS. View these examples to experience the power of ONNX Runtime Web.
 				</p>
@@ -235,7 +238,8 @@
 			<div class="card bg-base-200">
 				<div class="card-body items-center text-center">
 					<h2 class="card-title">Natural Language Processing (NLP)</h2>
-					This example demonstrates how to create custom Excel functions to implement BERT NLP models with ONNX Runtime Web to enable deep learning in spreadsheet tasks.
+					This example demonstrates how to create custom Excel functions to implement BERT NLP models
+					with ONNX Runtime Web to enable deep learning in spreadsheet tasks.
 					<div class="card-actions mt-auto mb-2 justify-center">
 						<a
 							href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper"
@@ -257,7 +261,10 @@
 		<div class="col-span-2">
 			<h1 class="text-4xl">On-Device Training</h1>
 			<br /><br />
-			<p class="text-xl">ONNX Runtime on-device training extends the Inference ecosystem to leverage data on the device to train models.</p>
+			<p class="text-xl">
+				ONNX Runtime on-device training extends the Inference ecosystem to leverage data on the
+				device to train models.
+			</p>
 			<br />
 			<a href="./training#on-device-training" class="btn btn-primary"
 				>Learn more about on-device training →</a

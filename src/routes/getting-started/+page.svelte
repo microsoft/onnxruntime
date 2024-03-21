@@ -14,9 +14,7 @@
 <div class="container mx-auto px-10 my-10">
 	<h1 class="text-4xl pb-4">Get Started</h1>
 	<h1 class="text-2xl pb-4">Installation Instructions</h1>
-	<div class="lg:hidden">
-		The installation table is visible on desktop only.
-	</div>
+	<div class="lg:hidden">The installation table is visible on desktop only.</div>
 	<div class="hidden lg:grid">
 		<Table />
 	</div>
@@ -31,10 +29,14 @@
 	<div class="grid grid-cols-2 lg:grid-cols-3">
 		<div class="col-span-2">
 			<h1 class="text-4xl pb-4">GitHub</h1>
-			If you are interested in joining the ONNX Runtime open source community, you might want to join us on GitHub where you can
-			interact with other users and developers, participate in <a href="https://github.com/microsoft/onnxruntime/discussions" class="text-blue-500">discussions</a>, and get help with any
-			<a href="https://github.com/microsoft/onnxruntime/issues" class="text-blue-500">issues</a> you encounter. You can also contribute to the project by reporting bugs, suggesting features,
-			or submitting pull requests.
+			If you are interested in joining the ONNX Runtime open source community, you might want to join
+			us on GitHub where you can interact with other users and developers, participate in<a
+				href="https://github.com/microsoft/onnxruntime/discussions"
+				class="text-blue-500">discussions</a
+			>, and get help with any
+			<a href="https://github.com/microsoft/onnxruntime/issues" class="text-blue-500">issues</a> you
+			encounter. You can also contribute to the project by reporting bugs, suggesting features, or
+			submitting pull requests.
 			<div class="py-4">
 				<a href="https://github.com/microsoft/onnxruntime" class="btn btn-primary rounded-sm mr-4"
 					>ONNX Runtime GitHub →</a

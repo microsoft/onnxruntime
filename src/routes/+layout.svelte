@@ -4,14 +4,13 @@
 	import Footer from './components/footer.svelte';
 	import oneLight from 'svelte-highlight/styles/one-light';
 	import { fade } from 'svelte/transition';
-	import Analytics from './components/analytics.svelte';
 	import { page } from '$app/stores';
 	export let data;
 </script>
 
 <svelte:head>
 	{@html oneLight}
-	
+
 	<title
 		>ONNX Runtime | {data.pathname == '/'
 			? 'Home'
@@ -42,7 +41,6 @@
 	<meta property="og:url" content="https://onnxruntime.ai" />
 	<meta property="og:type" content="website" />
 </svelte:head>
-<Analytics />
 <div class="selection:bg-info">
 	{#if !$page.url.pathname.startsWith('/blogs/')}
 		<Header />

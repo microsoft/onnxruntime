@@ -48,7 +48,8 @@
 				'We are thrilled to announce the official launch of ONNX Runtime Web featuring WebGPU, which is now available in the ONNX Runtime 1.17 release.',
 			link: 'https://cloudblogs.microsoft.com/opensource/2024/02/29/onnx-runtime-web-unleashes-generative-ai-in-the-browser-using-webgpu/',
 			image: WebGPUImage,
-			imgalt: 'Comparison of ONNX Runtime Web with WebGPU EP on GPU vs. WASM EP on CPU for segment anything example'
+			imgalt:
+				'Comparison of ONNX Runtime Web with WebGPU EP on GPU vs. WASM EP on CPU for segment anything example'
 		},
 		{
 			title: 'ONNX Runtime 1.17: CUDA 12 support, Phi-2 optimizations, WebGPU, and more!',
@@ -62,8 +63,7 @@
 		{
 			title: 'Accelerating Phi-2, CodeLlama, Gemma and other Gen AI models with ONNX Runtime',
 			date: 'February 26th, 2024',
-			blurb:
-				'Improvements with ONNX Runtime for inferencing popular Gen AI models.',
+			blurb: 'Improvements with ONNX Runtime for inferencing popular Gen AI models.',
 			link: 'blogs/accelerating-phi-2',
 			image: Phi2Image,
 			imgalt: 'Phi2 float16 token generation throughput comparison'
@@ -303,7 +303,8 @@
 	];
 	let blogsCommunity = [
 		{
-			title: 'Efficient image generation with Stable Diffusion models and ONNX Runtime using AMD GPUs',
+			title:
+				'Efficient image generation with Stable Diffusion models and ONNX Runtime using AMD GPUs',
 			date: 'February 23, 2024',
 			link: 'https://rocm.blogs.amd.com/artificial-intelligence/stable-diffusion-onnx-runtime/README.html',
 			blurb:
@@ -322,11 +323,12 @@
 			blurb:
 				'During the annual Student Cluster Competition (SCC), UC San Diego undergraduate students achieved third place. Their success was fueled by optimizing performance using industry benchmarks, including the MLPerf Inference Benchmark. The seamless support for PyTorch and ONNX Runtime enabled them to port and fine-tune their code efficiently.',
 			link: 'https://www.hpcwire.com/off-the-wire/uc-san-diego-students-win-mlperf-contest-at-sc23/'
-		},	
+		},
 		{
 			title: 'Human Capital Management (HCM) - Sentence Similarity Language Model using Java',
 			date: 'December 5, 2023',
-			blurb: 'Using ONNX Runtime, the HCM team was able to deploy a sentence similarity language model using Java, demonstrating how easy it is to use with multiple languages.',
+			blurb:
+				'Using ONNX Runtime, the HCM team was able to deploy a sentence similarity language model using Java, demonstrating how easy it is to use with multiple languages.',
 			link: 'https://www.linkedin.com/pulse/hcm-sentence-similarity-language-model-using-java-jonathon-palmieri-tdlpc%3FtrackingId=CN2PPVO4Toqh8r6JsAYMIw%253D%253D/?trackingId=ByNomo0pQFKM%2F%2BWEknVs7Q%3D%3D'
 		}
 	];

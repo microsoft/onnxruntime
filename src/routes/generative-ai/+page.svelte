@@ -26,10 +26,9 @@
 			<div class="card-body">
 				<h2 class="card-title pb-4">Run Stable Diffusion outside of a Python environment</h2>
 				<div class="card-actions">
-					
 					<a
 						href="https://onnxruntime.ai/docs/tutorials/csharp/stable-diffusion-csharp.html"
-						class="btn-primary btn ">Inference Stable Diffusion →</a
+						class="btn-primary btn">Inference Stable Diffusion →</a
 					>
 				</div>
 			</div>
@@ -40,10 +39,9 @@
 					Speed up inference of Stable Diffusion on NVIDIA and AMD GPUs
 				</h2>
 				<div class="card-actions">
-					
 					<a
 						href="https://medium.com/microsoftazure/accelerating-stable-diffusion-inference-with-onnx-runtime-203bd7728540"
-						class="btn btn-primary ">Accelerate Stable Diffusion →</a
+						class="btn btn-primary">Accelerate Stable Diffusion →</a
 					>
 				</div>
 			</div>
