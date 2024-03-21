@@ -21,6 +21,7 @@ import argparse
 import logging
 import os
 import tempfile
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import coloredlogs
@@ -39,6 +40,9 @@ from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
+
+import onnxruntime
+from onnxruntime.python.tools.transformers.optimizer_utils import extract_external_data_from_model
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +99,6 @@ def optimize_by_onnxruntime(
     assert opt_level in [1, 2, 99]
     from torch import version as torch_version
 
-    import onnxruntime
-
     if (
         use_gpu
         and provider is None
@@ -130,7 +132,7 @@ def optimize_by_onnxruntime(
 
     if optimized_model_path is None:
         if isinstance(onnx_model, str):
-            path_prefix = onnx_model[:-5]  # remove .onnx suffix
+            path_prefix = str(Path(onnx_model).with_suffix(""))  # remove .onnx suffix
         else:
             path_prefix = "optimized_model"
         optimized_model_path = "{}_o{}_{}.onnx".format(path_prefix, opt_level, "gpu" if use_gpu else "cpu")
@@ -181,39 +183,19 @@ def optimize_by_onnxruntime(
         else:
             providers.append("CUDAExecutionProvider")
 
-    if isinstance(onnx_model, str):
-        onnxruntime.InferenceSession(onnx_model, sess_options, providers=providers, **kwargs)
-    elif isinstance(onnx_model, ModelProto):
-        _load_infer_session_from_modelproto(onnx_model, save_as_external_data, sess_options, providers, kwargs)
+    # For ModelProto, we need to extract external data and add them to the session options.
+    if isinstance(onnx_model, ModelProto):
+        if save_as_external_data:
+            raise ValueError("Model has external data, model path is required to load the inference session.")
+        external_names, external_values = extract_external_data_from_model(onnx_model)
+        sess_options.add_external_initializers(list(external_names), list(external_values))
+
+    # Inference session is only used to optimize the model.
+    onnxruntime.InferenceSession(onnx_model, sess_options, providers=providers, **kwargs)
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
     return optimized_model_path
-
-
-def _load_infer_session_from_modelproto(model, has_external_data, sess_options, providers, kwargs) -> None:
-    import onnxruntime
-    from onnxruntime_inference_collection import OrtValue
-    from fusion_utils import NumpyHelper
-
-    external_data = []
-    for tensor in model.graph.initializer:
-        name = tensor.name
-
-        if has_external_data:
-            raise ValueError("Model has external data, model path is required to load the inference session.")
-
-        logger.info("externalizing tensor: %s", name)
-        if tensor.HasField("raw_data"):
-            npt = NumpyHelper.to_array(tensor)
-            orv = OrtValue.ortvalue_from_numpy(npt)
-            external_data.append((name, orv))
-            tensor.name = name
-            tensor.ClearField("raw_data")
-
-    external_names, external_values = zip(*external_data)
-    sess_options.add_external_initializers(list(external_names), list(external_values))
-    onnxruntime.InferenceSession(model.SerializeToString(), sess_options=sess_options, providers=providers, **kwargs)
 
 
 def optimize_by_fusion(
@@ -222,7 +204,7 @@ def optimize_by_fusion(
     num_heads: int = 0,
     hidden_size: int = 0,
     optimization_options: Optional[FusionOptions] = None,
-):
+) -> OnnxModel:
     """Optimize Model by graph fusion logic.
 
     Note that ONNXRuntime graph optimizations (like constant folding) will not be applied. So it is better to enable
@@ -287,7 +269,7 @@ def optimize_model(
     verbose: bool = False,
     *,
     provider: Optional[str] = None,
-):
+) -> OnnxModel:
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
     ONNX Runtime has graph optimizations (https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html).
@@ -335,7 +317,7 @@ def optimize_model(
         logger.warning(f"Unsupported model type: {model_type} for optimization, directly return model.")
         return OnnxModel(load_model(input)) if isinstance(input, str) else OnnxModel(input)
 
-    (optimizer_class, _producer, default_opt_level) = MODEL_TYPES[model_type]
+    (optimizer_class, _, default_opt_level) = MODEL_TYPES[model_type]
 
     if opt_level is None:
         opt_level = default_opt_level
