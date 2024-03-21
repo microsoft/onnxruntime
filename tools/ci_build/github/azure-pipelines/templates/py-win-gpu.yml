@@ -118,7 +118,7 @@ stages:
 
           # it could be removed once there's onnx wheel for python 3.12
           - ${{ if eq(parameters.PYTHON_VERSION, '3.12') }}:
-            - task: PublishPipelineArtifacts@1
+            - task: PublishPipelineArtifact@1
               displayName: 'Publish Artifact: ONNX python 12 wheel'
               inputs:
                 targetPath: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
