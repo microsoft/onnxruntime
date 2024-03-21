@@ -78,9 +78,12 @@ stages:
               scriptSource: inline
               script: |
                 import sys
-                np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
+                np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.26'
                 import subprocess
-                subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
+                try:
+                  subprocess.check_call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version], check=True)
+                except subprocess.CalledProcessError:
+                  sys.exit(1)
               workingDirectory: '$(Build.BinariesDirectory)'
               displayName: 'Install python modules'
 
@@ -126,12 +129,12 @@ stages:
                 artifactName: onnx_py12_wheel
             - script: |
                 7z x *.whl
-              workingDirectory: '(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
+              workingDirectory: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
               displayName: 'unzip the package'
             - task: BinSkim@4
               displayName: 'Run BinSkim'
               inputs:
-                AnalyzeTargetGlob: '+:file|$(Agent.TempDirectory)\onnx\**\*.dll'
+                AnalyzeTargetGlob: '+:file|$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\**\*.dll'
 
           - template: set-nightly-build-option-variable-step.yml
 
