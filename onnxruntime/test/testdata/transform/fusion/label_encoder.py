@@ -22,7 +22,6 @@ kwargs = {}
 kwargs["opset_imports"] = opsets
 
 
-# Important: A is assumed to be from ['a'-'z']
 def generate_model(model_name):
     # Create models with consecutive label encoders
     nodes = [  # subgraph
