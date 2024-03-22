@@ -195,6 +195,7 @@ def optimize_by_onnxruntime(
         sess_options.add_external_initializers(list(external_names), list(external_values))
 
     # Inference session is only used to optimize the model.
+    onnx_model = onnx_model.SerializeToString() if isinstance(onnx_model, ModelProto) else onnx_model
     onnxruntime.InferenceSession(onnx_model, sess_options, providers=providers, **kwargs)
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
