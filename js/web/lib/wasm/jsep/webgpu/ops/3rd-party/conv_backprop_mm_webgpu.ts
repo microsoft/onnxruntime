@@ -164,17 +164,14 @@ export const createConv2DTransposeMatMulProgramInfo =
       const outWidth = isChannelsLast ? outputShape[2] : outputShape[3];
       const outHeight = isChannelsLast ? outputShape[1] : outputShape[2];
       const outChannels = isChannelsLast ? outputShape[3] : outputShape[1];
-      const isVec4 =
-          isChannelsLast ? inChannels % 4 === 0 && outChannels % 4 === 0 : outWidth % 4 === 0 && outChannels % 4 === 0;
+      // TODO: enable vec4 for NCHW
+      const isVec4 = isChannelsLast && (inChannels % 4 === 0 && inChannels % 3) && outChannels % 4 === 0;
 
       // TODO: fine tune size
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
-      const workGroupSize: [number, number, number] = isVec4 ?
-          [8, 8, 1] :
-          [(dispatchX <= 4 || dispatchY <= 4) ? 4 : 16, dispatchX > 4 && dispatchY <= 4 ? 4 : 16, 1];
-      const elementsPerThread =
-          isVec4 ? [4, 4, 1] : [dispatchX <= 4 ? 1 : 4, dispatchX > 4 && dispatchY <= 4 ? 1 : 4, 1];
+      const workGroupSize: [number, number, number] = [8, 8, 1];
+      const elementsPerThread = dimAOuter <= 8 ? [4, 1, 1] : [4, 4, 1];
       const dispatch = [
         Math.ceil(dispatchX / workGroupSize[0] / elementsPerThread[0]),
         Math.ceil(dispatchY / workGroupSize[1] / elementsPerThread[1]),
