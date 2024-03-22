@@ -83,7 +83,7 @@ module.exports = {
     'no-caller': 'error',
     'no-cond-assign': 'error',
     'no-console': 'error',
-    'no-constant-condition': 'error',
+    'no-constant-condition': ['error', { 'checkLoops': false }],
     'no-control-regex': 'error',
     'no-debugger': 'error',
     'no-duplicate-case': 'error',

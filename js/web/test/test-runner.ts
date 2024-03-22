@@ -159,7 +159,8 @@ async function initializeSession(
     if (preloadModelData) {
       session = await ort.InferenceSession.create(preloadModelData, sessionConfig);
     } else {
-      session = await ort.InferenceSession.create(modelFilePath, sessionConfig);
+      const modelData = await readFile(modelFilePath);
+      session = await ort.InferenceSession.create(modelData, sessionConfig);
     }
   } catch (e) {
     Logger.error(
