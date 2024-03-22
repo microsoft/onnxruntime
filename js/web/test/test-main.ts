@@ -19,49 +19,7 @@ if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => tes
 }
 
 // set flags
-const options = ORT_WEB_TEST_CONFIG.options;
-if (options.debug !== undefined) {
-  ort.env.debug = options.debug;
-}
-if (options.globalEnvFlags) {
-  const flags = options.globalEnvFlags;
-  if (flags.logLevel !== undefined) {
-    ort.env.logLevel = flags.logLevel;
-  }
-  if (flags.webgl?.contextId !== undefined) {
-    ort.env.webgl.contextId = flags.webgl.contextId;
-  }
-  if (flags.webgl?.matmulMaxBatchSize !== undefined) {
-    ort.env.webgl.matmulMaxBatchSize = flags.webgl.matmulMaxBatchSize;
-  }
-  if (flags.webgl?.textureCacheMode !== undefined) {
-    ort.env.webgl.textureCacheMode = flags.webgl.textureCacheMode;
-  }
-  if (flags.webgl?.pack !== undefined) {
-    ort.env.webgl.pack = flags.webgl.pack;
-  }
-  if (flags.webgl?.async !== undefined) {
-    ort.env.webgl.async = flags.webgl.async;
-  }
-  if (flags.wasm?.numThreads !== undefined) {
-    ort.env.wasm.numThreads = flags.wasm.numThreads;
-  }
-  if (flags.wasm?.simd !== undefined) {
-    ort.env.wasm.simd = flags.wasm.simd;
-  }
-  if (flags.wasm?.proxy !== undefined) {
-    ort.env.wasm.proxy = flags.wasm.proxy;
-  }
-  if (flags.wasm?.initTimeout !== undefined) {
-    ort.env.wasm.initTimeout = flags.wasm.initTimeout;
-  }
-  if (flags.webgpu?.profilingMode !== undefined) {
-    ort.env.webgpu.profiling = {mode: flags.webgpu.profilingMode};
-  }
-  if (flags.webgpu?.validateInputContent !== undefined) {
-    ort.env.webgpu.validateInputContent = flags.webgpu.validateInputContent;
-  }
-}
+Object.assign(ort.env, ORT_WEB_TEST_CONFIG.options.globalEnvFlags);
 
 // Set logging configuration
 for (const logConfig of ORT_WEB_TEST_CONFIG.log) {

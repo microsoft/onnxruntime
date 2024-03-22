@@ -188,7 +188,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         This is an abstract method and must be overridden by a concrete implementation.
         This is the only method that the user should call on a concrete instance of the ExecutionManager
         All other methods are internal"""
-        pass
 
     def _build_graph(self, config):
         if self._runtime_options.use_static_shape:
@@ -412,9 +411,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                     # From some PyTorch version, autograd_inlining is a valid argument.
                     # We allow it to be True if custom autograd function is disabled (where autograd.Function
                     # anyway is not supported in ONNX until it can be inlined).
-                    required_export_kwargs[
-                        "autograd_inlining"
-                    ] = not self._runtime_options.enable_custom_autograd_function
+                    required_export_kwargs["autograd_inlining"] = (
+                        not self._runtime_options.enable_custom_autograd_function
+                    )
 
                 invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
 
@@ -681,11 +680,15 @@ class GraphExecutionManager(GraphExecutionInterface):
                     )
 
                 if self._runtime_options.enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
-                    graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
-                    self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
-                    self._runtime_options.embed_sparsity_ratio = ",".join(
-                        [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
-                    )
+                    if detected_device.type == "cuda":
+                        # Embedding sparsity optimization is only supported on CUDA devices.
+                        graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
+                        self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
+                        self._runtime_options.embed_sparsity_ratio = ",".join(
+                            [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
+                        )
+                    else:
+                        self._logger.info("Embedding sparsity-based optimization is not supported on non-CUDA devices.")
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
@@ -750,6 +753,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
+        elif (
+            self._runtime_options.memory_optimization_level
+            == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE
+        ):
+            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER_WITH_COMPROMISE"
         else:
             opt_config_to_display = self._runtime_options.memory_optimizer_config
 
@@ -762,7 +770,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
                     f"Optimization Config: [{opt_config_to_display}]"
                     if len(self._runtime_options.memory_optimizer_config) > 0
-                    else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+                    else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
                 ),
             ],
         )

@@ -1382,8 +1382,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
 
 constexpr const char* MoE_ver1_doc = R"DOC(
       Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
-      GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, and Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
-      usually uses top 32 experts.
+      GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
+      usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
       )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
@@ -1391,12 +1391,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
                                 .SetDoc(MoE_ver1_doc)
                                 .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
                                 .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Input(0, "input", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
                                 .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
                                 .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
-                                .Input(3, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size)", "T")
-                                .Input(4, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+                                .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+                                .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size)", "T")
                                 .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
+                                .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, hidden_size, inter_size)", "T", OpSchema::Optional)
+                                .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
                                 .Output(0, "output", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
@@ -3343,22 +3346,23 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
      And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
   3. Input B's scale and zero point are specified by input scales and zero_points.
 
-Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
-- n_blocks_per_col = (K + block_size - 1) / block_size
-- blob_size = block_size / 8 * bits
+  Input is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+  - n_blocks_per_col = (K + block_size - 1) / block_size
+  - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
+  For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
+    - for 2,4,8 bits, 4x2bit,2x4bit,1x8bit are stored in one uint8_t.
+        4bit example:
+        |.|.|.|.| .|.|.|.| =uint8_t (2x4bit)
+    - for 3,5,6,7 bits, 32x3bit,32x5bit,16x6bit,32x7bit are stored in 12xuint8_t,20xuint8_t,12xuint8_t,28xuint8_t separately. no bits are wasted.
+        3bit example:
+        |.|.|. |.|.|. |.|.|. = 9bit, which across 2 uint8_t, the highest bit for the second uint8_t is used.
+  The last uint_8 may have some bits unused.
 
-  For a block blob. It is stored in format:
-  struct Blob {
-    uint8 one_bits[(bits & 0x1) * 1 * block_size / 8];  // highest 1 bit for 3, 5, 7 bits quantization
-    uint8 two_bits[(bits & 0x2) * 2 * block_size / 8];  // high 2 bits for 2, 6, 7 bits quantization
-    uint8 four_bits[(bits & 0x4) * 4 * block_size / 8]; // low 4 bits for 4, 5, 6 bits quantization
-  }
 
 Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
-Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored as one unit8_t. If bits > 4, one zero point is stored with one unit8_t. Thus, its shape is:
-  - [(N * n_blocks_per_col + 1) / 2] if bits <=4
-  - [N * n_blocks_per_col] if bits > 4
-
+Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
+  - [CeilDiv((N * n_blocks_per_col + 1) *bits, 8)]
+  If zero_points has same type as A, it's not packed and has the same shape as Scales.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
@@ -3377,12 +3381,15 @@ Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored
             "type T1.",
             AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized", "T1")
-      .Input(1, "B", "1-dimensional data blob", "T2")
+      .Input(1, "B", "1 or 2 dimensional data blob", "T2")
       .Input(2, "scales", "quantization scale", "T1")
-      .Input(3, "zero_points", "quantization zero points", "T2", OpSchema::Optional)
+      .Input(3, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
+      .Input(4, "g_idx", "group_idx", "T4", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
-      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeConstraint("T2", {"tensor(uint8)", "tensor(int32)"}, "Constrain quantized weight types to uint8/int32.")
+      .TypeConstraint("T3", {"tensor(uint8)", "tensor(int32)", "tensor(float16)", "tensor(float)"}, "Constrain quantized zero point types to uint8/int32/float16/float.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "the index tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -3470,6 +3477,8 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
               /*min_arity*/ 1)
       .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
+      .Attr("cpu_input_args", "CPU input argument indices.", AttributeProto::INTS, false)
+      .Attr("cpu_output_args", "CPU output argument indices.", AttributeProto::INTS, false)
       .TypeConstraint("T", OpSchema::all_tensor_types_ir4(),
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif

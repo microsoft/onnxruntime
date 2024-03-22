@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "core/common/string_utils.h"
+#include "core/framework/random_seed.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
@@ -256,7 +258,8 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                                      logger));
 
   InlinedHashSet<const Node*> layer_boundary_ln_nodes;
-  FindLayerBoundaryLayerNormNodes(graph_viewer, logger, layer_boundary_ln_nodes);
+  FindLayerBoundaryLayerNormNodes(graph_viewer, logger, node_index_to_its_order_in_topological_sort_map,
+                                  yield_op_order_in_topological_sort, layer_boundary_ln_nodes);
 
   // The first pass - find the candidate subgraphs.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
@@ -284,7 +287,9 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
       memory_opt_planner.AddNodeOptimizationPlan(p_node, std::move(recompute_plan));
     }
 
-    if (can_compromise_stashed_activation) {
+    // Only detect compromise recompute when recompute is not found, in case there are multiple recompute plans
+    // for the same named activations, then user might enable those conflicting recompute plans by mistakes.
+    if (recompute_plan == nullptr && can_compromise_stashed_activation) {
       MO_LOG_DEBUG_INFO(logger, "Searching Node " + p_node->Name() + "(" + p_node->OpType() +
                                     ") for compromised recompute");
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist

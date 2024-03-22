@@ -20,6 +20,12 @@
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
 
+// Ignore CUTLASS warning C4100: unreferenced formal parameter
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
+
 #include "cutlass/array.h"
 #include "cutlass/numeric_conversion.h"
 #include "cutlass/layout/matrix.h"
@@ -35,6 +41,10 @@
 #include "epilogue_helpers.h"
 #include "layout_traits_helper.h"
 #include "moe_cutlass_kernel.h"
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
@@ -149,10 +159,10 @@ void generic_moe_gemm_kernelLauncher(const T* A, const WeightType* B, const T* w
 template <typename T, typename WeightType, typename arch, typename EpilogueTag, typename ThreadblockShape,
           typename WarpShape, int Stages, typename Enable = void>
 struct dispatch_stages {
-  static void dispatch(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
-                       int64_t* total_rows_before_expert, int64_t gemm_n, int64_t gemm_k, int num_experts,
-                       CutlassGemmConfig gemm_config, int multi_processor_count, cudaStream_t stream,
-                       int* occupancy = nullptr) {
+  static void dispatch(const T* /*A*/, const WeightType* /*B*/, const T* /*weight_scales*/, const T* /*biases*/,
+                       T* /*C*/, int64_t* /*total_rows_before_expert*/, int64_t /*gemm_n*/, int64_t /*gemm_k*/,
+                       int /*num_experts*/, CutlassGemmConfig /*gemm_config*/, int /*multi_processor_count*/,
+                       cudaStream_t /*stream*/, [[maybe_unused]] int* occupancy = nullptr) {
     std::string err_msg = "Cutlass fpA_intB gemm. Not instantiates for arch " +
                           std::to_string(arch::kMinComputeCapability) + " with stages set to " + std::to_string(Stages);
     ORT_THROW("[FT Error][dispatch_stages::dispatch] " + err_msg);
@@ -221,9 +231,10 @@ template <
     typename T, typename WeightType, typename arch, typename EpilogueTag,
     typename std::enable_if<!std::is_same<T, float>::value && std::is_same<T, WeightType>::value>::type* = nullptr>
 void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
-                                  int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                                  int num_experts, CutlassGemmConfig gemm_config, int sm_version,
-                                  int multi_processor_count, cudaStream_t stream, int* occupancy = nullptr) {
+                                  int64_t* total_rows_before_expert, int64_t /*total_rows*/,
+                                  int64_t gemm_n, int64_t gemm_k, int num_experts, CutlassGemmConfig gemm_config,
+                                  int /*sm_version*/, int multi_processor_count, cudaStream_t stream,
+                                  int* occupancy = nullptr) {
   switch (gemm_config.tile_config) {
     case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<32, 128, 64>,
@@ -300,8 +311,8 @@ void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weig
 template <typename T, typename WeightType, typename arch, typename EpilogueTag,
           typename std::enable_if<std::is_same<T, float>::value>::type* = nullptr>
 void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
-                                  int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                                  int num_experts, CutlassGemmConfig gemm_config, int sm_version,
+                                  int64_t* total_rows_before_expert, int64_t /*total_rows*/, int64_t gemm_n,
+                                  int64_t gemm_k, int num_experts, CutlassGemmConfig gemm_config, int /*sm_version*/,
                                   int multi_processor_count, cudaStream_t stream, int* occupancy = nullptr) {
   switch (gemm_config.tile_config) {
     case CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8:
@@ -418,11 +429,47 @@ void MoeGemmRunner<T, WeightType>::moe_gemm_bias_act(const T* A, const WeightTyp
 }
 
 template <typename T, typename WeightType>
-void MoeGemmRunner<T, WeightType>::moe_gemm(const T* A, const WeightType* B, const T* weight_scales, T* C,
-                                            int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n,
-                                            int64_t gemm_k, int num_experts, cudaStream_t stream) {
-  run_gemm<EpilogueOpNoBias>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
+void MoeGemmRunner<T, WeightType>::moe_gemm_act(const T* A, const WeightType* B, const T* weight_scales,
+                                                T* C, int64_t* total_rows_before_expert, int64_t total_rows,
+                                                int64_t gemm_n, int64_t gemm_k, int num_experts,
+                                                ActivationType activation_type, cudaStream_t stream) {
+  switch (activation_type) {
+    case ActivationType::Relu:
+      run_gemm<EpilogueOpNoBiasReLU>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n,
+                                     gemm_k, num_experts, stream);
+      break;
+    case ActivationType::Gelu:
+      run_gemm<EpilogueOpNoBiasFtGelu>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n,
+                                       gemm_k, num_experts, stream);
+      break;
+    case ActivationType::Silu:
+      run_gemm<EpilogueOpNoBiasSilu>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n,
+                                     gemm_k, num_experts, stream);
+      break;
+    case ActivationType::Identity:
+      run_gemm<EpilogueOpNoBias>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
+                                 num_experts, stream);
+      break;
+    case ActivationType::InvalidType:
+      ORT_THROW("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
+      break;
+    default: {
+      ORT_THROW("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
+    }
+  }
+}
+
+template <typename T, typename WeightType>
+void MoeGemmRunner<T, WeightType>::moe_gemm(const T* A, const WeightType* B, const T* weight_scales, const T* biases,
+                                            T* C, int64_t* total_rows_before_expert, int64_t total_rows,
+                                            int64_t gemm_n, int64_t gemm_k, int num_experts, cudaStream_t stream) {
+  if (biases != nullptr) {
+    run_gemm<EpilogueOpBias>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
                              num_experts, stream);
+  } else {
+    run_gemm<EpilogueOpNoBias>(A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
+                               num_experts, stream);
+  }
 }
 
 }  // namespace ort_fastertransformer
