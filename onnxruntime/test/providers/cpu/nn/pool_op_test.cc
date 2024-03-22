@@ -926,7 +926,6 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.SetOutputTolerance(0.0001f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -995,7 +994,7 @@ TEST(PoolTest, AveragePool_19_dilation_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+           {kCudaExecutionProvider,
             kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
 }
 
@@ -1405,7 +1404,7 @@ TEST(PoolTest, LpPool) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 
 // test data generated with lp_pool_test_generator.py
@@ -1438,7 +1437,7 @@ TEST(PoolTest, LpPool1d) {
       // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_network_definition.html#a94f434942252e6d98ac17705c06ce060
       // TensorRT does not support 1d pooling
       test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-               {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+               {kCudaExecutionProvider, kTensorrtExecutionProvider});
       y_count++;
     }
 }
@@ -1470,7 +1469,7 @@ TEST(PoolTest, LpPool2d) {
       test.AddAttribute("kernel_shape", kernel_sizes[kernel_size_count]);
 
       test.AddOutput<float>("Y", y_sizes[y_count], ys[y_count]);
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
       y_count++;
     }
 }
@@ -1489,7 +1488,7 @@ TEST(PoolTest, LpPoolCeilMode) {
   // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_network_definition.html#a94f434942252e6d98ac17705c06ce060
   // TensorRT does not support 1d pooling
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, GlobalLpPool) {
@@ -1744,7 +1743,7 @@ TEST(PoolTest, GlobalLpPool) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 
 TEST(PoolTest, MaxPoolDimWithZeroForN) {
