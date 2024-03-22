@@ -396,10 +396,6 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   const globalEnvFlags = parseGlobalEnvFlags(args);
 
-  if (backend.includes('webnn') && !globalEnvFlags.wasm!.proxy) {
-    throw new Error('Backend webnn requires flag "wasm-enable-proxy" to be set to true.');
-  }
-
   // Options:
   // --log-verbose=<...>
   // --log-info=<...>

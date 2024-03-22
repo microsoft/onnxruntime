@@ -49,8 +49,9 @@ const createLayerNormProgramInfo =
       const components = getMaxComponents(normSize);
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: normCount}, {type: 'float32', data: normSize},
-        {type: 'uint32', data: Math.floor(normSize / components)}, {type: 'float32', data: attributes.epsilon}
+        {type: DataType.uint32, data: normCount}, {type: DataType.float, data: normSize},
+        {type: DataType.uint32, data: Math.floor(normSize / components)},
+        {type: DataType.float, data: attributes.epsilon}
       ];
       if (bias) {
         inputDependencies.push('type');
@@ -84,28 +85,28 @@ const createLayerNormProgramInfo =
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.norm_count')}
     let offset = global_idx * uniforms.norm_size_vectorized;
-    var meanVector = ${fillVector('f32', components)};
-    var meanSquareVector = ${fillVector('f32', components)};
+    var mean_vector = ${fillVector('f32', components)};
+    var mean_square_vector = ${fillVector('f32', components)};
 
     for (var h: u32 = 0u; h < uniforms.norm_size_vectorized; h++) {
       let value = ${castToF32(dataType, components, 'x[h + offset]')};
-      meanVector += value;
-      meanSquareVector += value * value;
+      mean_vector += value;
+      mean_square_vector += value * value;
     }
-    let mean = ${sumVector('meanVector', components)} / uniforms.norm_size;
-    let invStdDev =
-        inverseSqrt(${sumVector('meanSquareVector', components)} / uniforms.norm_size - mean * mean + uniforms.epsilon);
+    let mean = ${sumVector('mean_vector', components)} / uniforms.norm_size;
+    let inv_std_dev = inverseSqrt(${
+            sumVector('mean_square_vector', components)} / uniforms.norm_size - mean * mean + uniforms.epsilon);
 
     for (var j: u32 = 0; j < uniforms.norm_size_vectorized; j++) {
       let f32input = ${castToF32(dataType, components, 'x[j + offset]')};
       let f32scale = ${castToF32(dataType, components, 'scale[j]')};
-      output[j + offset] = ${variables[0].type.value}((f32input - mean) * invStdDev * f32scale
+      output[j + offset] = ${variables[0].type.value}((f32input - mean) * inv_std_dev * f32scale
         ${bias ? `+ ${castToF32(dataType, components, 'bias[j]')}` : ''}
       );
     }
 
     ${hasMeanDataOutput ? 'mean_data_output[global_idx] = mean' : ''};
-    ${hasInvStdOutput ? 'inv_std_output[global_idx] = invStdDev' : ''};
+    ${hasInvStdOutput ? 'inv_std_output[global_idx] = inv_std_dev' : ''};
   }`;
       };
       const outputs = [{dims: outputShape, dataType: inputs[0].dataType}];

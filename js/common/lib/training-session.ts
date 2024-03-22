@@ -11,7 +11,7 @@ export declare namespace TrainingSession {
   /**
    * Either URI file path (string) or Uint8Array containing model or checkpoint information.
    */
-  type URIorBuffer = string|Uint8Array;
+  type UriOrBuffer = string|Uint8Array;
 }
 
 /**
@@ -98,13 +98,13 @@ export interface TrainingSession {
   getParametersSize(trainableOnly: boolean): Promise<number>;
 
   /**
-   * Copies parameter values from the given array to the training state. Currently, only supporting models with
+   * Copies parameter values from the given buffer to the training state. Currently, only supporting models with
    * parameters of type Float32.
    *
-   * @param buffer - Float32 buffer containing parameters converted to a Uint8Array.
+   * @param buffer - A Uint8Array representation of Float32 parameters.
    * @param trainableOnly - True if trainable parameters only to be modified, false otherwise. Default value is true.
    */
-  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
+  loadParametersBuffer(buffer: Uint8Array, trainableOnly: boolean): Promise<void>;
 
   /**
    * Copies the model parameters to a contiguous buffer. Usually used in the context of Federated Learning.
@@ -157,19 +157,19 @@ export interface TrainingSessionCreateOptions {
   /**
    * URI or buffer for a .ckpt file that contains the checkpoint for the training model.
    */
-  checkpointState: TrainingSession.URIorBuffer;
+  checkpointState: TrainingSession.UriOrBuffer;
   /**
    * URI or buffer for the .onnx training file.
    */
-  trainModel: TrainingSession.URIorBuffer;
+  trainModel: TrainingSession.UriOrBuffer;
   /**
    * Optional. URI or buffer for the .onnx optimizer model file.
    */
-  optimizerModel?: TrainingSession.URIorBuffer;
+  optimizerModel?: TrainingSession.UriOrBuffer;
   /**
    * Optional. URI or buffer for the .onnx eval model file.
    */
-  evalModel?: TrainingSession.URIorBuffer;
+  evalModel?: TrainingSession.UriOrBuffer;
 }
 
 /**

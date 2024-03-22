@@ -38,7 +38,6 @@ export class ProgramManager {
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
     this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2);
-    computePassEncoder.setPipeline(buildArtifact.computePipeline);
     const entries = [];
     for (const input of inputs) {
       entries.push({binding: entries.length, resource: {buffer: input.buffer}});
@@ -51,8 +50,20 @@ export class ProgramManager {
     }
     const bindGroup = device.createBindGroup(
         {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
-    computePassEncoder.setBindGroup(0, bindGroup);
 
+    if (this.backend.sessionStatus === 'capturing') {
+      const commandInfo = {
+        kernelId: this.backend.currentKernelId!,
+        computePipeline: buildArtifact.computePipeline,
+        bindGroup,
+        dispatchGroup
+      };
+      const sessionCommandList = this.backend.capturedCommandList.get(this.backend.currentSessionId!);
+      sessionCommandList!.push(commandInfo);
+    }
+
+    computePassEncoder.setPipeline(buildArtifact.computePipeline);
+    computePassEncoder.setBindGroup(0, bindGroup);
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
     this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2 + 1);
     this.backend.pendingDispatchNumber++;

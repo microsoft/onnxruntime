@@ -9,9 +9,11 @@
 #include "core/providers/providers.h"
 
 namespace onnxruntime {
+struct SessionOptions;
 
 struct JsProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options,
+                                                           const SessionOptions* session_options);
 };
 
 }  // namespace onnxruntime

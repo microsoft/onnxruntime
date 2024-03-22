@@ -41,6 +41,7 @@ Do not modify directly.*
 | Erf | ai.onnx(9-12,13+) |  |
 | Exp | ai.onnx(6-12,13+) |  |
 | Expand | ai.onnx(8-12,13+) |  |
+| FastGelu | com.microsoft(1+) |  |
 | Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
 | FusedConv | com.microsoft(1+) |  |
@@ -52,6 +53,7 @@ Do not modify directly.*
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | Greater | ai.onnx(7-8,9-12,13+) |  |
 | GreaterOrEqual | ai.onnx(12-15,16+) |  |
+| HardSigmoid | ai.onnx(6+) |  |
 | If | ai.onnx(1-10,11-12,13-18,19+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(17+) |  |
@@ -60,6 +62,7 @@ Do not modify directly.*
 | LessOrEqual | ai.onnx(12-15,16+) |  |
 | Log | ai.onnx(6-12,13+) |  |
 | MatMul | ai.onnx(1-12,13+) |  |
+| MatMulNBits | com.microsoft(1+) |  |
 | MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(1-7,8-9,10,11,12+) | need perf optimization; need implementing activation |
 | MemcpyFromHost | ai.onnx(1+) |  |
 | MemcpyToHost | ai.onnx(1+) |  |

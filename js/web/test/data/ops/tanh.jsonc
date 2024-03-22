@@ -1,0 +1,26 @@
+[
+  {
+    "name": "tanh with no attributes",
+    "operator": "Tanh",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[2,4]",
+        "inputs": [
+          {
+            "data": [-1000, -1, 0, 0.1, 0.2, 0.3, 0.4, 1000],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [-1, -0.761594, 0, 0.099668, 0.197375, 0.291313, 0.379949, 1],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

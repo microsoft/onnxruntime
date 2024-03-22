@@ -155,9 +155,9 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   ];
 
   const programUniforms: ProgramUniform[] = [
-    {type: 'uint32', data: outputSize}, {type: 'uint32', data: starts}, {type: 'int32', data: signs},
-    {type: 'uint32', data: steps}, ...createTensorShapeVariables(inputs[0].dims),
-    ...createTensorShapeVariables(outputShape)
+    {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: starts},
+    {type: DataType.int32, data: signs}, {type: DataType.uint32, data: steps},
+    ...createTensorShapeVariables(inputs[0].dims, outputShape)
   ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `

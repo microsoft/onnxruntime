@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 2) {
@@ -49,15 +49,9 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
   const components = dataType === DataType.bool ? 4 : 1;
   const outputSize = Math.ceil(ShapeUtil.size(outputShape) / components);
 
-  const enableInputShapeUniform = enableShapesUniforms(inputShape.length);
-  const enableOutputShapeUniform = enableShapesUniforms(outputShape.length);
-
-
   const getShaderSource = (shaderHelper: ShaderHelper) => {
-    const inputShapeOrRank = enableInputShapeUniform ? inputShape.length : inputShape;
-    const outputShapeOrRank = enableOutputShapeUniform ? outputShape.length : outputShape;
-    const input = inputVariable('input', dataType, inputShapeOrRank, components);
-    const output = outputVariable('output', dataType, outputShapeOrRank, components);
+    const input = inputVariable('input', dataType, inputShape.length, components);
+    const output = outputVariable('output', dataType, outputShape.length, components);
     let assignment: string;
     if (dataType === DataType.bool) {
       const singleAssignment = (resStr: string, x: number, typeCast = '') => `
@@ -90,16 +84,11 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
     ${assignment}`;
   };
 
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
-  if (enableInputShapeUniform) {
-    programUniforms.push(...createTensorShapeVariables(inputShape));
-  }
-  if (enableOutputShapeUniform) {
-    programUniforms.push(...createTensorShapeVariables(outputShape));
-  }
+  const programUniforms: ProgramUniform[] =
+      [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputShape, outputShape)];
   return {
     name: 'Expand',
-    shaderCache: {hint: `${outputShape.length}`, inputDependencies: [enableInputShapeUniform ? 'rank' : 'dims']},
+    shaderCache: {hint: `${outputShape.length}`, inputDependencies: ['rank']},
     getShaderSource,
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],

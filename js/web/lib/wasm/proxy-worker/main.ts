@@ -103,7 +103,7 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
                   } else {
                     postMessage(
                         {type, out: outputs} as OrtWasmMessage,
-                        extractTransferableBuffers(outputs as SerializableTensorMetadata[]));
+                        extractTransferableBuffers([...inputs, ...outputs] as SerializableTensorMetadata[]));
                   }
                 },
                 err => {

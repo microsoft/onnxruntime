@@ -3,7 +3,7 @@
 
 import {Tensor} from './tensor.js';
 
-type NonTensorType = never;
+export type NonTensorType = never;
 
 /**
  * Type OnnxValue Represents both tensors and non-tensors value for model's inputs/outputs.

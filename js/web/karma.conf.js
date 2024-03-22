@@ -86,11 +86,11 @@ module.exports = function(config) {
     hostname,
     listenAddress,
     customLaunchers: {
-      // the following flags are used to make sure Edge on CI agents to initialize WebGPU correctly.
+      // Chromium-based browsers
       EdgeTest: {base: 'Edge', flags: chromiumFlags},
       ChromeTest: {base: 'Chrome', flags: chromiumFlags},
-      ChromeTestHeadless: {base: 'ChromeHeadless', flags: chromiumFlags},
       ChromeCanaryTest: {base: 'ChromeCanary', flags: chromiumFlags},
+
       //
       // ==== BrowserStack browsers ====
       //

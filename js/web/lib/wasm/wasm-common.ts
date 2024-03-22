@@ -3,6 +3,12 @@
 
 import {Tensor} from 'onnxruntime-common';
 
+// a dummy type declaration for Float16Array in case any polyfill is available.
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
+  const Float16Array: any;
+}
+
 // This file includes common definitions. They do NOT have dependency on the WebAssembly instance.
 
 /**
@@ -117,7 +123,8 @@ export const tensorTypeToTypedArrayConstructor = (type: Tensor.Type): Float32Arr
     Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
       switch (type) {
         case 'float16':
-          return Uint16Array;
+          // allow Float16Array polyfill.
+          return typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;
         case 'float32':
           return Float32Array;
         case 'uint8':
@@ -169,7 +176,8 @@ export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'erro
  * Check whether the given tensor type is supported by GPU buffer
  */
 export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuBufferDataTypes => type === 'float32' ||
-    type === 'int32' || type === 'int64' || type === 'bool' || type === 'float16' || type === 'uint32';
+    type === 'float16' || type === 'int32' || type === 'int64' || type === 'uint32' || type === 'uint8' ||
+    type === 'bool';
 
 /**
  * Map string data location to integer value

@@ -135,7 +135,7 @@ export declare namespace Tensor {
   /**
    * supported data types for constructing a tensor from a WebGPU buffer
    */
-  export type GpuBufferDataTypes = 'float32'|'float16'|'int32'|'int64'|'uint32'|'bool';
+  export type GpuBufferDataTypes = 'float32'|'float16'|'int32'|'int64'|'uint32'|'uint8'|'bool';
 
   /**
    * represent where the tensor data is stored
@@ -160,7 +160,7 @@ export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<T
 /**
  * type TensorConstructor defines the constructors of 'Tensor' to create CPU tensor instances.
  */
-export interface TensorConstructor {
+export interface TensorConstructor extends TensorFactory {
   // #region CPU tensor - specify element type
   /**
    * Construct a new string tensor object from the given type, data and dims.
@@ -326,4 +326,4 @@ export interface TensorConstructor {
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export const Tensor = TensorImpl as (TensorConstructor & TensorFactory);
+export const Tensor = TensorImpl as TensorConstructor;
