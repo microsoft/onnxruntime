@@ -196,7 +196,7 @@ stages:
           workingDirectory: '$(Build.BinariesDirectory)'
       - ${{ else }}:
         - powershell: |
-            Get-ChildItem -Path "$(Build.BinariesDirectory)/RelWithDebInfo" -Directory -Recurse | Where-Object { $_.Name -like "*.dir" } | Remove-Item -Force
+            Get-ChildItem -Path "$(Build.BinariesDirectory)/RelWithDebInfo" -Directory  | Where-Object { $_.Name.EndsWith("*.dir") } | ForEach-Object { Remove-Item $_.FullName -Force -Recurse }
             tree /f
           displayName: 'delete symbol files in RelWithDebInfo'
           workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo'
