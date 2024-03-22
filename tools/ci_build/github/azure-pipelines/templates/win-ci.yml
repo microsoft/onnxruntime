@@ -341,7 +341,7 @@ stages:
 
         - template: flex-downloadPipelineArtifact.yml
           parameters:
-            ArtifactName: "Windows_Packaging_${{ parameters.stage_name_suffix }_build_artifacts"
+            ArtifactName: "Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts"
             StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
             TargetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
