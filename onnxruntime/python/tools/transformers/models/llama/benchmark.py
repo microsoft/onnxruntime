@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 import argparse
 import datetime
 import gc
@@ -14,11 +19,12 @@ import torch
 from benchmark_helper import measure_memory, setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
-    add_io_bindings,
+    add_io_bindings_as_ortvalues,
     get_merged_sample_with_past_kv_inputs,
     get_msft_sample_inputs,
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
+    verify_ort_inputs,
 )
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
@@ -55,11 +61,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
     max_seq_len = (
         2048
         if args.benchmark_type == "ort-msft"
-        else 16384
-        if "codellama" in temp_name
-        else 4096
-        if "llama2" in temp_name
-        else 2048
+        else 16384 if "codellama" in temp_name else 4096 if "llama2" in temp_name else 2048
     )
 
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
@@ -203,6 +205,7 @@ def get_model(args: argparse.Namespace):
             torch_dtype=torch.float16 if args.use_fp16 else torch.float32,
             use_auth_token=args.auth,
             use_cache=True,
+            cache_dir=args.cache_dir,
         ).to(args.target_device)
         end_time = time.time()
 
@@ -243,7 +246,7 @@ def get_model(args: argparse.Namespace):
             decoder_file_name=decoder_file_name,
             decoder_with_past_file_name=decoder_with_past_file_name,
             use_auth_token=args.auth,
-            use_io_binding=(args.device != "cpu"),
+            use_io_binding=True,  # Large perf gain even for cpu due to avoiding output copy.
             use_merged=(True if decoder_file_name == "model.onnx" else None),
             provider=provider,
             provider_options=provider_options,
@@ -278,21 +281,25 @@ def time_fn(args, fn, inputs):
         outputs = fn(inputs)
         logger.info(outputs)
 
-    input_sync = (  # noqa: E731
-        lambda *kwargs: args.io_binding.synchronize_inputs()
+    input_sync = lambda *kwargs: (  # noqa: E731
+        args.io_binding.synchronize_inputs()
         if args.device != "cpu" and args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}  # ORT synchronize
-        else lambda *kwargs: torch.cuda.synchronize()
-        if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
-        else lambda *kwargs: None  # no-op function
-    )
+        else lambda *kwargs: (
+            torch.cuda.synchronize()
+            if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
+            else lambda *kwargs: None
+        )
+    )  # no-op function
 
-    output_sync = (  # noqa: E731
-        lambda *kwargs: args.io_binding.synchronize_outputs()
+    output_sync = lambda *kwargs: (  # noqa: E731
+        args.io_binding.synchronize_outputs()
         if args.device != "cpu" and args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}  # ORT synchronize
-        else lambda *kwargs: torch.cuda.synchronize()
-        if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
-        else lambda *kwargs: None  # no-op function
-    )
+        else lambda *kwargs: (
+            torch.cuda.synchronize()
+            if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
+            else lambda *kwargs: None
+        )
+    )  # no-op function
 
     for _ in warmup_range:
         input_sync()
@@ -444,24 +451,12 @@ def run_hf_inference(args, init_inputs, iter_inputs, model):
 
 def run_ort_inference(args, init_inputs, iter_inputs, model):
     def prepare_ort_inputs(inputs, kv_cache_ortvalues):
-        # Check that all model inputs will be provided
-        model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
-        user_inputs = set(inputs.keys())
-        missing_inputs = model_inputs - user_inputs
-        if len(missing_inputs):
-            logger.error(f"The following model inputs are missing: {missing_inputs}")
-            raise Exception("There are missing inputs to the model. Please add them and try again.")
-
-        # Remove unnecessary inputs from model inputs
-        unnecessary_inputs = user_inputs - model_inputs
-        if len(unnecessary_inputs):
-            for unnecessary_input in unnecessary_inputs:
-                logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
-                del inputs[unnecessary_input]
+        # Verify model inputs
+        inputs = verify_ort_inputs(model, inputs)
 
         # Add IO bindings for non-CPU execution providers
         if args.device != "cpu":
-            io_binding, kv_cache_ortvalues = add_io_bindings(
+            io_binding, kv_cache_ortvalues = add_io_bindings_as_ortvalues(
                 model, inputs, args.device, int(args.rank), args.use_gqa, kv_cache_ortvalues
             )
             setattr(args, "io_binding", io_binding)  # noqa: B010
@@ -612,6 +607,13 @@ def get_args(rank=0):
     parser.add_argument("--pt-num-rows", type=int, default=1000, help="Number of rows for PyTorch profiler to display")
     parser.add_argument("--verbose", default=False, action="store_true")
     parser.add_argument("--log-folder", type=str, default=os.path.join("."), help="Folder to cache log files")
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        required=True,
+        default="./model_cache",
+        help="Cache dir where Hugging Face files are stored",
+    )
 
     args = parser.parse_args()
 
@@ -662,8 +664,8 @@ def main():
 
     args.rank = rank
     args.world_size = world_size
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    config = AutoConfig.from_pretrained(args.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir)
+    config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_dir)
     target_device = f"cuda:{args.rank}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 

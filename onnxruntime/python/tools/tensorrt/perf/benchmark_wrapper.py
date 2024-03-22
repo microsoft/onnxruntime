@@ -80,9 +80,9 @@ def main():
     benchmark = is_benchmark_mode(args.running_mode)  # noqa: F405
 
     for model, model_info in models.items():
-        logger.info("\n" + "=" * 40 + "=" * len(model))  # noqa: F405
-        logger.info("=" * 20 + model + "=" * 20)  # noqa: F405
-        logger.info("=" * 40 + "=" * len(model))  # noqa: F405
+        logger.info("\n" + "=" * 40 + "=" * len(model))  # noqa: F405, G003
+        logger.info("=" * 20 + model + "=" * 20)  # noqa: F405, G003
+        logger.info("=" * 40 + "=" * len(model))  # noqa: F405, G003
 
         model_info["model_name"] = model
 

@@ -52,7 +52,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     target_shape.push_back(size_to_dimension);
     target_shape.push_back(size_from_dimension);
 
-    const auto reshape1_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "reshape1_output"));
+    const auto reshape1_output_name = model_builder.GetUniqueName(node, "reshape1_output");
     {  // Add reshape layer
       auto reshape_layer = model_builder.CreateNNLayer(node, "_Softmax_reshape1");
       *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
@@ -60,7 +60,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       *reshape_layer->mutable_output()->Add() = reshape1_output_name;
       model_builder.AddLayer(std::move(reshape_layer));
     }
-    const auto softmax_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "softmax_output"));
+    const auto softmax_output_name = model_builder.GetUniqueName(node, "softmax_output");
     {
       auto* coreml_softmaxnd = layer->mutable_softmaxnd();
       coreml_softmaxnd->set_axis(-1);

@@ -24,6 +24,9 @@ class Fusion:
         self.nodes_to_remove: list = []
         self.nodes_to_add: list = []
 
+        self._new_node_name_prefix = self.fused_op_type + "_fused_" + self.search_op_type + "_"
+        self._new_node_name_suffix = None  # int|None used to create unique node names for the fused ops.
+
     def fuse(
         self,
         node: onnx.NodeProto,
@@ -56,6 +59,18 @@ class Fusion:
             self.model.remove_unused_constant()
 
         return graph_updated
+
+    def create_unique_node_name(self):
+        prefix = self._new_node_name_prefix
+
+        if self._new_node_name_suffix is None:
+            largest_suffix: int = self.model.get_largest_node_name_suffix(prefix)
+            self._new_node_name_suffix = largest_suffix + 1
+
+        new_name = f"{prefix}{self._new_node_name_suffix!s}"
+        self._new_node_name_suffix += 1
+
+        return new_name
 
     @staticmethod
     def is_safe_to_fuse_nodes(

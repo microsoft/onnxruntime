@@ -459,8 +459,8 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
 
   void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
                                           FILE_MAP_READ,
-                                          0,
-                                          static_cast<DWORD>(mapped_offset),
+                                          static_cast<DWORD>((mapped_offset >> 32) & 0xFFFFFFFF),
+                                          static_cast<DWORD>(mapped_offset & 0xFFFFFFFF),
                                           mapped_length);
   GSL_SUPPRESS(r.11)
   mapped_memory =

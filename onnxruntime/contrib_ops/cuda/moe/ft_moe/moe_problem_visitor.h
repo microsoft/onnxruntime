@@ -276,13 +276,13 @@ struct MoeProblemVisitor<ProblemSizeHelper, ThreadblockShape, GroupScheduleMode:
     return true;
   }
 
-  static size_t get_workspace_size(const cutlass::gemm::GemmCoord* host_problem_sizes_ptr, int32_t problem_count,
-                                   int32_t block_count) {
+  static size_t get_workspace_size(const cutlass::gemm::GemmCoord* /*host_problem_sizes_ptr*/,
+                                   int32_t /*problem_count*/, int32_t /*block_count*/) {
     return 0;
   }
 
-  static void host_precompute(const cutlass::gemm::GemmCoord* host_problem_sizes_ptr, int32_t problem_count,
-                              int32_t block_count, void* host_workspace_ptr) {}
+  static void host_precompute(const cutlass::gemm::GemmCoord* /*host_problem_sizes_ptr*/, int32_t /*problem_count*/,
+                              int32_t /*block_count*/, void* /*host_workspace_ptr*/) {}
 };
 
 }  // namespace kernel

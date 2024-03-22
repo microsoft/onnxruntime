@@ -142,7 +142,7 @@ def create_onnxruntime_session(
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
     except Exception:
-        logger.error("Exception", exc_info=True)
+        logger.error("Exception", exc_info=True)  # noqa: G201
 
     return session
 
@@ -589,7 +589,7 @@ def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
             if max_usage is None:
                 return None
 
-            print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
+            logger.info(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
             if len(memory_before_test) >= 1 and len(max_usage) >= 1 and len(memory_before_test) == len(max_usage):
                 # When there are multiple GPUs, we will check the one with maximum usage.
                 max_used = 0
@@ -620,7 +620,7 @@ def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
             monitor.keep_measuring = False
             max_usage = mem_thread.result()
 
-        print(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
+        logger.info(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
         return max_usage - memory_before_test
 
 

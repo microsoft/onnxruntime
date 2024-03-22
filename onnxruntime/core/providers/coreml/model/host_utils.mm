@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/platform/env.h"
 #include "core/providers/coreml/model/host_utils.h"
 
 #import <Foundation/Foundation.h>
@@ -31,6 +32,15 @@ int32_t CoreMLVersion() {
 std::string GetTemporaryFilePath() {
   // Get temporary directory for user.
   NSURL* temporary_directory_url = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
+
+#if !defined(NDEBUG)
+  std::string path_override = Env::Default().GetEnvironmentVar(kOverrideModelOutputDirectoryEnvVar);
+  if (!path_override.empty()) {
+    NSString* ns_path_override = [NSString stringWithUTF8String:path_override.c_str()];
+    temporary_directory_url = [NSURL fileURLWithPath:ns_path_override isDirectory:YES];
+  }
+#endif
+
   // Generate a Unique file name to use.
   NSString* temporary_filename = [[NSProcessInfo processInfo] globallyUniqueString];
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #include <unordered_set>
@@ -14,6 +14,7 @@
 #include "data_ops.h"
 #include "capability.h"
 #include "utils.h"
+#include "../ov_interface.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245 5208)
@@ -36,6 +37,7 @@ namespace openvino_ep {
 std::set<std::string> ops_supported_only_in_model = {
     "Add",
     "Cast",
+    "Celu",
     "Concat",
     "ConstantOfShape",
     "DequantizeLinear",
@@ -46,6 +48,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "EyeLike",
     "GatherElements",
     "GatherND",
+    "GridSample",
     "Identity",
     "LayerNormalization",
     "Loop",
@@ -72,293 +75,171 @@ std::set<std::string> ops_supported_only_in_model = {
 std::set<std::string> ops_supported_as_function = {
     "LessOrEqual",
     "GreaterOrEqual",
-    "LayerNormalization"};
+    "LayerNormalization",
+    "Celu"};
 
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},
-    {"Abs", V_2023_0, {"NPU"}},
     {"Acos", V_2020_4, {"CPU"}},
     {"Acos", V_2022_1, {"GPU"}},
-    {"Acos", V_2023_1, {"NPU"}},
     {"Acosh", V_2020_4, {"CPU"}},
     {"Acosh", V_2022_1, {"GPU"}},
-    {"Acosh", V_2023_1, {"NPU"}},
     {"Add", V_2020_4, {"CPU", "GPU"}},
-    {"Add", V_2023_0, {"NPU"}},
     {"And", V_2020_4, {"CPU", "GPU"}},
-    {"And", V_2023_1, {"NPU"}},
     {"ArgMax", V_2020_4, {"CPU"}},
     {"ArgMax", V_2021_1, {"GPU"}},
     {"ArgMin", V_2020_4, {"CPU"}},
     {"ArgMin", V_2022_1, {"GPU"}},
     {"Asin", V_2020_4, {"CPU", "GPU"}},
-    {"Asin", V_2023_1, {"NPU"}},
     {"Asinh", V_2020_4, {"CPU", "GPU"}},
-    {"Asinh", V_2023_1, {"NPU"}},
     {"Atan", V_2020_4, {"CPU", "GPU"}},
-    {"Atan", V_2023_1, {"NPU"}},
     {"Atanh", V_2020_4, {"CPU"}},
     {"Atanh", V_2022_1, {"GPU"}},
-    {"Atanh", V_2023_1, {"NPU"}},
     {"AveragePool", V_2020_4, {"CPU", "GPU"}},
-    {"AveragePool", V_2023_0, {"NPU"}},
     {"BatchNormalization", V_2020_4, {"CPU", "GPU"}},
-    {"BatchNormalization", V_2023_0, {"NPU"}},
     {"BitShift", V_2022_1, {"CPU"}},
-    {"BitShift", V_2023_1, {"NPU"}},
     {"Cast", V_2020_4, {"CPU", "GPU"}},
-    {"Cast", V_2023_0, {"NPU"}},
-    {"CastLike", V_2023_1, {"CPU", "GPU", "NPU"}},
+    {"CastLike", V_2023_1, {"CPU", "GPU"}},
     {"Ceil", V_2020_4, {"GPU"}},
     {"Ceil", V_2021_4, {"CPU"}},
-    {"Ceil", V_2023_1, {"NPU"}},
     {"Celu", V_2022_1, {"CPU", "GPU"}},
     {"Clip", V_2020_4, {"CPU", "GPU"}},
-    {"Clip", V_2023_0, {"NPU"}},
     {"Compress", V_2023_1, {"CPU", "GPU"}},
     {"Concat", V_2020_4, {"CPU", "GPU"}},
-    {"Concat", V_2023_0, {"NPU"}},
     {"Constant", V_2020_4, {"CPU", "GPU"}},
-    {"Constant", V_2023_0, {"NPU"}},
     {"ConstantOfShape", V_2020_4, {"CPU", "GPU"}},
-    {"ConstantOfShape", V_2023_0, {"NPU"}},  // Gets mapped to broadcast op in the plugin.
     {"Conv", V_2020_4, {"CPU", "GPU"}},
-    {"Conv", V_2023_0, {"NPU"}},
     {"ConvInteger", V_2022_1, {"CPU", "GPU"}},
-    {"ConvInteger", V_2023_1, {"NPU"}},
     {"ConvTranspose", V_2020_4, {"CPU", "GPU"}},
-    {"ConvTranspose", V_2023_1, {"NPU"}},
     {"Cos", V_2020_4, {"CPU"}},
     {"Cos", V_2022_1, {"GPU"}},
-    {"Cos", V_2023_0, {"NPU"}},
     {"Cosh", V_2020_4, {"CPU"}},
     {"Cosh", V_2022_1, {"GPU"}},
-    {"Cosh", V_2023_1, {"NPU"}},
     {"CumSum", V_2022_1, {"CPU", "GPU"}},
-    {"CumSum", V_2023_0, {"NPU"}},
     {"DepthToSpace", V_2020_4, {"CPU", "GPU"}},
-    {"DepthToSpace", V_2023_0, {"NPU"}},
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
-    {"DequantizeLinear", V_2023_0, {"NPU"}},
     {"Div", V_2020_4, {"CPU", "GPU"}},
-    {"Div", V_2023_0, {"NPU"}},
     {"Dropout", V_2020_4, {"CPU", "GPU"}},
-    {"Dropout", V_2023_0, {"NPU"}},
     {"Elu", V_2020_4, {"CPU", "GPU"}},
-    {"Elu", V_2023_0, {"NPU"}},
     {"Einsum", V_2023_1, {"CPU", "GPU"}},
     {"Equal", V_2020_4, {"CPU", "GPU"}},
-    {"Equal", V_2023_0, {"NPU"}},  // Added for whisper decoder model.
     {"Erf", V_2020_4, {"CPU", "GPU"}},
-    {"Erf", V_2023_0, {"NPU"}},
     {"Exp", V_2020_4, {"CPU", "GPU"}},
-    {"Exp", V_2023_0, {"NPU"}},
     {"Expand", V_2022_1, {"CPU", "GPU"}},
-    {"Expand", V_2023_0, {"NPU"}},  // Gets mapped to broadcast op and multiply op in the plugin.
     {"EyeLike", V_2022_1, {"CPU"}},
-    {"EyeLike", V_2023_0, {"NPU"}},  // NoOP
     {"Flatten", V_2020_4, {"CPU", "GPU"}},
-    {"Flatten", V_2023_0, {"NPU"}},
     {"Floor", V_2020_4, {"CPU", "GPU"}},
-    {"Floor", V_2023_1, {"NPU"}},
     {"Gather", V_2020_4, {"CPU", "GPU"}},
-    {"Gather", V_2023_0, {"NPU"}},
     {"GatherElements", V_2022_2, {"CPU", "GPU"}},
-    {"GatherElements", V_2023_1, {"NPU"}},
     {"GatherND", V_2021_4, {"CPU", "GPU"}},
-    {"GatherND", V_2023_1, {"NPU"}},
+    {"Gelu", V_2023_1, {"CPU", "GPU"}},
     {"Gemm", V_2020_4, {"CPU", "GPU"}},
-    {"Gemm", V_2023_0, {"NPU"}},
     {"GlobalAveragePool", V_2020_4, {"CPU", "GPU"}},
-    {"GlobalAveragePool", V_2023_0, {"NPU"}},
     {"GlobalLpPool", V_2020_4, {"CPU", "GPU"}},
-    {"GlobalLpPool", V_2023_1, {"NPU"}},
     {"GlobalMaxPool", V_2022_1, {"CPU", "GPU"}},
-    {"GlobalMaxPool", V_2023_1, {"NPU"}},
     {"Greater", V_2020_4, {"CPU", "GPU"}},
-    {"Greater", V_2023_0, {"NPU"}},
     {"GreaterOrEqual", V_2022_1, {"CPU", "GPU"}},
-    {"GreaterOrEqual", V_2023_0, {"NPU"}},
     {"GridSample", V_2022_3, {"CPU"}},
     {"GridSample", V_2023_0, {"GPU"}},
-    {"GridSample", V_2023_1, {"NPU"}},
-    {"HardMax", V_2023_1, {"CPU", "GPU", "NPU"}},
+    {"HardMax", V_2023_1, {"CPU", "GPU"}},
     {"Identity", V_2020_4, {"CPU", "GPU"}},
-    {"Identity", V_2023_0, {"NPU"}},  // NoOP
     {"If", V_2022_3, {"CPU", "GPU"}},
-    {"If", V_2023_1, {"NPU"}},
     {"ImageScaler", V_2022_1, {"CPU", "GPU"}},
-    {"ImageScaler", V_2023_0, {"NPU"}},
     {"InstanceNormalization", V_2020_4, {"CPU", "GPU"}},
-    {"InstanceNormalization", V_2023_0, {"NPU"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
-    {"HardSigmoid", V_2023_1, {"NPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
+    {"LayerNormalization", V_2023_0, {"CPU", "GPU"}},
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
-    {"LeakyRelu", V_2023_0, {"NPU"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},
-    {"Less", V_2023_0, {"NPU"}},  // Added for whisper decoder model.
     {"LessOrEqual", V_2022_1, {"CPU", "GPU"}},
-    {"LessOrEqual", V_2023_0, {"NPU"}},
     {"Log", V_2020_4, {"CPU", "GPU"}},
-    {"Log", V_2023_0, {"NPU"}},
     {"LogSoftMax", V_2022_1, {"CPU", "GPU"}},
     {"Loop", V_2021_4, {"CPU", "GPU"}},
-    {"LpNormalization", V_2023_1, {"CPU", "GPU", "NPU"}},
-    {"LpPool", V_2023_1, {"CPU", "GPU", "NPU"}},
+    {"LpNormalization", V_2023_1, {"CPU", "GPU"}},
     {"LRN", V_2020_4, {"CPU", "GPU"}},
-    {"LRN", V_2023_0, {"NPU"}},
     {"LSTM", V_2020_4, {"CPU", "GPU"}},
-    {"LSTM", V_2023_1, {"NPU"}},
     {"MatMul", V_2020_4, {"CPU", "GPU"}},
-    {"MatMul", V_2023_0, {"NPU"}},
     {"MatMulInteger", V_2022_1, {"CPU"}},
-    {"MatMulInteger", V_2023_1, {"NPU"}},
     {"Max", V_2020_4, {"CPU", "GPU"}},
-    {"Max", V_2023_0, {"NPU"}},
     {"MaxPool", V_2020_4, {"CPU", "GPU"}},
-    {"MaxPool", V_2023_0, {"NPU"}},
     {"Mean", V_2020_4, {"CPU", "GPU"}},
-    {"Mean", V_2023_0, {"NPU"}},
     {"MeanVarianceNormalization", V_2022_1, {"CPU", "GPU"}},
-    {"MeanVarianceNormalization", V_2023_1, {"NPU"}},
     {"Min", V_2020_4, {"CPU", "GPU"}},
-    {"Min", V_2023_0, {"NPU"}},
     {"Mod", V_2022_1, {"CPU", "GPU"}},
     {"Mul", V_2020_4, {"CPU", "GPU"}},
-    {"Mul", V_2023_0, {"NPU"}},
     {"Neg", V_2020_4, {"CPU", "GPU"}},
-    {"Neg", V_2023_0, {"NPU"}},
     {"NonMaxSuppression", V_2021_1, {"CPU", "GPU"}},
-    {"NonMaxSuppression", V_2023_1, {"NPU"}},
     {"NonZero", V_2021_1, {"CPU"}},
     {"NonZero", V_2023_0, {"GPU"}},
     {"Not", V_2021_1, {"CPU", "GPU"}},
     {"Not", V_2020_4, {"CPU", "GPU"}},
-    {"Not", V_2023_1, {"NPU"}},
     {"OneHot", V_2020_4, {"CPU", "GPU"}},
-    {"OneHot", V_2023_1, {"NPU"}},
     {"Or", V_2022_1, {"CPU", "GPU"}},
-    {"Or", V_2023_1, {"NPU"}},
     {"Pad", V_2020_4, {"CPU", "GPU"}},
-    {"Pad", V_2023_0, {"NPU"}},
     {"Pow", V_2020_4, {"CPU", "GPU"}},
-    {"Pow", V_2023_0, {"NPU"}},
     {"PRelu", V_2020_4, {"CPU", "GPU"}},
-    {"PRelu", V_2023_0, {"NPU"}},
     {"QLinearMatMul", V_2022_3, {"CPU"}},
-    // {"QLinearMatMul", V_2023_1, {"NPU"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
-    {"QuantizeLinear", V_2023_0, {"NPU"}},
     {"RNN", V_2023_1, {"CPU", "GPU"}},
     {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
     {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
-    {"RandomNormalLike", V_2023_1, {"NPU"}},
     {"RandomNormal", V_2023_0, {"CPU", "GPU"}},
-    {"RandomNormal", V_2023_1, {"NPU"}},
     {"Range", V_2022_1, {"CPU", "GPU"}},
-    {"Range", V_2023_0, {"NPU"}},
     {"Reciprocal", V_2020_4, {"CPU", "GPU"}},
-    {"Reciprocal", V_2023_0, {"NPU"}},
     {"ReduceL1", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceL1", V_2023_1, {"NPU"}},
     {"ReduceL2", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceL2", V_2023_1, {"NPU"}},
     {"ReduceLogSum", V_2020_4, {"CPU"}},
     {"ReduceLogSum", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceLogSum", V_2023_1, {"NPU"}},
     {"ReduceLogSumExp", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceLogSumExp", V_2023_1, {"NPU"}},
     {"ReduceMax", V_2020_4, {"CPU", "GPU"}},
-    {"ReduceMax", V_2023_1, {"NPU"}},
     {"ReduceMean", V_2020_4, {"CPU", "GPU"}},
-    {"ReduceMean", V_2023_0, {"NPU"}},
     {"ReduceMin", V_2020_4, {"CPU", "GPU"}},
-    {"ReduceMin", V_2023_1, {"NPU"}},
     {"ReduceProd", V_2020_4, {"CPU"}},
     {"ReduceProd", V_2022_1, {"GPU"}},
-    {"ReduceProd", V_2023_1, {"NPU"}},
     {"ReduceSum", V_2020_4, {"CPU", "GPU"}},
-    // {"ReduceSum", V_2023_1, {"NPU"}},
     {"ReduceSumSquare", V_2020_4, {"CPU"}},
     {"ReduceSumSquare", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceSumSquare", V_2023_1, {"NPU"}},
     {"Relu", V_2020_4, {"CPU", "GPU"}},
-    {"Relu", V_2023_0, {"NPU"}},
     {"Resize", V_2020_4, {"CPU"}},
     {"Resize", V_2022_1, {"GPU"}},
-    {"Resize", V_2023_1, {"NPU"}},
     {"Reshape", V_2020_4, {"CPU", "GPU"}},
-    {"Reshape", V_2023_0, {"NPU"}},
     {"ReverseSequence", V_2022_1, {"CPU", "GPU"}},
     {"RoiAlign", V_2021_1, {"CPU", "GPU"}},
-    {"RoiAlign", V_2023_1, {"NPU"}},
     {"Round", V_2021_4, {"CPU", "GPU"}},
-    {"Round", V_2023_1, {"NPU"}},
     {"Scatter", V_2022_1, {"CPU", "GPU"}},
-    {"Scatter", V_2023_1, {"NPU"}},
     {"ScatterElements", V_2022_1, {"CPU", "GPU"}},
-    {"ScatterElements", V_2023_1, {"NPU"}},
     {"ScatterND", V_2022_1, {"CPU", "GPU"}},
-    {"ScatterND", V_2023_1, {"NPU"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
-    {"Selu", V_2023_1, {"NPU"}},
     {"Shape", V_2020_4, {"CPU", "GPU"}},
-    {"Shape", V_2023_0, {"NPU"}},
     {"Shrink", V_2022_1, {"CPU", "GPU"}},
-    {"Shrink", V_2023_0, {"NPU"}},
     {"Sigmoid", V_2020_4, {"CPU", "GPU"}},
-    {"Sigmoid", V_2023_0, {"NPU"}},
     {"Sign", V_2020_4, {"CPU"}},
     {"Sign", V_2022_1, {"GPU"}},
-    {"Sign", V_2023_0, {"NPU"}},
     {"Sin", V_2022_1, {"CPU", "GPU"}},
-    {"Sin", V_2023_0, {"NPU"}},
     {"Sinh", V_2020_4, {"CPU"}},
-    {"Sinh", V_2023_1, {"NPU"}},
     {"Size", V_2022_1, {"CPU", "GPU"}},
-    {"Size", V_2023_1, {"NPU"}},
     {"Slice", V_2020_4, {"CPU", "GPU"}},
-    {"Slice", V_2023_0, {"NPU"}},
     {"Softmax", V_2020_4, {"CPU", "GPU"}},
-    {"Softmax", V_2023_0, {"NPU"}},
     {"Softplus", V_2022_1, {"CPU", "GPU"}},
-    {"Softplus", V_2023_0, {"NPU"}},
     {"Softsign", V_2022_1, {"CPU", "GPU"}},
     {"SpaceToDepth", V_2020_4, {"CPU", "GPU"}},
-    {"SpaceToDepth", V_2023_0, {"NPU"}},
     {"Split", V_2020_4, {"CPU", "GPU"}},
-    {"Split", V_2023_0, {"NPU"}},
     {"Sqrt", V_2020_4, {"CPU", "GPU"}},
-    {"Sqrt", V_2023_0, {"NPU"}},
     {"Squeeze", V_2020_4, {"CPU", "GPU"}},
-    {"Squeeze", V_2023_0, {"NPU"}},
     {"Softsign", V_2020_4, {"CPU"}},
     {"Sub", V_2020_4, {"CPU", "GPU"}},
-    {"Sub", V_2023_0, {"NPU"}},
     {"Sum", V_2020_4, {"CPU", "GPU"}},
-    {"Sum", V_2023_0, {"NPU"}},
     {"Tan", V_2020_4, {"CPU", "GPU"}},
-    {"Tan", V_2023_1, {"NPU"}},
     {"Tanh", V_2020_4, {"CPU", "GPU"}},
-    {"Tanh", V_2023_0, {"NPU"}},
     {"ThresholdedRelu", V_2022_1, {"CPU", "GPU"}},
-    {"ThresholdedRelu", V_2023_0, {"NPU"}},
     {"Tile", V_2021_3, {"CPU", "GPU"}},
-    {"Tile", V_2023_0, {"NPU"}},
     {"Transpose", V_2020_4, {"CPU", "GPU"}},
-    {"Transpose", V_2023_0, {"NPU"}},
     {"Trilu", V_2023_0, {"CPU", "GPU"}},
-    {"Trilu", V_2023_1, {"NPU"}},
     {"TopK", V_2020_4, {"CPU", "GPU"}},
-    {"TopK", V_2023_0, {"NPU"}},
     {"Upsample", V_2020_4, {"CPU", "GPU"}},
     {"Unsqueeze", V_2020_4, {"CPU", "GPU"}},
-    {"Unsqueeze", V_2023_0, {"NPU"}},
     {"Where", V_2022_1, {"CPU", "GPU"}},
-    {"Where", V_2023_0, {"NPU"}},  // Added for whisper decoder model.
     {"Xor", V_2022_1, {"CPU", "GPU"}},
-    {"Xor", V_2023_1, {"NPU"}},
 };
 
 void DataOps::populate_types_supported() {
@@ -370,6 +251,8 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_initializer_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16));
   supported_types_initializer_.insert(
       std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
   supported_types_initializer_.insert(
@@ -388,6 +271,8 @@ void DataOps::populate_types_supported() {
   supported_types_npu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
   supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16));
+  supported_types_npu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_npu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
@@ -402,6 +287,8 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16));
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
   supported_types_cpu_.insert(
@@ -437,13 +324,12 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Equal", V_2023_0, {"GPU"}});
+  no_dimension_supported_.push_back({"Expand", V_2023_3, {"CPU"}});
   no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Gather", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Greater", V_2023_0, {"NPU"}});
   no_dimension_supported_.push_back({"Identity", V_2023_0, {"All"}});
   no_dimension_supported_.push_back({"Less", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
-  no_dimension_supported_.push_back({"Max", V_2023_0, {"NPU"}});
   no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Neg", V_2023_0, {"CPU", "GPU"}});
@@ -476,9 +362,8 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               // Abs is not supproted with INT8 or INT32 as input data type on GPU and NPU
-                               if ((device_id_.find("GPU") != std::string::npos) ||
-                                   (device_id_.find("NPU") != std::string::npos)) {
+                               // Abs is not supproted with INT8 or INT32 as input data type on GPU
+                               if ((device_id_.find("GPU") != std::string::npos)) {
                                  for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                    if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
                                            ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
@@ -706,7 +591,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"PRelu", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_0, V_2023_1, V_2023_2, V_2023_3},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
@@ -821,7 +706,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Squeeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_0, V_2023_1, V_2023_2, V_2023_3},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
@@ -836,7 +721,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2023_0, V_2023_1, V_2023_2, V_2023_3},
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -961,7 +846,7 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   } else {
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id_.find("NPU") != std::string::npos || device_id_.find("HETERO") != std::string::npos ||
+    if (device_id_.find("HETERO") != std::string::npos ||
         device_id_.find("MULTI") != std::string::npos || device_id_.find("AUTO") != std::string::npos) {
       for (auto const& var : supported_types_npu_) {
         if ((var.first <= version_id_) &&
@@ -1063,8 +948,7 @@ bool DataOps::dimension_unsupported(const Node* node) {
   return true;
 }
 
-bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string>>& op_map,
-                                const NodeIndex node_idx) {
+bool DataOps::node_is_supported(const NodeIndex node_idx) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
 
@@ -1174,37 +1058,14 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
     return false;
   }
 
-  // Check 3b
-  const auto opset = op_map.find(domain);
-  const auto op_fun = ops_supported_as_function.find(node->OpType());
-  if (opset == op_map.end()) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "Failed in Unsupported onnx model domain" << std::endl;
-    }
-#endif
-    return false;
-  }
-  if (opset->second.find(optype) == opset->second.end() && op_fun == ops_supported_as_function.end()) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "The operator is not available in OpenVINO ngraph operators list"
-                << "nor the operator is a special ONNX function"
-                << std::endl;
-    }
-#endif
-    return false;
-  }
   return true;
 }
 
 std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
-  const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer_));
-
   std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
-    if (node_is_supported(ng_supported_ops, node_idx)) {
+    if (node_is_supported(node_idx)) {
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
                                                                                     bool is_input) {

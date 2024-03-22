@@ -180,6 +180,9 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
+#if defined(USE_CUDA)
+static constexpr PATH_TYPE CUDA_GRAPH_ANNOTATION_MODEL_URI = TSTR("testdata/mul_1_dynamic.onnx");
+#endif
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
 #ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
@@ -205,7 +208,7 @@ static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/mod
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/VariedInputCustomOp.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
-static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
+static constexpr PATH_TYPE OPTIONAL_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/custom_op_variadic_io.onnx");
 static constexpr PATH_TYPE VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR(
     "testdata/custom_op_variadic_undef_io.onnx");
@@ -1079,7 +1082,7 @@ TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
   }
 }
 
-TEST(CApiTest, optional_input_output_custom_op_handler) {
+TEST(CApiTest, optional_input_custom_op_handler) {
   MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
 
   // `MyCustomOpFooBar` defines a custom op with atmost 3 inputs and the second input is optional.
@@ -1144,7 +1147,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
   {
     std::vector<const char*> input_names = {"X1", "X2"};
     ort_inputs.erase(ort_inputs.begin() + 2);  // remove the last input in the container
-    Ort::Session session(*ort_env, OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2, session_options);
+    Ort::Session session(*ort_env, OPTIONAL_INPUT_CUSTOM_OP_MODEL_URI_2, session_options);
     auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
                                    &output_name, 1);
     ASSERT_EQ(ort_outputs.size(), 1u);
@@ -1163,6 +1166,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
     }
   }
 }
+
 TEST(CApiTest, custom_op_with_attributes_handler) {
   MyCustomOpWithAttributes custom_op{onnxruntime::kCpuExecutionProvider};
 
@@ -2081,6 +2085,152 @@ TEST(CApiTest, basic_cuda_graph) {
 #undef cudaMemcpyDeviceToHost
 #endif
 }
+
+#if defined(USE_CUDA)
+struct CudaGraphInputOutputData_0 {
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  std::array<float, 3 * 2> y_values;
+  std::array<float, 3 * 2> new_x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+  std::array<float, 3 * 2> new_expected_y = {10.0f, 40.0f, 90.0f, 160.0f, 250.0f, 360.0f};
+} cg_data_0;
+
+struct CudaGraphInputOutputData_1 {
+  const std::array<int64_t, 2> x_shape = {3, 1};
+  std::array<float, 3> x_values = {1.0f, 3.0f, 5.0f};
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  std::array<float, 3 * 2> expected_y = {1.0f, 2.0f, 9.0f, 12.0f, 25.0f, 30.0f};
+
+  std::array<float, 3 * 2> y_values;
+  std::array<float, 3> new_x_values = {10.0f, 30.0f, 50.0f};
+  std::array<float, 3 * 2> new_expected_y = {10.0f, 20.0f, 90.0f, 120.0f, 250.0f, 300.0f};
+} cg_data_1;
+
+struct CudaGraphInputOutputData_2 {
+  const std::array<int64_t, 2> x_shape = {1, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f};
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 3.0f, 8.0f, 5.0f, 12.0f};
+
+  std::array<float, 3 * 2> y_values;
+  std::array<float, 3 * 2> new_x_values = {10.0f, 20.0f};
+  std::array<float, 3 * 2> new_expected_y = {10.0f, 40.0f, 30.0f, 80.0f, 50.0f, 120.0f};
+} cg_data_2;
+
+template <typename T>
+static void RunWithCudaGraphAnnotation(T& cg_data,
+                                       Ort::Session& session,
+                                       Ort::MemoryInfo& info_mem,
+                                       Ort::MemoryAllocation& input_data,
+                                       Ort::MemoryAllocation& output_data,
+                                       const char* cuda_graph_annotation) {
+  (void)cudaMemcpy(input_data.get(),
+                   cg_data.x_values.data(),
+                   sizeof(float) * cg_data.x_values.size(),
+                   cudaMemcpyHostToDevice);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_mem,
+                                                reinterpret_cast<float*>(input_data.get()),
+                                                cg_data.x_values.size(),
+                                                cg_data.x_shape.data(),
+                                                cg_data.x_shape.size());
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_mem,
+                                                reinterpret_cast<float*>(output_data.get()),
+                                                cg_data.expected_y.size(),
+                                                cg_data.expected_y_shape.data(),
+                                                cg_data.expected_y_shape.size());
+
+  // Create IoBinding for inputs and outputs.
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  Ort::RunOptions run_option;
+  if (cuda_graph_annotation != nullptr) {
+    run_option.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, cuda_graph_annotation);
+  }
+
+  // One regular run for necessary memory allocation and graph capturing
+  session.Run(run_option, binding);
+
+  // Check the values against the bound raw memory (needs copying from device to host first)
+  (void)cudaMemcpy(cg_data.y_values.data(),
+                   output_data.get(),
+                   sizeof(float) * cg_data.y_values.size(),
+                   cudaMemcpyDeviceToHost);
+  ASSERT_THAT(cg_data.y_values, ::testing::ContainerEq(cg_data.expected_y));
+
+  // Replay the captured CUDA graph
+  session.Run(run_option, binding);
+  (void)cudaMemcpy(cg_data.y_values.data(),
+                   output_data.get(),
+                   sizeof(float) * cg_data.y_values.size(),
+                   cudaMemcpyDeviceToHost);
+  ASSERT_THAT(cg_data.y_values, ::testing::ContainerEq(cg_data.expected_y));
+
+  // Change the input and replay the CUDA graph again.
+  (void)cudaMemcpy(input_data.get(),
+                   cg_data.new_x_values.data(),
+                   sizeof(float) * cg_data.new_x_values.size(),
+                   cudaMemcpyHostToDevice);
+  binding.SynchronizeInputs();
+
+  session.Run(run_option, binding);
+  (void)cudaMemcpy(cg_data.y_values.data(),
+                   output_data.get(),
+                   sizeof(float) * cg_data.y_values.size(),
+                   cudaMemcpyDeviceToHost);
+  ASSERT_THAT(cg_data.y_values, ::testing::ContainerEq(cg_data.new_expected_y));
+
+  // Clean up
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+}
+
+TEST(CApiTest, basic_cuda_graph_with_annotation) {
+  const auto& api = Ort::GetApi();
+  Ort::SessionOptions session_options;
+
+  // Enable cuda graph in cuda provider option.
+  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
+  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
+      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+  std::vector<const char*> keys{"enable_cuda_graph"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_cuda_options.get()) == nullptr);
+
+  Ort::Session session(*ort_env, CUDA_GRAPH_ANNOTATION_MODEL_URI, session_options);
+  Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Allocator allocator(session, info_mem);
+  auto allocator_info = allocator.GetInfo();
+  ASSERT_TRUE(info_mem == allocator_info);
+
+  size_t max_input_size = 6;
+  size_t max_output_size = 6;
+
+  auto input_data = allocator.GetAllocation(max_input_size * sizeof(float));
+  auto output_data = allocator.GetAllocation(max_output_size * sizeof(float));
+
+  ASSERT_NE(input_data.get(), nullptr);
+  ASSERT_NE(output_data.get(), nullptr);
+
+  RunWithCudaGraphAnnotation(cg_data_0, session, info_mem, input_data, output_data, nullptr);
+  RunWithCudaGraphAnnotation(cg_data_1, session, info_mem, input_data, output_data, "1");
+  RunWithCudaGraphAnnotation(cg_data_2, session, info_mem, input_data, output_data, "2");
+}
+#endif
 
 // The following test uses some ops not supported in the reduced ops build
 #ifndef REDUCED_OPS_BUILD
@@ -3857,4 +4007,35 @@ TEST(CApiTest, RunAsyncFail) {
 
   Ort::RunOptions run_options;
   EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
+}
+
+struct MockGQA : public OrtCustomOp {
+  MockGQA() {
+    OrtCustomOp::GetMayInplace = [](int** input_index, int** output_index) {
+      size_t ret = 2;
+      *input_index = static_cast<int*>(malloc(ret * sizeof(int)));
+      (*input_index)[0] = 3;
+      (*input_index)[1] = 4;
+      *output_index = static_cast<int*>(malloc(ret * sizeof(int)));
+      (*output_index)[0] = 1;
+      (*output_index)[1] = 2;
+      return ret;
+    };
+  }
+};
+
+TEST(CApiTest, OrtCustomOp_GetInPlace) {
+  MockGQA mock_gqa;
+  int* input_index = nullptr;
+  int* output_index = nullptr;
+  size_t len = mock_gqa.GetMayInplace(&input_index, &output_index);
+  ASSERT_NE(input_index, nullptr);
+  ASSERT_NE(output_index, nullptr);
+  ASSERT_EQ(input_index[0], 3);
+  ASSERT_EQ(input_index[1], 4);
+  ASSERT_EQ(output_index[0], 1);
+  ASSERT_EQ(output_index[1], 2);
+  ASSERT_EQ(len, static_cast<size_t>(2));
+  free(input_index);
+  free(output_index);
 }

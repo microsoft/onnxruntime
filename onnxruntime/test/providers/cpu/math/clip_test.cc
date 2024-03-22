@@ -182,7 +182,7 @@ TEST(MathOpTest, Clip) {
   run_test(true);
 }
 
-// Use clip between [0, 6] as Relu6 (for some EPs, such as NNAPI)
+// Use clip between [0, 6] as Relu6 to test optimized path in some  EPs, such as NNAPI and CoreML
 TEST(MathOpTest, Clip_Relu6) {
   // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
@@ -199,6 +199,31 @@ TEST(MathOpTest, Clip_Relu6) {
                           {0.0f, 0.0f, 1.0f,
                            0.0f, 3.5f, 6.0f,
                            0.0f, 2.0f, 6.0f});
+
+    // TensorRT does not support Clip opset 11 yet.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+// Use clip between [0, inf] as Relu to test optimized path in some EPs, such as CoreML
+TEST(MathOpTest, Clip_Relu) {
+  // To test NNAPI EP, we need the min/max to be in initializers
+  auto run_test = [](bool min_max_are_initializer) {
+    OpTester test("Clip", 11);
+
+    std::vector<int64_t> dims{3, 3};
+    test.AddInput<float>("X", dims,
+                         {-1.0f, 0.0f, 1.0f,
+                          -6.0f, 3.5f, 6.0f,
+                          -5.4f, 2.0f, 8.0f});
+    test.AddInput<float>("min", {}, {0.0f}, min_max_are_initializer);
+    test.AddOutput<float>("Y", dims,
+                          {0.0f, 0.0f, 1.0f,
+                           0.0f, 3.5f, 6.0f,
+                           0.0f, 2.0f, 8.0f});
 
     // TensorRT does not support Clip opset 11 yet.
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});

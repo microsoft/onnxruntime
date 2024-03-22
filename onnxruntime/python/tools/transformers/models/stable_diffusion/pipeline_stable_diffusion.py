@@ -547,13 +547,19 @@ class StableDiffusionPipeline:
         return ((images + 1) / 2).clamp(0, 1).detach().permute(0, 2, 3, 1).float().cpu().numpy()
 
     def metadata(self) -> Dict[str, Any]:
-        return {
+        data = {
             "actual_steps": self.actual_steps,
             "seed": self.get_current_seed(),
             "name": self.pipeline_info.name(),
             "custom_vae": self.pipeline_info.custom_fp16_vae(),
             "custom_unet": self.pipeline_info.custom_unet(),
         }
+
+        if self.engine_type == EngineType.ORT_CUDA:
+            for engine_name, engine in self.backend.engines.items():
+                data.update(engine.metadata(engine_name))
+
+        return data
 
     def save_images(self, images: List, prompt: List[str], negative_prompt: List[str], metadata: Dict[str, Any]):
         session_id = str(random.randint(1000, 9999))
