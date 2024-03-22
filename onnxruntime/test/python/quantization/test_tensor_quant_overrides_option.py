@@ -569,6 +569,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             "model.onnx", DummyDataReader(self.activations), activation_type=quantization.QuantType.QUInt16
         )
 
+        self.assertEqual(set(qnn_config.op_types_to_quantize), {"Sigmoid", "Conv"})
         self.assertEqual(qnn_config.extra_options["MinimumRealRange"], 0.0001)
 
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, _, _, _, _, _, _ = self.perform_qdq_quantization(
@@ -613,6 +614,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         )
 
         qnn_config = get_qnn_qdq_config("add_ext_data.onnx", DummyDataReader(self.activations))
+        self.assertEqual(set(qnn_config.op_types_to_quantize), {"Add"})
         self.assertTrue(qnn_config.use_external_data_format)
 
 
