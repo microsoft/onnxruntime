@@ -108,7 +108,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 ### Prerequisites
 {: .no_toc }
 
- * Follow [instructions for CUDA execution provider](#CUDA) to install CUDA and cuDNN, and setup environment variables.
+ * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and cuDNN, and setup environment variables.
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html)
    * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.6.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
