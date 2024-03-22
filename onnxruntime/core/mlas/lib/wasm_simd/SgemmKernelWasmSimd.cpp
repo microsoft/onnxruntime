@@ -171,11 +171,11 @@ Return Value:
         if (k > 0) {
 
             Row0AElements0 = a[0];
-            Row0AElements1 = a[1];
+            Row0AElements1 = a[0];
 
             if (ProcessTwoRows) {
                 Row1AElements0 = a[lda];
-                Row1AElements1 = a[lda + 1];
+                Row1AElements1 = a[lda];
             }
 
             BElements0 = MlasLoadFloat32x4(B + 0);
