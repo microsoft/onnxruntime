@@ -6,6 +6,10 @@
 import logging
 import tempfile
 from pathlib import Path
+from typing import Union
+
+import onnx
+from onnx_model import ONNXModel
 
 from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
@@ -280,8 +284,8 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
 
 
 def quantize_static(
-    model_input,
-    model_output,
+    model_input: Union[str, Path, onnx.ModelProto],
+    model_output: Union[str, Path],
     calibration_data_reader: CalibrationDataReader,
     quant_format=QuantFormat.QDQ,
     op_types_to_quantize=None,
@@ -304,7 +308,7 @@ def quantize_static(
 
     Args:
 
-        model_input: file path of model to quantize
+        model_input: file path of model or ModelProto to quantize
         model_output: file path of quantized model
         calibration_data_reader: a calibration data reader. It
             enumerates calibration data and generates inputs for the
@@ -435,7 +439,7 @@ def quantize_static(
         qdq_ops = list(QDQRegistry.keys())
         op_types_to_quantize = list(set(q_linear_ops + qdq_ops))
 
-    model = load_model_with_shape_infer(Path(model_input))
+    model = model_input if isinstance(model_input, onnx.ModelProto) else load_model_with_shape_infer(Path(model_input))
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
@@ -485,6 +489,12 @@ def quantize_static(
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        if isinstance(model_input, onnx.ModelProto):
+            model_path = str(Path(quant_tmp_dir) / "model_input.onnx")
+            onnx_model = ONNXModel(model_input)
+            onnx_model.save_model_to_file(model_path, use_external_data_format)
+            model_input = model_path
+
         calibrator = create_calibrator(
             Path(model_input),
             op_types_to_quantize,
@@ -546,8 +556,8 @@ def quantize_static(
 
 
 def quantize_dynamic(
-    model_input: Path,
-    model_output: Path,
+    model_input: Union[str, Path, onnx.ModelProto],
+    model_output: Union[str, Path],
     op_types_to_quantize=None,
     per_channel=False,
     reduce_range=False,
@@ -560,7 +570,7 @@ def quantize_dynamic(
     """Given an onnx model, create a quantized onnx model and save it into a file
 
     Args:
-        model_input: file path of model to quantize
+        model_input: file path of model or ModelProto to quantize
         model_output: file path of quantized model
         op_types_to_quantize:
             specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
@@ -609,7 +619,7 @@ def quantize_dynamic(
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model_with_shape_infer(Path(model_input))
+    model = model_input if isinstance(model_input, onnx.ModelProto) else load_model_with_shape_infer(Path(model_input))
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
@@ -642,14 +652,14 @@ def quantize_dynamic(
 
 
 def quantize(
-    model_input: Path,
-    model_output: Path,
+    model_input: Union[str, Path, onnx.ModelProto],
+    model_output: Union[str, Path],
     quant_config: QuantConfig,
 ):
     """Quantize a model with QuantConfig.
 
     Args:
-        model_input (Path): Path to the model to quantize.
+        model_input (Path): Path to the model or ModelProto to quantize.
         model_output (Path): Path to save the quantized model.
         quant_config (QuantConfig): Quantization Configuration.
     """
