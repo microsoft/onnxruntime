@@ -208,6 +208,8 @@ stages:
         clean: all
       pool:
         name: onnxruntime-Win2022-GPU-T4
+      variables:
+        CUDA_MODULE_LOADING: 'LAZY'
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'

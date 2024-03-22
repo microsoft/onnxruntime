@@ -71,8 +71,18 @@ parameters:
       - 11.8
       - 12.2
 
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
 stages:
-- stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
+- stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Building
   dependsOn: []
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
@@ -82,13 +92,20 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: ${{ parameters.ort_build_pool_name }}
+    ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+      pool: onnxruntime-Win-CPU-2022
+    ${{ else }}:
+      pool: ${{ parameters.ort_build_pool_name }}
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutInMinutes: 1200
     ${{ else }}:
       timeoutInMinutes: 300
 
     steps:
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
       - checkout: self
         clean: true
         submodules: none
@@ -155,6 +172,7 @@ stages:
             arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
           workingDirectory: '$(Build.BinariesDirectory)'
 
+
       - task: VSBuild@1
         displayName: 'Build'
         inputs:
@@ -166,15 +184,16 @@ stages:
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           createLogFile: true
-          msbuildArgs: "/p:CL_MPCount=2"  # 2x cl.exe per project building.
 
-      - task: PythonScript@0
-        displayName: 'test'
-        condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
-          workingDirectory: '$(Build.BinariesDirectory)'
+      # For CPU job, tests are run in the same machine as buidling
+      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+        - task: PythonScript@0
+          displayName: 'test'
+          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
+            workingDirectory: '$(Build.BinariesDirectory)'
 
       - script: |
          dir *.dll
@@ -295,6 +314,45 @@ stages:
         parameters :
           condition : 'succeeded'
 
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
+      - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }_build_artifacts'
+
+${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+  - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
+    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}_Building
+    variables:
+      CUDA_MODULE_LOADING: 'LAZY'
+    jobs:
+    - job:
+      workspace:
+        clean: all
+      pool: onnxruntime-Windows-GPU-T4
+      steps:
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
+
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - template: flex-downloadPipelineArtifact.yml
+          parameters:
+            ArtifactName: "Windows_Packaging_${{ parameters.stage_name_suffix }_build_artifacts"
+            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
+            TargetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            SpecificArtifact: ${{ parameters.SpecificArtifact }}
+            BuildId: ${{ parameters.BuildId }}
+
+        - template: telemetry-steps.yml
+
+        - task: PythonScript@0
+          displayName: 'test'
+          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+            workingDirectory: '$(Build.BinariesDirectory)'
