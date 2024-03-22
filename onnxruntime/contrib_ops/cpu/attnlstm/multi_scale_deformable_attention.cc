@@ -68,9 +68,13 @@ Status MultiScaleDeformableAttention::Compute(_Inout_ OpKernelContext* context) 
 ONNX_CPU_OPERATOR_MS_KERNEL(
     MultiScaleDeformableAttention,
     1,
-    KernelDefBuilder().TypeConstraint(
-        "T",
-        {DataTypeImpl::GetTensorType<float>()}),
+    KernelDefBuilder()
+      .TypeConstraint(
+        "T1",
+        {DataTypeImpl::GetTensorType<float>()})
+      .TypeConstraint(
+        "T2",
+        {DataTypeImpl::GetTensorType<int64_t>()}),
     MultiScaleDeformableAttention)
 
 }  // namespace contrib
