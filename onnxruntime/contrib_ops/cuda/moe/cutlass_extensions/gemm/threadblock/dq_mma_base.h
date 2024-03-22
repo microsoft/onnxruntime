@@ -43,6 +43,8 @@
 #include "cutlass/matrix_shape.h"
 #include "cutlass/numeric_types.h"
 
+#include "contrib_ops/cuda/moe/cutlass_extensions/weight_only_quant_op.h"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass {
@@ -53,24 +55,19 @@ namespace threadblock {
 // SFINAE trick so I can keep the same loop code for Volta and dispatch to the
 // correct warp level mma. On volta, all data is stored to shared memory as FP16.
 template <typename WarpMma, int kExpansionFactor = 1>
-CUTLASS_DEVICE void run_warp_mma(WarpMma& warp_mma,
-                                 typename WarpMma::FragmentC& D,
-                                 typename WarpMma::FragmentA const& A,
-                                 typename WarpMma::FragmentB const& B,
-                                 typename WarpMma::FragmentC const& C,
-                                 const int warp_tileB_k_offset) {
+CUTLASS_DEVICE void run_warp_mma(WarpMma& warp_mma, typename WarpMma::FragmentC& D,
+                                 typename WarpMma::FragmentA const& A, typename WarpMma::FragmentB const& B, typename WarpMma::FragmentC const& C,
+                                 int const warp_tileB_k_offset) {
   warp_mma(D, A, B, C);
 }
 
 template <typename WarpMma, int kExpansionFactor = WarpMma::kExpansionFactor>
-CUTLASS_DEVICE void run_warp_mma(WarpMma& warp_mma,
-                                 typename WarpMma::FragmentC& D,
-                                 typename WarpMma::TransformedFragmentA const& A,
-                                 typename WarpMma::TransformedFragmentB const& B,
-                                 typename WarpMma::FragmentC const& C,
-                                 const int warp_tileB_k_offset) {
+CUTLASS_DEVICE void run_warp_mma(WarpMma& warp_mma, typename WarpMma::FragmentC& D,
+                                 typename WarpMma::TransformedFragmentA const& A, typename WarpMma::TransformedFragmentB const& B,
+                                 typename WarpMma::FragmentC const& C, int const warp_tileB_k_offset) {
   warp_mma(D, A, B, C, warp_tileB_k_offset);
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math
@@ -84,7 +81,9 @@ template <
     typename ElementScale_,
     /// Number of stages,
     int Stages,
-    /// Used for partial specialization
+    /// The dequantizing op to be performed.
+    WeightOnlyQuantOp DequantOp,
+    /// Used for partial specialization,
     typename Enable = bool>
 class DqMmaBase {
  public:
@@ -96,6 +95,15 @@ class DqMmaBase {
 
   ///< Type of the scale to be loaded
   using ElementScale = ElementScale_;
+
+  static_assert(DequantOp != WeightOnlyQuantOp::UNDEFINED, "");
+
+  // Finegrained scales get streamed in via cp.async
+  static constexpr int ScalebiasStages = isFinegrained(DequantOp) ? Stages : 1;
+  // We always have scales.
+  static constexpr int ScaleElementsPerStage = Shape::kN;
+  // We sometimes have a bias
+  static constexpr int BiasElementsPerStage = hasZero(DequantOp) ? Shape::kN : 0;
 
   //
   // Dependent types
@@ -111,11 +119,10 @@ class DqMmaBase {
   /// Shape describing the number of warps filling the CTA
   using WarpCount = GemmShape<Shape::kM / WarpGemm::kM, Shape::kN / WarpGemm::kN, Shape::kK / WarpGemm::kK>;
 
-  /// Number of warp-level GEMM oeprations
+  /// Number of warp-level GEMM operations
   static int const kWarpGemmIterations = (WarpGemm::kK / Operator::Policy::MmaShape::kK);
 
-  static constexpr int kNumKIterationsPerWarpBLoad =
-      Operator::IteratorB::InstructionShape::kRow / Operator::InstructionShape::kK;
+  static constexpr int kNumKIterationsPerWarpBLoad = Operator::IteratorB::InstructionShape::kRow / Operator::InstructionShape::kK;
 
   static_assert(!(kWarpGemmIterations % kNumKIterationsPerWarpBLoad), "");
   static constexpr int kWarpGemmIterationsForB = kWarpGemmIterations / kNumKIterationsPerWarpBLoad;
@@ -141,12 +148,15 @@ class DqMmaBase {
     //
 
     /// Shape of the A matrix operand in shared memory
-    using ShapeA =
-        MatrixShape<Shape::kM + Policy::SmemPaddingA::kRow, Shape::kK * kStages + Policy::SmemPaddingA::kColumn>;
+    using ShapeA = MatrixShape<Shape::kM + Policy::SmemPaddingA::kRow, Shape::kK * kStages + Policy::SmemPaddingA::kColumn>;
 
     /// Shape of the B matrix operand in shared memory
-    using ShapeB =
-        MatrixShape<Shape::kK * kStages + Policy::SmemPaddingB::kRow, Shape::kN + Policy::SmemPaddingB::kColumn>;
+    using ShapeB = MatrixShape<Shape::kK * kStages + Policy::SmemPaddingB::kRow, Shape::kN + Policy::SmemPaddingB::kColumn>;
+
+    /// Shape of the shared memory buffer for the scales for the B matrix.
+    using ShapeScale = MatrixShape<ScalebiasStages, ScaleElementsPerStage>;
+    /// Shape of the shared memory buffer for the biases of the B matrix.
+    using ShapeZero = MatrixShape<ScalebiasStages, BiasElementsPerStage>;
 
    public:
     //
@@ -160,7 +170,10 @@ class DqMmaBase {
     AlignedBuffer<typename Operator::ElementB, ShapeB::kCount> operand_B;
 
     /// Buffer to hold scales for threadblock
-    AlignedBuffer<ElementScale, Shape::kN> operand_scale;
+    AlignedBuffer<ElementScale, ShapeScale::kCount> operand_scale;
+
+    /// Buffer to hold scales for threadblock
+    AlignedBuffer<ElementScale, ShapeZero::kCount> operand_zero;
 
    public:
     //
@@ -214,8 +227,8 @@ class DqMmaBase {
       ///< ID of warp
       int warp_idx,
       ///< ID of each thread within a warp
-      int lane_idx) : warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx),
-                      warp_tile_iterator_B_(shared_storage.operand_B_ref(), lane_idx) {
+      int lane_idx)
+      : warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx), warp_tile_iterator_B_(shared_storage.operand_B_ref(), lane_idx) {
   }
 };
 

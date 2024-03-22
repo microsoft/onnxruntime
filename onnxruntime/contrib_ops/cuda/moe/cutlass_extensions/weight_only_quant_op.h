@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,21 +28,31 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  **************************************************************************************************/
+/*! \file
+  \brief Defines iterators used by warp-level matrix multiply operations targeting Tensor Cores.
+*/
 
 #pragma once
 
-/////////////////////////////////////////////////////////////////////////////////////////////////
+namespace cutlass
+{
 
-namespace cutlass {
-namespace epilogue {
-
-// define scaling mode
-enum class QuantMode {
-  PerTensorQuant,
-  PerTokenQuant,
-  PerChannelQuant,
-  PerTokenChannelQuant
+enum class WeightOnlyQuantOp
+{
+    UNDEFINED,
+    PER_COLUMN_SCALE_ONLY,
+    FINEGRAINED_SCALE_ONLY,
+    FINEGRAINED_SCALE_AND_ZEROS
 };
 
-}  // namespace epilogue
-}  // namespace cutlass
+constexpr bool isFinegrained(WeightOnlyQuantOp op)
+{
+    return op == WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS || op == WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
+}
+
+constexpr bool hasZero(WeightOnlyQuantOp op)
+{
+    return op == WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
+}
+
+} // namespace cutlass

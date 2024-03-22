@@ -1,3 +1,19 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #pragma once
 
 #include "contrib_ops/cuda/moe/cutlass_extensions/arch/mma.h"
@@ -29,14 +45,11 @@ template <
     /// Mma Policy
     typename MmaOperator>
 struct SetConverters<IteratorB, MmaOperator, arch::OpMultiplyAdd> {
-  using TransformAfterLDG =
-      FastInterleavedAndBiasedNumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
-                                                    typename IteratorB::Element,
-                                                    IteratorB::Fragment::kElements>;
+  using TransformAfterLDG = FastInterleavedAndBiasedNumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
+                                                                          typename IteratorB::Element, IteratorB::Fragment::kElements>;
 
   using TransformAfterLDS = NumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
-                                                  typename MmaOperator::ArchMmaOperator::ElementB,
-                                                  MmaOperator::FragmentB::kElements>;
+                                                  typename MmaOperator::ArchMmaOperator::ElementB, MmaOperator::FragmentB::kElements>;
 };
 
 // Dequantize after LDS, so set transforms accordingly
@@ -47,13 +60,11 @@ template <
     /// Mma Policy
     typename MmaOperator>
 struct SetConverters<IteratorB, MmaOperator, arch::OpMultiplyAddDequantizeInterleavedBToA> {
-  using TransformAfterLDG =
-      NumericArrayConverter<typename IteratorB::Element, typename IteratorB::Element, IteratorB::Fragment::kElements>;
+  using TransformAfterLDG = NumericArrayConverter<typename IteratorB::Element, typename IteratorB::Element,
+                                                  IteratorB::Fragment::kElements>;
 
-  using TransformAfterLDS =
-      FastInterleavedAndBiasedNumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
-                                                    typename TransformAfterLDG::result_type::Element,
-                                                    MmaOperator::FragmentB::kElements>;
+  using TransformAfterLDS = FastInterleavedAndBiasedNumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
+                                                                          typename TransformAfterLDG::result_type::Element, MmaOperator::FragmentB::kElements>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
