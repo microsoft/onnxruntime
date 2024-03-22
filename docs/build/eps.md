@@ -45,11 +45,13 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 ### Prerequisites
 {: .no_toc }
 
-* Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn) according to the [version compatibility matrix](../execution-providers/CUDA-ExecutionProvider.md#requirements).
-  * The path to the CUDA installation must be provided via the CUDA_HOME environment variable, or the `--cuda_home` parameter.
-  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the CUDNN_HOME environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
-  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_8.dll is found.
-
+* Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
+   * The CUDA execution provider for ONNX Runtime is built and tested with CUDA 11.8, 12.2 and cuDNN 8.9. Check [here](../execution-providers/CUDA-ExecutionProvider.md#requirements) for more version information.
+   * The path to the CUDA installation must be provided via the CUDA_HOME environment variable, or the `--cuda_home` parameter. The installation directory should contain `bin`, `include` and `lib` sub-directories.
+   * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
+   * The path to the cuDNN installation must be provided via the CUDNN_HOME environment variable, or `--cudnn_home` parameter. In Windows, the installation directory should contain `bin`, `include` and `lib` sub-directories.
+   * cuDNN 8.* requires ZLib. Follow the [cuDNN 8.9 installation guide](https://docs.nvidia.com/deeplearning/cudnn/archives/cudnn-890/install-guide/index.html) to install zlib in Linux or Windows. 
+   * In Windows, the path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_8.dll is found.
 
 ### Build Instructions
 {: .no_toc }
@@ -106,12 +108,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 ### Prerequisites
 {: .no_toc }
 
-* Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 11.8, 12.2 and cuDNN 8.9. Check [here](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements) for more version information.
-   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
-   * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
-   * The path to the cuDNN installation (path to cudnn bin/include/lib) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
-     * On Windows, cuDNN requires [zlibwapi.dll](https://docs.nvidia.com/deeplearning/cudnn/installation/windows.html). Feel free to place this dll under `path_to_cudnn/bin`  
+ * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and cuDNN, and setup environment variables.
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html)
    * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.6.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
