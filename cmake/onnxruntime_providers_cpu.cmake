@@ -51,6 +51,53 @@ source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
+if(MSVC)
+  if(onnxruntime_target_platform STREQUAL "ARM64")
+    set(ARM64 TRUE)
+  elseif (onnxruntime_target_platform STREQUAL "ARM")
+    set(ARM TRUE)
+  elseif(onnxruntime_target_platform STREQUAL "x64")
+    set(X64 TRUE)
+  elseif(onnxruntime_target_platform STREQUAL "x86")
+    set(X86 TRUE)
+  endif()
+elseif(APPLE)
+  if(CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
+    set(X64 TRUE)
+  endif()
+elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+      set(ARM TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+      set(ARM64 TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+      set(X86_64 TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
+      set(X86 TRUE)
+    endif()
+  else()
+    execute_process(
+      COMMAND ${CMAKE_C_COMPILER} -dumpmachine
+      OUTPUT_VARIABLE dumpmachine_output
+      ERROR_QUIET
+    )
+    if(dumpmachine_output MATCHES "^arm64.*")
+      set(ARM64 TRUE)
+    elseif(dumpmachine_output MATCHES "^arm.*")
+      set(ARM TRUE)
+    elseif(dumpmachine_output MATCHES "^aarch64.*")
+      set(ARM64 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+      set(RISCV64 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+      set(X86 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+      set(X86_64 TRUE)
+    endif()
+  endif()
+endif()
+
 # disable contrib ops conditionally
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   if (NOT onnxruntime_ENABLE_ATEN)
@@ -60,7 +107,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
     )
   endif()
-  set(onnxruntime_cpu_neural_speed_srcs 
+  set(onnxruntime_cpu_neural_speed_srcs
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_wrapper.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_defs.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.cc"
@@ -71,6 +118,16 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   endif()
   # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+
+  if(NOT MSVC AND X86_64)
+    if("${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/multi_scale_deformable_attention_avx512.cc" IN_LIST onnxruntime_cpu_contrib_ops_srcs)
+      set_source_files_properties("${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/multi_scale_deformable_attention_avx512.cc" PROPERTIES COMPILE_FLAGS "-mavx512f -mavx512dq")
+    endif()
+  elseif(MSVC AND X64)
+    if("${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/multi_scale_deformable_attention_avx512.cc" IN_LIST onnxruntime_cpu_contrib_ops_srcs)
+    set_source_files_properties("${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/multi_scale_deformable_attention_avx512.cc" PROPERTIES COMPILE_FLAGS "/arch:AVX512")
+    endif()
+  endif()
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
