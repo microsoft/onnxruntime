@@ -394,7 +394,7 @@
     ]
   },
   {
-    "name": "ConvTranspose without bias addition B",
+    "name": "ConvTranspose without bias addition C",
     "operator": "ConvTranspose",
     "attributes": [
       { "name": "kernel_shape", "data": [2, 2], "type": "ints" },
