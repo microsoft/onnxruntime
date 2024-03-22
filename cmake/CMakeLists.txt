@@ -1290,34 +1290,6 @@ if (onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
-  if (EXISTS "$ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/version.txt")
-    file(READ $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/version.txt VER)
-  endif()
-
-  if (NOT DEFINED ENV{INTEL_OPENVINO_DIR})
-    message(FATAL_ERROR "[Couldn't locate OpenVINO] OpenVINO may not have been initialized")
-  endif()
-
-  # Check OpenVINO version for support
-  if ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.0")
-    set(OPENVINO_VERSION "2023.0")
-    add_definitions(-DOPENVINO_2023_0=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.1")
-    set(OPENVINO_VERSION "2023.1")
-    add_definitions(-DOPENVINO_2023_1=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.2")
-    set(OPENVINO_VERSION "2023.2")
-    add_definitions(-DOPENVINO_2023_2=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.3")
-    set(OPENVINO_VERSION "2023.3")
-    add_definitions(-DOPENVINO_2023_3=1)
-  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2023.3")
-    add_definitions(-DOPENVINO_2023_3=1)
-  else()
-    message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
-  endif()
-
   if (onnxruntime_USE_OPENVINO_GPU_FP32)
     add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
   endif()
@@ -1332,6 +1304,10 @@ if (onnxruntime_USE_OPENVINO)
 
   if (onnxruntime_USE_OPENVINO_CPU_FP16)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
+  endif()
+
+  if (onnxruntime_USE_OPENVINO_NPU)
+    add_definitions(-DOPENVINO_CONFIG_NPU=1)
   endif()
 
   if (onnxruntime_USE_OPENVINO_GPU_FP32_NP)
@@ -1351,6 +1327,11 @@ if (onnxruntime_USE_OPENVINO)
 
   if (onnxruntime_USE_OPENVINO_CPU_FP16_NP)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
+  endif()
+
+  if (onnxruntime_USE_OPENVINO_NPU_NP)
+    add_definitions(-DOPENVINO_CONFIG_NPU=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
