@@ -5,27 +5,15 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import os
 import unittest
 
 import onnx
 
-if os.environ.get("LOCAL_IMPORT") == "1":
-    # Allow running this test script without installing onnxruntime package.
-    import sys
-
-    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "python", "tools"))
-    from quantization.execution_providers.qnn.mixed_precision_overrides_utils import (
-        MixedPrecisionTensorQuantOverridesFixer,
-    )
-    from quantization.quant_utils import QuantType
-    from quantization.tensor_quant_overrides import TensorQuantOverridesHelper
-else:
-    from onnxruntime.quantization import QuantType
-    from onnxruntime.quantization.execution_providers.qnn.mixed_precision_overrides_utils import (
-        MixedPrecisionTensorQuantOverridesFixer,
-    )
-    from onnxruntime.quantization.tensor_quant_overrides import TensorQuantOverridesHelper
+from onnxruntime.quantization import QuantType
+from onnxruntime.quantization.execution_providers.qnn.mixed_precision_overrides_utils import (
+    MixedPrecisionTensorQuantOverridesFixer,
+)
+from onnxruntime.quantization.tensor_quant_overrides import TensorQuantOverridesHelper
 
 
 class TestMixedPrecisionQuantOverridesFixer(unittest.TestCase):
@@ -74,7 +62,7 @@ class TestMixedPrecisionQuantOverridesFixer(unittest.TestCase):
         default_act_qtype = QuantType.QUInt8
         raw_overrides = {"op4_out": [{"quant_type": QuantType.QUInt16}]}
         overrides = TensorQuantOverridesHelper(raw_overrides)
-        fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides, model)
+        fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides, model, default_act_qtype)
         fixer.apply(default_act_qtype, default_activation_symmetric=False)
 
         expected = {
@@ -99,7 +87,7 @@ class TestMixedPrecisionQuantOverridesFixer(unittest.TestCase):
         default_act_qtype = QuantType.QInt8
         raw_overrides = {"op4_out": [{"quant_type": QuantType.QInt16, "symmetric": True}]}
         overrides = TensorQuantOverridesHelper(raw_overrides)
-        fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides, model)
+        fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides, model, default_act_qtype)
         fixer.apply(default_act_qtype, default_activation_symmetric=False)
 
         expected = {
@@ -137,7 +125,7 @@ class TestMixedPrecisionQuantOverridesFixer(unittest.TestCase):
             "output_0": [{"quant_type": QuantType.QUInt16}],
         }
         overrides = TensorQuantOverridesHelper(raw_overrides)
-        fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides, model)
+        fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides, model, default_act_qtype)
         fixer.apply(default_act_qtype, default_activation_symmetric=False)
 
         expected = {
@@ -161,7 +149,7 @@ class TestMixedPrecisionQuantOverridesFixer(unittest.TestCase):
         default_act_qtype = QuantType.QUInt8
         raw_overrides = {"op4_out": [{"quant_type": QuantType.QUInt16}], "input_0": [{"quant_type": QuantType.QUInt16}]}
         overrides = TensorQuantOverridesHelper(raw_overrides)
-        fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides, model)
+        fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides, model, default_act_qtype)
         fixer.apply(default_act_qtype, default_activation_symmetric=False)
 
         expected = {

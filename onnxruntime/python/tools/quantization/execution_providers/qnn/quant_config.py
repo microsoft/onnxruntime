@@ -69,16 +69,12 @@ def get_qnn_qdq_config(
         if onnx.external_data_helper.uses_external_data(initializer):
             model_has_external_data = True
 
-    value_infos = dict()
     overrides_helper = TensorQuantOverridesHelper(copy.deepcopy(init_overrides) if init_overrides else {})
 
     if not overrides_helper.empty() and add_qtype_converts:
-        model = onnx.shape_inference.infer_shapes(model)
-        value_infos = {vi.name: vi for vi in model.graph.value_info}
-        value_infos.update({ot.name: ot for ot in model.graph.output})
-        value_infos.update({it.name: it for it in model.graph.input})
-
-        overrides_fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(overrides_helper, model)
+        overrides_fixer = MixedPrecisionTensorQuantOverridesFixer.create_from_model(
+            overrides_helper, model, activation_type
+        )
         overrides_fixer.apply(activation_type, activation_symmetric)
 
     # Setup quantization overrides for specific operator types
@@ -186,13 +182,6 @@ def get_qnn_qdq_config(
                 )
                 if not did_update:
                     warn_unable_to_override(node, "quant_type/scale/zero_point", node.output[0], "output")
-
-    if add_qtype_converts:
-        valid, err = overrides_helper.is_valid(set(name_to_initializer), set(value_infos), activation_type)
-        if not valid:
-            pprint_overrides = overrides_helper.pprint_str(indent=4)
-            logging.error(f"Invalid tensor quantization overrides:\n{pprint_overrides}")
-            raise ValueError(err)
 
     extra_options = {
         "MinimumRealRange": 0.0001,
