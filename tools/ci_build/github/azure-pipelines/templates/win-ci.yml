@@ -82,247 +82,250 @@ parameters:
   default: '0'
 
 stages:
-- stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
-  dependsOn: []
-  variables:
-    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
-    VSGenerator: 'Visual Studio 17 2022'
-    CUDA_MODULE_LOADING: 'LAZY'
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-      pool: onnxruntime-Win-CPU-2022
-    ${{ else }}:
-      pool: ${{ parameters.ort_build_pool_name }}
-    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-      timeoutInMinutes: 1200
-    ${{ else }}:
-      timeoutInMinutes: 300
+- ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+  - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Building
+- ${{ else }}:
+  - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
+    dependsOn: []
+    variables:
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+      VSGenerator: 'Visual Studio 17 2022'
+      CUDA_MODULE_LOADING: 'LAZY'
+    jobs:
+    - job:
+      workspace:
+        clean: all
+      ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+        pool: onnxruntime-Win-CPU-2022
+      ${{ else }}:
+        pool: ${{ parameters.ort_build_pool_name }}
+      ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+        timeoutInMinutes: 1200
+      ${{ else }}:
+        timeoutInMinutes: 300
 
-    steps:
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
+      steps:
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
 
-      - checkout: self
-        clean: true
-        submodules: none
+        - checkout: self
+          clean: true
+          submodules: none
 
-      - template: telemetry-steps.yml
+        - template: telemetry-steps.yml
 
-      - ${{ if eq(parameters['buildJava'], 'true') }}:
-        - task: JavaToolInstaller@0
+        - ${{ if eq(parameters['buildJava'], 'true') }}:
+          - task: JavaToolInstaller@0
+            inputs:
+              versionSpec: "11"
+              jdkArchitectureOption: ${{ parameters.buildArch }}
+              jdkSourceOption: 'PreInstalled'
+
+        - task: UsePythonVersion@0
           inputs:
-            versionSpec: "11"
-            jdkArchitectureOption: ${{ parameters.buildArch }}
-            jdkSourceOption: 'PreInstalled'
+            versionSpec: '3.8'
+            addToPath: true
+            architecture: ${{ parameters.buildArch }}
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.8'
-          addToPath: true
-          architecture: ${{ parameters.buildArch }}
+        - task: NodeTool@0
+          condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
+          inputs:
+            versionSpec: '18.x'
 
-      - task: NodeTool@0
-        condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
-        inputs:
-          versionSpec: '18.x'
+        - ${{ if ne(parameters.CudaVersion, '') }}:
+          - template: jobs/download_win_gpu_library.yml
+            parameters:
+              CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+                DownloadCUDA: true
+              ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+                DownloadCUDA: true
+                DownloadTRT: true
+        - powershell: |
+            Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
+          displayName: 'Append dotnet x86  Directory to PATH'
+          condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
 
-      - ${{ if ne(parameters.CudaVersion, '') }}:
-        - template: jobs/download_win_gpu_library.yml
-          parameters:
-            CudaVersion: ${{ parameters.CudaVersion }}
-            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-              DownloadCUDA: true
-            ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
-              DownloadCUDA: true
-              DownloadTRT: true
-      - powershell: |
-          Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
-        displayName: 'Append dotnet x86  Directory to PATH'
-        condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
+        - template: download-deps.yml
 
-      - template: download-deps.yml
-
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir $(Build.BinariesDirectory)/deps
-          workingDirectory: $(Build.BinariesDirectory)
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
-
-      - template: set-version-number-variables-step.yml
-
-      - task: PythonScript@0
-        displayName: 'Generate cmake config'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
-          ${{ else }}:
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
-          workingDirectory: '$(Build.BinariesDirectory)'
-
-
-      - task: VSBuild@1
-        displayName: 'Build'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-          platform: ${{ parameters.msbuildPlatform }}
-          configuration: RelWithDebInfo
-          msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true  # default is num logical cores worth of projects building concurrently
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          createLogFile: true
-
-      # For CPU job, tests are run in the same machine as buidling
-      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
         - task: PythonScript@0
-          displayName: 'test'
-          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+          displayName: 'Update deps.txt'
+          inputs:
+            scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+            arguments: --new_dir $(Build.BinariesDirectory)/deps
+            workingDirectory: $(Build.BinariesDirectory)
+
+        - task: PowerShell@2
+          displayName: 'Install ONNX'
+          inputs:
+            filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+            workingDirectory: '$(Build.BinariesDirectory)'
+            arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
+
+        - template: set-version-number-variables-step.yml
+
+        - task: PythonScript@0
+          displayName: 'Generate cmake config'
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
+            ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
+            ${{ else }}:
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
             workingDirectory: '$(Build.BinariesDirectory)'
 
-      - script: |
-         dir *.dll
-         mkdir $(Build.ArtifactStagingDirectory)\testdata
-        workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
-        displayName: 'List built DLLs'
 
-      - template: c-api-artifacts-package-and-publish-steps-windows.yml
-        parameters:
-          buildConfig: RelWithDebInfo
-          artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
-          commitId: $(OnnxRuntimeGitCommitHash)
-          DoEsrp: ${{ parameters.DoEsrp }}
+        - task: VSBuild@1
+          displayName: 'Build'
+          inputs:
+            solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+            platform: ${{ parameters.msbuildPlatform }}
+            configuration: RelWithDebInfo
+            msbuildArchitecture: ${{ parameters.buildArch }}
+            maximumCpuCount: true  # default is num logical cores worth of projects building concurrently
+            logProjectEvents: true
+            workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+            createLogFile: true
 
-      - ${{ if eq(parameters.buildNodejs, true) }}:
-        - template: nodejs-artifacts-package-and-publish-steps-windows.yml
+        # For CPU job, tests are run in the same machine as buidling
+        - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+          - task: PythonScript@0
+            displayName: 'test'
+            condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
+              workingDirectory: '$(Build.BinariesDirectory)'
+
+        - script: |
+          dir *.dll
+          mkdir $(Build.ArtifactStagingDirectory)\testdata
+          workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
+          displayName: 'List built DLLs'
+
+        - template: c-api-artifacts-package-and-publish-steps-windows.yml
           parameters:
-            arch: ${{ parameters.packageName }}
-            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}${{ parameters.artifact_name_suffix }}'
+            buildConfig: RelWithDebInfo
+            artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
+            artifactNameNoVersionString: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
+            commitId: $(OnnxRuntimeGitCommitHash)
             DoEsrp: ${{ parameters.DoEsrp }}
 
-      #Upload protoc.exe, which will be used in nuget build for generating C# files
-      - task: PublishPipelineArtifact@1
-        displayName: Publish protoc as drop-extra
-        condition: and(succeeded(), or(eq('${{ parameters.packageName}}', 'x64'), eq('${{ parameters.PublishProtoc}}', true)))
-        inputs:
-          targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
+        - ${{ if eq(parameters.buildNodejs, true) }}:
+          - template: nodejs-artifacts-package-and-publish-steps-windows.yml
+            parameters:
+              arch: ${{ parameters.packageName }}
+              artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}${{ parameters.artifact_name_suffix }}'
+              DoEsrp: ${{ parameters.DoEsrp }}
 
-
-      - task: CopyFiles@2
-        displayName: 'Copy custom_op_library to: $(Build.ArtifactStagingDirectory)'
-        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-          Contents: 'custom_op_library.dll'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
-
-      - task: CmdLine@2
-        condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-        displayName: 'Add symbols and notices to Java'
-        inputs:
-          script: |
-            @echo on
-            cd $(Build.SourcesDirectory)\java
-            call $(Build.SourcesDirectory)\java\gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-            if %errorlevel% neq 0 exit /b %errorlevel%
-            cd $(Build.BinariesDirectory)\RelWithDebInfo
-            set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
-            mkdir %NATIVE_FOLDER%
-            echo "Directories created"
-            copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-            pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-            set artifact_id=${{ parameters.java_artifact_id }}
-            jar xf onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
-            move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-$(OnnxRuntimeVersion).pom
-            rd /s /q META-INF
-            popd
-            copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
-            copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
-            copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\Privacy.md
-            copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ThirdPartyNotices.txt
-            @echo $(OnnxRuntimeGitCommitHash) > $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\GIT_COMMIT_ID
-            pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
-            jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime.pdb
-            jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
-            jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
-            popd
-            pushd $(Build.SourcesDirectory)\java\build\classes\java\test
-            if %errorlevel% neq 0 exit /b %errorlevel%
-            jar cvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
-            if %errorlevel% neq 0 exit /b %errorlevel%
-            popd
-            pushd $(Build.SourcesDirectory)\java\build\resources\test
-            rd /s /q ai\onnxruntime\native
-            jar uvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
-            popd
-            rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
-            dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-
-      - task: PublishBuildArtifacts@1
-        condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-        displayName: 'Publish Java temp binaries'
-        inputs:
-          pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
-
-      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - task: CredScan@3
-          displayName: 'Run CredScan'
-          inputs:
-            debugMode: false
-          continueOnError: true
-
-        - task: BinSkim@4
-          displayName: 'Run BinSkim'
-          inputs:
-            AnalyzeTargetGlob: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\**\*.dll'
-          continueOnError: true
-
-        - task: PostAnalysis@2
-          inputs:
-            GdnBreakAllTools: false
-            GdnBreakGdnToolBinSkim: true
-            GdnBreakPolicy: M365
-            GdnBreakPolicyMinSev: Error
-
-        - task: TSAUpload@2
-          displayName: 'TSA upload'
-          condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-          inputs:
-            GdnPublishTsaOnboard: false
-            GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-          continueOnError: true
-
-      - template: component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
-
-      - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+        #Upload protoc.exe, which will be used in nuget build for generating C# files
         - task: PublishPipelineArtifact@1
+          displayName: Publish protoc as drop-extra
+          condition: and(succeeded(), or(eq('${{ parameters.packageName}}', 'x64'), eq('${{ parameters.PublishProtoc}}', true)))
           inputs:
-            targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
+            targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
+            artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
+
+
+        - task: CopyFiles@2
+          displayName: 'Copy custom_op_library to: $(Build.ArtifactStagingDirectory)'
+          condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
+          inputs:
+            SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            Contents: 'custom_op_library.dll'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
+
+        - task: CmdLine@2
+          condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+          displayName: 'Add symbols and notices to Java'
+          inputs:
+            script: |
+              @echo on
+              cd $(Build.SourcesDirectory)\java
+              call $(Build.SourcesDirectory)\java\gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+              if %errorlevel% neq 0 exit /b %errorlevel%
+              cd $(Build.BinariesDirectory)\RelWithDebInfo
+              set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
+              mkdir %NATIVE_FOLDER%
+              echo "Directories created"
+              copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+              pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+              set artifact_id=${{ parameters.java_artifact_id }}
+              jar xf onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
+              move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-$(OnnxRuntimeVersion).pom
+              rd /s /q META-INF
+              popd
+              copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
+              copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
+              copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\Privacy.md
+              copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ThirdPartyNotices.txt
+              @echo $(OnnxRuntimeGitCommitHash) > $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\GIT_COMMIT_ID
+              pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
+              jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime.pdb
+              jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
+              jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
+              popd
+              pushd $(Build.SourcesDirectory)\java\build\classes\java\test
+              if %errorlevel% neq 0 exit /b %errorlevel%
+              jar cvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
+              if %errorlevel% neq 0 exit /b %errorlevel%
+              popd
+              pushd $(Build.SourcesDirectory)\java\build\resources\test
+              rd /s /q ai\onnxruntime\native
+              jar uvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
+              popd
+              rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
+              dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+
+        - task: PublishBuildArtifacts@1
+          condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+          displayName: 'Publish Java temp binaries'
+          inputs:
+            pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+            artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+
+        - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+          - task: CredScan@3
+            displayName: 'Run CredScan'
+            inputs:
+              debugMode: false
+            continueOnError: true
+
+          - task: BinSkim@4
+            displayName: 'Run BinSkim'
+            inputs:
+              AnalyzeTargetGlob: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\**\*.dll'
+            continueOnError: true
+
+          - task: PostAnalysis@2
+            inputs:
+              GdnBreakAllTools: false
+              GdnBreakGdnToolBinSkim: true
+              GdnBreakPolicy: M365
+              GdnBreakPolicyMinSev: Error
+
+          - task: TSAUpload@2
+            displayName: 'TSA upload'
+            condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+            inputs:
+              GdnPublishTsaOnboard: false
+              GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+            continueOnError: true
+
+        - template: component-governance-component-detection-steps.yml
+          parameters :
+            condition : 'succeeded'
+
+        - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+              artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
 
 - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
   - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
-    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
+    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}_Building
     variables:
       CUDA_MODULE_LOADING: 'LAZY'
     jobs:
