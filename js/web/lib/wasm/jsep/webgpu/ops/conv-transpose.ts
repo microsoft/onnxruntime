@@ -210,7 +210,7 @@ const convTranspose2d =
       // Switch to naive method when outChannels and inputChannels are very small. It's because that in this case it's
       // not suitable for matmul version since matmul uses tile size 32x32 resulting the underlying execution unit
       // utilization rate is very low.
-      if (adjustedAttributes.group !== 1 || (outChannels === 1 && inputChannels === 1)) {
+      if (adjustedAttributes.group !== 1 || (outChannels === 1 && inputChannels === 1) || !isChannelsLast) {
         context.compute(createConvTranspose2DProgramInfo(inputs, adjustedAttributes));
         return;
       }
