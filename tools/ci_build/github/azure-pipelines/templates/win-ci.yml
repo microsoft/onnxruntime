@@ -320,8 +320,9 @@ stages:
         - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
           - task: PublishPipelineArtifact@1
             inputs:
-              targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+              targetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/'
               artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
+              publishLocation: 'pipeline'
 
 - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
   - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
@@ -346,7 +347,7 @@ stages:
           parameters:
             ArtifactName: "Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts"
             StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
-            TargetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/'
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
