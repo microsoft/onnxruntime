@@ -955,7 +955,7 @@ class ONNXQuantizer(BaseQuantizer):
         if self.tensors_range is None:
             return None
 
-        self.adjust_tensor_ranges(softmax_0_to_1=False)
+        self.adjust_tensor_ranges()
 
         quantization_params = {}
         for tensor_name in self.tensors_range:

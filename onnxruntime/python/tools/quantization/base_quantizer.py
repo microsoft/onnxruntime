@@ -452,7 +452,7 @@ class BaseQuantizer:
 
         return q_weight_name, zp_name, scale_name
 
-    def adjust_tensor_ranges(self, softmax_0_to_1=False):
+    def adjust_tensor_ranges(self):
         if self.tensors_range is None:
             return
 
@@ -471,6 +471,6 @@ class BaseQuantizer:
                 if not isinstance(td, TensorData):
                     raise TypeError(f"Unexpected type {type(td)} for {node.output[0]!r}.")
                 self.tensors_range[node.input[0]] = td
-            # Optionally, adjust Softmax to range from 0.0 to 1.0
-            elif node.op_type == "Softmax" and softmax_0_to_1:
+            # Adjust Softmax to range from 0.0 to 1.0
+            elif node.op_type == "Softmax":
                 self.tensors_range[node.output[0]] = TensorData(lowest=np.float32(0.0), highest=np.float32(1.0))
