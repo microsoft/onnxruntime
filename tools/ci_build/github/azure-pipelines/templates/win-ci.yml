@@ -196,13 +196,16 @@ stages:
           workingDirectory: '$(Build.BinariesDirectory)'
       - ${{ else }}:
         - powershell: |
-            Get-ChildItem -Path "$(Build.BinariesDirectory)/RelWithDebInfo" -Directory  | Where-Object { $_.Name.EndsWith("*.dir") } | ForEach-Object { Remove-Item $_.FullName -Force -Recurse }
+            New-Item $(Agent.TempDirectory)/RelWithDebInfo -Force -ItemType Directory
+            Get-ChildItem -Path "$(Build.BinariesDirectory)/RelWithDebInfo" -File  | ForEach-Object { Copy-Item $_.FullName -Destination $(Agent.TempDirectory)/RelWithDebInfo -Force }
+            Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo" -Destination $(Agent.TempDirectory)/RelWithDebInfo -Recurse -Force
+            cd $(Agent.TempDirectory)/RelWithDebInfo
             tree /f
-          displayName: 'delete symbol files in RelWithDebInfo'
-          workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo'
+          displayName: 'Copy test needs files'
+          workingDirectory: '$(Build.BinariesDirectory)'
         - task: PublishPipelineArtifact@1
           inputs:
-            targetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
+            targetPath: '$(Agent.TempDirectory)/RelWithDebInfo'
             artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
             publishLocation: 'pipeline'
 
