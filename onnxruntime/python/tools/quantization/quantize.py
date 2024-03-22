@@ -659,8 +659,8 @@ def quantize(
     """Quantize a model with QuantConfig.
 
     Args:
-        model_input (Path): Path to the model or ModelProto to quantize.
-        model_output (Path): Path to save the quantized model.
+        model_input (str | Path | ModelProto): Path to the model or ModelProto to quantize.
+        model_output (str | Path): Path to save the quantized model.
         quant_config (QuantConfig): Quantization Configuration.
     """
 
