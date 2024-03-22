@@ -50,8 +50,6 @@ pip install onnxruntime
 #### Install ONNX Runtime GPU (CUDA 11.x)
 The default CUDA version for ORT is 11.8.
 
-The latest gpu package is built and tested with CUDA 11.8, cuDNN 8.9 and TensorRT 8.6. 
-
 ```bash
 pip install onnxruntime-gpu
 ```
