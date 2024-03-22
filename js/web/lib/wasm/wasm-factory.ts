@@ -135,6 +135,11 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const wasmFileName = getWasmFileName(useSimd, useThreads);
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[wasmFileName] : undefined;
 
+  const workerPaths = flags.workerPaths;
+  const [threadedMainScriptOverride, threadedWorkerOverride] = typeof workerPaths === 'object' ?
+      [workerPaths['ort-wasm-threaded-main-script'], workerPaths['ort-wasm-threaded-worker-script']] :
+      [undefined, undefined];
+
   let isTimeout = false;
 
   const tasks: Array<Promise<void>> = [];
@@ -156,13 +161,17 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       locateFile: (fileName: string, scriptDirectory: string) => {
         if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && fileName.endsWith('.worker.js') &&
             typeof Blob !== 'undefined') {
-          return URL.createObjectURL(new Blob(
-              [
-                // This require() function is handled by esbuild plugin to load file content as string.
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                require('./binding/ort-wasm-threaded.worker.js')
-              ],
-              {type: 'text/javascript'}));
+          if (threadedWorkerOverride) {
+            return threadedWorkerOverride;
+          } else {
+            return URL.createObjectURL(new Blob(
+                [
+                  // This require() function is handled by esbuild plugin to load file content as string.
+                  // eslint-disable-next-line @typescript-eslint/no-require-imports
+                  require('./binding/ort-wasm-threaded.worker.js')
+                ],
+                {type: 'text/javascript'}));
+          }
         }
 
         if (fileName.endsWith('.wasm')) {
@@ -191,6 +200,8 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       config.numThreads = numThreads;
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
+      } else if (threadedMainScriptOverride) {
+        config.mainScriptUrlOrBlob = threadedMainScriptOverride;
       } else {
         const scriptSourceCode = `var ortWasmThreaded=${factory.toString()};`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
