@@ -182,7 +182,12 @@ T resolve_external_data_location(
           ") should be a relative path, but it is an absolute path: ",
           ToUTF8String(location));
     }
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    // workaround 'wstring' is unavailable: introduced in iOS 13.0
+    auto relative_path = ToWideString(file_path.lexically_normal().make_preferred().u8string());
+#else
     auto relative_path = file_path.lexically_normal().make_preferred().wstring();
+#endif
     // Check that normalized relative path contains ".." on Windows.
     if (relative_path.find(L"..", 0) != std::string::npos) {
       ORT_THROW(
