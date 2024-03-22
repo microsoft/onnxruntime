@@ -73,13 +73,14 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"]
+    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "NPU"]
 
     choices1 = [
         "CPU_FP32_NO_PARTITION",
         "CPU_FP16_NO_PARTITION",
         "GPU_FP32_NO_PARTITION",
         "GPU_FP16_NO_PARTITION",
+        "NPU_NO_PARTITION",
     ]
     status_hetero = True
     res = False
@@ -94,7 +95,7 @@ def _openvino_verify_device_type(device_read):
         if len(comma_separated_devices) < 2:
             print("At least two devices required in Hetero/Multi/Auto Mode")
             status_hetero = False
-        dev_options = ["CPU", "GPU"]
+        dev_options = ["CPU", "GPU", "NPU"]
         for dev in comma_separated_devices:
             if dev not in dev_options:
                 status_hetero = False
@@ -105,7 +106,7 @@ def _openvino_verify_device_type(device_read):
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU'] \n")
+        print("are ['CPU','GPU','NPU'] \n")
         print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU \n")
         print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU \n")
         print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU \n")
@@ -401,6 +402,12 @@ def parse_arguments():
     parser.add_argument("--ios", action="store_true", help="build for ios")
 
     parser.add_argument(
+        "--macos",
+        choices=["MacOSX", "Catalyst"],
+        help="Specify the target platform for macOS build. Only specify this argument when --build_apple_framework is present.",
+    )
+
+    parser.add_argument(
         "--apple_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
     )
     parser.add_argument(
@@ -419,7 +426,7 @@ def parse_arguments():
         action="store_const",
         const="Xcode",
         dest="cmake_generator",
-        help="Use Xcode as cmake generator, this is only supported on MacOS. Equivalent to '--cmake_generator Xcode'.",
+        help="Use Xcode as cmake generator, this is only supported on MacOS. (non Catalyst build). Equivalent to '--cmake_generator Xcode'.",
     )
     parser.add_argument(
         "--osx_arch",
@@ -1220,6 +1227,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP16=" + ("ON" if args.use_openvino == "CPU_FP16" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_NPU=" + ("ON" if args.use_openvino == "NPU" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP32_NP="
             + ("ON" if args.use_openvino == "GPU_FP32_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP16_NP="
@@ -1228,6 +1236,7 @@ def generate_build_tree(
             + ("ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP16_NP="
             + ("ON" if args.use_openvino == "CPU_FP16_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_NPU_NP=" + ("ON" if args.use_openvino == "NPU_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_HETERO=" + ("ON" if args.use_openvino.startswith("HETERO") else "OFF"),
             "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
             "-Donnxruntime_USE_OPENVINO_MULTI=" + ("ON" if args.use_openvino.startswith("MULTI") else "OFF"),
@@ -1323,8 +1332,12 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    if args.build_apple_framework or args.ios:
-        if not args.cmake_generator == "Xcode":
+    if args.macos or args.ios:
+        # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
+        if args.macos == "Catalyst" and args.cmake_generator == "Xcode":
+            raise BuildError("Xcode CMake generator ('--cmake_generator Xcode') doesn't support Mac Catalyst build.")
+
+        if (args.ios or args.macos == "MacOSX") and not args.cmake_generator == "Xcode":
             raise BuildError(
                 "iOS/MacOS framework build requires use of the Xcode CMake generator ('--cmake_generator Xcode')."
             )
@@ -1342,18 +1355,36 @@ def generate_build_tree(
                 "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
                 + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
             )
+        # note: this value is mainly used in framework_info.json file to specify the build osx type
+        platform_name = "macabi" if args.macos == "Catalyst" else args.apple_sysroot
         cmake_args += [
             "-Donnxruntime_BUILD_SHARED_LIB=ON",
             "-DCMAKE_OSX_SYSROOT=" + args.apple_sysroot,
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
             "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+            "-DPLATFORM_NAME=" + platform_name,
         ]
         if args.ios:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
                 + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
+            ]
+        # for catalyst build, we need to manually specify cflags for target e.g. x86_64-apple-ios14.0-macabi, etc.
+        # https://forums.developer.apple.com/forums/thread/122571
+        if args.macos == "Catalyst":
+            macabi_target = f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi"
+            cmake_args += [
+                "-DCMAKE_CXX_COMPILER_TARGET=" + macabi_target,
+                "-DCMAKE_C_COMPILER_TARGET=" + macabi_target,
+                "-DCMAKE_CC_COMPILER_TARGET=" + macabi_target,
+                f"-DCMAKE_CXX_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+                f"-DCMAKE_C_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+                f"-DCMAKE_CC_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_CC_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
             ]
 
     if args.build_wasm:
@@ -2740,7 +2771,13 @@ def main():
             cmake_extra_args += ["-G", args.cmake_generator]
 
         if is_macOS():
-            if not args.ios and not args.android and args.osx_arch == "arm64" and platform.machine() == "x86_64":
+            if (
+                not args.ios
+                and args.macos != "Catalyst"
+                and not args.android
+                and args.osx_arch == "arm64"
+                and platform.machine() == "x86_64"
+            ):
                 if args.test:
                     log.warning("Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False

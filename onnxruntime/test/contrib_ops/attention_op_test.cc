@@ -227,6 +227,12 @@ static void RunAttentionTest(
       tester.AddOptionalInputEdge<int32_t>();
     }
 
+    if (use_float16) {
+      tester.SetOutputTolerance(0.005f);
+    } else {
+      tester.SetOutputTolerance(0.001f, 0.001f);
+    }
+
     if (enable_cuda) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -254,6 +260,9 @@ static void RunAttentionTest(
     if (enable_dml) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultDmlExecutionProvider());
+      if (use_float16) {
+        tester.SetOutputTolerance(0.02f);
+      }
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }

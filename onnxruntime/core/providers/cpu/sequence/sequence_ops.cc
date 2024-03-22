@@ -453,7 +453,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
   int num_remaining_splits = 0;
   InlinedVector<int64_t> split_sizes;
   const bool is_string_type = input.IsDataTypeString();
-  const size_t element_size = (is_string_type) ? 0U : input.DataType()->Size();
+  const size_t element_size = input.DataType()->Size();
 
   // figure out split_scalar or split_sizes
   if (p_split_input) {

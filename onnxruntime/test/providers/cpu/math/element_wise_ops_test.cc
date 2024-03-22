@@ -9,6 +9,7 @@
 #include "test/common/trt_op_test_utils.h"
 #include "core/util/math.h"
 #include <algorithm>
+#include <limits>
 #include <math.h>
 
 namespace onnxruntime {
@@ -1508,6 +1509,34 @@ TEST(MathOpTest, Min_12_Float_2_Input) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
+TEST(MathOpTest, Min_12_Float_Nan) {
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_2", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("min", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -1.0f, -1.0f, -2.0f,
+                         0.5f, 0.0f, 1.0f});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(MathOpTest, Min_12_Double) {
   OpTester test("Min", 12);
   test.AddInput<double>("data_0", {1, 3},
@@ -1523,6 +1552,34 @@ TEST(MathOpTest, Min_12_Double) {
                           1.0f, 2.0f, 3.0f,
                           -70.0f, -80.0f, -90.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_Double_Nan) {
+  OpTester test("Min", 12);
+  test.AddInput<double>("data_2", {3, 3},
+                        {std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::quiet_NaN(),
+                         -0.5, 0.0, -2.0,
+                         0.5, 0.0, 2.0});
+  test.AddInput<double>("data_1", {3, 1},
+                        {0.0, -1.0, 1.0});
+  test.AddOutput<double>("min", {3, 3},
+                         {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          -1.0, -1.0, -2.0,
+                          0.5, 0.0, 1.0});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Min_12_Int32) {
@@ -1631,6 +1688,7 @@ TEST(MathOpTest, Min_12_MLFLoat16_Scalar1) {
                             MakeMLFloat16({-10.f, -10.f, -10.f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
+
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};
@@ -1719,6 +1777,34 @@ TEST(MathOpTest, Max_12_Float) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
+TEST(MathOpTest, Max_12_Float_Nan) {
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_2", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("max", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -0.5f, 0.0f, -1.0f,
+                         1.0f, 1.0f, 2.0f});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(MathOpTest, Max_12_Double) {
   OpTester test("Max", 12);
   test.AddInput<double>("data_0", {1, 3},
@@ -1734,6 +1820,34 @@ TEST(MathOpTest, Max_12_Double) {
                           40.0, 50.0, 60.0,
                           300.0, 300.0, 300.0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_Double_Nan) {
+  OpTester test("Max", 12);
+  test.AddInput<double>("data_2", {3, 3},
+                        {std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::quiet_NaN(),
+                         -0.5, 0.0, -2.0,
+                         0.5, 0.0, 2.0});
+  test.AddInput<double>("data_1", {3, 1},
+                        {0.0, -1.0, 1.0});
+  test.AddOutput<double>("max", {3, 3},
+                         {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          -0.5, 0.0, -1.0,
+                          1.0, 1.0, 2.0});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Max_12_Int32) {
@@ -2632,7 +2746,7 @@ TEST(MathOpTest, Mean_8) {
 #endif
 
 template <float (&op)(float value) MATH_NO_EXCEPT>
-void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
+void TrigFloatTest(OpTester& test, std::initializer_list<float> input, float abs_error = -1.0f) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
   std::vector<float> output;
@@ -2641,6 +2755,10 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
 
   test.AddInput<float>("X", dims, input);
   test.AddOutput<float>("Y", dims, output);
+
+  if (abs_error >= 0.0f) {
+    test.SetOutputTolerance(abs_error);
+  }
 
   test.Run();
 }
@@ -2719,7 +2837,8 @@ TEST(MathOpTest, Tan) {
 
 TEST(MathOpTest, Asin) {
   OpTester test("Asin");
-  TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+  float abs_error = DefaultDmlExecutionProvider().get() != nullptr ? 0.0001f : -1.0f;
+  TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f}, abs_error);
 }
 
 TEST(MathOpTest, Acos) {

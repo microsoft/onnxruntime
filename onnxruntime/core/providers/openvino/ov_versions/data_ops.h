@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -26,7 +26,8 @@ enum versionNum {
   V_2023_0,
   V_2023_1,
   V_2023_2,
-  V_2023_3
+  V_2023_3,
+  V_2024_0
 };
 
 using VersionNum = enum versionNum;
@@ -67,9 +68,7 @@ class DataOps {
   bool dimension_unsupported(const Node* node);
   bool unsupported_op_mode(const Node* node);
   bool type_is_supported(const NodeArg* node_arg, bool is_initializer);
-  bool node_is_supported(const std::map<std::string,
-                                        std::set<std::string>>& op_map,
-                         const NodeIndex node_idx);
+  bool node_is_supported(const NodeIndex node_idx);
 
  public:
   DataOps(const GraphViewer& graph_viewer_param, VersionNum ver, const std::string dev_id, const std::string device_precision)
