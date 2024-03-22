@@ -79,7 +79,7 @@ def get_qnn_qdq_config(
         overrides_fixer.apply(activation_type, activation_symmetric)
 
     # Setup quantization overrides for specific operator types to ensure compatibility with QNN EP.
-    compat_overrides = QnnCompatibilityOverrides(
+    qnn_compat = QnnCompatibilityOverrides(
         activation_type,
         weight_type,
         activation_symmetric,
@@ -90,7 +90,7 @@ def get_qnn_qdq_config(
 
     for node in model.graph.node:
         op_types.add(node.op_type)
-        compat_overrides.process_node(node)
+        qnn_compat.process_node(node)
 
     extra_options = {
         "MinimumRealRange": 0.0001,
@@ -149,7 +149,6 @@ class QnnCompatibilityOverrides:
         process_fn = self.process_fns.get(node.op_type)
 
         if process_fn is not None:
-            print(f"Processing {node.op_type}")
             process_fn(node)
 
     def _process_matmul(self, node: onnx.NodeProto):

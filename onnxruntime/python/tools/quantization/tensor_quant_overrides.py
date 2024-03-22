@@ -15,9 +15,12 @@ from .quant_utils import QuantType
 
 @dataclass
 class QuantTypeInfo:
+    """
+    The quantization type information for a tensor override.
+    """
     quant_type: QuantType
-    symmetric: bool | None = None
-    reduce_range: bool | None = None
+    symmetric: bool | None = None  # If None, assumes default is used.
+    reduce_range: bool | None = None  # If None, assumes default is used.
 
     def __eq__(self, other: object):
         if isinstance(other, QuantTypeInfo):
