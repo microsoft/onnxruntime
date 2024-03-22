@@ -669,7 +669,6 @@ Status EfficientAttention(
     auto q_buffer = reinterpret_cast<T*>(data.rotary_buffer);
     auto k_buffer = q_buffer + q_size;
     auto position_ids_buff = reinterpret_cast<int64_t*>(k_buffer + k_size);
-    // std::cout << parameters.seqlen_present_kv_cache << std::endl;
     ORT_RETURN_IF_ERROR(LaunchSeqlensToPosIds(parameters, data.seqlens_k, position_ids_buff, stream, max_threads_per_block));
     DUMP_TENSOR_INIT();
     DUMP_TENSOR("position_ids", position_ids_buff, batch_size, sequence_length);
