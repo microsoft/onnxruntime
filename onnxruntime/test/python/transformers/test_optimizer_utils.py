@@ -13,7 +13,7 @@ from onnxruntime.transformers.optimizer_utils import extract_raw_data_from_model
 
 class TestOptimizerUtils(unittest.TestCase):
     def test_extract_raw_data_from_model(self):
-        model = self._get_model_proto_with_raw_data()
+        model = self._get_model_proto_with_raw_data(False)
         external_names, external_values = extract_raw_data_from_model(model)
         self.assertEqual(list(external_names), ["inputs"])
         self.assertEqual(len(external_values), 1)
