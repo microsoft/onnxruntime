@@ -184,7 +184,7 @@ T resolve_external_data_location(
     }
 #if defined(__APPLE__) && TARGET_OS_IPHONE
     // workaround 'wstring' is unavailable: introduced in iOS 13.0
-    auto relative_path = ToWideString(file_path.lexically_normal().make_preferred().u8string());
+    auto relative_path = ToWideString(file_path.lexically_normal().make_preferred().string());
 #else
     auto relative_path = file_path.lexically_normal().make_preferred().wstring();
 #endif
