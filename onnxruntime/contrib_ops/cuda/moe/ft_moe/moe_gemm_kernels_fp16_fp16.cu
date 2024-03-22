@@ -13,9 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#pragma warning(disable : 4244)
+#endif
 #include "moe_gemm_kernels_template.h"
-
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 namespace ort_fastertransformer {
 template class MoeGemmRunner<half, half>;
-}  // namespace ort_fastertransformer
+} // namespace ort_fastertransformer
