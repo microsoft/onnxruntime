@@ -79,6 +79,8 @@ def get_qnn_qdq_config(
 
     # Setup quantization overrides for specific operator types
     for node in model.graph.node:
+        op_types.add(node.op_type)
+
         if node.op_type == "MatMul" and weight_type in Q8_TYPES:
             input_16bit_act = None
             input_wgt = None
