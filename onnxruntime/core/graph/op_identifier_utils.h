@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/graph/op_identifier.h"
 

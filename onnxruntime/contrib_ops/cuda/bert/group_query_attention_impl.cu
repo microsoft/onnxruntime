@@ -451,7 +451,7 @@ __global__ void PastToTotalSeqlen(int32_t* seqlens_k,
 // Convert Past to Total sequence length tensor
 Status LaunchGetSeqlenBuff(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_k,
                            int32_t* seqlens_k_buff, bool is_total, cudaStream_t stream,
-                           const int threads_per_block) {
+                           const int /*threads_per_block*/) {
   if (parameters.is_prompt) {
     return Status::OK();
   }
@@ -530,7 +530,7 @@ Status FlashAttention(
       device_prop, stream, query, present_key, present_value, key, value, data.output,
       reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache,
       batch_size, num_heads, kv_num_heads, head_size, sequence_length,
-      parameters.seqlen_present_kv_cache, kv_sequence_length,
+      parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.rotary_dim,
       scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved,
       parameters.is_packed_qkv));
@@ -655,7 +655,7 @@ Status EfficientAttention(
 template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
-    cublasHandle_t& cublas,
+    cublasHandle_t& /*cublas*/,
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data) {

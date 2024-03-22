@@ -6,7 +6,7 @@
 #include <string>
 #include <filesystem>
 
-#include "NvInfer.h"
+#include "core/providers/tensorrt/nv_includes.h"
 #include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {

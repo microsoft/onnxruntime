@@ -678,13 +678,13 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
   dcvs_v3.setSleepDisable = 0;
   dcvs_v3.sleepDisable = 0;
   dcvs_v3.setDcvsEnable = 1;
-  dcvs_v3.dcvsEnable = kDcvsDisable;
   dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_PERFORMANCE_MODE;
   // choose performance mode
   switch (htp_performance_mode) {
     case HtpPerformanceMode::kHtpBurst:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMinLatency;
+      dcvs_v3.dcvsEnable = kDcvsDisable;
       dcvs_v3.setBusParams = 1;
       dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
@@ -698,6 +698,7 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
     case HtpPerformanceMode::kHtpHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepLowLatency;
+      dcvs_v3.dcvsEnable = kDcvsDisable;
       dcvs_v3.setBusParams = 1;
       dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_TURBO;
       dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_TURBO;
@@ -707,9 +708,49 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_TURBO;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_TURBO;
       break;
+    case HtpPerformanceMode::kHtpBalanced:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.dcvsEnable = kDcvsEnable;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
+      break;
+    case HtpPerformanceMode::kHtpLowBalanced:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.dcvsEnable = kDcvsEnable;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM;
+      break;
+    case HtpPerformanceMode::kHtpHighPowerSaver:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.dcvsEnable = kDcvsEnable;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
+      break;
     case HtpPerformanceMode::kHtpPowerSaver:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.dcvsEnable = kDcvsEnable;
       dcvs_v3.setBusParams = 1;
       dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS;
       dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS;
@@ -722,6 +763,7 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
     case HtpPerformanceMode::kHtpLowPowerSaver:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.dcvsEnable = kDcvsEnable;
       dcvs_v3.setBusParams = 1;
       dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS2;
       dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS2;
@@ -731,21 +773,11 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS2;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS2;
       break;
-    case HtpPerformanceMode::kHtpHighPowerSaver:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      break;
     case HtpPerformanceMode::kHtpExtremePowerSaver:
+      dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_POWER_SAVER_MODE;
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.dcvsEnable = kDcvsEnable;
       dcvs_v3.setBusParams = 1;
       dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_CORNER_DISABLE;
       dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_CORNER_DISABLE;
@@ -754,30 +786,6 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
       dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_CORNER_DISABLE;
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_CORNER_DISABLE;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_CORNER_DISABLE;
-      break;
-    case HtpPerformanceMode::kHtpLowBalanced:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM;
-      break;
-    case HtpPerformanceMode::kHtpBalanced:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
       break;
     default:
       ORT_THROW("Invalid performance profile %d", static_cast<int>(htp_performance_mode));

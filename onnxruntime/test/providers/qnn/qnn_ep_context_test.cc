@@ -123,6 +123,8 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
   for (auto& node : ctx_graph.Nodes()) {
     if (node.OpType() == "EPContext") {
       ++ep_context_node_count;
+      // validate the fix for the partition issue relate to QDQ model
+      ASSERT_EQ(node.InputDefs().size(), 1);
     } else {
       ++non_ep_context_node_count;
     }

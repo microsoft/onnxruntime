@@ -11,6 +11,7 @@
 #endif
 
 namespace onnxruntime {
+
 namespace cuda {
 
 #define OP(name, expr)                                     \
@@ -126,9 +127,10 @@ struct OP_Cast {
     UnaryElementWiseImpl(stream, input_data, output_data, OP_Cast<InT, OutT>(), count);                  \
   }
 
-#define IMPL_CAST_IMPL_THROW(InT, OutT)                                                                  \
-  void Explicit_Impl_Cast(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count) { \
-    ORT_THROW("Cast from " #InT " to " #OutT " must define saturate.");                                  \
+#define IMPL_CAST_IMPL_THROW(InT, OutT)                                                              \
+  void Explicit_Impl_Cast(cudaStream_t /*stream*/, const InT* /*input_data*/, OutT* /*output_data*/, \
+                          size_t /*count*/) {                                                        \
+    ORT_THROW("Cast from " #InT " to " #OutT " must define saturate.");                              \
   }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -283,6 +285,63 @@ EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E5M2)
 */
 
 #endif
+
+namespace isinf_details {
+template <typename T>
+struct IsInf_DispFunc {
+  void operator()(cudaStream_t stream, const void* input_raw, bool* output_data,
+                  bool detect_positive, bool detect_negative, size_t count) const {
+    using CudaType = typename ToCudaType<T>::MappedType;
+    const auto* input_data = reinterpret_cast<const CudaType*>(input_raw);
+    if (detect_positive && detect_negative) {
+      UnaryElementWiseImpl(stream, input_data, output_data, _IsInf<CudaType, true, true>{}, count);
+    } else if (detect_positive) {
+      UnaryElementWiseImpl(stream, input_data, output_data, _IsInf<CudaType, true, false>{}, count);
+    } else if (detect_negative) {
+      UnaryElementWiseImpl(stream, input_data, output_data, _IsInf<CudaType, false, true>{}, count);
+    } else {
+      UnaryElementWiseImpl(stream, input_data, output_data, _IsInf<CudaType, false, false>{}, count);
+    }
+  }
+};
+
+}  // namespace isinf_details
+
+void Explicit_Impl_IsInf(cudaStream_t stream, int op_set,
+                         bool detect_positive, bool detect_negative,
+                         int32_t input_data_type,
+                         const void* input_raw, bool* output_data,
+                         size_t count) {
+  if (op_set < 20) {
+    utils::MLTypeCallDispatcher<float, double> dispatcher{input_data_type};
+    dispatcher.Invoke<isinf_details::IsInf_DispFunc>(stream, input_raw, output_data,
+                                                     detect_positive, detect_negative, count);
+  } else {
+    utils::MLTypeCallDispatcher<ISINF_OPSET20_ALL_FLOATS> dispatcher{input_data_type};
+    dispatcher.Invoke<isinf_details::IsInf_DispFunc>(stream, input_raw, output_data,
+                                                     detect_positive, detect_negative, count);
+  }
+}
+
+// IsNan
+
+namespace isnan_details {
+template <typename T>
+struct IsNan_Disp {
+  void operator()(cudaStream_t stream, const void* input_raw, bool* output_data, size_t count) const {
+    using CudaType = typename ToCudaType<T>::MappedType;
+    const auto* input_data = reinterpret_cast<const CudaType*>(input_raw);
+    UnaryElementWiseImpl(stream, input_data, output_data, _IsNan<CudaType>{}, count);
+  }
+};
+}  // namespace isnan_details
+
+void Explicit_Impl_IsNan(cudaStream_t stream, int32_t input_data_type,
+                         const void* input_raw, bool* output_data, size_t count) {
+  // KernelDef constraints would ensure only subset of datatypes is used.
+  utils::MLTypeCallDispatcher<ISNAN_OPSET20_FLOATS> dispatcher{input_data_type};
+  dispatcher.Invoke<isnan_details::IsNan_Disp>(stream, input_raw, output_data, count);
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime

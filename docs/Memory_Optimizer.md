@@ -51,6 +51,7 @@ There are two modes to enable the memory optimizations:
 	- Plan 8            :  OFF  :  Cast+:2:-1                                           1     2,048              2.0*inputs_input_ids_dim0*inputs_input_ids_dim1
 	```
 3. As shown above, `Config` is a string representative for a re-computable subgraph. All are enabled for recompute in this case.
+4. By `export ORTMODULE_MEMORY_OPT_LEVEL=2`, all plans including compromised recomptable subgraphs will also be enabled.
 
 
 ### Mode 2 -  Advanced Usage (User Selected Subgraph Recompute)

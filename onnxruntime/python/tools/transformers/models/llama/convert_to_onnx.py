@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 from __future__ import annotations
 
 import argparse
@@ -944,9 +949,11 @@ def main():
                             ort_quantization.quantize_dynamic(
                                 fp32_path,
                                 int8_path,
-                                op_types_to_quantize=["MatMul", "Gemm", "Gather"]
-                                if args.quantize_embedding_layer
-                                else ["MatMul", "Gemm"],
+                                op_types_to_quantize=(
+                                    ["MatMul", "Gemm", "Gather"]
+                                    if args.quantize_embedding_layer
+                                    else ["MatMul", "Gemm"]
+                                ),
                                 per_channel=args.quantize_per_channel,
                                 reduce_range=args.quantize_reduce_range,
                                 use_external_data_format=True,

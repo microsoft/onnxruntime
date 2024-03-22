@@ -14,6 +14,7 @@ import onnx
 import torch
 
 from ._subscriber_base import RuntimeStates, SubscriberBase
+from ._subscriber_manager import ORT_NO_INCREASE_GLOBAL_STEP
 
 
 class _InspectActivation(torch.autograd.Function):
@@ -176,21 +177,23 @@ class StatisticsSubscriber(SubscriberBase):
         display_name = name + " forward run" if is_forward is True else name + " backward run"
         output_file_name = name + "_forward" if is_forward is True else name + "_backward"
 
-        if tensor is None or not isinstance(tensor, torch.Tensor):
-            print(f"{display_name} not a torch tensor, value: {tensor}")
-            return
+        # Skip dump during model pre-export output schema preparison run and export run.
+        if ORT_NO_INCREASE_GLOBAL_STEP[0] is False:
+            if tensor is None or not isinstance(tensor, torch.Tensor):
+                print(f"{display_name} not a torch tensor, value: {tensor}")
+                return
 
-        step_path = Path(step_folder)
-        if not step_path.exists():
-            step_path.mkdir(parents=True, exist_ok=False)
-        order_file_path = step_path / "order.txt"
-        tensor_file_path = step_path / output_file_name
+            step_path = Path(step_folder)
+            if not step_path.exists():
+                step_path.mkdir(parents=True, exist_ok=False)
+            order_file_path = step_path / "order.txt"
+            tensor_file_path = step_path / output_file_name
 
-        with order_file_path.open(mode="a", encoding="utf-8") as f:
-            f.write(f"{output_file_name}\n")
+            with order_file_path.open(mode="a", encoding="utf-8") as f:
+                f.write(f"{output_file_name}\n")
 
-        with tensor_file_path.open(mode="w", encoding="utf-8") as f:
-            _summarize_tensor(display_name, tensor, f, depth, self._run_on_cpu, self._bucket_size)
+            with tensor_file_path.open(mode="w", encoding="utf-8") as f:
+                _summarize_tensor(display_name, tensor, f, depth, self._run_on_cpu, self._bucket_size)
 
 
 def _summarize_tensor(
