@@ -188,6 +188,12 @@ Status IsNaN::ComputeInternal(OpKernelContext* context) const {
   UNARY_OP_VERSIONED_TYPED(name, startver, endver, float)     \
   UNARY_OP_VERSIONED_TYPED(name, startver, endver, double)
 
+#define UNARY_OP_VERSIONED_HFDX(name, startver, endver)       \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, BFloat16)  \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, float)     \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, double)
+
 #define UNARY_OP_VERSIONED_CSILHFD(name, startver, endver)  \
   UNARY_OP_VERSIONED_TYPED(name, startver, endver, int8_t)  \
   UNARY_OP_VERSIONED_TYPED(name, startver, endver, int16_t) \
@@ -234,8 +240,8 @@ UNARY_OP_VERSIONED_HFD(Ceil, 6, 12)
 UNARY_OP_VERSIONED_HFD(Reciprocal, 6, 12)
 UNARY_OP_VERSIONED_HFD(Sqrt, 6, 12)
 UNARY_OP_VERSIONED_HFD(Log, 6, 12)
-UNARY_OP_VERSIONED_HFD(Exp, 6, 12)
-UNARY_OP_VERSIONED_HFD(Erf, 9, 12)
+UNARY_OP_VERSIONED_HFDX(Exp, 6, 12)
+UNARY_OP_VERSIONED_HFDX(Erf, 9, 12)
 
 UNARY_OP_BWUZCSILHFD(Abs, 13)
 UNARY_OP_CSILHFD(Neg, 13)
@@ -244,8 +250,8 @@ UNARY_OP_HFD(Ceil, 13)
 UNARY_OP_HFD(Reciprocal, 13)
 UNARY_OP_HFDX(Sqrt, 13)
 UNARY_OP_HFD(Log, 13)
-UNARY_OP_HFD(Exp, 13)
-UNARY_OP_HFD(Erf, 13)
+UNARY_OP_HFDX(Exp, 13)
+UNARY_OP_HFDX(Erf, 13)
 UNARY_OP_BWUZCSILHFD(Sign, 13)
 
 UNARY_LOGICALOP_NOT_TYPED(1, bool)

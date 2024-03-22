@@ -845,3 +845,77 @@ def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
     )
 
     return res
+
+@register_symbolic("_convolution")
+@parse_args("v", "v", "v", "is", "is", "is", "i", "is", "i", "i", "i", "i", "i")
+def convolution(
+    g,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    dilation,
+    transposed,
+    output_padding,
+    groups,
+    benchmark,
+    deterministic,
+    cudnn_enabled,
+    allow_tf32=None,
+):
+    from torch.onnx.symbolic_opset9 import _convolution
+
+    input_casted = g.op("Cast", input, to_i=torch.onnx.TensorProtoDataType.FLOAT) if input.type().scalarType() == "BFloat16" else input
+    weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT) if weight.type().scalarType() == "BFloat16" else weight
+    
+    n = _convolution(
+        g, 
+        input_casted, 
+        weight_casted, 
+        bias,
+        stride,
+        padding,
+        dilation,
+        transposed,
+        output_padding,
+        groups,
+        benchmark,
+        deterministic,
+        cudnn_enabled,
+        allow_tf32)
+    
+    n_casted = g.op("Cast", n, to_i=torch.onnx.TensorProtoDataType.BFLOAT16) if input.type().scalarType() == "BFloat16" else n
+    return n_casted
+
+@register_symbolic("_convolution_mode")
+@parse_args("v", "v", "v", "is", "s", "is", "i")
+def convolution_mode(
+    g,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    dilation,
+    groups,
+):
+    from torch.onnx.symbolic_opset9 import _convolution_mode
+
+    input_casted = g.op("Cast", input, to_i=torch.onnx.TensorProtoDataType.FLOAT) if input.type().scalarType() == "BFloat16" else input
+    weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT) if weight.type().scalarType() == "BFloat16" else weight
+
+    
+    n = _convolution_mode(
+        g, 
+        input_casted, 
+        weight_casted, 
+        bias,
+        stride,
+        padding,
+        dilation,
+        groups)
+    
+    n_casted = g.op("Cast", n, to_i=torch.onnx.TensorProtoDataType.BFLOAT16) if input.type().scalarType() == "BFloat16" else n
+    return n_casted
+

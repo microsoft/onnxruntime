@@ -21,7 +21,7 @@ using ConstantOfShapeDefaultOutputTypes =
         float, double,
         int8_t, int16_t, int32_t, int64_t,
         uint8_t, uint16_t, uint32_t, uint64_t,
-        bool>;
+        bool, BFloat16>;
 
 using ConstantOfShapeDefaultOutputTypesOpset20 =
     TypeList<
@@ -144,6 +144,7 @@ void ConstantOfShapeBase<EnabledOutputTypeList>::SetValueFromTensorProto(const O
     CASE_FETCH_VALUE_DATA(uint16_t)
     CASE_FETCH_VALUE_DATA(uint32_t)
     CASE_FETCH_VALUE_DATA(uint64_t)
+    CASE_FETCH_VALUE_DATA(BFloat16)
     default:
       ORT_THROW("Unsupported value attribute datatype: ", tensor_type);
   }
