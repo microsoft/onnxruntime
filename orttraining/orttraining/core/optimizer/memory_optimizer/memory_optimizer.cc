@@ -100,7 +100,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
       graph_is_modified = true;
 
-      auto connect_bw_ops_to_recomputed_activation = [&graph, &node_index_to_its_order_in_topological_sort_map, boundary_op_order_in_topological_sort, replacement_node_ptr](Node* node, size_t output_index) {
+      auto connect_bw_ops_to_recomputed_activation = [&graph, &node_index_to_its_order_in_topological_sort_map, boundary_op_order_in_topological_sort](Node* node, size_t output_index, Node* replacement_node_ptr) {
         // Collect output edges (connecting to backward ops), to remove.
         std::vector<graph_utils::GraphEdge> output_edges;
         for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
@@ -140,12 +140,20 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
         // For strict layerwise mode, we will collect all outputs of the layers as the recomputed outputs.
         for (const Node* n : recompute_plan->GetNodesInTopoOrder()) {
           for (size_t output_index = 0; output_index < n->OutputDefs().size(); ++output_index) {
-            connect_bw_ops_to_recomputed_activation(node, output_index);
+            const NodeArg* recompute_arg = graph.GetNodeArg(graph_utils::RecomputeName(n->OutputDefs()[output_index]->Name()));
+            if (recompute_arg == nullptr) {
+              continue;
+            }
+            const Node* replacement_node_ptr = graph.GetProducerNode(recompute_arg->Name());
+            if (replacement_node_ptr == nullptr) {
+              continue;
+            }
+            connect_bw_ops_to_recomputed_activation(graph.GetNode(n->Index()), output_index, graph.GetNode(replacement_node_ptr->Index()));
           }
         }
       } else {
         for (size_t output_index : apply_context->output_indices) {
-          connect_bw_ops_to_recomputed_activation(node, output_index);
+          connect_bw_ops_to_recomputed_activation(node, output_index, replacement_node_ptr);
         }
       }
 
@@ -352,7 +360,7 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
       graph.UpdateProducerNode(recompute_node.MutableOutputDefs()[j]->Name(), recompute_node.Index());
     }
 
-    // Add the edges from the recompute node to the original node.
+    // Add the edges from the recompute node to its input nodes, making sure consumers/producers are updated.
     for (size_t j = 0; j < recompute_node.MutableInputDefs().size(); ++j) {
       NodeArg* input_arg = recompute_node.MutableInputDefs()[j];
       const Node* producer_node = graph.GetProducerNode(input_arg->Name());

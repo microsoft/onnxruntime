@@ -305,12 +305,12 @@ Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
                                                const InlinedVector<const Node*>& layer_boundary_ln_nodes,
                                                MemoryOptimizationPlanner& memory_opt_planner) {
   // Re-roder the layer boundary nodes in topological order.
-  std::cout << "FindStrictLayerwiseRecomputeOpportunity based detected " << layer_boundary_ln_nodes.size() << " boudary node " << std::endl;
+  // std::cout << "FindStrictLayerwiseRecomputeOpportunity based detected " << layer_boundary_ln_nodes.size() << " boudary node " << std::endl;
   for (size_t index = 1; index < layer_boundary_ln_nodes.size(); ++index) {
     InlinedVector<const Node*> reachable_nodes;
     const Node* end_node_input_node;
     int32_t output_index = 0;
-    std::cout << "Looking for layer - start from node " << layer_boundary_ln_nodes[index - 1]->Name() << std::endl;
+    // std::cout << "Looking for layer - start from node " << layer_boundary_ln_nodes[index - 1]->Name() << std::endl;
     ORT_RETURN_IF_ERROR(FindReachableNodesFromGivenInputAndOutput(graph_viewer,
                                                                   layer_boundary_ln_nodes[index - 1],
                                                                   layer_boundary_ln_nodes[index],
@@ -340,11 +340,12 @@ Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
       //                          |
       //           PythonOp(deepspeed.runtime.zero.parameter_offload.PreBackwardFunction) - Embedding
       //                          |
+      //                      (real layer boudary)
+      //                          |
       //           PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - MistralDecoderLayer
       //                          |
       //           PythonOp(onnxruntime.training.utils.hooks._zero_offload_subscriber.ORTZeROOffloadPreForwardFunction) - MistralDecoderLayer
       //                          |
-      //                      (real layer boudary)
       //     ---------------------|
       //     |                    |
       //     |             PythonOp(deepspeed.runtime.zero.parameter_offload.PostBackwardFunction) - SimplifiedLayerNormalization
@@ -434,9 +435,26 @@ Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
 
         const Node* updated_start_node_input_node = graph_viewer.GetProducerNode(start_node_input_node->InputDefs()[0]->Name());
         if (updated_start_node_input_node != nullptr && is_postbackward_function(updated_start_node_input_node)) {
-          updated_start_node_input_node = graph_viewer.GetProducerNode(updated_start_node_input_node->InputDefs()[0]->Name());
-          std::cout << "Update the start node input node to " << updated_start_node_input_node->Name() << std::endl;
+          // std::cout << "Update the start node input node to " << updated_start_node_input_node->Name() << std::endl;
           nodes_to_append.push_back(updated_start_node_input_node);
+
+          updated_start_node_input_node = graph_viewer.GetProducerNode(updated_start_node_input_node->InputDefs()[0]->Name());
+          if (updated_start_node_input_node != nullptr && is_preforward_function(updated_start_node_input_node)) {
+            // std::cout << "Update the start node input node to " << updated_start_node_input_node->Name() << std::endl;
+            nodes_to_append.push_back(updated_start_node_input_node);
+
+            updated_start_node_input_node = graph_viewer.GetProducerNode(updated_start_node_input_node->InputDefs()[0]->Name());
+            if (updated_start_node_input_node != nullptr && is_postbackward_function(updated_start_node_input_node)) {
+              std::cout << "Update the start node input node to " << updated_start_node_input_node->Name() << std::endl;
+              nodes_to_append.push_back(updated_start_node_input_node);
+            } else {
+              stage_pattern_match = false;
+            }
+
+          } else {
+            stage_pattern_match = false;
+          }
+
         } else {
           stage_pattern_match = false;
         }
@@ -445,19 +463,20 @@ Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
         nodes_to_remove.push_back(end_node_input_node);
         const Node* updated_end_node_input_node = graph_viewer.GetProducerNode(end_node_input_node->InputDefs()[0]->Name());
         if (updated_end_node_input_node != nullptr && is_postbackward_function(updated_end_node_input_node)) {
-          updated_end_node_input_node = graph_viewer.GetProducerNode(updated_end_node_input_node->InputDefs()[0]->Name());
+          // updated_end_node_input_node = graph_viewer.GetProducerNode(updated_end_node_input_node->InputDefs()[0]->Name());
           nodes_to_remove.push_back(updated_end_node_input_node);
           std::cout << "Update the end node input node to " << updated_end_node_input_node->Name() << std::endl;
         } else {
           stage_pattern_match = false;
         }
-        std::cout << "Append PreForwardFunction (" << start_node_input_node->Name() << ") to the subgraph, subgraph contains " << reachable_nodes.size() << " nodes" << std::endl;
+        // std::cout << "Append PreForwardFunction (" << start_node_input_node->Name() << ") to the subgraph, subgraph contains " << reachable_nodes.size() << " nodes" << std::endl;
       } else {
         stage_pattern_match = false;
       }
 
       if (stage_pattern_match) {
-        ORT_ENFORCE(nodes_to_append.size() == nodes_to_remove.size(), "The number of nodes to append and remove should be the same.");
+        ORT_ENFORCE(nodes_to_append.size() == 4, "The number of nodes to append should be 4");
+        ORT_ENFORCE(nodes_to_remove.size() == 2, "The number of nodes to remove should be 2");
         for (size_t i = 0; i < nodes_to_append.size(); ++i) {
           reachable_nodes.push_back(nodes_to_append[i]);
         }
@@ -467,24 +486,27 @@ Status FindStrictLayerwiseRecomputeOpportunity(const GraphViewer& graph_viewer,
         }
 
         std::cout << "Find Stage3 recomputable pattern" << std::endl;
+
+        SortNodesInTopoOrder(node_index_to_its_order_in_topological_sort_map, reachable_nodes);
+        // std::string subgraph_string_representation, log_info;
+
+        // PPNodesInTopoOrderToString(reachable_nodes, subgraph_string_representation, log_info);
+        // std::cout << "Sorted subgraph: " << subgraph_string_representation << ", details: " << reachable_nodes.size() << std::endl;
+        // for (const Node* node : reachable_nodes) {
+        //   std::cout << "Node: " << node->Name() << ", op type: " << node->OpType() << ", node index: " << node_index_to_its_order_in_topological_sort_map.at(node->Index()) << std::endl;
+        // }
+        InlinedVector<size_t> output_indices{static_cast<size_t>(output_index)};
+        std::unique_ptr<NodeRecomputePlan> plan = std::make_unique<NodeRecomputePlan>(end_node_input_node,
+                                                                                      output_indices,
+                                                                                      reachable_nodes,
+                                                                                      false /*compromise_stashed_activation*/,
+                                                                                      static_cast<float>(1.0f) /*save_ratio*/);
+
+        memory_opt_planner.AddNodeOptimizationPlan(end_node_input_node, std::move(plan));
+
+      } else {
+        std::cout << "Not find Stage3 recomputable pattern" << std::endl;
       }
-
-      SortNodesInTopoOrder(node_index_to_its_order_in_topological_sort_map, reachable_nodes);
-      // std::string subgraph_string_representation, log_info;
-
-      // PPNodesInTopoOrderToString(reachable_nodes, subgraph_string_representation, log_info);
-      // std::cout << "Sorted subgraph: " << subgraph_string_representation << ", details: " << reachable_nodes.size() << std::endl;
-      // for (const Node* node : reachable_nodes) {
-      //   std::cout << "Node: " << node->Name() << ", op type: " << node->OpType() << ", node index: " << node_index_to_its_order_in_topological_sort_map.at(node->Index()) << std::endl;
-      // }
-      InlinedVector<size_t> output_indices{static_cast<size_t>(output_index)};
-      std::unique_ptr<NodeRecomputePlan> plan = std::make_unique<NodeRecomputePlan>(end_node_input_node,
-                                                                                    output_indices,
-                                                                                    reachable_nodes,
-                                                                                    false /*compromise_stashed_activation*/,
-                                                                                    static_cast<float>(1.0f) /*save_ratio*/);
-
-      memory_opt_planner.AddNodeOptimizationPlan(end_node_input_node, std::move(plan));
     }
   }
 
