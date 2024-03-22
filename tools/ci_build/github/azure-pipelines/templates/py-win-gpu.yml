@@ -1,8 +1,4 @@
 parameters:
-
-- name: MACHINE_POOL
-  type: string
-
 - name: EP_NAME
   type: string
 
@@ -27,169 +23,257 @@ parameters:
   values:
     - 11.8
     - 12.2
-jobs:
-- job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}
-  timeoutInMinutes: 240
-  workspace:
-    clean: all
-  pool:
-    name: ${{ parameters.MACHINE_POOL }}
-#    demands:
-#      - ImageVersionOverride -equals 1.0.367516
-  variables:
-    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
-    VSGenerator: 'Visual Studio 17 2022'
-    CUDA_MODULE_LOADING: 'LAZY'
-  steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
 
-      - template: telemetry-steps.yml
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: ${{ parameters.PYTHON_VERSION }}
-          addToPath: true
-          architecture: 'x64'
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
 
-      - task: onebranch.pipeline.tsaoptions@1
-        displayName: 'OneBranch TSAOptions'
-        inputs:
-          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-          appendSourceBranchName: false
+stages:
+  - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
+    dependsOn: []
+    jobs:
+    - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
+      timeoutInMinutes: 120
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win-CPU-2022
+    #    demands:
+    #      - ImageVersionOverride -equals 1.0.367516
+      variables:
+        GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+        VSGenerator: 'Visual Studio 17 2022'
+        CUDA_MODULE_LOADING: 'LAZY'
+      steps:
+          - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+            displayName: 'Clean Agent Directories'
+            condition: always()
 
-      - task: PythonScript@0
-        inputs:
-          scriptSource: inline
-          script: |
-            import sys
-            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
-            import subprocess
-            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
-          workingDirectory: '$(Build.BinariesDirectory)'
-          displayName: 'Install python modules'
+          - checkout: self
+            clean: true
+            submodules: recursive
 
-      - template: download-deps.yml
+          - template: telemetry-steps.yml
 
-      - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
-        - template: jobs/set-winenv.yml
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: ${{ parameters.PYTHON_VERSION }}
+              addToPath: true
+              architecture: 'x64'
+
+          - task: onebranch.pipeline.tsaoptions@1
+            displayName: 'OneBranch TSAOptions'
+            inputs:
+              tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
+              appendSourceBranchName: false
+
+          - task: PythonScript@0
+            inputs:
+              scriptSource: inline
+              script: |
+                import sys
+                np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.26'
+                import subprocess
+                try:
+                  subprocess.check_call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
+                except subprocess.CalledProcessError:
+                  sys.exit(1)
+              workingDirectory: '$(Build.BinariesDirectory)'
+              displayName: 'Install python modules'
+
+          - template: download-deps.yml
+
+          - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
+            - template: jobs/set-winenv.yml
+              parameters:
+                EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
+                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
+                  DownloadCUDA: true
+
+          - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
+            - template: jobs/download_win_gpu_library.yml
+              parameters:
+                CudaVersion: ${{ parameters.CudaVersion }}
+                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
+                  DownloadCUDA: true
+                ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
+                  DownloadTRT: true
+
+          - task: PythonScript@0
+            displayName: 'Update deps.txt'
+            inputs:
+              scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+              arguments: --new_dir $(Build.BinariesDirectory)/deps
+              workingDirectory: $(Build.BinariesDirectory)
+
+          - task: PowerShell@2
+            displayName: 'Install ONNX'
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+              workingDirectory: '$(Build.BinariesDirectory)'
+              arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
+
+          # it could be removed once there's onnx wheel for python 3.12
+          - ${{ if eq(parameters.PYTHON_VERSION, '3.12') }}:
+            - task: PublishPipelineArtifact@1
+              displayName: 'Publish Artifact: ONNX python 12 wheel'
+              inputs:
+                targetPath: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
+                publishLocation: 'pipeline'
+                artifactName: onnx_py12_wheel
+
+          - template: set-nightly-build-option-variable-step.yml
+
+          - task: PythonScript@0
+            displayName: 'Generate cmake config'
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: >
+                --config RelWithDebInfo
+                --build_dir $(Build.BinariesDirectory)
+                --skip_submodule_sync
+                --cmake_generator "$(VSGenerator)"
+                --enable_pybind
+                --enable_onnx_tests
+                --parallel --use_binskim_compliant_compile_flags --update
+                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
+              workingDirectory: '$(Build.BinariesDirectory)'
+
+          # building with build.py so the parallelization parameters are added to the msbuild command
+          - task: PythonScript@0
+            displayName: 'Build'
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: >
+                --config RelWithDebInfo
+                --build_dir $(Build.BinariesDirectory)
+                --parallel --build
+                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
+              workingDirectory: '$(Build.BinariesDirectory)'
+
+          # Esrp signing
+          - template: win-esrp-dll.yml
+            parameters:
+              FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+              DisplayName: 'ESRP - Sign Native dlls'
+              DoEsrp: true
+              Pattern: '*.pyd,*.dll'
+
+          - task: PythonScript@0
+            displayName: 'Build wheel'
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\setup.py'
+              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }}'
+              workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+
+          - task: CopyFiles@2
+            displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+            inputs:
+              SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+              Contents: '*.whl'
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Artifact: ONNXRuntime python wheel'
+            inputs:
+              ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
+
+          - script: |
+              7z x *.whl
+            workingDirectory: '$(Build.ArtifactStagingDirectory)'
+            displayName: 'unzip the package'
+
+          - task: CredScan@3
+            displayName: 'Run CredScan'
+            inputs:
+              debugMode: false
+            continueOnError: true
+
+          - task: BinSkim@4
+            displayName: 'Run BinSkim'
+            inputs:
+              AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
+
+  - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
+    dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
+    jobs:
+    - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win2022-GPU-T4
+      steps:
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
+
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: ${{ parameters.PYTHON_VERSION }}
+            addToPath: true
+            architecture: 'x64'
+
+        - template: flex-downloadPipelineArtifact.yml
           parameters:
-            EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
-              DownloadCUDA: true
+            ArtifactName: "onnxruntime_${{ parameters.EP_NAME }}"
+            StepName: 'Download Pipeline Artifact - Windows GPU Build'
+            TargetPath: '$(Build.ArtifactStagingDirectory)'
+            SpecificArtifact: ${{ parameters.SpecificArtifact }}
+            BuildId: ${{ parameters.BuildId }}
 
-      - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
-        - template: jobs/download_win_gpu_library.yml
+        # It could be remove once there's onnx wheel for python 3.12
+        - ${{ if eq(parameters.PYTHON_VERSION, '3.12') }}:
+          - template: flex-downloadPipelineArtifact.yml
+            parameters:
+              ArtifactName: "onnx_py12_wheel"
+              StepName: 'Download Pipeline Artifact - Onnx Python12 wheel'
+              TargetPath: '$(Agent.TempDirectory)\onnx\'
+              SpecificArtifact: ${{ parameters.SpecificArtifact }}
+              BuildId: ${{ parameters.BuildId }}
+
+          - powershell: |
+              python -m pip install upgrade pip
+              Get-ChildItem -Path $(Agent.TempDirectory)\onnx\*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+              python -m pip install pytest
+            workingDirectory: '$(Build.SourcesDirectory)'
+            displayName: 'Install ONNX and pytest'
+        - ${{ else }}:
+          - powershell: |
+              pushd onnxruntime/test/python
+              python -m pip install --upgrade pip
+              python -m pip install -r requirements.txt
+              popd
+            workingDirectory: '$(Build.SourcesDirectory)'
+            displayName: 'Install ONNX'
+
+        - powershell: |
+            python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+            mkdir -p $(Agent.TempDirectory)\ort_test_data
+            Copy-Item -Path $(Build.sourcesDirectory)/onnxruntime/test/python/onnx_backend_test_series.py -Destination $(Agent.TempDirectory)\ort_test_data
+            Copy-Item -Recurse -Path $(Build.sourcesDirectory)/onnxruntime/test/testdata -Destination $(Agent.TempDirectory)\ort_test_data
+            cd $(Agent.TempDirectory)\ort_test_data
+            python onnx_backend_test_series.py
+          workingDirectory: '$(Build.sourcesDirectory)'
+          displayName: 'Run Python Tests'
+
+        - task: TSAUpload@2
+          displayName: 'TSA upload'
+          condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+          inputs:
+            GdnPublishTsaOnboard: false
+            GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+
+        - template: component-governance-component-detection-steps.yml
           parameters:
-            CudaVersion: ${{ parameters.CudaVersion }}
-            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
-              DownloadCUDA: true
-            ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
-              DownloadTRT: true
-
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir $(Build.BinariesDirectory)/deps
-          workingDirectory: $(Build.BinariesDirectory)
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
-
-      - template: set-nightly-build-option-variable-step.yml
-
-
-      - task: PythonScript@0
-        displayName: 'Generate cmake config'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
-            --config RelWithDebInfo
-            --build_dir $(Build.BinariesDirectory)
-            --skip_submodule_sync
-            --cmake_generator "$(VSGenerator)"
-            --enable_pybind
-            --enable_onnx_tests
-            --parallel --use_binskim_compliant_compile_flags --update
-            $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
-          workingDirectory: '$(Build.BinariesDirectory)'
-
-      - task: VSBuild@1
-        displayName: 'Build'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-          platform: x64
-          configuration: RelWithDebInfo
-          msbuildArchitecture: $(buildArch)
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          createLogFile: true
-
-      # Esrp signing
-      - template: win-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
-          DisplayName: 'ESRP - Sign Native dlls'
-          DoEsrp: true
-          Pattern: '*.pyd,*.dll'
-
-      - task: PythonScript@0
-        displayName: 'Build wheel'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }}'
-          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-          Contents: '*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
-
-      - script: |
-          7z x *.whl
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-        displayName: 'unzip the package'
-
-      - task: CredScan@3
-        displayName: 'Run CredScan'
-        inputs:
-          debugMode: false
-        continueOnError: true
-
-      - task: BinSkim@4
-        displayName: 'Run BinSkim'
-        inputs:
-          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
-
-      - powershell: |
-         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
-         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-         Remove-Item -Recurse -Force onnxruntime
-         python onnx_backend_test_series.py
-        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-        displayName: 'Run Python Tests'
-
-      - task: TSAUpload@2
-        displayName: 'TSA upload'
-        condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-        inputs:
-          GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
+            condition: 'succeeded'

@@ -53,7 +53,7 @@ stages:
     Codeql.Enabled: false
   jobs:
   - job: Build_CPU_EP
-    pool: onnxruntime-Linux-CPU-For-Android-CI
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     workspace:
       clean: all
     timeoutInMinutes: 30
@@ -140,7 +140,7 @@ stages:
 
   jobs:
   - job: Build_NNAPI_EP
-    pool: onnxruntime-Linux-CPU-For-Android-CI
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     timeoutInMinutes: ${{ variables.JobsTimeout }}
     workspace:
       clean: all
@@ -456,7 +456,7 @@ stages:
     variables:
     - name: skipComponentGovernanceDetection
       value: true
-    pool: 'onnxruntime-Linux-CPU-For-Android-CI'
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     dependsOn:
     - NNAPI_EP_MASTER

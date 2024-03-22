@@ -148,12 +148,9 @@ jobs:
       Get-Volume $("$(Build.BinariesDirectory)")[0]
     displayName: check disk size
 
-  - task: DeleteFiles@1
-    displayName: 'Delete intermedia files from $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
-    inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
-      Contents: |
-        **/*.obj
+  - powershell: |
+      Remove-Item "$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}" -Include "*.obj" -Recurse
+    displayName: 'Delete intermediate files from $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
 
   - powershell: |
       Get-Volume $("$(Build.BinariesDirectory)")[0]
@@ -220,14 +217,6 @@ jobs:
 
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Run tests'
-
-      - task: PublishTestResults@2
-        displayName: 'Publish unit test results'
-        inputs:
-          testResultsFiles: '**/*.results.xml'
-          searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
-          testRunTitle: 'Unit Test Run'
-        condition: succeededOrFailed()
 
   - ${{ if eq(parameters.GenerateDocumentation, true) }}:
     - task: PythonScript@0

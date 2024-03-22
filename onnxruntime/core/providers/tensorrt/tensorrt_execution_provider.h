@@ -5,8 +5,9 @@
 #include <ctime>
 #include <cudnn.h>
 #include <cublas_v2.h>
-#include "NvInfer.h"
-#include "NvOnnxParser.h"
+
+#include "core/providers/tensorrt/nv_includes.h"
+
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
@@ -233,8 +234,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  Status OnRunStart() override;
-  Status OnRunEnd(bool sync_stream) override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   ProviderOptions GetProviderOptions() const override {
     return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
@@ -249,8 +250,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
   bool IsGraphCaptureEnabled() const override;
-  bool IsGraphCaptured() const override;
-  Status ReplayGraph() override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  Status ReplayGraph(int graph_annotation_id) override;
 
  private:
   mutable TensorrtExecutionProviderInfo info_;
@@ -372,10 +373,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
     bool IsGraphCaptureAllowed() const;
-    void CaptureBegin();
-    void CaptureEnd();
-    bool IsGraphCaptured() const;
-    Status ReplayGraph();
+    void CaptureBegin(int graph_annotation_id);
+    void CaptureEnd(int graph_annotation_id);
+    bool IsGraphCaptured(int graph_annotation_id) const;
+    Status ReplayGraph(int graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:
@@ -539,8 +540,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                         std::vector<NodeComputeInfo>& node_compute_funcs);
 
   bool IsGraphCaptureAllowed() const;
-  void CaptureBegin();
-  void CaptureEnd();
+  void CaptureBegin(int graph_annotation_id);
+  void CaptureEnd(int graph_annotation_id);
   void IncrementRegularRunCountBeforeGraphCapture();
 
   /**

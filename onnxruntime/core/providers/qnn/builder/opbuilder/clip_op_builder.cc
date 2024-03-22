@@ -36,6 +36,27 @@ class ClipOpBuilder : public BaseOpBuilder {
   Status ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
 };
 
+static Status ProcessClipMinMax(QnnModelWrapper& qnn_model_wrapper,
+                                const NodeUnitIODef& input,
+                                float& float_value) {
+  TensorInfo input_info = {};
+  std::vector<uint8_t> val_bytes;
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
+  assert(input_info.is_initializer);  // Checked by ExplicitOpCheck().
+  if (QNN_DATATYPE_FLOAT_16 == input_info.qnn_data_type) {
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, val_bytes));
+    MLFloat16 fp16_value = *reinterpret_cast<const MLFloat16*>(val_bytes.data());
+    float_value = fp16_value.ToFloat();
+  } else {
+    ORT_RETURN_IF_NOT(QNN_DATATYPE_FLOAT_32 == input_info.qnn_data_type,
+                      "QNN EP: The 'min' input of the Clip operator must be of type float32.");
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, val_bytes));
+    float_value = *reinterpret_cast<const float*>(val_bytes.data());
+  }
+
+  return Status::OK();
+}
+
 Status ClipOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   if (node_unit.Inputs().size() > 1) {
     const auto& min_input_name = node_unit.Inputs()[1].node_arg.Name();
@@ -75,53 +96,35 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   std::vector<std::string> param_tensor_names;
 
-  auto get_f32_from_bytes = [](const std::vector<uint8_t>& bytes, float default_val) -> float {
-    return bytes.empty() ? default_val : *reinterpret_cast<const float*>(bytes.data());
-  };
-
   // Set the 'min' parameter.
-  {
-    std::vector<uint8_t> min_val_bytes;
+  Qnn_Scalar_t min_qnn_scalar = QNN_SCALAR_INIT;
+  min_qnn_scalar.dataType = qnn_data_type;
 
-    if (num_inputs > 1 && !inputs[1].node_arg.Name().empty()) {
-      TensorInfo min_input_info = {};
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], min_input_info));
-      ORT_RETURN_IF_NOT(min_input_info.qnn_data_type == qnn_data_type,
-                        "QNN EP: The 'min' input of the Clip operator must be of type float32.");
-      assert(min_input_info.is_initializer);  // Checked by ExplicitOpCheck().
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*min_input_info.initializer_tensor, min_val_bytes));
-    }
-
-    Qnn_Scalar_t min_qnn_scalar = QNN_SCALAR_INIT;
-    min_qnn_scalar.dataType = qnn_data_type;
-    min_qnn_scalar.floatValue = get_f32_from_bytes(min_val_bytes, std::numeric_limits<float>::lowest());
-    QnnParamWrapper min_value_param(node_unit.Index(), node_unit.Name(), QNN_OP_RELU_MIN_MAX_PARAM_MIN_VALUE,
-                                    min_qnn_scalar);
-    param_tensor_names.push_back(min_value_param.GetParamTensorName());
-    qnn_model_wrapper.AddParamWrapper(std::move(min_value_param));
+  if (num_inputs > 1 && !inputs[1].node_arg.Name().empty()) {
+    ORT_RETURN_IF_ERROR(ProcessClipMinMax(qnn_model_wrapper, inputs[1], min_qnn_scalar.floatValue));
+  } else {
+    min_qnn_scalar.floatValue = std::numeric_limits<float>::lowest();
   }
+
+  QnnParamWrapper min_value_param(node_unit.Index(), node_unit.Name(), QNN_OP_RELU_MIN_MAX_PARAM_MIN_VALUE,
+                                  min_qnn_scalar);
+  param_tensor_names.push_back(min_value_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(min_value_param));
 
   // Set the 'max' parameter.
-  {
-    std::vector<uint8_t> max_val_bytes;
+  Qnn_Scalar_t max_qnn_scalar = QNN_SCALAR_INIT;
+  max_qnn_scalar.dataType = qnn_data_type;
 
-    if (num_inputs > 2 && !inputs[2].node_arg.Name().empty()) {
-      TensorInfo max_input_info = {};
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[2], max_input_info));
-      ORT_RETURN_IF_NOT(max_input_info.qnn_data_type == qnn_data_type,
-                        "QNN EP: The 'max' input of the Clip operator must of type float32.");
-      assert(max_input_info.is_initializer);  // Checked by ExplicitOpCheck().
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*max_input_info.initializer_tensor, max_val_bytes));
-    }
-
-    Qnn_Scalar_t max_qnn_scalar = QNN_SCALAR_INIT;
-    max_qnn_scalar.dataType = qnn_data_type;
-    max_qnn_scalar.floatValue = get_f32_from_bytes(max_val_bytes, std::numeric_limits<float>::max());
-    QnnParamWrapper max_value_param(node_unit.Index(), node_unit.Name(), QNN_OP_RELU_MIN_MAX_PARAM_MAX_VALUE,
-                                    max_qnn_scalar);
-    param_tensor_names.push_back(max_value_param.GetParamTensorName());
-    qnn_model_wrapper.AddParamWrapper(std::move(max_value_param));
+  if (num_inputs > 2 && !inputs[2].node_arg.Name().empty()) {
+    ORT_RETURN_IF_ERROR(ProcessClipMinMax(qnn_model_wrapper, inputs[2], max_qnn_scalar.floatValue));
+  } else {
+    max_qnn_scalar.floatValue = std::numeric_limits<float>::max();
   }
+
+  QnnParamWrapper max_value_param(node_unit.Index(), node_unit.Name(), QNN_OP_RELU_MIN_MAX_PARAM_MAX_VALUE,
+                                  max_qnn_scalar);
+  param_tensor_names.push_back(max_value_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(max_value_param));
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),

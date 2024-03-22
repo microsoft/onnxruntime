@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"
-#include "core/providers/coreml/coreml_provider_factory.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -26,15 +26,14 @@ class CoreMLExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 #endif
 
+ private:
   // The bit flags which define bool options for COREML EP, bits are defined as
   // COREMLFlags in include/onnxruntime/core/providers/coreml/coreml_provider_factory.h
-  const uint32_t coreml_flags_;
-
- private:
-// <fused_node_name, <coreml_model_file_path, compiled_coreml_model>>
-#ifdef __APPLE__
-  std::unordered_map<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
-#endif
+  uint32_t coreml_flags_;
+  const int32_t coreml_version_;
   ModelMetadefIdGenerator metadef_id_generator_;
+
+  // map of fused_node_name to compiled_coreml_model
+  InlinedHashMap<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
 };
 }  // namespace onnxruntime

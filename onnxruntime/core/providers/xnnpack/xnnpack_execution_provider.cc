@@ -6,17 +6,17 @@
 #include <unordered_set>
 #include <utility>
 
-#include "core/graph/function_utils.h"
-#include "xnnpack_execution_provider.h"
-#include "detail/utils.h"
-#include "detail/node_support_checker.h"
-
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
-#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/framework/node_unit.h"
+#include "core/graph/function_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-
-#include "xnnpack_init.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/providers/xnnpack/xnnpack_execution_provider.h"
+#include "core/providers/xnnpack/detail/utils.h"
+#include "core/providers/xnnpack/detail/node_support_checker.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 namespace onnxruntime {
 
@@ -268,7 +268,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
   // Get all the NodeUnits in the GraphViewer so we can check if something is in a QDQ node group
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph);
 
   // This holds the result of whether a NodeUnit is supported or not,
   // to prevent nodes in a NodeUnit being checked for multiple times

@@ -205,18 +205,23 @@ try:
                 rocm_dependencies = [
                     "libamd_comgr.so.2",
                     "libamdhip64.so.5",
+                    "libamdhip64.so.6",
                     "libdrm.so.2",
                     "libdrm_amdgpu.so.1",
                     "libelf.so.1",
                     "libhipfft.so.0",
                     "libhiprtc.so.5",
+                    "libhiprtc.so.6",
                     "libhsa-runtime64.so.1",
                     "libMIOpen.so.1",
                     "libnuma.so.1",
                     "librccl.so.1",
                     "librocblas.so.3",
+                    "librocblas.so.4",
                     "librocfft.so.0",
+                    "libroctx64.so.4",
                     "librocm_smi64.so.5",
+                    "librocm_smi64.so.6",
                     "libroctracer64.so.4",
                     "libtinfo.so.6",
                     "libmigraphx_c.so.3",
@@ -226,6 +231,8 @@ try:
                 ]
 
                 tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
+
+                cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
@@ -250,9 +257,9 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
+                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies:
                     auditwheel_cmd += ["--exclude", i]
-                logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
+                logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
                     subprocess.run(auditwheel_cmd, check=True, stdout=subprocess.PIPE)
                 finally:
@@ -609,9 +616,7 @@ if nightly_build:
             # TODO: this is the last time we have to do this!!!
             # We shall bump up release number right after release cut.
             if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
-                version_number = "{major}.{minor}.{macro}".format(
-                    major=ort_version.major, minor=ort_version.minor + 1, macro=ort_version.micro
-                )
+                version_number = f"{ort_version.major}.{ort_version.minor + 1}.{ort_version.micro}"
 
     version_number = version_number + ".dev" + build_suffix
 
@@ -662,9 +667,11 @@ if enable_training:
                 else:
                     print(
                         "Error getting cudart version. ",
-                        "did not find any cudart library"
-                        if not cudart_versions or len(cudart_versions) == 0
-                        else "found multiple cudart libraries",
+                        (
+                            "did not find any cudart library"
+                            if not cudart_versions or len(cudart_versions) == 0
+                            else "found multiple cudart libraries"
+                        ),
                     )
             elif rocm_version:
                 f.write(f"rocm_version = '{rocm_version}'\n")

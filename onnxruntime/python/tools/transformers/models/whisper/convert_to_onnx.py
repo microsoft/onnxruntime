@@ -28,17 +28,25 @@ PROVIDERS = {
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
 
-    pretrained_models = PRETRAINED_WHISPER_MODELS
-    parser.add_argument(
+    conversion_args = parser.add_argument_group("Conversion Process Args")
+    optional_inputs = parser.add_argument_group("Optional Inputs (for WhisperBeamSearch op)")
+    optional_outputs = parser.add_argument_group("Optional Outputs (for WhisperBeamSearch op)")
+    quant_args = parser.add_argument_group("INT8 Quantization Args")
+
+    #################################
+    # Conversion options for Whisper
+    #################################
+
+    conversion_args.add_argument(
         "-m",
         "--model_name_or_path",
         required=False,
         default=PRETRAINED_WHISPER_MODELS[0],
         type=str,
-        help="Model path, or pretrained model name in the list: " + ", ".join(pretrained_models),
+        help="Model path, or pretrained model name in the list: " + ", ".join(PRETRAINED_WHISPER_MODELS),
     )
 
-    parser.add_argument(
+    conversion_args.add_argument(
         "--model_impl",
         required=False,
         default="hf",
@@ -47,7 +55,7 @@ def parse_arguments(argv=None):
         help="Select implementation for export of encoder and decoder subgraphs",
     )
 
-    parser.add_argument(
+    conversion_args.add_argument(
         "--cache_dir",
         required=False,
         type=str,
@@ -55,7 +63,7 @@ def parse_arguments(argv=None):
         help="Directory to cache pre-trained models",
     )
 
-    parser.add_argument(
+    conversion_args.add_argument(
         "--output",
         required=False,
         type=str,
@@ -63,19 +71,24 @@ def parse_arguments(argv=None):
         help="Output directory",
     )
 
-    parser.add_argument(
+    conversion_args.add_argument(
         "-o",
         "--optimize_onnx",
         required=False,
         action="store_true",
         help="Use optimizer.py to optimize onnx model",
     )
-    parser.set_defaults(optimize_onnx=False)
+    conversion_args.set_defaults(optimize_onnx=False)
 
-    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
-    parser.set_defaults(use_gpu=False)
+    conversion_args.add_argument(
+        "--use_gpu",
+        required=False,
+        action="store_true",
+        help="Use GPU for model inference",
+    )
+    conversion_args.set_defaults(use_gpu=False)
 
-    parser.add_argument(
+    conversion_args.add_argument(
         "-p",
         "--precision",
         required=False,
@@ -85,213 +98,23 @@ def parse_arguments(argv=None):
         help="Precision of model to run. fp32 for full precision, fp16 for half precision, int8 for quantization",
     )
 
-    parser.add_argument("--verbose", required=False, action="store_true")
-    parser.set_defaults(verbose=False)
-
-    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
-    parser.set_defaults(use_external_data_format=False)
-
-    parser.add_argument(
-        "-s",
-        "--use_decoder_start_token",
-        required=False,
-        action="store_true",
-        help="Use config.decoder_start_token_id. Otherwise, add an extra graph input to \
-              the encoder-decoder-init subgraph for decoder_input_ids.",
-    )
-    parser.set_defaults(use_decoder_start_token=False)
-
-    parser.add_argument(
-        "-f",
-        "--use_forced_decoder_ids",
-        required=False,
-        action="store_true",
-        help="Use decoder_input_ids as an extra graph input to the beam search op",
-    )
-    parser.set_defaults(use_forced_decoder_ids=False)
-
-    parser.add_argument(
-        "-l",
-        "--use_logits_processor",
-        required=False,
-        action="store_true",
-        help="Use logits_processor as an extra graph input to enable specific logits processing",
-    )
-    parser.set_defaults(use_specific_logits_processor=False)
-
-    parser.add_argument(
-        "-v",
-        "--use_vocab_mask",
-        required=False,
-        action="store_true",
-        help="Use vocab_mask as an extra graph input to enable specific logits processing",
-    )
-    parser.set_defaults(use_vocab_mask=False)
-
-    parser.add_argument(
-        "-u",
-        "--use_prefix_vocab_mask",
-        required=False,
-        action="store_true",
-        help="Use prefix_vocab_mask as an extra graph input to enable specific logits processing",
-    )
-    parser.set_defaults(use_prefix_vocab_mask=False)
-
-    parser.add_argument(
-        "-w",
-        "--overwrite",
-        required=False,
-        action="store_true",
-        help="overwrite existing ONNX model",
-    )
-    parser.set_defaults(overwrite=False)
-
-    parser.add_argument(
-        "--disable_auto_mixed_precision",
-        required=False,
-        action="store_true",
-        help="use pure fp16 instead of mixed precision",
-    )
-    parser.set_defaults(disable_auto_mixed_precision=False)
-
-    parser.add_argument(
-        "--separate_encoder_and_decoder_init",
-        required=False,
-        action="store_true",
-        help="Do not merge encode and decoder init. Output 3 instead of 2 onnx models.",
-    )
-    parser.set_defaults(separate_encoder_and_decoder_init=False)
-
-    parser.add_argument(
+    conversion_args.add_argument(
         "--use_int64_inputs",
         required=False,
         action="store_true",
-        help="Use int64 instead of int32 for input_ids, position_ids and attention_mask.",
+        help="Use int64 instead of int32 for input_ids and attention_mask.",
     )
-    parser.set_defaults(use_int64_inputs=False)
+    conversion_args.set_defaults(use_int64_inputs=False)
 
-    parser.add_argument(
-        "--chain_model",
+    conversion_args.add_argument(
+        "--disable_auto_mixed_precision",
         required=False,
         action="store_true",
-        help="Produce beam search model with chained encdecinit and decoder.",
+        help="Use pure fp16 instead of mixed precision",
     )
-    parser.set_defaults(chain_model=True)
+    conversion_args.set_defaults(disable_auto_mixed_precision=False)
 
-    parser.add_argument(
-        "--use_whisper_beamsearch",
-        required=False,
-        action="store_true",
-        help="When chain_model, using WhisperBeamSearch operator rather than BeamSearch operator. \
-              It will be set to true when collect_cross_qk, extra_decoding_ids or output_no_speech_probs is set.",
-    )
-    parser.set_defaults(use_whisper_beamsearch=False)
-
-    parser.add_argument(
-        "--extra_decoding_ids",
-        required=False,
-        action="store_true",
-        help="Need extra starting decoding ids for some feature like cross qk. Default if false.",
-    )
-    parser.set_defaults(extra_decoding_ids=False)
-
-    parser.add_argument(
-        "--collect_cross_qk",
-        required=False,
-        action="store_true",
-        help="Beam search model collect stacked cross QK.",
-    )
-    parser.set_defaults(collect_cross_qk=False)
-
-    parser.add_argument(
-        "--output_cross_qk",
-        required=False,
-        action="store_true",
-        help="Beam search model output collected qk as output. Also hint collect_cross_qk",
-    )
-    parser.set_defaults(output_cross_qk=False)
-
-    parser.add_argument(
-        "--no_speech_token_id",
-        default=50362,
-        type=int,
-        help="specify no_speech_token_id. Default is 50362. if >= 0, will be add into beam search attr. \
-              Note that default value maybe different between the multilingual and English-only models.",
-    )
-
-    parser.add_argument(
-        "--output_no_speech_probs",
-        required=False,
-        action="store_true",
-        help="Beam search model output no speech probs which is computed from the encoder/context-decoder graph.",
-    )
-    parser.set_defaults(output_no_speech_probs=False)
-
-    parser.add_argument(
-        "--output_scores",
-        required=False,
-        action="store_true",
-        help="Beam search model output scores over vocab per generated token.",
-    )
-    parser.set_defaults(output_scores=False)
-
-    parser.add_argument(
-        "--output_sequence_scores",
-        required=False,
-        action="store_true",
-        help="Beam search model output scores for each generated sequence.",
-    )
-    parser.set_defaults(output_sequence_scores=False)
-
-    parser.add_argument(
-        "--cross_qk_onnx_model",
-        required=False,
-        type=str,
-        default=None,
-        help="the model which consume cross_qk.",
-    )
-
-    parser.add_argument(
-        "--beam_output_model",
-        type=str,
-        default="whisper_beamsearch.onnx",
-        help="default name is whisper_beamsearch.onnx.",
-    )
-
-    parser.add_argument(
-        "--quantize_embedding_layer",
-        required=False,
-        action="store_true",
-        help="Quantize MatMul, GEMM, and Gather.",
-    )
-    parser.set_defaults(quantize_embedding_layer=False)
-
-    parser.add_argument(
-        "--quantize_per_channel",
-        required=False,
-        action="store_true",
-        help="Quantize weights per each channel.",
-    )
-    parser.set_defaults(quantize_per_channel=False)
-
-    parser.add_argument(
-        "--quantize_reduce_range",
-        required=False,
-        action="store_true",
-        help="Quantize weights with 7 bits.",
-    )
-    parser.set_defaults(quantize_reduce_range=False)
-
-    parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
-
-    parser.add_argument(
-        "--state_dict_path",
-        type=str,
-        default="",
-        help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
-    )
-
-    parser.add_argument(
+    conversion_args.add_argument(
         "-r",
         "--provider",
         required=False,
@@ -300,6 +123,201 @@ def parse_arguments(argv=None):
         choices=list(PROVIDERS.keys()),
         help="Provider to benchmark. Default is CPUExecutionProvider.",
     )
+
+    conversion_args.add_argument(
+        "--verbose",
+        required=False,
+        action="store_true",
+        help="Enable verbose logging",
+    )
+    conversion_args.set_defaults(verbose=False)
+
+    conversion_args.add_argument(
+        "-e",
+        "--use_external_data_format",
+        required=False,
+        action="store_true",
+        help="Save weights in external file. Necessary for 'small', 'medium', and 'large' models. Optional for 'tiny' and 'base' models.",
+    )
+    conversion_args.set_defaults(use_external_data_format=False)
+
+    conversion_args.add_argument(
+        "-w",
+        "--overwrite",
+        required=False,
+        action="store_true",
+        help="Overwrite existing ONNX model",
+    )
+    conversion_args.set_defaults(overwrite=False)
+
+    conversion_args.add_argument(
+        "--separate_encoder_and_decoder_init",
+        required=False,
+        action="store_true",
+        help="Do not merge encoder and decoder init to initialize past KV caches. Output 3 instead of 2 ONNX models.",
+    )
+    conversion_args.set_defaults(separate_encoder_and_decoder_init=False)
+
+    conversion_args.add_argument(
+        "--no_beam_search_op",
+        required=False,
+        action="store_true",
+        help="Do not produce model with WhisperBeamSearch op, which chains encdecinit and decoder models into one op.",
+    )
+    conversion_args.set_defaults(no_beam_search_op=False)
+
+    conversion_args.add_argument(
+        "--state_dict_path",
+        type=str,
+        default="",
+        help="Filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
+    )
+
+    #############################################################
+    # Optional inputs for Whisper
+    # (listed below in the order that WhisperBeamSearch expects)
+    #############################################################
+
+    optional_inputs.add_argument(
+        "-v",
+        "--use_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    optional_inputs.set_defaults(use_vocab_mask=False)
+
+    optional_inputs.add_argument(
+        "-u",
+        "--use_prefix_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use prefix_vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    optional_inputs.set_defaults(use_prefix_vocab_mask=False)
+
+    optional_inputs.add_argument(
+        "-f",
+        "--use_forced_decoder_ids",
+        required=False,
+        action="store_true",
+        help="Use decoder_input_ids as an extra graph input to the beam search op",
+    )
+    optional_inputs.set_defaults(use_forced_decoder_ids=False)
+
+    optional_inputs.add_argument(
+        "-l",
+        "--use_logits_processor",
+        required=False,
+        action="store_true",
+        help="Use logits_processor as an extra graph input to enable specific logits processing",
+    )
+    optional_inputs.set_defaults(use_specific_logits_processor=False)
+
+    optional_inputs.add_argument(
+        "--collect_cross_qk",
+        required=False,
+        action="store_true",
+        help="Beam search model collect stacked cross QK.",
+    )
+    optional_inputs.set_defaults(collect_cross_qk=False)
+
+    optional_inputs.add_argument(
+        "--extra_decoding_ids",
+        required=False,
+        action="store_true",
+        help="Need extra starting decoding ids for some feature like cross qk. Default if false.",
+    )
+    optional_inputs.set_defaults(extra_decoding_ids=False)
+
+    optional_inputs.add_argument(
+        "-t",
+        "--use_temperature",
+        required=False,
+        action="store_true",
+        help="Use temperature as an extra graph input for the WhisperBeamSearch op",
+    )
+    optional_inputs.set_defaults(use_temperature=False)
+
+    optional_inputs.add_argument(
+        "--no_repeat_ngram_size",
+        type=int,
+        default=0,
+        help="default to 0",
+    )
+
+    #############################################################
+    # Optional outputs for Whisper
+    # (listed below in the order that WhisperBeamSearch expects)
+    #############################################################
+
+    optional_outputs.add_argument(
+        "--output_sequence_scores",
+        required=False,
+        action="store_true",
+        help="Beam search model output scores for each generated sequence.",
+    )
+    optional_outputs.set_defaults(output_sequence_scores=False)
+
+    optional_outputs.add_argument(
+        "--output_scores",
+        required=False,
+        action="store_true",
+        help="Beam search model output scores over vocab per generated token.",
+    )
+    optional_outputs.set_defaults(output_scores=False)
+
+    optional_outputs.add_argument(
+        "--output_cross_qk",
+        required=False,
+        action="store_true",
+        help="Beam search model output collected qk as output. Also hint collect_cross_qk",
+    )
+    optional_outputs.set_defaults(output_cross_qk=False)
+
+    optional_outputs.add_argument(
+        "--cross_qk_onnx_model",
+        required=False,
+        type=str,
+        default=None,
+        help="The model which consumes cross_qk outputs.",
+    )
+
+    optional_outputs.add_argument(
+        "--output_no_speech_probs",
+        required=False,
+        action="store_true",
+        help="Beam search model output no speech probs which is computed from the encoder/context-decoder graph.",
+    )
+    optional_outputs.set_defaults(output_no_speech_probs=False)
+
+    ###################################
+    # Quantization options for Whisper
+    ###################################
+
+    quant_args.add_argument(
+        "--quantize_embedding_layer",
+        required=False,
+        action="store_true",
+        help="Quantize MatMul, GEMM, and Gather.",
+    )
+    quant_args.set_defaults(quantize_embedding_layer=False)
+
+    quant_args.add_argument(
+        "--quantize_per_channel",
+        required=False,
+        action="store_true",
+        help="Quantize weights per each channel.",
+    )
+    quant_args.set_defaults(quantize_per_channel=False)
+
+    quant_args.add_argument(
+        "--quantize_reduce_range",
+        required=False,
+        action="store_true",
+        help="Quantize weights with 7 bits.",
+    )
+    quant_args.set_defaults(quantize_reduce_range=False)
 
     args = parser.parse_args(argv)
     args.collect_cross_qk = args.collect_cross_qk or args.output_cross_qk
@@ -317,7 +335,7 @@ def export_onnx_models(
     optimize_onnx,
     precision,
     verbose,
-    use_decoder_start_token: bool = False,
+    use_forced_decoder_ids: bool = False,
     merge_encoder_and_decoder_init: bool = True,
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
@@ -362,7 +380,6 @@ def export_onnx_models(
                 onnx_path,
                 verbose,
                 use_external_data_format,
-                use_decoder_input_ids=not use_decoder_start_token,
                 use_int32_inputs=use_int32_inputs,
             )
         else:
@@ -397,16 +414,16 @@ def export_onnx_models(
                     quantization.quantize_dynamic(
                         onnx_path,
                         output_path,
-                        op_types_to_quantize=["MatMul", "Gemm", "Gather"]
-                        if quantize_embedding_layer
-                        else ["MatMul", "Gemm"],
+                        op_types_to_quantize=(
+                            ["MatMul", "Gemm", "Gather"] if quantize_embedding_layer else ["MatMul", "Gemm"]
+                        ),
                         use_external_data_format=use_external_data_format,
                         per_channel=quantize_per_channel,
                         reduce_range=quantize_reduce_range,
                         extra_options={"MatMulConstBOnly": True},
                     )
             else:
-                logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
+                logger.info(f"Skip optimizing: existing ONNX model {onnx_path}")
         else:
             output_path = onnx_path
 
@@ -449,7 +466,7 @@ def main(argv=None):
         args.optimize_onnx,
         args.precision,
         args.verbose,
-        args.use_decoder_start_token,
+        args.use_forced_decoder_ids,
         not args.separate_encoder_and_decoder_init,
         args.overwrite,
         args.disable_auto_mixed_precision,
@@ -462,7 +479,7 @@ def main(argv=None):
     )
 
     max_diff = 0
-    if args.chain_model:
+    if not args.no_beam_search_op:
         logger.info("Chaining model ... :")
         args.beam_model_output_dir = WhisperHelper.get_onnx_path(
             output_dir,

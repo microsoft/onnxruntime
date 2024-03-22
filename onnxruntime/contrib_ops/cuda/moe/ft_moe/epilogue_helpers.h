@@ -83,9 +83,15 @@ namespace ort_fastertransformer {
 
 struct EpilogueOpBiasSilu {};
 
+struct EpilogueOpNoBiasSilu {};
+
 struct EpilogueOpBiasReLU {};
 
+struct EpilogueOpNoBiasReLU {};
+
 struct EpilogueOpBiasFtGelu {};
+
+struct EpilogueOpNoBiasFtGelu {};
 
 struct EpilogueOpBias {};
 
@@ -102,6 +108,13 @@ struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, Epilog
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
+struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpNoBiasSilu> {
+  using Op = cutlass::epilogue::thread::LinearCombinationSilu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
+                                                              ElementAccumulator,
+                                                              cutlass::epilogue::thread::ScaleType::OnlyAlphaScaling>;
+};
+
+template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpBiasReLU> {
   using Op = cutlass::epilogue::thread::LinearCombinationRelu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
                                                               ElementAccumulator,
@@ -109,10 +122,25 @@ struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, Epilog
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
+struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpNoBiasReLU> {
+  using Op = cutlass::epilogue::thread::LinearCombinationRelu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
+                                                              ElementAccumulator,
+                                                              cutlass::epilogue::thread::ScaleType::OnlyAlphaScaling>;
+};
+
+template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpBiasFtGelu> {
   using Op = cutlass::epilogue::thread::LinearCombinationGeneric<
       cutlass::epilogue::thread::GELU_taylor, ElementType, ElementsPerVectorAccess, ElementAccumulator,
       ElementAccumulator, cutlass::epilogue::thread::ScaleType::NoBetaScaling,
+      cutlass::FloatRoundStyle::round_to_nearest, true>;
+};
+
+template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
+struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpNoBiasFtGelu> {
+  using Op = cutlass::epilogue::thread::LinearCombinationGeneric<
+      cutlass::epilogue::thread::GELU_taylor, ElementType, ElementsPerVectorAccess, ElementAccumulator,
+      ElementAccumulator, cutlass::epilogue::thread::ScaleType::OnlyAlphaScaling,
       cutlass::FloatRoundStyle::round_to_nearest, true>;
 };
 
@@ -126,8 +154,9 @@ struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, Epilog
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpNoBias> {
   using Op =
-      cutlass::epilogue::thread::LinearCombination<ElementType, ElementsPerVectorAccess, ElementAccumulator,
-                                                   ElementAccumulator, cutlass::epilogue::thread::ScaleType::Default>;
+      cutlass::epilogue::thread::LinearCombination<
+          ElementType, ElementsPerVectorAccess, ElementAccumulator,
+          ElementAccumulator, cutlass::epilogue::thread::ScaleType::OnlyAlphaScaling>;
 };
 
 }  // namespace ort_fastertransformer

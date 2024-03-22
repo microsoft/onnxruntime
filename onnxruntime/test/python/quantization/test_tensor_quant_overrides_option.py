@@ -13,7 +13,7 @@ import onnx
 
 from onnxruntime import quantization
 from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config
-from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType
+from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType, ms_domain
 
 
 class DummyDataReader(quantization.CalibrationDataReader):
@@ -423,6 +423,36 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             self.assertEqual(zp, expected_zp)
             self.assertEqual(scale, np.float32(expected_scale))
 
+    def test_16bit_overrides_set_ms_domain(self):
+        """
+        Test that overriding a tensor to 16bit (when default is 8bit) automatically sets the 'com.microsoft'
+        domain on DQ and Q ops.
+        """
+        qdq_model_name = "model_quant_overrides_to_16bit.onnx"
+        inp_zp, _, sig_out_zp, _, _, _, _, _, out_zp, _ = self.perform_qdq_quantization(
+            qdq_model_name,
+            activation_type=onnx.TensorProto.UINT8,  # Default to 8bit activations
+            extra_options={
+                "TensorQuantOverrides": {
+                    "INP": [{"quant_type": quantization.QuantType.QUInt16}],
+                    "SIG_OUT": [{"quant_type": quantization.QuantType.QUInt16}],
+                }
+            },
+        )
+
+        # Input and Sigmoid's output should be overridden to 16bit
+        self.assertEqual(inp_zp.data_type, onnx.TensorProto.UINT16)
+        self.assertEqual(sig_out_zp.data_type, onnx.TensorProto.UINT16)
+
+        # Output should the default uint8 type
+        self.assertEqual(out_zp.data_type, onnx.TensorProto.UINT8)
+
+        # Q/DQ ops should all have the 'com.microsoft' domain
+        qdq_model = onnx.load_model(qdq_model_name)
+        for node in qdq_model.graph.node:
+            if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+                self.assertEqual(node.domain, ms_domain)
+
     def test_override_validation_nonexisting_tensor(self):
         """
         Test that specifying a non-existing tensor should fail.
@@ -554,6 +584,36 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.assertEqual(sig_out_zp.int32_data[0], 0)
         self.assertEqual(sig_out_zp.data_type, onnx.TensorProto.UINT16)
         self.assertEqual(sig_out_sc.float_data[0], np.float32(1.0 / 65536.0))
+
+    def test_get_qnn_qdq_config_ext_data(self):
+        """
+        Test that get_qnn_qdq_config() returns a config that enables external data
+        if the input model has external data.
+        """
+
+        # Create model with a weight large enough (> 1024 bytes) to be stored externally.
+        large_weight = onnx.numpy_helper.from_array(np.random.random((1, 32, 32)).astype(np.float32), "weight")
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Add", ["input", "weight"], ["output"])],
+            "add_ext_data",
+            [onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, (1, 32, 32))],
+            [onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, (1, 32, 32))],
+            initializer=[large_weight],
+        )
+        model = onnx.helper.make_model(
+            graph,
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
+        )
+        onnx.save_model(
+            model,
+            "add_ext_data.onnx",
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location="add_ext_data.bin",
+        )
+
+        qnn_config = get_qnn_qdq_config("add_ext_data.onnx", DummyDataReader(self.activations))
+        self.assertTrue(qnn_config.use_external_data_format)
 
 
 if __name__ == "__main__":

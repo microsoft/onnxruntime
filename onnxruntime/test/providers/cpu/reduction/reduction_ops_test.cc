@@ -3541,6 +3541,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
+                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -3591,6 +3592,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
+                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -5779,6 +5781,7 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       {
           kCoreMLExecutionProvider,
           kCudaExecutionProvider,
+          kCudaNHWCExecutionProvider,
           kDmlExecutionProvider,
           kDnnlExecutionProvider,
           kMIGraphXExecutionProvider,

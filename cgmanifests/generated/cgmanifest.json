@@ -86,7 +86,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6df40a2471737b27271bdd9b900ab5f3aec746c7",
+          "commitHash": "0100f6a5779831fa7a651e4b67ef389a8752bd9b",
           "repositoryUrl": "https://github.com/google/flatbuffers.git"
         },
         "comments": "flatbuffers"
@@ -116,7 +116,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "361e8d1cfe0c6c36d30b39f1b61302ece5507320",
+          "commitHash": "344117638c8ff7e239044fd0fa7085839fc03021",
           "repositoryUrl": "https://github.com/google/benchmark.git"
         },
         "comments": "google_benchmark"
@@ -206,7 +206,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c11386eb632eec7c1c2aa323142f73519f946e2a",
+          "commitHash": "150e7527d5286ddd3a995c228dedf8d76a7a86bc",
           "repositoryUrl": "https://github.com/intel/neural-speed.git"
         },
         "comments": "neural_speed"

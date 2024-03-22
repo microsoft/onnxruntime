@@ -9,7 +9,7 @@ namespace test {
 
 template <typename T>
 struct BatchNormOp {
-  const std::vector<int64_t> input_dims;
+  std::vector<int64_t> input_dims;
 
   std::unique_ptr<CompareOpTester> get_test() {
     // create rand inputs
@@ -40,9 +40,8 @@ struct BatchNormOp {
 };
 
 TYPED_TEST(CudaNhwcTypedTest, BatchNormNhwc) {
-  auto op = BatchNormOp<TypeParam>{
-      .input_dims = {4, 16, 64, 64},
-  };
+  auto op = BatchNormOp<TypeParam>{};
+  op.input_dims = {4, 16, 64, 64};
 
   MAKE_PROVIDERS()
 }

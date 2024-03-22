@@ -13,16 +13,22 @@ namespace cuda {
 
 enum class MoEParallelType {
   None = 0,
-  ExpertSlicing = 1,
+  EP = 1,
+  TP = 2,
+  EPAndTP = 3,
 };
 
 struct MoEParameters {
+  MoEParameters() {}
+  explicit MoEParameters(int64_t tensor_shards) : tensor_shards(tensor_shards) {}
   int64_t num_rows;
   int64_t num_experts;
   int64_t local_num_experts;
   int64_t hidden_size;
   int64_t inter_size;
+
   MoEParallelType parallel_type;
+  int64_t tensor_shards{1};
 };
 
 class MoEBase {
@@ -31,9 +37,11 @@ class MoEBase {
                      const Tensor* input,
                      const Tensor* router_probs,
                      const Tensor* fc1_experts_weights,
-                     const Tensor* fc2_experts_weights,
                      const Tensor* fc1_experts_bias_optional,
-                     const Tensor* fc2_experts_bias_optional) const {
+                     const Tensor* fc2_experts_weights,
+                     const Tensor* fc2_experts_bias_optional,
+                     const Tensor* fc3_experts_weights_optional,
+                     const Tensor* fc3_experts_bias_optional) const {
     const auto& input_dims = input->Shape().GetDims();
     const auto& router_probs_dims = router_probs->Shape().GetDims();
     const auto& fc1_experts_weights_dims = fc1_experts_weights->Shape().GetDims();
@@ -83,12 +91,6 @@ class MoEBase {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "router_probs_dims[0] must be equal to num_rows, got ",
                              router_probs_dims[0], " and ", num_rows);
     }
-    if (fc1_experts_bias_optional != nullptr && fc2_experts_bias_optional == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias is set but fc2_experts_bias is not set");
-    }
-    if (fc1_experts_bias_optional == nullptr && fc2_experts_bias_optional != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias is not set but fc2_experts_bias is set");
-    }
     if (fc1_experts_bias_optional != nullptr && fc2_experts_bias_optional != nullptr) {
       const auto& fc1_experts_bias_dims = fc1_experts_bias_optional->Shape().GetDims();
       const auto& fc2_experts_bias_dims = fc2_experts_bias_optional->Shape().GetDims();
@@ -126,15 +128,38 @@ class MoEBase {
       }
     }
 
+    if (fc3_experts_weights_optional != nullptr &&
+        fc3_experts_weights_optional->Shape().GetDims() != fc1_experts_weights_dims) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "fc3_experts_weights_dims must be equal to fc1_experts_weights_dims, got ",
+                             fc3_experts_weights_optional->Shape().GetDims(), " and ", fc1_experts_weights_dims);
+    }
+
+    if (fc3_experts_bias_optional != nullptr && fc1_experts_bias_optional != nullptr &&
+        fc3_experts_bias_optional->Shape().GetDims() != fc1_experts_bias_optional->Shape().GetDims()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "fc3_experts_bias_dims must be equal to fc1_experts_bias_dims, got ",
+                             fc3_experts_bias_optional->Shape().GetDims(), " and ",
+                             fc1_experts_bias_optional->Shape().GetDims());
+    }
+
     parameters.num_rows = num_rows;
     parameters.num_experts = num_experts;
     parameters.local_num_experts = local_num_experts;
     parameters.hidden_size = hidden_size;
     parameters.inter_size = inter_size;
     if (num_experts == local_num_experts) {
-      parameters.parallel_type = MoEParallelType::None;
+      if (parameters.tensor_shards == 1) {
+        parameters.parallel_type = MoEParallelType::None;
+      } else {
+        parameters.parallel_type = MoEParallelType::TP;
+      }
     } else if (num_experts > local_num_experts) {
-      parameters.parallel_type = MoEParallelType::ExpertSlicing;
+      if (parameters.tensor_shards == 1) {
+        parameters.parallel_type = MoEParallelType::EP;
+      } else {
+        parameters.parallel_type = MoEParallelType::EPAndTP;
+      }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "num_experts must be greater than or equal to local_num_experts, got ",
@@ -161,8 +186,11 @@ class MoEBase {
     } else {
       ORT_THROW("Unsupported MoE activation type: ", activation_type_str);
     }
+
+    normalize_routing_weights_ = op_kernel_info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 0) == 1;
   }
 
+  bool normalize_routing_weights_;
   int64_t k_;
   ort_fastertransformer::ActivationType activation_type_;
 };

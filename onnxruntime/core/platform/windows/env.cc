@@ -32,6 +32,9 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
+#if defined(_M_X64) && !defined(_M_ARM64EC) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#include "core/platform/windows/hardware_core_enumerator.h"
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #include <wil/Resource.h>
 
@@ -248,12 +251,53 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
   Sleep(static_cast<DWORD>(micros) / 1000);
 }
 
+// EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
+#endif
 int WindowsEnv::DefaultNumCores() {
   return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
 }
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
-  return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+// EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+  // The following code is a temporary fix for a perf problem on Intel's Meteor Lake CPUs. The Intel compute platform has
+  // a hybrid architecture that some CPU cores runs significant slower than the others. If we distribute our compute work
+  // evenly to all CPU cores, the slowest CPU core will drag the performance down. So, instead, we reduce the total number
+  // of threads to exclude the slowest cores out.
+  // The following code is based on assumptions that:
+  // 1. All Intel hybrid CPUs should have 3 levels of cache.
+  // 2. If a CPU core is only associated with two levels of cache,  it should be a low performance CPU core and should
+  //    not be used.
+  // Since we don't know what the next Intel hybrid CPU would be like, later on we may need to rework the following code.
+  // However, no matter what the code should not cause any crash. The worst is it might return 1 that
+  //  thread pools will not be created, which is just a perf issue and does not impact usability.
+  // TODO: detect if CPUID instruction is available per instructions at https://wiki.osdev.org/CPUID#Checking_CPUID_availability
+  int regs[4];
+  __cpuid(regs, 0);
+  bool bIsIntel =
+      (kVendorID_Intel[0] == regs[1]) &&
+      (kVendorID_Intel[1] == regs[2]) &&
+      (kVendorID_Intel[2] == regs[3]);
+  if (bIsIntel && regs[0] >= 7) {
+    // Query Structured Extended Feature Flags Enumeration Leaf
+    __cpuid(regs, 0x7);
+    // The bit 15 of EDX indicates if the processor is identified as a hybrid part.
+    bool ishybrid = regs[3] & (1 << 15);
+    if (ishybrid) {
+      // NOTE: even if ishybrid is true, it doesn't mean the processor must have P-cores and E-cores.
+      // On Intel CPUs we assume the HardwareCoreEnumerator::DefaultIntraOpNumThreads function would never fail.
+      // NOTE: due to resource restrictions, we cannot test this branch in our CI build pipelines.
+      return std::max(static_cast<uint32_t>(1), HardwareCoreEnumerator::DefaultIntraOpNumThreads());
+    } else {
+      return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+    }
+  } else
+#endif
+  {
+    return cores_.empty() ? DefaultNumCores() : static_cast<int>(cores_.size());
+  }
 }
 
 std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
@@ -415,8 +459,8 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
 
   void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
                                           FILE_MAP_READ,
-                                          0,
-                                          static_cast<DWORD>(mapped_offset),
+                                          static_cast<DWORD>((mapped_offset >> 32) & 0xFFFFFFFF),
+                                          static_cast<DWORD>(mapped_offset & 0xFFFFFFFF),
                                           mapped_length);
   GSL_SUPPRESS(r.11)
   mapped_memory =

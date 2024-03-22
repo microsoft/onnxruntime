@@ -120,15 +120,11 @@ TEST(RNNTest, RNN_bidirectional_bias_initial_zigged_batch) {
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
   // TensorRT failed on RNN tests
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Doesn't work with CUDA 11.4 on Windows. Need investigation.
-#if defined(USE_CUDA) && defined(_WIN32)
-TEST(RNNTest, DISABLED_RNN_bidirectional_zigged_batch) {
-#else
 TEST(RNNTest, RNN_bidirectional_zigged_batch) {
-#endif
   OpTester test("RNN");
   int64_t num_directions = 2, input_size = 2, hidden_size = 3, seq_length = 5;
 
@@ -275,15 +271,11 @@ TEST(RNNTest, RNN_reverse_direction_zigged_batch) {
   std::vector<float> Y_h_data({0.87014002F, 0.09402763F, -0.54269236F, 0.64809889F, -0.19472955F, -0.24271242F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Doesn't work with CUDA 11.4 on Windows. Need investigation.
-#if defined(USE_CUDA) && defined(_WIN32)
-TEST(RNNTest, DISABLED_RNN_forward_direction_zigged_batch) {
-#else
 TEST(RNNTest, RNN_forward_direction_zigged_batch) {
-#endif
   OpTester test("RNN");
   int64_t num_directions = 1, input_size = 2, hidden_size = 3, seq_length = 5;
 
@@ -357,12 +349,7 @@ TEST(RNNTest, RNN_forward_direction_zigged_batch) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-// Doesn't work with CUDA 11.4 on Windows. Need investigation.
-#if defined(USE_CUDA) && defined(_WIN32)
-TEST(RNNTest, DISABLED_RNN_bidirectional_0) {
-#else
 TEST(RNNTest, RNN_bidirectional_0) {
-#endif
   OpTester test("RNN");
   int64_t num_directions = 2, input_size = 2, hidden_size = 3, batch_size = 1, seq_length = 5;
 
@@ -424,12 +411,7 @@ TEST(RNNTest, RNN_bidirectional_0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-// Doesn't work with CUDA 11.4 on Windows. Need investigation.
-#if defined(USE_CUDA) && defined(_WIN32)
-TEST(RNNTest, DISABLED_RNN_bidirectional_1) {
-#else
 TEST(RNNTest, RNN_bidirectional_1) {
-#endif
   OpTester test("RNN");
   int64_t num_directions = 2, input_size = 2, hidden_size = 2, batch_size = 1, seq_length = 1;
 
@@ -597,7 +579,7 @@ TEST(RNNTest, DISABLED_RNN_default_attributes_and_forward_direction) {
   }
 }
 
-TEST(RNNTest, DISABLED_RNN_reverse_direction) {
+TEST(RNNTest, RNN_reverse_direction) {
   int64_t num_directions = 1, input_size = 2, hidden_size = 3, batch_size = 1, seq_length = 5;
 
   // In case of useDefault, attributes, inputs or outputs are not set.
@@ -762,7 +744,9 @@ TEST(RNNTest, RNN_invalid_sequence_lens) {
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
     // the CUDA RNN version allows the invalid sequence lengths, so disable testing on CUDA and TensorRT
-    test.Run(OpTester::ExpectResult::kExpectFailure, error_msg, {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectFailure, error_msg,
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+              kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   };
 
   // should batch batch_size to be valid
@@ -860,7 +844,8 @@ TEST(RNNTest, RNN_bidirectional_with_sequence_lens) {
 
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(RNNTest, RNN_with_invalid_activation_load_failure) {

@@ -10,7 +10,7 @@ import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
+import {AdapterInfo, ComputeContext, GpuArchitecture, GpuData, GpuVendor, ProgramInfo, ProgramInputTensorInfoDependency, SessionState, TimestampQuery} from './webgpu/types';
 
 interface CommandInfo {
   readonly kernelId: number;
@@ -94,11 +94,32 @@ const getProgramInfoUniqueKey =
       return key;
     };
 
+class AdapterInfoImpl implements AdapterInfo {
+  readonly architecture?: string;
+  readonly vendor?: string;
+
+  constructor(adapterInfo: GPUAdapterInfo) {
+    if (adapterInfo) {
+      this.architecture = adapterInfo.architecture;
+      this.vendor = adapterInfo.vendor;
+    }
+  }
+
+  isArchitecture(architecture: GpuArchitecture): boolean {
+    return this.architecture === architecture;
+  }
+
+  isVendor(vendor: GpuVendor): boolean {
+    return this.vendor === vendor;
+  }
+}
+
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
  * the first parameter so that it is stored for future use.
  */
 export class WebGpuBackend {
+  adapterInfo: AdapterInfoImpl;
   device: GPUDevice;
   /**
    * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
@@ -212,6 +233,7 @@ export class WebGpuBackend {
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
+    this.adapterInfo = new AdapterInfoImpl(await adapter.requestAdapterInfo());
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
@@ -230,7 +252,10 @@ export class WebGpuBackend {
       }
     };
 
-    Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
+    Object.defineProperty(
+        this.env.webgpu, 'device', {value: this.device, writable: false, enumerable: true, configurable: false});
+    Object.defineProperty(
+        this.env.webgpu, 'adapter', {value: adapter, writable: false, enumerable: true, configurable: false});
 
     // init queryType, which is necessary for InferenceSession.create
     this.setQueryType();
@@ -385,11 +410,16 @@ export class WebGpuBackend {
     // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < inputTensorViews.length; ++i) {
-      const gpuData = this.gpuDataManager.get(inputTensorViews[i].data);
-      if (!gpuData) {
-        throw new Error(`no GPU data for input: ${inputTensorViews[i].data}`);
+      const data = inputTensorViews[i].data;
+      // if tensor view data is 0, it means the output is zero-sized tensor, and there is no GPU data for it.
+      if (data === 0) {
+        continue;
       }
-      inputDatas[i] = gpuData;
+      const gpuData = this.gpuDataManager.get(data);
+      if (!gpuData) {
+        throw new Error(`no GPU data for input: ${data}`);
+      }
+      inputDatas.push(gpuData);
     }
 
     const {outputs, dispatchGroup, programUniforms} = program.getRunData(inputTensorViews);
@@ -419,6 +449,11 @@ export class WebGpuBackend {
       const tensorView = (isTemporary || isPersistent) ?
           createIntermediateOutput(outputs[i].dataType, outputs[i].dims) :
           createKernelOutput(validatedOutputIndices[i], outputs[i].dataType, outputs[i].dims);
+      outputTensorViews.push(tensorView);
+      // if tensor view data is 0, it means the output is zero-sized tensor, and there is no GPU data for it.
+      if (tensorView.data === 0) {
+        continue;
+      }
       const gpuData = this.gpuDataManager.get(tensorView.data);
       if (!gpuData) {
         throw new Error(`no GPU data for output: ${tensorView.data}`);
@@ -434,10 +469,24 @@ export class WebGpuBackend {
         }
         persistentData.push(gpuData);
       }
-      outputTensorViews.push(tensorView);
       outputDatas.push(gpuData);
     }
 
+    // when there are any zero-sized tensor in the inputs or outputs, we should report error unless all outputs are
+    // zero-sized tensors.
+    if (inputDatas.length !== inputTensorViews.length || outputDatas.length !== outputTensorViews.length) {
+      // if all outputs are zero-sized tensors, there is no need to run the program.
+      if (outputDatas.length === 0) {
+        TRACE_FUNC_END(program.name);
+        return outputTensorViews;
+      }
+      // if some outputs are zero-sized tensors, report an error.
+      //
+      // TODO: so far we don't see any use case that outputs include both zero-sized tensors and non-zero-sized tensors.
+      // If we see such use case, we need to make a change here to support it.
+      throw new Error(
+          `Program ${program.name} has zero-sized tensor(s) in inputs or outputs. This is not supported now.`);
+    }
 
     // load uniforms
     // TODO: add cache for uniform (is it necessary?)
@@ -686,7 +735,8 @@ export class WebGpuBackend {
   }
   setQueryType(): void {
     this.queryType = 'none';
-    if (this.env.webgpu.profiling?.mode === 'default' || this.env.wasm.trace) {
+    if (this.env.webgpu.profiling?.mode === 'default' ||
+        (typeof this.env.trace === 'undefined' ? this.env.wasm.trace : this.env.trace)) {
       if (this.device.features.has('chromium-experimental-timestamp-query-inside-passes')) {
         this.queryType = 'inside-passes';
       } else if (this.device.features.has('timestamp-query')) {

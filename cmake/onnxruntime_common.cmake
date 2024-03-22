@@ -201,10 +201,6 @@ endif()
 
 
 if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
-  if((WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
-    # msvc compiler report syntax error with cpuinfo arm source files
-    # and cpuinfo does not have code for getting arm uarch info under windows
-  else()
     # Link cpuinfo if supported
     # Using it mainly in ARM with Android.
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
@@ -212,7 +208,6 @@ if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
       onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
     endif()
-  endif()
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

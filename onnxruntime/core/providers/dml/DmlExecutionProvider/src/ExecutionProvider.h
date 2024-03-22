@@ -270,7 +270,7 @@ namespace Dml
             return m_impl->OnSessionInitializationEnd();
         }
 
-        virtual onnxruntime::Status Sync() const final override
+        onnxruntime::Status Sync() const final override
         {
             // Completely wait until the device has completed all preceding tasks.
             // The application could have called SynchronizeBoundOutputs().
@@ -278,7 +278,7 @@ namespace Dml
             return Status::OK();
         }
 
-        virtual onnxruntime::Status OnRunEnd(bool /*sync_stream*/) final override
+        onnxruntime::Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) final override
         {
             // Flush any pending work to the GPU, but don't block for completion, permitting it
             // to overlap other work.

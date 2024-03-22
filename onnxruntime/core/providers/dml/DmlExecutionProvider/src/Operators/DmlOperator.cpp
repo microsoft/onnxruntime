@@ -53,7 +53,7 @@ namespace Dml
             MLOperatorGraphDesc operatorGraphDesc = {};
             operatorGraphDesc.nodeCount = 1;
             const DML_OPERATOR_DESC* opDescs{&operatorDesc};
-            operatorGraphDesc.nodesAsOpDesc = &opDescs;
+            operatorGraphDesc.nodes = &opDescs;
 
             std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
             for (uint32_t inputIndex = 0; inputIndex < m_kernelInputIndices.size(); inputIndex++)
@@ -796,7 +796,7 @@ namespace Dml
         for (size_t i = 0; i < graphDesc.NodeCount; ++i)
         {
             // Create the operator.
-            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(operatorGraphDesc.nodesAsOpDesc[i], IID_PPV_ARGS(&dmlOperators[i])));
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(operatorGraphDesc.nodes[i], IID_PPV_ARGS(&dmlOperators[i])));
             dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{dmlOperators[i].Get()};
             dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
         }

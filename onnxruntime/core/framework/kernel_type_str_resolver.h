@@ -7,7 +7,7 @@
 #include <string_view>
 #include <utility>
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/onnx_protobuf.h"

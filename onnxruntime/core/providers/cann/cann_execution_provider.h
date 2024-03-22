@@ -33,7 +33,7 @@ class CANNExecutionProvider : public IExecutionProvider {
   explicit CANNExecutionProvider(const CANNExecutionProviderInfo& info);
   virtual ~CANNExecutionProvider();
 
-  Status OnRunStart() override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
   template <typename T>
   Status Fill(Tensor* y, void* addr, aclrtStream stream) const {

@@ -76,6 +76,6 @@ for opset_version in [16, 20]:
                     print('test.AddAttribute("padding_mode", padding_mode);')
                     print('test.AddAttribute("align_corners", align_corners);')
                     print('test.AddOutput<float>("Y", Y_shape, Y_data);')
-                    print("test.Run();")
+                    print(f"RunTests(test, GetExecutionProviders({opset_version}));")
                     print("}")
                     print("\n")

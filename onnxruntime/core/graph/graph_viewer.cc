@@ -14,8 +14,8 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
     // local statics so we can compare std::strings in the checks
-    static const std::string shape_op("Shape");
-    static const std::string size_op("Size");
+    static constexpr std::string_view shape_op("Shape");
+    static constexpr std::string_view size_op("Size");
 
     const auto& op_type = n->OpType();
     return op_type == shape_op || op_type == size_op;
@@ -26,15 +26,20 @@ struct PriorityNodeCompare {
   // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
     // nodes in global high priority list will be output first
-    if (IsHighPri(n1) != IsHighPri(n2)) {
-      return IsHighPri(n2);
+    const bool isN1HighPri = IsHighPri(n1);
+    const bool isN2HighPri = IsHighPri(n2);
+    if (isN1HighPri != isN2HighPri) {
+      return isN2HighPri;
     }
 
     // nodes with lower priority value will be output first
-    if (n1->Priority() != n2->Priority()) {
-      return n1->Priority() > n2->Priority();
+    const auto n1_priority = n1->Priority();
+    const auto n2_priority = n2->Priority();
+    if (n1_priority != n2_priority) {
+      return n1_priority > n2_priority;
     }
 
+#ifdef ENABLE_TRAINING
     // nodes of forward pass will be output first
     auto n1_attrs = n1->GetAttributes();
     auto n2_attrs = n2->GetAttributes();
@@ -45,6 +50,7 @@ struct PriorityNodeCompare {
     if (n1_is_forward != n2_is_forward) {
       return n2_is_forward > n1_is_forward;
     }
+#endif
 
     // otherwise, nodes with lower index will be output first
     return n1->Index() > n2->Index();

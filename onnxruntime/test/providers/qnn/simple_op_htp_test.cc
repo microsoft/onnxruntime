@@ -1110,6 +1110,61 @@ TEST_F(QnnHTPBackendTests, LpNormalization_u16_rank4) {
                          kOnnxDomain,
                          true);
 }
+
+static GetTestQDQModelFn<uint16_t> BuildQDQConvertAddTestCase(const TestInputDef<float>& input0_def,
+                                                              const TestInputDef<float>& input1_def) {
+  return [input0_def, input1_def](ModelTestBuilder& builder, std::vector<QuantParams<uint16_t>>& output_qparams) {
+    constexpr bool use_contrib_qdq = true;
+
+    // Input0 -> Quantize(u8) -> Dequantize(u8 to float) -> input0_after_qdq
+    NodeArg* input0 = MakeTestInput<float>(builder, input0_def);
+    QuantParams<uint8_t> input0_u8_qparams = GetTestInputQuantParams<uint8_t>(input0_def);
+    NodeArg* input0_after_qdq = AddQDQNodePair<uint8_t>(builder, input0, input0_u8_qparams.scale,
+                                                        input0_u8_qparams.zero_point, use_contrib_qdq);
+
+    // input0_after_qdq -> Quantize(u16) -> Dequantize(u16 to float)
+    QuantParams<uint16_t> input0_u16_qparams = GetTestInputQuantParams<uint16_t>(input0_def);
+    NodeArg* input0_after_convert = AddQDQNodePair<uint16_t>(builder, input0_after_qdq, input0_u16_qparams.scale,
+                                                             input0_u16_qparams.zero_point, use_contrib_qdq);
+
+    // Input1 -> Quantize(u16) -> Dequantize(u16 to float) -> input1_after_qdq
+    NodeArg* input1 = MakeTestInput<float>(builder, input1_def);
+    QuantParams<uint16_t> input1_qparams = GetTestInputQuantParams<uint16_t>(input1_def);
+    NodeArg* input1_after_qdq = AddQDQNodePair<uint16_t>(builder, input1, input1_qparams.scale,
+                                                         input1_qparams.zero_point, use_contrib_qdq);
+
+    // Add op -> op_output
+    auto* op_output = builder.MakeIntermediate();
+    builder.AddNode("Add", {input0_after_convert, input1_after_qdq}, {op_output});
+
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<uint16_t>(builder, op_output, output_qparams[0].scale,
+                                                    output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
+
+// Test quantization type conversion (mixed precision) with Add.
+// First input is converted from uint8_t to uint16_t.
+TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
+  std::vector<float> input0_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  std::vector<float> input1_data = GetFloatDataInRange(-20.0f, 20.0f, 8);
+  TestInputDef<float> input0_def({1, 2, 2, 2}, false, input0_data);
+  TestInputDef<float> input1_def({1, 2, 2, 2}, false, input1_data);
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  TestQDQModelAccuracy(BuildOpTestCase<float>("Add", {input0_def, input1_def}, {}, {}, kOnnxDomain),
+                       BuildQDQConvertAddTestCase(input0_def, input1_def),
+                       provider_options,
+                       18,
+                       ExpectedEPNodeAssignment::All);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
