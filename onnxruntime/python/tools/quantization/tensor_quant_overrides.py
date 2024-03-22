@@ -305,7 +305,7 @@ class TensorQuantOverridesHelper(MutableMapping):
             convert_dict.get("reduce_range", default_reduce_range),
         )
 
-        # Check if all nodes receive the coverted type (i.e., recv_nodes is None) or this node
+        # Check if all nodes receive the converted type (i.e., recv_nodes is None) or this node
         # is in the list of consumers (recv_nodes).
         if ("recv_nodes" not in convert_dict) or (node_name in convert_dict["recv_nodes"]):
             qtype_info.quant_type = convert_dict["quant_type"]
