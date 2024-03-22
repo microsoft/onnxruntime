@@ -9,7 +9,7 @@ redirect_from: /docs/reference/execution-providers/OpenVINO-ExecutionProvider
 # OpenVINO™ Execution Provider
 {: .no_toc }
 
-Accelerate ONNX models on Intel CPUs, GPUs with Intel OpenVINO™ Execution Provider. Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
+Accelerate ONNX models on Intel CPUs, GPUs, NPU with Intel OpenVINO™ Execution Provider. Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
 ## Contents
 {: .no_toc }
@@ -31,7 +31,6 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three lastest rel
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---|
 |1.17.1|2023.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.2)|
-|1.17.1|2023.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.2)|
 |1.16.0|2023.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.1)|
 |1.15.0|2023.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.0.0)|
 |1.14.0|2022.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.3)|
@@ -114,7 +113,7 @@ Refer to [Configuration Options](#configuration-options) for more information ab
 
 ### Support for INT8 Quantized models
 
-Int8 models are supported on CPU and GPU.
+Int8 models are supported on CPU, GPU and NPU 
 
 ### Support for Weights saved in external files
 
@@ -174,7 +173,7 @@ OpenVINO™ Execution Provider for ONNX Runtime allows multiple stream execution
 
 ### Auto-Device Execution for OpenVINO EP
 
-Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO™. Auto-device internally recognizes and selects devices from CPU, integrated GPU and discrete Intel GPUs (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
+Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO™. Auto-device internally recognizes and selects devices from CPU, integrated GPU, discrete Intel GPUs (when available) and NPU (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
 
 From the application point of view, this is just another device that handles all accelerators in full system.
 
@@ -263,7 +262,7 @@ The following table lists all the available configuration options for API 2.0 an
 
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
-| device_type | string | CPU_FP32, CPU_FP16, GPU_FP32, GPU_FP16, GPU.0_FP32, GPU.1_FP32, GPU.0_FP16, GPU.1_FP16 based on the avaialable GPUs, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
+| device_type | string | CPU_FP32, CPU_FP16, GPU_FP32, GPU_FP16, GPU.0_FP32, GPU.1_FP32, GPU.0_FP16, GPU.1_FP16 based on the avaialable GPUs, NPU, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvino.ai/latest/classInferenceEngine_1_1Core.html). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 during build time will be used for inference. |
 | num_streams | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default streams with this value at runtime. If this option is not explicitly set, default value of 1, performance for latency is used during build time will be used for inference. |
@@ -287,7 +286,7 @@ HETERO:GPU,CPU  AUTO:GPU,CPU  MULTI:GPU,CPU
 **ONNX Layers supported using OpenVINO**
 
 The table below shows the ONNX layers supported and validated using OpenVINO™ Execution Provider.The below table also lists the Intel hardware support for each of the layers. CPU refers to Intel<sup>®</sup>
-Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. Intel Discrete Graphics
+Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. Intel Discrete Graphics. For NPU if an op is not supported we fallback to CPU. 
 
 | **ONNX Layers** | **CPU** | **GPU** |
 | --- | --- | --- |
@@ -338,7 +337,7 @@ Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. In
 | GlobalAveragePool | Yes | Yes |
 | GlobalLpPool | Yes | Yes |
 | GlobalMaxPool | Yes | Yes |
-| Greater | Yes | Yes | Yes |
+| Greater | Yes | Yes |
 | GreaterOrEqual | Yes | Yes |
 | GridSample | Yes | No |
 | HardMax | Yes | Yes |
@@ -430,7 +429,8 @@ Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. In
 
 ### Topology Support
 
-Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Execution Provider and many more are supported through sub-graph partitioning
+Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Execution Provider and many more are supported through sub-graph partitioning.
+For NPU is model is not supported we fallback to CPU. 
 
 ### Image Classification Networks
 
