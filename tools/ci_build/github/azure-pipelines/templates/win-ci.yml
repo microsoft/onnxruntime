@@ -199,7 +199,7 @@ stages:
           dir *.dll
           mkdir $(Build.ArtifactStagingDirectory)\testdata
           workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
-          displayName: 'List built DLLs'
+        displayName: 'List built DLLs'
 
       - template: c-api-artifacts-package-and-publish-steps-windows.yml
         parameters:
