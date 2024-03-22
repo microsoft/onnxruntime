@@ -2781,6 +2781,29 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                                   updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
                                 }));
 
+static void MultiScaleDeformableAttentionShapeInfer(ONNX_NAMESPACE::InferenceContext& ctx) {
+  updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT);
+  auto& input_value_shape = ctx.getInputType(0)->tensor_type().shape();
+  auto& input_attention_weights_shape = ctx.getInputType(4)->tensor_type().shape();
+  if(!input_attention_weights_shape.dim(2).has_dim_value()){
+    return;
+  }
+  auto Q = input_attention_weights_shape.dim(2).dim_value();
+  if(!input_value_shape.dim(3).has_dim_value()) {
+    return;
+  }
+  auto D = input_value_shape.dim(3).dim_value();
+  if(!input_value_shape.dim(2).has_dim_value()) {
+    return;
+  }
+  auto M = input_value_shape.dim(2).dim_value();
+
+  auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+  appendDim(output_shape, 1);
+  appendDim(output_shape, Q);
+  appendDim(output_shape, M * D);
+}
+
 ONNX_MS_OPERATOR_SET_SCHEMA(MultiScaleDeformableAttention, 1, OpSchema()
                                 .SetDomain(kMSDomain)
                                 .SinceVersion(1)
@@ -2800,19 +2823,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MultiScaleDeformableAttention, 1, OpSchema()
                                   "T2",
                                   {"tensor(int64)"},
                                   "Int64")
-                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx){
-                                  updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT);
-                                  auto& input_value_shape = ctx.getInputType(0)->tensor_type().shape();
-                                  auto& input_attention_weights_shape = ctx.getInputType(4)->tensor_type().shape();
-                                  auto Q = input_attention_weights_shape.dim(2).dim_value();
-                                  auto D = input_value_shape.dim(4).dim_value();
-                                  auto M = input_value_shape.dim(3).dim_value();
-
-                                  auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-                                  appendDim(output_shape, 1);
-                                  appendDim(output_shape, Q);
-                                  appendDim(output_shape, M * D);
-                                }));
+                                .TypeAndShapeInferenceFunction(MultiScaleDeformableAttentionShapeInfer));
 
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                 int64_t K,
