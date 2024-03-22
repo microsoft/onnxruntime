@@ -1029,13 +1029,7 @@ def generate_files(line_list, args):
                 "_._",
             )
             net6_maccatalyst_target_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net6.0-maccatalyst",
-                args.package_name + ".targets",
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-maccatalyst", "_._"
             )
 
             net6_macos_source_targets = os.path.join(
