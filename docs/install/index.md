@@ -31,6 +31,12 @@ under [Compatibility](../reference/compatibility).
   require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads).
   The latest version is recommended.
 
+### CUDA and CuDNN
+For ONNX Runtime GPU package, it is required to install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn). Check [CUDA execution provider requirements](../execution-providers/CUDA-ExecutionProvider.md#requirements) for compatible version of CUDA and cuDNN.
+* cuDNN 8.x requires ZLib. Follow the [cuDNN 8.9 installation guide](https://docs.nvidia.com/deeplearning/cudnn/archives/cudnn-890/install-guide/index.html) to install zlib in Linux or Windows. Note that the official gpu package does not support cuDNN 9.x.
+* The path of CUDA bin directory must be added to the PATH environment variable. 
+* In Windows, the path of cuDNN bin directory must be added to the PATH environment variable.
+
 ## Python Installs
 
 ### Install ONNX Runtime (ORT)
@@ -42,15 +48,15 @@ pip install onnxruntime
 ```
 
 #### Install ONNX Runtime GPU (CUDA 11.x)
+The default CUDA version for ORT is 11.8.
 
-The default CUDA version for ORT is 11.8
+The latest gpu package is built and tested with CUDA 11.8, cuDNN 8.9 and TensorRT 8.6. 
 
 ```bash
 pip install onnxruntime-gpu
 ```
 
 #### Install ONNX Runtime GPU (CUDA 12.x)
-
 For Cuda 12.x, please use the following instructions to install from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview)
 
 ```bash

@@ -33,15 +33,16 @@ Please reference table below for official GPU packages dependencies for the ONNX
 ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Training tab
 on [onnxruntime.ai](https://onnxruntime.ai/) for supported versions.
 
-Note: Because of CUDA Minor Version Compatibility, ONNX Runtime built with CUDA 11.8 should be compatible with any CUDA
-11.x version.
+Note: Because of CUDA Minor Version Compatibility, ONNX Runtime built with CUDA 11.8 should be compatible with any CUDA 11.x version; ONNX Runtime built with CUDA 12.2 should be compatible with any CUDA 12.x version.
+Note: cuDNN 9.x is not compatible with ONNX Runtime built with cuDNN 8.x.
+
 Please
 reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility).
 
 | ONNX Runtime             | CUDA   | cuDNN                                   | Notes                                                                                                                                                                                                                               |
 |--------------------------|--------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1.17                     | 12.2   | 8.9.2.26 (Linux)<br/>8.9.2.26 (Windows) | The default CUDA version for ORT 1.17 is CUDA 11.8. To install CUDA 12 package, please look at [Install ORT](../install).<br>Due to low demand on Java GPU package, only C++/C# Nuget and Python packages are released with CUDA 12.2 |
-| 1.15<br>1.16<br>1.17     | 11.8   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows)    | Tested with CUDA versions from 11.6 up to 11.8, and cuDNN from 8.2.4 up to 8.7.0                                                                                                                                                    |
+| 1.15<br>1.16<br>1.17     | 11.8   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows)    | Tested with CUDA versions from 11.6 up to 11.8, and cuDNN from 8.2.4 up to 8.9.0                                                                                                                                                    |
 | 1.14<br/>1.13.1<br/>1.13 | 11.6   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows)    | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4                                                                                               |
 | 1.12<br/>1.11            | 11.4   | 8.2.4 (Linux)<br/>8.2.2.26 (Windows)    | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4                                                                                               |
 | 1.10                     | 11.4   | 8.2.4 (Linux)<br/>8.2.2.26 (Windows)    | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4                                                                                             |
@@ -51,12 +52,7 @@ reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/depl
 | 1.5-1.6                  | 10.2   | 8.0.3                                   | CUDA 11 can be built from source                                                                                                                                                                                                    |
 | 1.2-1.4                  | 10.1   | 7.6.5                                   | Requires cublas10-10.2.1.243; cublas 10.1.x will not work                                                                                                                                                                           |
 | 1.0-1.1                  | 10.0   | 7.6.4                                   | CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017                                                                                                                   |
-
 For older versions, please reference the readme and build pages on the release branch.
-
-For
-Windows, [Microsoft C and C++ (MSVC) runtime libraries](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
-is also required.
 
 ## Build
 
