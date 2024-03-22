@@ -18,6 +18,7 @@ class QuantTypeInfo:
     """
     The quantization type information for a tensor override.
     """
+
     quant_type: QuantType
     symmetric: bool | None = None  # If None, assumes default is used.
     reduce_range: bool | None = None  # If None, assumes default is used.
