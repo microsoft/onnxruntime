@@ -318,7 +318,7 @@ stages:
         - task: PublishPipelineArtifact@1
           inputs:
             targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }_build_artifacts'
+            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
 
 ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
   - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
@@ -326,7 +326,7 @@ ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
     variables:
       CUDA_MODULE_LOADING: 'LAZY'
     jobs:
-    - job:
+    - job Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing:
       workspace:
         clean: all
       pool: onnxruntime-Windows-GPU-T4
