@@ -11,7 +11,7 @@ from onnx.external_data_helper import set_external_data
 from onnxruntime.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 
 
-class TestOptimizerUtils(unittest.TestCase):
+class TestOnnxUtils(unittest.TestCase):
     def test_extract_raw_data_from_model(self):
         model = self._get_model_proto_with_raw_data(False)
         external_names, external_values = extract_raw_data_from_model(model)
