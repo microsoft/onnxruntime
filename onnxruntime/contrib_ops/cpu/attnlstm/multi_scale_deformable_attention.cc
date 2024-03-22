@@ -55,7 +55,7 @@ Status MultiScaleDeformableAttention::Compute(_Inout_ OpKernelContext* context) 
       P,
       D,
       Q,
-      *thread_pool,
+      thread_pool,
       alloc);
   } else {
     // Generic implementation

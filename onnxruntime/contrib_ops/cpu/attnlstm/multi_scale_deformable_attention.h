@@ -27,7 +27,7 @@ class MultiScaleDeformableAttention final : public OpKernel {
     int64_t P,
     int64_t D,
     int64_t Q,
-    concurrency::ThreadPool& thread_pool,
+    concurrency::ThreadPool* thread_pool,
     AllocatorPtr alloc) const;
 };
 
