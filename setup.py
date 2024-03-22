@@ -232,6 +232,8 @@ try:
 
                 tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
 
+                cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
+
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
                     subprocess.run(
@@ -255,7 +257,7 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
+                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:

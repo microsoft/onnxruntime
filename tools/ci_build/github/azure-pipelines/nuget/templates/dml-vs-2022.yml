@@ -188,7 +188,7 @@ stages:
           displayName: 'Publish unit test results'
           inputs:
             testResultsFiles: '**\*.results.xml'
-            searchFolder: '$(Build.BinariesDirectory)'
+            searchFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
             testRunTitle: 'Unit Test Run'
           condition: succeededOrFailed()
 
