@@ -36,7 +36,7 @@ struct ATenOperator {
   size_t return_size;
   std::vector<c10::TypeKind> ret_kinds;
 
-  c10::IValue ToIValueArgument(const DLManagedTensor* dlpack, size_t index) const {
+  c10::IValue ToIValueArgument(DLManagedTensor* dlpack, size_t index) const {
     TORCH_INTERNAL_ASSERT(index < argument_size);
     bool is_optional = is_optional_arguments[index];
     TORCH_INTERNAL_ASSERT(dlpack || is_optional || default_values[index] ||
@@ -57,7 +57,7 @@ struct ATenOperator {
     c10::IValue i_value;
     // Create the torch tensor from this DLPack no matter we need it or not below,
     // so that the dlpack's deleter will be triggered when torch tensor is out of scope.
-    at::Tensor tensor = at::fromDLPack(const_cast<DLManagedTensor*>(dlpack));
+    at::Tensor tensor = at::fromDLPack(dlpack);
     switch (elem_kinds[index]) {
       case c10::TypeKind::TensorType: {
         i_value = is_optional ? c10::IValue(c10::optional<at::Tensor>(tensor)) : c10::IValue(tensor);

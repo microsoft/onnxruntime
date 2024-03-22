@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 from __future__ import annotations
 
 import argparse
@@ -10,7 +15,7 @@ import torch
 from benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
-    add_io_bindings,
+    add_io_bindings_as_ortvalues,
     convert_inputs_for_ort,
     get_merged_sample_with_past_kv_inputs,
     get_sample_inputs,
@@ -123,7 +128,7 @@ def verify_parity(
 
     # Add IO bindings for non-CPU execution providers
     if args.execution_provider != "cpu":
-        io_binding, kv_cache_ortvalues = add_io_bindings(
+        io_binding, kv_cache_ortvalues = add_io_bindings_as_ortvalues(
             ort_model,
             inputs,
             args.execution_provider,
