@@ -326,7 +326,7 @@ stages:
     variables:
       CUDA_MODULE_LOADING: 'LAZY'
     jobs:
-    - job Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing:
+    - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
       workspace:
         clean: all
       pool: onnxruntime-Windows-GPU-T4
