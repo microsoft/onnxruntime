@@ -329,7 +329,7 @@ stages:
     - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
       workspace:
         clean: all
-      pool: onnxruntime-Windows-GPU-T4
+      pool: onnxruntime-Win2022-GPU-T4
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
