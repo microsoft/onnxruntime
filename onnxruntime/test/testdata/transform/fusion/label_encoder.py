@@ -1,6 +1,4 @@
-
-import onnx
-from onnx import OperatorSetIdProto, TensorProto, helper
+from onnx import OperatorSetIdProto, TensorProto, helper, save
 
 opsets = []
 onnxdomain = OperatorSetIdProto()
@@ -158,8 +156,8 @@ def generate_model(model_name):
     )
 
     model = helper.make_model(graph, **kwargs)
-    onnx.save(model, model_name)
+    save(model, model_name)
 
 
 if __name__ == "__main__":
-    GenerateModel("label_encoder.onnx")
+    generate_model("label_encoder.onnx")
