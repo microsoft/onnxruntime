@@ -24,7 +24,7 @@ kwargs["opset_imports"] = opsets
 
 
 # Important: A is assumed to be from ['a'-'z']
-def GenerateModel(model_name):  # noqa: N802
+def generate_model(model_name):
     # Create models with consecutive label encoders
     nodes = [  # subgraph
         # string -> int -> string
