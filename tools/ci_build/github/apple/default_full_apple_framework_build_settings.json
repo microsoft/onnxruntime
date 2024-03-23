@@ -23,6 +23,7 @@
             "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
         ],
         "macosx": [
+            "--macos=MacOSX",
             "--apple_deploy_target=11.0"
         ],
         "iphoneos": [

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <utility>
+
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
@@ -35,6 +37,7 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 ShardedMoE<T>::ShardedMoE(const OpKernelInfo& op_kernel_info) : NcclKernel(op_kernel_info), MoEBase(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("tensor_shards", &tensor_shards_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("local_experts_start_index", &local_experts_start_index_).IsOK());
   rank_to_experts_start_index_.resize(nccl_->Size());
   // Initialize rank_to_experts_start_index_[0] to a value to convey that it is not initialized.
@@ -55,27 +58,36 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   // Create a {Rank, ExpertsStartIndex} map on Host.
   AutoDestoryCudaEvent cuda_event;
   cudaEvent_t& copy_event = cuda_event.Get();
-  ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
   const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
-  const Tensor* fc2_experts_weights = context->Input<Tensor>(3);
-  const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(4);
+  const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(3);
+  const Tensor* fc2_experts_weights = context->Input<Tensor>(4);
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(5);
+  const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
+  const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
-  MoEParameters moe_params;
-  ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc2_experts_weights,
-                                  fc1_experts_bias_optional, fc2_experts_bias_optional));
+  MoEParameters moe_params(tensor_shards_);
+  ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
+                                  fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
+                                  fc3_experts_bias_optional));
+
   ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0,
                     "num_experts should be divisible by world_size");
 
-  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm);
+  if (moe_params.parallel_type == MoEParallelType::EP || moe_params.parallel_type == MoEParallelType::EPAndTP) {
+    ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
+  }
+
+  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
+                                                                     fc3_experts_weights_optional != nullptr,
+                                                                     normalize_routing_weights_);
 
   size_t ws_size =
-      moe_runner.getWorkspaceSize(static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.hidden_size),
-                                  static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
-                                  static_cast<int>(k_));
+      moe_runner.getWorkspaceSize(static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
+                                  static_cast<size_t>(moe_params.inter_size),
+                                  static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_));
 
   size_t fc2_output_size = k_ * moe_params.num_rows * moe_params.hidden_size * sizeof(CudaT);
   size_t expert_scales_size = k_ * moe_params.num_rows * sizeof(CudaT);
@@ -93,19 +105,25 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> expert_for_source_row =
       IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
 
-  // fc1_scales and fc2_scales are used in quantized MoE
-  const CudaT* fc1_scales_ptr = nullptr;
-  const CudaT* fc2_scales_ptr = nullptr;
+  const CudaT* fc_scales_ptr = nullptr;
 
   moe_runner.run_moe_fc(reinterpret_cast<const CudaT*>(input->template Data<T>()),
                         reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
                         reinterpret_cast<const CudaT*>(fc1_experts_weights->template Data<T>()),
-                        std::move(fc1_scales_ptr),
+                        std::move(fc_scales_ptr),
                         fc1_experts_bias_optional == nullptr
                             ? nullptr
                             : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
-                        activation_type_, reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
-                        std::move(fc2_scales_ptr), static_cast<int>(moe_params.num_rows),
+                        activation_type_,
+                        fc3_experts_weights_optional == nullptr
+                            ? nullptr
+                            : reinterpret_cast<const CudaT*>(fc3_experts_weights_optional->template Data<T>()),
+                        std::move(fc_scales_ptr),
+                        fc3_experts_bias_optional == nullptr
+                            ? nullptr
+                            : reinterpret_cast<const CudaT*>(fc3_experts_bias_optional->template Data<T>()),
+                        reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
+                        std::move(fc_scales_ptr), static_cast<int>(moe_params.num_rows),
                         static_cast<int>(moe_params.hidden_size),
                         static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
                         static_cast<int>(moe_params.local_num_experts), static_cast<int>(local_experts_start_index_),
@@ -116,31 +134,54 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  size_t stride_count = moe_params.hidden_size;
-  size_t stride_bytes = stride_count * sizeof(CudaT);
-  int64_t total_past_rows = 0;
-  int64_t total_covered_rows = 0;
-  if (copy_event != nullptr) {
-    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(copy_event));
+  if (moe_params.parallel_type == MoEParallelType::None) {
+    fc2_output_bc = std::move(fc2_output);
   }
-  NCCL_RETURN_IF_ERROR(ncclGroupStart());
-  for (int rank = 0; rank < nccl_->Size(); ++rank) {
-    int64_t experts_start_index = rank_to_experts_start_index_[rank];
-    moe_runner.get_total_rows_info(experts_start_index,
-                                   moe_params.local_num_experts,
-                                   total_past_rows,
-                                   total_covered_rows);
-    const char* src = reinterpret_cast<const char*>(fc2_output.get()) + total_past_rows * stride_bytes;
-    char* dst = reinterpret_cast<char*>(fc2_output_bc.get()) + total_past_rows * stride_bytes;
-    NCCL_RETURN_IF_ERROR(ncclBroadcast(src,
-                                       dst,
-                                       total_covered_rows * stride_count,
+
+  if (moe_params.parallel_type == MoEParallelType::EPAndTP) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expert and Tensor Parallelism is not supported yet");
+  }
+
+  if (moe_params.parallel_type == MoEParallelType::TP) {
+    ORT_ENFORCE(moe_params.tensor_shards == nccl_->Size());
+    NCCL_RETURN_IF_ERROR(ncclGroupStart());
+    NCCL_RETURN_IF_ERROR(ncclAllReduce(reinterpret_cast<const char*>(fc2_output.get()),
+                                       reinterpret_cast<char*>(fc2_output_bc.get()),
+                                       fc2_output_size / sizeof(CudaT),
                                        GetNcclDataType(input->DataType()),
-                                       rank,
+                                       ncclSum,
                                        nccl_->Comm(),
                                        Stream(context)));
+    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
   }
-  NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+
+  if (moe_params.parallel_type == MoEParallelType::EP) {
+    size_t stride_count = moe_params.hidden_size;
+    size_t stride_bytes = stride_count * sizeof(CudaT);
+    int64_t total_past_rows = 0;
+    int64_t total_covered_rows = 0;
+    if (copy_event != nullptr) {
+      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(copy_event));
+    }
+    NCCL_RETURN_IF_ERROR(ncclGroupStart());
+    for (int rank = 0; rank < nccl_->Size(); ++rank) {
+      int64_t experts_start_index = rank_to_experts_start_index_[rank];
+      moe_runner.get_total_rows_info(experts_start_index,
+                                     moe_params.local_num_experts,
+                                     total_past_rows,
+                                     total_covered_rows);
+      const char* src = reinterpret_cast<const char*>(fc2_output.get()) + total_past_rows * stride_bytes;
+      char* dst = reinterpret_cast<char*>(fc2_output_bc.get()) + total_past_rows * stride_bytes;
+      NCCL_RETURN_IF_ERROR(ncclBroadcast(src,
+                                         dst,
+                                         total_covered_rows * stride_count,
+                                         GetNcclDataType(input->DataType()),
+                                         rank,
+                                         nccl_->Comm(),
+                                         Stream(context)));
+    }
+    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  }
 
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(
       reinterpret_cast<CudaT*>(fc2_output_bc.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
