@@ -17,16 +17,13 @@ nav_order: 1
 
 ```bash
 pip install numpy
-pip install onnxruntime-genai --pre --index-url=
-https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/`
+pip install onnxruntime-genai --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
 ```
 
 Append `-cuda` for the library that is optimized for CUDA environments
 
 ```bash
-pip install onnxruntime-genai-cuda --pre --index-url=
-https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/`
-
+pip install onnxruntime-genai-cuda --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
 ```
 
 ## Nuget package release candidates
