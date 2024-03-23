@@ -97,9 +97,9 @@ size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, 
 {
     auto byteSize = ComputeElementCountFromDimensions(dimensions) * GetByteSizeFromMlDataType(tensorDataType);
 
-    if (tensorDataType == MLOperatorTensorDataType::Int4)
+    if (tensorDataType == MLOperatorTensorDataType::Int4 || tensorDataType == MLOperatorTensorDataType::UInt4)
     {
-        byteSize /= 2;
+        byteSize = (byteSize + 1) / 2;
     }
 
     return byteSize;

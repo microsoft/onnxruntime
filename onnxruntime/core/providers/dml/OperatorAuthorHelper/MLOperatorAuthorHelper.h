@@ -117,6 +117,7 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
     switch (tensorDataType)
     {
     case MLOperatorTensorDataType::Float: return 4;
+    case MLOperatorTensorDataType::UInt4: return 1;
     case MLOperatorTensorDataType::Int4: return 1;
     case MLOperatorTensorDataType::UInt8: return 1;
     case MLOperatorTensorDataType::Int8: return 1;
