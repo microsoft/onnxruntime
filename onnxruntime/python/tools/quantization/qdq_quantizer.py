@@ -1098,7 +1098,7 @@ class QDQQuantizer(BaseQuantizer):
         if self.tensors_range is None:
             return {}
 
-        self.adjust_tensor_ranges(softmax_0_to_1=True)  # Ensure Softmax ranges from 0.0 to 1.0 for QDQ models.
+        self.adjust_tensor_ranges()
 
         quantization_params = {}
         for tensor_name in self.tensors_range:
