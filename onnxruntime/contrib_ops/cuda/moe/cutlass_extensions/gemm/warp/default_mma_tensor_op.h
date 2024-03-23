@@ -90,7 +90,8 @@ struct DefaultMmaTensorOp<WarpShape_, InstructionShape_, ElementA, LayoutA, Elem
 
   // Define the warp-level tensor op
   using Type = cutlass::gemm::warp::MmaTensorOpComputeBWithF16<WarpShape_, ElementA, LayoutA, ElementB, LayoutB,
-                                                               ElementC, LayoutC, Policy, LoadInstructionShape, PartitionsK, AccumulatorsInRowMajor>;
+                                                               ElementC, LayoutC, Policy, LoadInstructionShape,
+                                                               PartitionsK, AccumulatorsInRowMajor>;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

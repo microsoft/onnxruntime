@@ -99,8 +99,7 @@ class FineGrainedScaleZeroIterator<Shape_, Element_, layout::RowMajor, 0, Alignm
 
     /// Construct the Params object given a pitch-linear tensor's layout
     CUTLASS_HOST_DEVICE
-    Params(Layout const& layout)
-        : stride_(layout.stride(0)) {
+    Params(Layout const& layout) : stride_(layout.stride(0)) {
       inc_advance_ = Shape::kRow * stride_ * sizeof_bits<Element>::value / 8;
     }
   };
@@ -142,11 +141,14 @@ class FineGrainedScaleZeroIterator<Shape_, Element_, layout::RowMajor, 0, Alignm
       TensorCoord const& threadblock_offset,
       ///< Group size
       int group_size)
-      : params_(params), pointer_scale_(reinterpret_cast<BytePointer>(const_cast<NonConstPointer>(pointer_scale))), pointer_zero_(reinterpret_cast<BytePointer>(const_cast<NonConstPointer>(pointer_zero))) {
+      : params_(params),
+        pointer_scale_(reinterpret_cast<BytePointer>(const_cast<NonConstPointer>(pointer_scale))),
+        pointer_zero_(reinterpret_cast<BytePointer>(const_cast<NonConstPointer>(pointer_zero))) {
     row_groupsize64_ = threadblock_offset.row();
     group_size_ = group_size;
 
-    const LongIndex tb_row_byte_offset = threadblock_offset.row() / (group_size / 64) * params_.stride_ * sizeof_bits<Element>::value / 8;
+    const LongIndex tb_row_byte_offset =
+        threadblock_offset.row() / (group_size / 64) * params_.stride_ * sizeof_bits<Element>::value / 8;
     const LongIndex tb_col_byte_offset = threadblock_offset.column() * sizeof_bits<Element>::value / 8;
     pointer_scale_ += (tb_row_byte_offset + tb_col_byte_offset);
 
@@ -186,9 +188,8 @@ class FineGrainedScaleZeroIterator<Shape_, Element_, layout::RowMajor, 0, Alignm
                                                    TensorCoord extent,     ///< Extent of tensor
                                                    int thread_id,          ///< ID of each participating thread
                                                    int group_size)
-      : FineGrainedScaleZeroIterator(
-            params, pointer_scale, pointer_zero, extent, thread_id, make_Coord(0, 0), group_size) {
-  }
+      : FineGrainedScaleZeroIterator(params, pointer_scale, pointer_zero, extent, thread_id, make_Coord(0, 0),
+                                     group_size) {}
 
   CUTLASS_DEVICE
   void add_tile_offset(TensorCoord const& tile_offset) {
@@ -201,27 +202,19 @@ class FineGrainedScaleZeroIterator<Shape_, Element_, layout::RowMajor, 0, Alignm
   }
 
   /// Clears the predicate set efficiently
-  CUTLASS_HOST_DEVICE void clear_mask(bool enable = true) {
-    is_valid_ &= (!enable);
-  }
+  CUTLASS_HOST_DEVICE void clear_mask(bool enable = true) { is_valid_ &= (!enable); }
 
   /// Returns whether access is valid or not
   CUTLASS_HOST_DEVICE
-  bool valid() const {
-    return is_valid_;
-  }
+  bool valid() const { return is_valid_; }
 
   /// Returns a scale pointer
   CUTLASS_HOST_DEVICE
-  AccessType* get_scale() const {
-    return reinterpret_cast<AccessType*>(pointer_scale_);
-  }
+  AccessType* get_scale() const { return reinterpret_cast<AccessType*>(pointer_scale_); }
 
   /// Returns a zero pointer
   CUTLASS_HOST_DEVICE
-  AccessType* get_zero() const {
-    return reinterpret_cast<AccessType*>(pointer_zero_);
-  }
+  AccessType* get_zero() const { return reinterpret_cast<AccessType*>(pointer_zero_); }
 };
 
 }  // namespace threadblock

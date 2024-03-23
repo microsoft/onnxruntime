@@ -140,8 +140,9 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
   /// Obtain the arch tag from the warp-level operator
   using ArchTag = typename Policy::Operator::ArchTag;
 
-  using Dequantizer = warp::MmaTensorOpDequantizer<Operator, typename Base::WarpGemm, Operand::kB,
-                                                   typename SmemIteratorScale::Fragment::Element, LayoutScale, 32, QuantOp>;
+  using Dequantizer =
+      warp::MmaTensorOpDequantizer<Operator, typename Base::WarpGemm, Operand::kB,
+                                   typename SmemIteratorScale::Fragment::Element, LayoutScale, 32, QuantOp>;
 
   /// Complex transform on A operand
   static ComplexTransform const kTransformA = Operator::kTransformA;
@@ -160,7 +161,8 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
   using ElementB = typename IteratorB::Element;
   using LayoutDetailsForB = kernel::LayoutDetailsB<ElementB, ArchTag>;
 
-  static constexpr bool RequiresTileInterleave = layout::IsColumnMajorTileInterleave<typename LayoutDetailsForB::Layout>::value;
+  static constexpr bool RequiresTileInterleave =
+      layout::IsColumnMajorTileInterleave<typename LayoutDetailsForB::Layout>::value;
   static_assert(!RequiresTileInterleave || (RequiresTileInterleave && (Shape::kK == LayoutDetailsForB::ThreadblockK)),
                 "Layout K must match threadblockK");
 
@@ -177,16 +179,22 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
  public:
   /// Construct from tensor references
   CUTLASS_DEVICE
-  DqMmaPipelined(typename Base::SharedStorage&
-                     shared_storage,    ///< Shared storage needed for internal use by threadblock-scoped GEMM
-                 int const group_size,  ///< Will not be used, just to adapt to finegrained modifications and make the compilation
-                                        ///< successful. Because DqMmaPipelined is only enabled for sm<80, so even if this
-                                        ///< argument is not added, it does not affect compilation for sm>=80.
-                 int thread_idx,        ///< ID within the threadblock
-                 int warp_idx,          ///< ID of warp
-                 int lane_idx           ///< ID of each thread within a warp
-                 )
-      : Base(shared_storage, thread_idx, warp_idx, lane_idx), warp_dequantizer_({shared_storage.operand_scale.data(), LayoutScale(Shape::kN)}, (warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN)) / Base::WarpCount::kM, lane_idx), smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx), smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx), smem_iterator_scale_(LayoutScale(Shape::kN), shared_storage.operand_scale.data(), {1, Shape::kN}, thread_idx) {
+  DqMmaPipelined(
+      typename Base::SharedStorage&
+          shared_storage,    ///< Shared storage needed for internal use by threadblock-scoped GEMM
+      int const group_size,  ///< Will not be used, just to adapt to finegrained modifications and make the compilation
+                             ///< successful. Because DqMmaPipelined is only enabled for sm<80, so even if this
+                             ///< argument is not added, it does not affect compilation for sm>=80.
+      int thread_idx,        ///< ID within the threadblock
+      int warp_idx,          ///< ID of warp
+      int lane_idx           ///< ID of each thread within a warp
+      )
+      : Base(shared_storage, thread_idx, warp_idx, lane_idx),
+        warp_dequantizer_({shared_storage.operand_scale.data(), LayoutScale(Shape::kN)},
+                          (warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN)) / Base::WarpCount::kM, lane_idx),
+        smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
+        smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
+        smem_iterator_scale_(LayoutScale(Shape::kN), shared_storage.operand_scale.data(), {1, Shape::kN}, thread_idx) {
     // Compute warp location within threadblock tile by mapping the warp_id to
     // three coordinates:
     //   _m: the warp's position within the threadblock along the M dimension
@@ -219,7 +227,8 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
     TransformBAfterLDG ldg_converter;
     TransformBAfterLDS lds_converter;
 
-    using TransformA = NumericArrayConverter<typename WarpFragmentA::Element, typename FragmentA::Element, FragmentA::kElements>;
+    using TransformA =
+        NumericArrayConverter<typename WarpFragmentA::Element, typename FragmentA::Element, FragmentA::kElements>;
 
     using TransformScale = NumericArrayConverter<typename SmemIteratorScale::Fragment::Element,
                                                  typename FragmentScale::Element, FragmentScale::kElements>;
@@ -335,8 +344,7 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
         int const warp_tileB_k_load_offset = warp_mma_k / Base::kNumKIterationsPerWarpBLoad;
         // We are just about to finish computing on a fragment of B, so initiate the load for the next fragment.
         if (warp_tileB_k_compute_offset == Base::kNumKIterationsPerWarpBLoad - 1) {
-          this->warp_tile_iterator_B_.set_kgroup_index(
-              (warp_tileB_k_load_offset + 1) % Base::kWarpGemmIterationsForB);
+          this->warp_tile_iterator_B_.set_kgroup_index((warp_tileB_k_load_offset + 1) % Base::kWarpGemmIterationsForB);
           this->warp_tile_iterator_B_.load(warp_frag_B[(warp_tileB_k_load_offset + 1) % 2]);
           ++this->warp_tile_iterator_B_;
         }
@@ -353,10 +361,11 @@ class DqMmaPipelined : public DqMmaBase<Shape_, Policy_, typename SmemIteratorSc
           iterator_B.clear_mask(gemm_k_iterations <= 2);
         }
 
-        typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
+        typename TransformBAfterLDS::result_type converted_frag_B =
+            lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
         warp_dequantizer_.dequantize(converted_frag_B, warp_frag_scales);
-        run_warp_mma(
-            warp_mma, accum, warp_frag_A[warp_mma_k % 2], converted_frag_B, accum, warp_tileB_k_compute_offset);
+        run_warp_mma(warp_mma, accum, warp_frag_A[warp_mma_k % 2], converted_frag_B, accum,
+                     warp_tileB_k_compute_offset);
       }
     }
   }

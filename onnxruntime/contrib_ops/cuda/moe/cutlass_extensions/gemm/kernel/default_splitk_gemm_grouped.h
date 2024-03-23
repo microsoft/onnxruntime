@@ -169,24 +169,28 @@ struct DefaultSplitkGemmGrouped<ElementA, LayoutA,
                                 ComplexTransform::kNone,  // transform A
                                 kAlignmentA, ElementB, LayoutB,
                                 ComplexTransform::kNone,  // transform B
-                                kAlignmentB, ElementC, LayoutC, ElementAccumulator, OperatorClass, ArchTag, ThreadblockShape, WarpShape,
-                                InstructionShape, EpilogueOutputOp, ThreadblockSwizzle, Stages, GroupScheduleMode_, Operator, SharedMemoryClear,
-                                PermuteDLayout, typename platform::enable_if<!cutlass::is_complex<ElementAccumulator>::value>::type> {
+                                kAlignmentB, ElementC, LayoutC, ElementAccumulator, OperatorClass, ArchTag,
+                                ThreadblockShape, WarpShape, InstructionShape, EpilogueOutputOp, ThreadblockSwizzle,
+                                Stages, GroupScheduleMode_, Operator, SharedMemoryClear, PermuteDLayout,
+                                typename platform::enable_if<!cutlass::is_complex<ElementAccumulator>::value>::type> {
   // If true, we must construct a 'transposed-and-exchanged' Mma operator.
   static bool const kInternalTranspose = platform::is_same<LayoutC, layout::ColumnMajor>::value;
 
-  using MapArguments = kernel::detail::MapArguments<ElementA, LayoutA, ComplexTransform::kNone, kAlignmentA, ElementB,
-                                                    LayoutB, ComplexTransform::kNone, kAlignmentB, LayoutC, kInternalTranspose>;
+  using MapArguments =
+      kernel::detail::MapArguments<ElementA, LayoutA, ComplexTransform::kNone, kAlignmentA, ElementB, LayoutB,
+                                   ComplexTransform::kNone, kAlignmentB, LayoutC, kInternalTranspose>;
 
   // Define the default GEMM kernel
-  using DefaultGemmKernel = typename kernel::DefaultGemm<typename MapArguments::ElementA,
-                                                         typename MapArguments::LayoutA, MapArguments::kAlignmentA, typename MapArguments::ElementB,
-                                                         typename MapArguments::LayoutB, MapArguments::kAlignmentB, ElementC, typename MapArguments::LayoutC,
-                                                         ElementAccumulator, OperatorClass, ArchTag, ThreadblockShape, WarpShape, InstructionShape, EpilogueOutputOp,
-                                                         ThreadblockSwizzle, Stages, true, Operator, SharedMemoryClear, false, /*GatherA*/
-                                                         false,                                                                /*GatherB*/
-                                                         false,                                                                /*ScatterD*/
-                                                         PermuteDLayout>::GemmKernel;
+  using DefaultGemmKernel =
+      typename kernel::DefaultGemm<typename MapArguments::ElementA, typename MapArguments::LayoutA,
+                                   MapArguments::kAlignmentA, typename MapArguments::ElementB,
+                                   typename MapArguments::LayoutB, MapArguments::kAlignmentB, ElementC,
+                                   typename MapArguments::LayoutC, ElementAccumulator, OperatorClass, ArchTag,
+                                   ThreadblockShape, WarpShape, InstructionShape, EpilogueOutputOp, ThreadblockSwizzle,
+                                   Stages, true, Operator, SharedMemoryClear, false, /*GatherA*/
+                                   false,                                            /*GatherB*/
+                                   false,                                            /*ScatterD*/
+                                   PermuteDLayout>::GemmKernel;
 
   /// Define the kernel in terms of the default kernel
   using GemmKernel = kernel::SplitkGemmGrouped<typename DefaultGemmKernel::Mma, typename DefaultGemmKernel::Epilogue,

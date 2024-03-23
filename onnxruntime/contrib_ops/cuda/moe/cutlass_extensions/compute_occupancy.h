@@ -26,7 +26,7 @@ namespace ort_fastertransformer {
 
 template <typename GemmKernel, bool enable_cutlass_3x = false>
 inline int compute_occupancy_for_kernel() {
-  int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
+  int smem_size = static<int>(sizeof(typename GemmKernel::SharedStorage));
 
   if (smem_size > (48 << 10)) {
     cudaFuncAttributes attr;

@@ -47,8 +47,7 @@ namespace cutlass {
 // signed and had a bias of 2**(b-1) added (where b is the number of bits in the type) to make all numbers unsigned.
 // This converter will uninterleave the data and subtract the bias while converting to the result type.
 template <typename T, typename S, int N>
-struct FastInterleavedAndBiasedNumericArrayConverter {
-};
+struct FastInterleavedAndBiasedNumericArrayConverter {};
 
 template <>
 struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint8_t, 4> {
@@ -77,9 +76,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint8_t, 4> {
   }
 
   CUTLASS_DEVICE
-  result_type operator()(source_type const& s) {
-    return convert(s);
-  }
+  result_type operator()(source_type const& s) { return convert(s); }
 };
 
 template <int N>
@@ -94,8 +91,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint8_t, N> {
   static result_type convert(source_type const& source) {
     using scalar_result_type = typename result_type::Element;
     using scalar_source_type = typename source_type::Element;
-    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH>
-        convert_vector_;
+    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH> convert_vector_;
 
     result_type result;
     using vec_result = Array<scalar_result_type, VEC_WIDTH>;
@@ -113,9 +109,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint8_t, N> {
   }
 
   CUTLASS_DEVICE
-  result_type operator()(source_type const& s) {
-    return convert(s);
-  }
+  result_type operator()(source_type const& s) { return convert(s); }
 };
 
 template <>
@@ -150,7 +144,8 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint8_t, 4> {
     // Truncate the fp32 representation and pack up as bfloat16s.
     CUTLASS_PRAGMA_UNROLL
     for (int ii = 0; ii < 2; ++ii) {
-      bf16_result_ptr[ii] = __byte_perm(fp32_intermediates_casted[2 * ii + 0], fp32_intermediates_casted[2 * ii + 1], 0x7632);
+      bf16_result_ptr[ii] =
+          __byte_perm(fp32_intermediates_casted[2 * ii + 0], fp32_intermediates_casted[2 * ii + 1], 0x7632);
     }
 #else
     // Disable this on architectures older than Ampere since they lack hardware for bf16 mma. If one wishes to use
@@ -162,9 +157,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint8_t, 4> {
   }
 
   CUTLASS_DEVICE
-  result_type operator()(source_type const& s) {
-    return convert(s);
-  }
+  result_type operator()(source_type const& s) { return convert(s); }
 };
 
 template <int N>
@@ -179,8 +172,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint8_t, N> {
   static result_type convert(source_type const& source) {
     using scalar_result_type = typename result_type::Element;
     using scalar_source_type = typename source_type::Element;
-    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH>
-        convert_vector_;
+    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH> convert_vector_;
 
     result_type result;
     using vec_result = Array<scalar_result_type, VEC_WIDTH>;
@@ -198,9 +190,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint8_t, N> {
   }
 
   CUTLASS_DEVICE
-  result_type operator()(source_type const& s) {
-    return convert(s);
-  }
+  result_type operator()(source_type const& s) { return convert(s); }
 };
 
 template <>
@@ -270,9 +260,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint4b_t, 8> {
   }
 
   CUTLASS_DEVICE
-  result_type operator()(source_type const& s) {
-    return convert(s);
-  }
+  result_type operator()(source_type const& s) { return convert(s); }
 };
 
 template <int N>
@@ -287,8 +275,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint4b_t, N> {
   static result_type convert(source_type const& source) {
     using scalar_result_type = typename result_type::Element;
     using scalar_source_type = typename source_type::Element;
-    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH>
-        convert_vector_;
+    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH> convert_vector_;
 
     result_type result;
     using vec_result = Array<scalar_result_type, VEC_WIDTH>;
@@ -306,9 +293,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint4b_t, N> {
   }
 
   CUTLASS_DEVICE
-  result_type operator()(source_type const& s) {
-    return convert(s);
-  }
+  result_type operator()(source_type const& s) { return convert(s); }
 };
 
 template <>
@@ -364,9 +349,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint4b_t, 8> {
   }
 
   CUTLASS_DEVICE
-  result_type operator()(source_type const& s) {
-    return convert(s);
-  }
+  result_type operator()(source_type const& s) { return convert(s); }
 };
 
 template <int N>
@@ -381,8 +364,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint4b_t, N> {
   static result_type convert(source_type const& source) {
     using scalar_result_type = typename result_type::Element;
     using scalar_source_type = typename source_type::Element;
-    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH>
-        convert_vector_;
+    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH> convert_vector_;
 
     result_type result;
     using vec_result = Array<scalar_result_type, VEC_WIDTH>;
@@ -400,9 +382,7 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint4b_t, N> {
   }
 
   CUTLASS_DEVICE
-  result_type operator()(source_type const& s) {
-    return convert(s);
-  }
+  result_type operator()(source_type const& s) { return convert(s); }
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

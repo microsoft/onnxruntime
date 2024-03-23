@@ -70,10 +70,11 @@ struct SplitkGemmGrouped {
   static bool const kTransposed = Transposed;
 
   // Optional transpose
-  using MapArguments = kernel::detail::MapArguments<typename Mma::IteratorA::Element, typename Mma::IteratorA::Layout,
-                                                    Mma::kTransformA, Mma::IteratorA::AccessType::kElements, typename Mma::IteratorB::Element,
-                                                    typename Mma::IteratorB::Layout, Mma::kTransformB, Mma::IteratorB::AccessType::kElements, typename Mma::LayoutC,
-                                                    kTransposed>;
+  using MapArguments =
+      kernel::detail::MapArguments<typename Mma::IteratorA::Element, typename Mma::IteratorA::Layout, Mma::kTransformA,
+                                   Mma::IteratorA::AccessType::kElements, typename Mma::IteratorB::Element,
+                                   typename Mma::IteratorB::Layout, Mma::kTransformB,
+                                   Mma::IteratorB::AccessType::kElements, typename Mma::LayoutC, kTransposed>;
 
   // Public-facing type definitions related to operand element type, layout, and complex conjugate
   // operation. Must interact with the 'kTransposed' notion.
@@ -106,7 +107,8 @@ struct SplitkGemmGrouped {
   using WarpCount = typename Mma::WarpCount;
   static int const kThreadCount = 32 * WarpCount::kCount;
 
-  using ProblemVisitor = GemmGroupedProblemVisitor<ThreadblockShape, kGroupScheduleMode, kThreadCount, kThreadCount, kTransposed>;
+  using ProblemVisitor =
+      GemmGroupedProblemVisitor<ThreadblockShape, kGroupScheduleMode, kThreadCount, kThreadCount, kTransposed>;
 
   //
   // Structures
@@ -148,19 +150,43 @@ struct SplitkGemmGrouped {
     /// Default ctor
     CUTLASS_HOST_DEVICE
     Arguments()
-        : problem_count(0), threadblock_count(0), ptr_A(nullptr), ptr_B(nullptr), ptr_C(nullptr), ptr_D(nullptr), lda(nullptr), ldb(nullptr), ldc(nullptr), ldd(nullptr), host_problem_sizes(nullptr), split_k_slices(1), splitk_buffer_offsets(nullptr) {
-    }
+        : problem_count(0),
+          threadblock_count(0),
+          ptr_A(nullptr),
+          ptr_B(nullptr),
+          ptr_C(nullptr),
+          ptr_D(nullptr),
+          lda(nullptr),
+          ldb(nullptr),
+          ldc(nullptr),
+          ldd(nullptr),
+          host_problem_sizes(nullptr),
+          split_k_slices(1),
+          splitk_buffer_offsets(nullptr) {}
 
     /// Ctor
     CUTLASS_HOST_DEVICE
     Arguments(GemmCoord* problem_sizes, int problem_count, int threadblock_count,
-              typename EpilogueOutputOp::Params output_op, ElementA** ptr_A, ElementB** ptr_B, ElementFinalOutput** ptr_C,
-              ElementFinalOutput** ptr_D, typename LayoutA::Stride::LongIndex* lda,
+              typename EpilogueOutputOp::Params output_op, ElementA** ptr_A, ElementB** ptr_B,
+              ElementFinalOutput** ptr_C, ElementFinalOutput** ptr_D, typename LayoutA::Stride::LongIndex* lda,
               typename LayoutB::Stride::LongIndex* ldb, typename LayoutC::Stride::LongIndex* ldc,
               typename LayoutC::Stride::LongIndex* ldd, GemmCoord* host_problem_sizes, int split_k_slices,
               int64_t* splitk_buffer_offsets)
-        : problem_sizes(problem_sizes), problem_count(problem_count), threadblock_count(threadblock_count), output_op(output_op), ptr_A(ptr_A), ptr_B(ptr_B), ptr_C(ptr_C), ptr_D(ptr_D), lda(lda), ldb(ldb), ldc(ldc), ldd(ldd), host_problem_sizes(host_problem_sizes), split_k_slices(split_k_slices), splitk_buffer_offsets(splitk_buffer_offsets) {
-    }
+        : problem_sizes(problem_sizes),
+          problem_count(problem_count),
+          threadblock_count(threadblock_count),
+          output_op(output_op),
+          ptr_A(ptr_A),
+          ptr_B(ptr_B),
+          ptr_C(ptr_C),
+          ptr_D(ptr_D),
+          lda(lda),
+          ldb(ldb),
+          ldc(ldc),
+          ldd(ldd),
+          host_problem_sizes(host_problem_sizes),
+          split_k_slices(split_k_slices),
+          splitk_buffer_offsets(splitk_buffer_offsets) {}
   };
 
   //
@@ -200,16 +226,45 @@ struct SplitkGemmGrouped {
 
     CUTLASS_HOST_DEVICE
     Params()
-        : ptr_A(nullptr), ptr_B(nullptr), ptr_C(nullptr), ptr_D(nullptr), ptr_C_split(nullptr), ptr_D_split(nullptr), lda(nullptr), ldb(nullptr), ldc(nullptr), ldd(nullptr), swizzle_log_tile(0), gemm_k_size(0), host_problem_sizes(nullptr), split_k_slices(1), splitk_buffer_offsets(nullptr) {
-    }
+        : ptr_A(nullptr),
+          ptr_B(nullptr),
+          ptr_C(nullptr),
+          ptr_D(nullptr),
+          ptr_C_split(nullptr),
+          ptr_D_split(nullptr),
+          lda(nullptr),
+          ldb(nullptr),
+          ldc(nullptr),
+          ldd(nullptr),
+          swizzle_log_tile(0),
+          gemm_k_size(0),
+          host_problem_sizes(nullptr),
+          split_k_slices(1),
+          splitk_buffer_offsets(nullptr) {}
 
     CUTLASS_HOST_DEVICE
     Params(Arguments const& args, void* workspace = nullptr, int tile_count = 0)
-        : problem_visitor(args.problem_sizes, args.problem_count, workspace, tile_count), host_problem_sizes(args.host_problem_sizes), threadblock_count(args.threadblock_count), output_op(args.output_op), ptr_A(args.ptr_A), ptr_B(args.ptr_B), ptr_C(args.ptr_C), ptr_D(args.ptr_D), ptr_C_split((ElementC*)workspace), ptr_D_split((ElementC*)workspace), lda(args.lda), ldb(args.ldb), ldc(args.ldc), ldd(args.ldd), split_k_slices(args.split_k_slices), splitk_buffer_offsets(args.splitk_buffer_offsets) {
+        : problem_visitor(args.problem_sizes, args.problem_count, workspace, tile_count),
+          host_problem_sizes(args.host_problem_sizes),
+          threadblock_count(args.threadblock_count),
+          output_op(args.output_op),
+          ptr_A(args.ptr_A),
+          ptr_B(args.ptr_B),
+          ptr_C(args.ptr_C),
+          ptr_D(args.ptr_D),
+          ptr_C_split((ElementC*)workspace),
+          ptr_D_split((ElementC*)workspace),
+          lda(args.lda),
+          ldb(args.ldb),
+          ldc(args.ldc),
+          ldd(args.ldd),
+          split_k_slices(args.split_k_slices),
+          splitk_buffer_offsets(args.splitk_buffer_offsets) {
       // Determine grid shape
       ThreadblockSwizzle threadblock_swizzle;
-      grid_tiled_shape = threadblock_swizzle.get_tiled_shape(args.host_problem_sizes[0],
-                                                             {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK}, args.split_k_slices);
+      grid_tiled_shape = threadblock_swizzle.get_tiled_shape(
+          args.host_problem_sizes[0], {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
+          args.split_k_slices);
       swizzle_log_tile = ThreadblockSwizzle().get_log_tile(grid_tiled_shape);
 
       // only support same k
@@ -221,8 +276,7 @@ struct SplitkGemmGrouped {
 
     CUTLASS_HOST_DEVICE
     void update(Arguments const& args, void* workspace = nullptr, int tile_count = 0) {
-      problem_visitor =
-          typename ProblemVisitor::Params(args.problem_sizes, args.problem_count, workspace, tile_count);
+      problem_visitor = typename ProblemVisitor::Params(args.problem_sizes, args.problem_count, workspace, tile_count);
       threadblock_count = args.threadblock_count;
       output_op = args.output_op;
       ptr_A = args.ptr_A;
@@ -259,13 +313,9 @@ struct SplitkGemmGrouped {
   SplitkGemmGrouped() {}
 
   /// Determines whether kernel satisfies alignment
-  static Status can_implement(cutlass::gemm::GemmCoord const& problem_size) {
-    return Status::kSuccess;
-  }
+  static Status can_implement(cutlass::gemm::GemmCoord const& problem_size) { return Status::kSuccess; }
 
-  static Status can_implement(Arguments const& args) {
-    return Status::kSuccess;
-  }
+  static Status can_implement(Arguments const& args) { return Status::kSuccess; }
 
   /// Executes one GEMM
   CUTLASS_DEVICE
@@ -295,10 +345,12 @@ struct SplitkGemmGrouped {
       GemmCoord grid_shape = problem_visitor.grid_shape(problem_size);
 
       // Load element pointers. Exchange pointers and strides if working on the transpose
-      ElementA* ptr_A = reinterpret_cast<ElementA*>((kTransposed ? params.ptr_B[problem_idx] : params.ptr_A[problem_idx]));
+      ElementA* ptr_A =
+          reinterpret_cast<ElementA*>((kTransposed ? params.ptr_B[problem_idx] : params.ptr_A[problem_idx]));
       typename LayoutA::LongIndex ldm_A = (kTransposed ? params.ldb[problem_idx] : params.lda[problem_idx]);
 
-      ElementB* ptr_B = reinterpret_cast<ElementB*>((kTransposed ? params.ptr_A[problem_idx] : params.ptr_B[problem_idx]));
+      ElementB* ptr_B =
+          reinterpret_cast<ElementB*>((kTransposed ? params.ptr_A[problem_idx] : params.ptr_B[problem_idx]));
       typename LayoutB::LongIndex ldm_B = (kTransposed ? params.lda[problem_idx] : params.ldb[problem_idx]);
 
       // Compute threadblock location
@@ -306,7 +358,7 @@ struct SplitkGemmGrouped {
       GemmCoord threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
       cutlass::gemm::GemmCoord threadblock_offset(int(threadblock_idx / grid_shape.n()) * Mma::Shape::kM,
-                                                  int(threadblock_idx % grid_shape.n()) * Mma::Shape::kN, 0);
+                                                  static<int>(threadblock_idx % grid_shape.n()) * Mma::Shape::kN, 0);
 
       // Compute initial location in logical coordinates
       cutlass::MatrixCoord tb_offset_A{
@@ -331,11 +383,11 @@ struct SplitkGemmGrouped {
       int thread_idx = threadIdx.x;
 
       // Construct iterators to A and B operands
-      typename Mma::IteratorA iterator_A(
-          LayoutA(ldm_A), ptr_A, {problem_size.m(), problem_size_k}, thread_idx, tb_offset_A);
+      typename Mma::IteratorA iterator_A(LayoutA(ldm_A), ptr_A, {problem_size.m(), problem_size_k}, thread_idx,
+                                         tb_offset_A);
 
-      typename Mma::IteratorB iterator_B(
-          LayoutB(ldm_B), ptr_B, {problem_size_k, problem_size.n()}, thread_idx, tb_offset_B);
+      typename Mma::IteratorB iterator_B(LayoutB(ldm_B), ptr_B, {problem_size_k, problem_size.n()}, thread_idx,
+                                         tb_offset_B);
 
       typename Mma::FragmentC accumulators;
 
@@ -379,15 +431,17 @@ struct SplitkGemmGrouped {
       MatrixCoord threadblock_offset_C(threadblock_offset.m(), threadblock_offset.n());
 
       // Tile iterator loading from source tensor.
-      typename Epilogue::OutputTileIterator iterator_C(
-          params_C, ptr_C, problem_size.mn(), thread_idx, threadblock_offset_C);
+      typename Epilogue::OutputTileIterator iterator_C(params_C, ptr_C, problem_size.mn(), thread_idx,
+                                                       threadblock_offset_C);
 
-      iterator_C.add_pointer_offset(problem_size.m() * problem_size.n() * threadblock_tile_offset.k() + gridDim.z * params.splitk_buffer_offsets[problem_idx]);
+      iterator_C.add_pointer_offset(problem_size.m() * problem_size.n() * threadblock_tile_offset.k() +
+                                    gridDim.z * params.splitk_buffer_offsets[problem_idx]);
 
       // Tile iterator writing to destination tensor.
-      typename Epilogue::OutputTileIterator iterator_D(
-          params_D, ptr_D, problem_size.mn(), thread_idx, threadblock_offset_C);
-      iterator_D.add_pointer_offset(problem_size.m() * problem_size.n() * threadblock_tile_offset.k() + gridDim.z * params.splitk_buffer_offsets[problem_idx]);
+      typename Epilogue::OutputTileIterator iterator_D(params_D, ptr_D, problem_size.mn(), thread_idx,
+                                                       threadblock_offset_C);
+      iterator_D.add_pointer_offset(problem_size.m() * problem_size.n() * threadblock_tile_offset.k() +
+                                    gridDim.z * params.splitk_buffer_offsets[problem_idx]);
 
       Epilogue epilogue(shared_storage.kernel.epilogue, thread_idx, warp_idx, lane_idx);
 

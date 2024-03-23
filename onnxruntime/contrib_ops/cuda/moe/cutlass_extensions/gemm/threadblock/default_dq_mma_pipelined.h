@@ -66,10 +66,10 @@ template <
     /// Operation performed by GEMM
     typename Operator_>
 struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, ElementScale, LayoutScale, kAlignmentScale,
-             ElementAccumulator, layout::RowMajor, OperatorClass, ArchTag, ThreadblockShape, WarpShape, InstructionShape, 2,
-             Operator_, SharedMemoryClearOption::kNone,
-             typename platform::enable_if<(
-                 ArchTag::kMinComputeCapability < 80 && !layout::IsColumnMajorTileInterleave<LayoutB>::value)>::type> {
+             ElementAccumulator, layout::RowMajor, OperatorClass, ArchTag, ThreadblockShape, WarpShape,
+             InstructionShape, 2, Operator_, SharedMemoryClearOption::kNone,
+             typename platform::enable_if<(ArchTag::kMinComputeCapability < 80 &&
+                                           !layout::IsColumnMajorTileInterleave<LayoutB>::value)>::type> {
   static_assert(platform::is_same<ElementA, half_t>::value || platform::is_same<ElementA, bfloat16_t>::value,
                 "Element A must be fp16 or bf16");
 
@@ -86,9 +86,9 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
   using MmaCoreElementB = typename platform::conditional<DqAfterLDG, MmaCoreElementA, ElementB>::type;
 
   // Define the MmaCore components
-  using MmaCore = typename cutlass::gemm::threadblock::DefaultMmaCore<ThreadblockShape, WarpShape, InstructionShape,
-                                                                      MmaCoreElementA, LayoutA, MmaCoreElementB, LayoutB, ElementAccumulator, layout::RowMajor, OperatorClass, 2,
-                                                                      Operator>;
+  using MmaCore = typename cutlass::gemm::threadblock::DefaultMmaCore<
+      ThreadblockShape, WarpShape, InstructionShape, MmaCoreElementA, LayoutA, MmaCoreElementB, LayoutB,
+      ElementAccumulator, layout::RowMajor, OperatorClass, 2, Operator>;
 
   // Define iterators over tiles from the A operand
   using IteratorA = cutlass::transform::threadblock::PredicatedTileIterator<
@@ -102,24 +102,28 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
 
   // ThreadMap for scale iterator
   static_assert((MmaCore::Shape::kN % kAlignmentScale) == 0, "");
-  using IteratorScaleThreadMap = transform::PitchLinearStripminedThreadMap<layout::PitchLinearShape<MmaCore::Shape::kN, 1>,
-                                                                           MmaCore::Shape::kN / kAlignmentScale, kAlignmentScale>;
+  using IteratorScaleThreadMap =
+      transform::PitchLinearStripminedThreadMap<layout::PitchLinearShape<MmaCore::Shape::kN, 1>,
+                                                MmaCore::Shape::kN / kAlignmentScale, kAlignmentScale>;
 
   // Define iterators over tiles from the scale operand
-  using IteratorScale = cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>,
-                                                                                ElementScale, LayoutScale, 0, IteratorScaleThreadMap, kAlignmentScale>;
+  using IteratorScale =
+      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>, ElementScale,
+                                                              LayoutScale, 0, IteratorScaleThreadMap, kAlignmentScale>;
 
   using SmemScaleType = typename platform::conditional<arch_has_bf16_mma, ElementScale, half_t>::type;
-  using SmemIteratorScale = cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>,
-                                                                                    SmemScaleType, LayoutScale, 0, IteratorScaleThreadMap, kAlignmentScale>;
+  using SmemIteratorScale =
+      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>,
+                                                              SmemScaleType, LayoutScale, 0, IteratorScaleThreadMap,
+                                                              kAlignmentScale>;
 
   using Converters = SetConverters<IteratorB, typename MmaCore::MmaPolicy::Operator, Operator>;
 
   // Define the threadblock-scoped pipelined matrix multiply
-  using ThreadblockMma = cutlass::gemm::threadblock::DqMmaPipelined<typename MmaCore::Shape, IteratorA,
-                                                                    typename MmaCore::SmemIteratorA, IteratorB, typename MmaCore::SmemIteratorB, IteratorScale, SmemIteratorScale,
-                                                                    ElementAccumulator, layout::RowMajor, typename MmaCore::MmaPolicy, typename Converters::TransformAfterLDG,
-                                                                    typename Converters::TransformAfterLDS, OperatorInfo::QuantOp>;
+  using ThreadblockMma = cutlass::gemm::threadblock::DqMmaPipelined<
+      typename MmaCore::Shape, IteratorA, typename MmaCore::SmemIteratorA, IteratorB, typename MmaCore::SmemIteratorB,
+      IteratorScale, SmemIteratorScale, ElementAccumulator, layout::RowMajor, typename MmaCore::MmaPolicy,
+      typename Converters::TransformAfterLDG, typename Converters::TransformAfterLDS, OperatorInfo::QuantOp>;
 };
 
 // Specialization to handle column major interleave B
@@ -157,10 +161,10 @@ template <
     /// Operation performed by GEMM
     typename Operator_>
 struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, ElementScale, LayoutScale, kAlignmentScale,
-             ElementAccumulator, layout::RowMajor, OperatorClass, ArchTag, ThreadblockShape, WarpShape, InstructionShape, 2,
-             Operator_, SharedMemoryClearOption::kNone,
-             typename platform::enable_if<(
-                 ArchTag::kMinComputeCapability < 80 && layout::IsColumnMajorTileInterleave<LayoutB>::value)>::type> {
+             ElementAccumulator, layout::RowMajor, OperatorClass, ArchTag, ThreadblockShape, WarpShape,
+             InstructionShape, 2, Operator_, SharedMemoryClearOption::kNone,
+             typename platform::enable_if<(ArchTag::kMinComputeCapability < 80 &&
+                                           layout::IsColumnMajorTileInterleave<LayoutB>::value)>::type> {
   static_assert(platform::is_same<ElementA, half_t>::value || platform::is_same<ElementA, bfloat16_t>::value,
                 "Element A must be fp16 or bf16");
 
@@ -177,9 +181,9 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
   using MmaCoreElementB = typename platform::conditional<DqAfterLDG, MmaCoreElementA, ElementB>::type;
 
   // Define the MmaCore components
-  using MmaCore = typename cutlass::gemm::threadblock::DefaultMmaCore<ThreadblockShape, WarpShape, InstructionShape,
-                                                                      MmaCoreElementA, LayoutA, MmaCoreElementB, layout::ColumnMajor, ElementAccumulator, layout::RowMajor,
-                                                                      OperatorClass, 2, Operator>;
+  using MmaCore = typename cutlass::gemm::threadblock::DefaultMmaCore<
+      ThreadblockShape, WarpShape, InstructionShape, MmaCoreElementA, LayoutA, MmaCoreElementB, layout::ColumnMajor,
+      ElementAccumulator, layout::RowMajor, OperatorClass, 2, Operator>;
 
   // Define iterators over tiles from the A operand
   using IteratorA = cutlass::transform::threadblock::PredicatedTileIterator<
@@ -196,7 +200,8 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
   using OriginalWarpArrangement = typename OriginalThreadMap::Detail::WarpThreadArrangement;
   static_assert(!(OriginalWarpArrangement::kStrided % ColumnsInterleaved), "");
 
-  using GmemIteratorShape = MatrixShape<MmaCore::Shape::kK * ColumnsInterleaved, MmaCore::Shape::kN / ColumnsInterleaved>;
+  using GmemIteratorShape =
+      MatrixShape<MmaCore::Shape::kK * ColumnsInterleaved, MmaCore::Shape::kN / ColumnsInterleaved>;
   using GmemThreadMapB = transform::PitchLinearWarpRakedThreadMap<
       layout::PitchLinearShape<GmemIteratorShape::kRow, GmemIteratorShape::kColumn>, OriginalThreadMap::kThreads,
       layout::PitchLinearShape<OriginalWarpArrangement::kContiguous * ColumnsInterleaved,
@@ -205,29 +210,34 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
 
  public:
   // Define iterators over tiles from the B operand
-  using IteratorB = cutlass::transform::threadblock::PredicatedTileIterator<GmemIteratorShape, ElementB,
-                                                                            layout::ColumnMajor, 0, GmemThreadMapB, kAlignmentB>;
+  using IteratorB =
+      cutlass::transform::threadblock::PredicatedTileIterator<GmemIteratorShape, ElementB, layout::ColumnMajor, 0,
+                                                              GmemThreadMapB, kAlignmentB>;
 
   // ThreadMap for scale iterator
   static_assert((MmaCore::Shape::kN % kAlignmentScale) == 0, "");
-  using IteratorScaleThreadMap = transform::PitchLinearStripminedThreadMap<layout::PitchLinearShape<MmaCore::Shape::kN, 1>,
-                                                                           MmaCore::Shape::kN / kAlignmentScale, kAlignmentScale>;
+  using IteratorScaleThreadMap =
+      transform::PitchLinearStripminedThreadMap<layout::PitchLinearShape<MmaCore::Shape::kN, 1>,
+                                                MmaCore::Shape::kN / kAlignmentScale, kAlignmentScale>;
 
   // Define iterators over tiles from the scale operand
-  using IteratorScale = cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>,
-                                                                                ElementScale, LayoutScale, 0, IteratorScaleThreadMap, kAlignmentScale>;
+  using IteratorScale =
+      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>, ElementScale,
+                                                              LayoutScale, 0, IteratorScaleThreadMap, kAlignmentScale>;
 
   using SmemScaleType = typename platform::conditional<arch_has_bf16_mma, ElementScale, half_t>::type;
-  using SmemIteratorScale = cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>,
-                                                                                    SmemScaleType, LayoutScale, 0, IteratorScaleThreadMap, kAlignmentScale>;
+  using SmemIteratorScale =
+      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>,
+                                                              SmemScaleType, LayoutScale, 0, IteratorScaleThreadMap,
+                                                              kAlignmentScale>;
 
   using Converters = SetConverters<IteratorB, typename MmaCore::MmaPolicy::Operator, Operator>;
 
   // Define the threadblock-scoped pipelined matrix multiply
-  using ThreadblockMma = cutlass::gemm::threadblock::DqMmaPipelined<typename MmaCore::Shape, IteratorA,
-                                                                    typename MmaCore::SmemIteratorA, IteratorB, typename MmaCore::SmemIteratorB, IteratorScale, SmemIteratorScale,
-                                                                    ElementAccumulator, layout::RowMajor, typename MmaCore::MmaPolicy, typename Converters::TransformAfterLDG,
-                                                                    typename Converters::TransformAfterLDS, OperatorInfo::QuantOp>;
+  using ThreadblockMma = cutlass::gemm::threadblock::DqMmaPipelined<
+      typename MmaCore::Shape, IteratorA, typename MmaCore::SmemIteratorA, IteratorB, typename MmaCore::SmemIteratorB,
+      IteratorScale, SmemIteratorScale, ElementAccumulator, layout::RowMajor, typename MmaCore::MmaPolicy,
+      typename Converters::TransformAfterLDG, typename Converters::TransformAfterLDS, OperatorInfo::QuantOp>;
 };
 
 }  // namespace threadblock

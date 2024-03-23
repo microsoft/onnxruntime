@@ -93,10 +93,7 @@ enum class EpilogueScheduleType {
         // architectures older than hopper, the epilogue is always performed by the same thread block as the main loop.
 };
 
-enum class ClusterShape { ClusterShape_1x1x1,
-                          ClusterShape_2x1x1,
-                          ClusterShape_1x2x1,
-                          ClusterShape_2x2x1 };
+enum class ClusterShape { ClusterShape_1x1x1, ClusterShape_2x1x1, ClusterShape_1x2x1, ClusterShape_2x2x1 };
 
 struct CutlassGemmConfig {
   CutlassTileConfig tile_config = CutlassTileConfig::ChooseWithHeuristic;
@@ -117,7 +114,10 @@ struct CutlassGemmConfig {
 
   CutlassGemmConfig(CutlassTileConfigSM90 tile_config_sm90, MainloopScheduleType mainloop_schedule,
                     EpilogueScheduleType epilogue_schedule, ClusterShape cluster_shape)
-      : tile_config_sm90(tile_config_sm90), mainloop_schedule(mainloop_schedule), epilogue_schedule(epilogue_schedule), cluster_shape(cluster_shape) {}
+      : tile_config_sm90(tile_config_sm90),
+        mainloop_schedule(mainloop_schedule),
+        epilogue_schedule(epilogue_schedule),
+        cluster_shape(cluster_shape) {}
 };
 
 }  // namespace ort_fastertransformer

@@ -31,8 +31,7 @@ namespace gemm {
 namespace kernel {
 
 template <typename TypeA, typename TypeB, typename arch, typename Enable = void>
-struct MixedGemmArchTraits {
-};
+struct MixedGemmArchTraits {};
 
 template <typename arch>
 struct MixedGemmArchTraits<float, float, arch> {
@@ -56,8 +55,10 @@ struct MixedGemmArchTraits<float, float, arch> {
 // Note that volta does not have native bfloat support so weights and activations will be casted to fp16
 // and compute will happen in fp16 then will be converted for bf16 output.
 template <typename TypeA, typename TypeB>
-struct MixedGemmArchTraits<TypeA, TypeB, cutlass::arch::Sm70,
-                           typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+struct MixedGemmArchTraits<
+    TypeA, TypeB, cutlass::arch::Sm70,
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value ||
+                                          cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm70>;
 
@@ -80,8 +81,10 @@ struct MixedGemmArchTraits<TypeA, TypeB, cutlass::arch::Sm70,
 // Note that turing does not have native bfloat support so weights and activations will be casted to fp16
 // and compute will happen in fp16 then will be converted for bf16 output.
 template <typename TypeA, typename TypeB>
-struct MixedGemmArchTraits<TypeA, TypeB, cutlass::arch::Sm75,
-                           typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+struct MixedGemmArchTraits<
+    TypeA, TypeB, cutlass::arch::Sm75,
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value ||
+                                          cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm75>;
 
@@ -102,8 +105,10 @@ struct MixedGemmArchTraits<TypeA, TypeB, cutlass::arch::Sm75,
 
 // ======================= Ampere Traits ==============================
 template <typename TypeA, typename TypeB>
-struct MixedGemmArchTraits<TypeA, TypeB, cutlass::arch::Sm80,
-                           typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+struct MixedGemmArchTraits<
+    TypeA, TypeB, cutlass::arch::Sm80,
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value ||
+                                          cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm80>;
 

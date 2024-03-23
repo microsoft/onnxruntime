@@ -60,7 +60,8 @@ inline constexpr bool dependent_false_v = false;
 template <typename Mma_,                 ///! Threadblock-scoped matrix multiply-accumulate
           typename Epilogue_,            ///! Epilogue
           typename ThreadblockSwizzle_,  ///! Threadblock swizzling function
-          typename KernelArch,           ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose top-level
+          typename KernelArch,           ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose
+                                         ///top-level
                                          /// arch.
           bool SplitKSerial              ///! If true, code supporting split-K via serial reduction is enabled.
           >
@@ -143,8 +144,19 @@ struct GemmFpAIntB {
               typename EpilogueOutputOp::Params output_op = typename EpilogueOutputOp::Params(),
               int const* gather_A_indices = nullptr, int const* gather_B_indices = nullptr,
               int const* scatter_D_indices = nullptr)
-        : problem_size(problem_size), group_size(group_size), ref_A(ref_A), ref_B(ref_B), ref_scale(ref_scale), ref_zero(ref_zero), ref_C(ref_C), ref_D(ref_D), batch_count(serial_split_k_factor), output_op(output_op), gather_A_indices(gather_A_indices), gather_B_indices(gather_B_indices), scatter_D_indices(scatter_D_indices) {
-    }
+        : problem_size(problem_size),
+          group_size(group_size),
+          ref_A(ref_A),
+          ref_B(ref_B),
+          ref_scale(ref_scale),
+          ref_zero(ref_zero),
+          ref_C(ref_C),
+          ref_D(ref_D),
+          batch_count(serial_split_k_factor),
+          output_op(output_op),
+          gather_A_indices(gather_A_indices),
+          gather_B_indices(gather_B_indices),
+          scatter_D_indices(scatter_D_indices) {}
   };
 
   /// Parameters structure
@@ -177,15 +189,32 @@ struct GemmFpAIntB {
     //
 
     CUTLASS_HOST_DEVICE
-    Params()
-        : swizzle_log_tile(0), semaphore(0), gemm_k_size(0) {
-    }
+    Params() : swizzle_log_tile(0), semaphore(0), gemm_k_size(0) {}
 
     CUTLASS_HOST_DEVICE
     Params(Arguments const& args, cutlass::gemm::GemmCoord const& grid_tiled_shape, int const gemm_k_size,
            void* workspace = nullptr)
-        : problem_size(args.problem_size), group_size(args.group_size), grid_tiled_shape(grid_tiled_shape), swizzle_log_tile(ThreadblockSwizzle().get_log_tile(grid_tiled_shape)), params_A(args.ref_A.layout()), ref_A(args.ref_A), params_B(args.ref_B.layout()), ref_B(args.ref_B), params_scale(args.ref_scale.layout()), ref_scale(args.ref_scale), ref_zero(args.ref_zero), params_C(args.ref_C.layout()), ref_C(args.ref_C), params_D(args.ref_D.layout()), ref_D(args.ref_D), output_op(args.output_op), semaphore(static_cast<int*>(workspace)), gemm_k_size(gemm_k_size), gather_A_indices(args.gather_A_indices), gather_B_indices(args.gather_B_indices), scatter_D_indices(args.scatter_D_indices) {
-    }
+        : problem_size(args.problem_size),
+          group_size(args.group_size),
+          grid_tiled_shape(grid_tiled_shape),
+          swizzle_log_tile(ThreadblockSwizzle().get_log_tile(grid_tiled_shape)),
+          params_A(args.ref_A.layout()),
+          ref_A(args.ref_A),
+          params_B(args.ref_B.layout()),
+          ref_B(args.ref_B),
+          params_scale(args.ref_scale.layout()),
+          ref_scale(args.ref_scale),
+          ref_zero(args.ref_zero),
+          params_C(args.ref_C.layout()),
+          ref_C(args.ref_C),
+          params_D(args.ref_D.layout()),
+          ref_D(args.ref_D),
+          output_op(args.output_op),
+          semaphore(static_cast<int*>(workspace)),
+          gemm_k_size(gemm_k_size),
+          gather_A_indices(args.gather_A_indices),
+          gather_B_indices(args.gather_B_indices),
+          scatter_D_indices(args.scatter_D_indices) {}
   };
 
   /// Shared memory storage structure
@@ -204,24 +233,25 @@ struct GemmFpAIntB {
   /// Determines whether kernel satisfies alignment
   CUTLASS_HOST_DEVICE
   static Status can_implement(Arguments const& args) {
-    static int const kAlignmentA = (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32
-                                   : (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<64>>::value)
-                                       ? 64
-                                       : Mma::IteratorA::AccessType::kElements;
-    static int const kAlignmentB = (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<32>>::value) ? 32
-                                   : (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<64>>::value)
-                                       ? 64
-                                       : Mma::IteratorB::AccessType::kElements;
+    static int const kAlignmentA =
+        (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32
+        : (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<64>>::value)
+            ? 64
+            : Mma::IteratorA::AccessType::kElements;
+    static int const kAlignmentB =
+        (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<32>>::value) ? 32
+        : (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<64>>::value)
+            ? 64
+            : Mma::IteratorB::AccessType::kElements;
 
     static int const kAlignmentScale = Mma::IteratorScale::AccessType::kElements;
 
-    static int const kAlignmentC = (platform::is_same<typename Epilogue::OutputTileIterator::Layout,
-                                                      layout::ColumnMajorInterleaved<32>>::value)
-                                       ? 32
-                                   : (platform::is_same<typename Epilogue::OutputTileIterator::Layout,
-                                                        layout::ColumnMajorInterleaved<64>>::value)
-                                       ? 64
-                                       : Epilogue::OutputTileIterator::kElementsPerAccess;
+    static int const kAlignmentC =
+        (platform::is_same<typename Epilogue::OutputTileIterator::Layout, layout::ColumnMajorInterleaved<32>>::value)
+            ? 32
+        : (platform::is_same<typename Epilogue::OutputTileIterator::Layout, layout::ColumnMajorInterleaved<64>>::value)
+            ? 64
+            : Epilogue::OutputTileIterator::kElementsPerAccess;
 
     if (!TensorRef_aligned(args.ref_A, kAlignmentA)) {
       return Status::kErrorMisalignedOperand;
@@ -278,24 +308,29 @@ struct GemmFpAIntB {
   // has a different constructor signature than a regular cutlass iterator
   template <typename IteratorScale, WeightOnlyQuantOp op, std::enable_if_t<isFinegrained(op), bool> = true>
   CUTLASS_DEVICE static IteratorScale initialize_scale(typename IteratorScale::Params const& params,
-                                                       typename IteratorScale::Pointer pointer_scale, typename IteratorScale::Pointer pointer_zero,
+                                                       typename IteratorScale::Pointer pointer_scale,
+                                                       typename IteratorScale::Pointer pointer_zero,
                                                        typename IteratorScale::TensorCoord extent, int thread_id,
-                                                       typename IteratorScale::TensorCoord const& threadblock_offset, int group_size) {
+                                                       typename IteratorScale::TensorCoord const& threadblock_offset,
+                                                       int group_size) {
     return IteratorScale(params, pointer_scale, pointer_zero, extent, thread_id, threadblock_offset, group_size);
   }
 
   template <typename IteratorScale, WeightOnlyQuantOp op, std::enable_if_t<!isFinegrained(op), bool> = true>
   CUTLASS_DEVICE static IteratorScale initialize_scale(typename IteratorScale::Params const& params,
-                                                       typename IteratorScale::Pointer pointer_scale, typename IteratorScale::Pointer pointer_zero,
+                                                       typename IteratorScale::Pointer pointer_scale,
+                                                       typename IteratorScale::Pointer pointer_zero,
                                                        typename IteratorScale::TensorCoord extent, int thread_id,
-                                                       typename IteratorScale::TensorCoord const& threadblock_offset, int group_size) {
+                                                       typename IteratorScale::TensorCoord const& threadblock_offset,
+                                                       int group_size) {
     return IteratorScale(params, pointer_scale, extent, thread_id, threadblock_offset);
   }
 
   CUTLASS_DEVICE
   void run_kernel_(Params const& params, SharedStorage& shared_storage) {
     using LayoutB = typename Mma::IteratorB::Layout;
-    static_assert(platform::is_same<LayoutB, layout::RowMajor>::value && kInterleave == 1 || platform::is_same<LayoutB, layout::ColumnMajor>::value && kInterleave >= 1,
+    static_assert(platform::is_same<LayoutB, layout::RowMajor>::value && kInterleave == 1 ||
+                      platform::is_same<LayoutB, layout::ColumnMajor>::value && kInterleave >= 1,
                   "B must be row major/col major OR col major interleaved.");
 
     // Compute threadblock location
@@ -304,7 +339,8 @@ struct GemmFpAIntB {
     cutlass::gemm::GemmCoord threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
     // Early exit if CTA is out of range
-    if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() || params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
+    if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() ||
+        params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
       return;
     }
 
@@ -331,12 +367,12 @@ struct GemmFpAIntB {
     int thread_idx = threadIdx.x;
 
     // Construct iterators to A and B operands
-    typename Mma::IteratorA iterator_A(params.params_A, params.ref_A.data(),
-                                       {params.problem_size.m(), problem_size_k}, thread_idx, tb_offset_A, params.gather_A_indices);
+    typename Mma::IteratorA iterator_A(params.params_A, params.ref_A.data(), {params.problem_size.m(), problem_size_k},
+                                       thread_idx, tb_offset_A, params.gather_A_indices);
 
     typename Mma::IteratorB iterator_B(params.params_B, params.ref_B.data(),
-                                       {problem_size_k * kInterleave, params.problem_size.n() / kInterleave}, thread_idx, tb_offset_B,
-                                       params.gather_B_indices);
+                                       {problem_size_k * kInterleave, params.problem_size.n() / kInterleave},
+                                       thread_idx, tb_offset_B, params.gather_B_indices);
 
     typename MatrixCoord::Index scale_row_extent = isFinegrained(Mma::QuantOp) ? problem_size_k / 64 : 1;
     typename Mma::IteratorScale iterator_scale = initialize_scale<typename Mma::IteratorScale, Mma::QuantOp>(
@@ -376,8 +412,8 @@ struct GemmFpAIntB {
     threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
     // assume identity swizzle
-    MatrixCoord threadblock_offset(
-        threadblock_tile_offset.m() * Mma::Shape::kM, threadblock_tile_offset.n() * Mma::Shape::kN);
+    MatrixCoord threadblock_offset(threadblock_tile_offset.m() * Mma::Shape::kM,
+                                   threadblock_tile_offset.n() * Mma::Shape::kN);
 
     int block_idx = threadblock_tile_offset.m() + threadblock_tile_offset.n() * params.grid_tiled_shape.m();
 
@@ -460,8 +496,8 @@ struct GemmFpAIntB {
 #elif (__CUDA_ARCH__ >= 900)
     CUTLASS_NOT_IMPLEMENTED();  // Don't compile these for Hopper or later. Use CUTLASS 3.x kernels.
 #else
-    static_assert(
-        false, "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
+    static_assert(false,
+                  "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
 #endif
 #else
     CUTLASS_NOT_IMPLEMENTED();

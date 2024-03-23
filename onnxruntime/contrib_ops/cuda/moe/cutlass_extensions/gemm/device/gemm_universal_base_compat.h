@@ -115,7 +115,8 @@ class GemmUniversalBaseCompat {
     gemm_k_size = args.problem_size.k();
 
     if (args.mode == GemmUniversalMode::kGemm || args.mode == GemmUniversalMode::kGemmSplitKParallel) {
-      int const kAlignK = const_max(const_max(128 / sizeof_bits<ElementA>::value, 128 / sizeof_bits<ElementB>::value), 1);
+      int const kAlignK =
+          const_max(const_max(128 / sizeof_bits<ElementA>::value, 128 / sizeof_bits<ElementB>::value), 1);
 
       gemm_k_size = round_up(ceil_div(args.problem_size.k(), args.batch_count), kAlignK);
 
@@ -200,13 +201,13 @@ class GemmUniversalBaseCompat {
     CUTLASS_TRACE_HOST("GemmUniversalBaseCompat::maximum_active_blocks()");
 
     int max_active_blocks = -1;
-    int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
+    int smem_size = static<int>(sizeof(typename GemmKernel::SharedStorage));
 
     CUTLASS_TRACE_HOST("  smem_size: " << smem_size << " bytes");
 
     if (smem_size <= (48 << 10)) {
-      cudaError_t result = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &max_active_blocks, Kernel<GemmKernel>, GemmKernel::kThreadCount, smem_size);
+      cudaError_t result = cudaOccupancyMaxActiveBlocksPerMultiprocessor(&max_active_blocks, Kernel<GemmKernel>,
+                                                                         GemmKernel::kThreadCount, smem_size);
 
       if (result == cudaSuccess) {
         CUTLASS_TRACE_HOST("  max_active_blocks: " << max_active_blocks);
@@ -214,12 +215,12 @@ class GemmUniversalBaseCompat {
       }
     } else {
       // Query assuming zero shared memory then compute occupancy limit based on SMEM
-      cudaError_t result = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &max_active_blocks, Kernel<GemmKernel>, GemmKernel::kThreadCount, 0);
+      cudaError_t result = cudaOccupancyMaxActiveBlocksPerMultiprocessor(&max_active_blocks, Kernel<GemmKernel>,
+                                                                         GemmKernel::kThreadCount, 0);
 
       if (result != cudaSuccess) {
-        CUTLASS_TRACE_HOST(
-            "  cudaOccupancyMaxActiveBlocksPerMultiprocessor() returned error " << cudaGetErrorString(result));
+        CUTLASS_TRACE_HOST("  cudaOccupancyMaxActiveBlocksPerMultiprocessor() returned error "
+                           << cudaGetErrorString(result));
 
         return -1;
       }
@@ -292,10 +293,11 @@ class GemmUniversalBaseCompat {
     params_ = typename GemmKernel::Params(args, grid_tiled_shape, gemm_k_size, static_cast<int*>(workspace));
 
     // Specify shared memory capacity for kernel.
-    int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
+    int smem_size = static<int>(sizeof(typename GemmKernel::SharedStorage));
 
     if (smem_size >= (48 << 10)) {
-      cudaError_t result = cudaFuncSetAttribute(Kernel<GemmKernel>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+      cudaError_t result =
+          cudaFuncSetAttribute(Kernel<GemmKernel>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
 
       if (result != cudaSuccess) {
         return Status::kErrorInternal;
@@ -333,7 +335,7 @@ class GemmUniversalBaseCompat {
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
     dim3 block(GemmKernel::kThreadCount, 1, 1);
 
-    int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
+    int smem_size = static<int>(sizeof(typename GemmKernel::SharedStorage));
 
     //
     // Launch kernel
@@ -358,9 +360,7 @@ class GemmUniversalBaseCompat {
   }
 
   /// Runs the kernel using initialized state.
-  Status operator()(cudaStream_t stream = nullptr) {
-    return run(stream);
-  }
+  Status operator()(cudaStream_t stream = nullptr) { return run(stream); }
 
   /// Runs the kernel using initialized state.
   Status operator()(Arguments const& args, void* workspace = nullptr, cudaStream_t stream = nullptr) {

@@ -55,11 +55,12 @@ struct use_dq_gemm<Mma, void_t<typename Mma::IteratorScale>> : platform::true_ty
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Mma_,                        ///! Threadblock-scoped matrix multiply-accumulate
-          typename Epilogue_,                   ///! Epilogue
-          typename ThreadblockSwizzle_,         ///! Threadblock swizzling function
-          typename KernelArch,                  ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose top-level
-                                                /// arch.
+template <typename Mma_,                 ///! Threadblock-scoped matrix multiply-accumulate
+          typename Epilogue_,            ///! Epilogue
+          typename ThreadblockSwizzle_,  ///! Threadblock swizzling function
+          typename KernelArch,           ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose
+                                         /// top-level
+                                /// arch.
           GroupScheduleMode GroupScheduleMode_  ///! Type of scheduling to perform
           >
 struct MoeFCGemm {
@@ -72,10 +73,11 @@ struct MoeFCGemm {
   static bool const kTransposed = false;
 
   // Optional transpose
-  using MapArguments = kernel::detail::MapArguments<
-      typename Mma::IteratorA::Element, typename Mma::IteratorA::Layout, Mma::kTransformA,
-      Mma::IteratorA::AccessType::kElements, typename Mma::IteratorB::Element, typename Mma::IteratorB::Layout,
-      Mma::kTransformB, Mma::IteratorB::AccessType::kElements, typename Mma::LayoutC, kTransposed>;
+  using MapArguments =
+      kernel::detail::MapArguments<typename Mma::IteratorA::Element, typename Mma::IteratorA::Layout, Mma::kTransformA,
+                                   Mma::IteratorA::AccessType::kElements, typename Mma::IteratorB::Element,
+                                   typename Mma::IteratorB::Layout, Mma::kTransformB,
+                                   Mma::IteratorB::AccessType::kElements, typename Mma::LayoutC, kTransposed>;
 
   // Public-facing type definitions related to operand element type, layout, and complex conjugate
   // operation. Must interact with the 'kTransposed' notion.
@@ -147,15 +149,37 @@ struct MoeFCGemm {
     /// Default ctor
     CUTLASS_HOST_DEVICE
     Arguments()
-        : problem_count(0), threadblock_count(0), ptr_A(nullptr), ptr_B(nullptr), weight_scales(nullptr), ptr_C(nullptr), ptr_D(nullptr), total_rows_before_expert(nullptr), gemm_n(0), gemm_k(0), host_problem_sizes(nullptr) {}
+        : problem_count(0),
+          threadblock_count(0),
+          ptr_A(nullptr),
+          ptr_B(nullptr),
+          weight_scales(nullptr),
+          ptr_C(nullptr),
+          ptr_D(nullptr),
+          total_rows_before_expert(nullptr),
+          gemm_n(0),
+          gemm_k(0),
+          host_problem_sizes(nullptr) {}
 
     /// Ctor
     CUTLASS_HOST_DEVICE
     Arguments(int problem_count, int threadblock_count, int group_size, typename EpilogueOutputOp::Params output_op,
-              ElementA const* ptr_A, ElementB const* ptr_B, ElementScale const* weight_scales,
-              ElementC const* ptr_C, ElementC* ptr_D, int64_t* total_rows_before_expert, int64_t gemm_n,
-              int64_t gemm_k, GemmCoord* host_problem_sizes = nullptr)
-        : problem_count(problem_count), threadblock_count(threadblock_count), group_size(group_size), output_op(output_op), ptr_A(const_cast<ElementA*>(ptr_A)), ptr_B(const_cast<ElementB*>(ptr_B)), weight_scales(const_cast<ElementScale*>(weight_scales)), ptr_C(const_cast<ElementC*>(ptr_C)), ptr_D(ptr_D), total_rows_before_expert(total_rows_before_expert), gemm_n(gemm_n), gemm_k(gemm_k), host_problem_sizes(nullptr) {
+              ElementA const* ptr_A, ElementB const* ptr_B, ElementScale const* weight_scales, ElementC const* ptr_C,
+              ElementC* ptr_D, int64_t* total_rows_before_expert, int64_t gemm_n, int64_t gemm_k,
+              GemmCoord* host_problem_sizes = nullptr)
+        : problem_count(problem_count),
+          threadblock_count(threadblock_count),
+          group_size(group_size),
+          output_op(output_op),
+          ptr_A(const_cast<ElementA*>(ptr_A)),
+          ptr_B(const_cast<ElementB*>(ptr_B)),
+          weight_scales(const_cast<ElementScale*>(weight_scales)),
+          ptr_C(const_cast<ElementC*>(ptr_C)),
+          ptr_D(ptr_D),
+          total_rows_before_expert(total_rows_before_expert),
+          gemm_n(gemm_n),
+          gemm_k(gemm_k),
+          host_problem_sizes(nullptr) {
       if (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value) {
         assert(weight_scales);
       }
@@ -296,11 +320,10 @@ struct MoeFCGemm {
       GemmCoord grid_shape = problem_visitor.grid_shape(problem_size);
 
       cutlass::gemm::GemmCoord threadblock_offset(int(cta_idx / grid_shape.n()) * Mma::Shape::kM,
-                                                  int(cta_idx % grid_shape.n()) * Mma::Shape::kN, 0);
+                                                  static<int>(cta_idx % grid_shape.n()) * Mma::Shape::kN, 0);
 
       // Load element pointers. Exchange pointers and strides if working on the transpose
-      const int64_t rows_to_jump =
-          problem_idx == 0 ? 0 : params.problem_visitor.last_row_for_problem[problem_idx - 1];
+      const int64_t rows_to_jump = problem_idx == 0 ? 0 : params.problem_visitor.last_row_for_problem[problem_idx - 1];
       ElementA* ptr_A = reinterpret_cast<ElementA*>(params.ptr_A) + rows_to_jump * gemm_k;
       typename LayoutA::LongIndex ldm_A = gemm_k;
 
@@ -327,8 +350,8 @@ struct MoeFCGemm {
                                          tb_offset_A);
 
       typename Mma::IteratorB iterator_B(LayoutB(ldm_B), ptr_B,
-                                         {problem_size.k() * kInterleave, problem_size.n() / kInterleave},
-                                         thread_idx, tb_offset_B);
+                                         {problem_size.k() * kInterleave, problem_size.n() / kInterleave}, thread_idx,
+                                         tb_offset_B);
 
       typename Mma::FragmentC accumulators;
 
@@ -364,8 +387,8 @@ struct MoeFCGemm {
 
       if constexpr (use_dq_gemm<Mma>::value) {
         const MatrixCoord scale_extent = {1, problem_size.n()};
-        typename Mma::IteratorScale iterator_scale(Mma::IteratorScale::Layout(scale_extent.column()),
-                                                   weight_scale_ptr, scale_extent, thread_idx, tb_offset_scale);
+        typename Mma::IteratorScale iterator_scale(Mma::IteratorScale::Layout(scale_extent.column()), weight_scale_ptr,
+                                                   scale_extent, thread_idx, tb_offset_scale);
 
         mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, iterator_scale, accumulators);
       } else {
@@ -432,8 +455,8 @@ struct MoeFCGemm {
     run_kernel<arch::Sm80>(params,
                            shared_storage);  // Don't compile these for Hopper or later. Use CUTLASS 3.x kernels.
 #else
-    static_assert(
-        false, "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
+    static_assert(false,
+                  "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
 #endif
 #else
     CUTLASS_NOT_IMPLEMENTED();

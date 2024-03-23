@@ -163,8 +163,8 @@ class BaseSplitkGrouped {
   Status precompute(Arguments const& args, int32_t tile_count, void* workspace) {
     size_t workspace_bytes = get_workspace_size(args);
     std::vector<uint8_t> host_workspace(workspace_bytes);
-    BaseKernel::ProblemVisitor::host_precompute(
-        args.host_problem_sizes, args.problem_count, args.threadblock_count, (void*)host_workspace.data());
+    BaseKernel::ProblemVisitor::host_precompute(args.host_problem_sizes, args.problem_count, args.threadblock_count,
+                                                (void*)host_workspace.data());
     return copy_to_workspace(workspace, host_workspace.data(), workspace_bytes);
   }
 
@@ -185,9 +185,7 @@ class BaseSplitkGrouped {
   BaseSplitkGrouped() {}
 
   /// Determines whether the GEMM can execute the given problem.
-  static Status can_implement(Arguments const& args) {
-    return BaseKernel::can_implement(args);
-  }
+  static Status can_implement(Arguments const& args) { return BaseKernel::can_implement(args); }
 
   /// Get the number of tiles in a problem
   static int32_t problem_tile_count(cutlass::gemm::GemmCoord const& problem) {
@@ -214,22 +212,20 @@ class BaseSplitkGrouped {
     size_t workSpaceSize = total_mn * sizeof(ElementAccumulator) * args.split_k_slices;
 
     if (BaseKernel::ProblemVisitor::kRequiresPrecomputation) {
-      workSpaceSize += BaseKernel::ProblemVisitor::get_workspace_size(
-          args.host_problem_sizes, args.problem_count, args.threadblock_count);
+      workSpaceSize += BaseKernel::ProblemVisitor::get_workspace_size(args.host_problem_sizes, args.problem_count,
+                                                                      args.threadblock_count);
     }
     return workSpaceSize;
   }
 
   /// Computes the grid shape
-  static dim3 get_grid_shape(Arguments const& args) {
-    return dim3(args.threadblock_count, 1, 1);
-  }
+  static dim3 get_grid_shape(Arguments const& args) { return dim3(args.threadblock_count, 1, 1); }
 
   /// Computes the maximum number of active blocks per multiprocessor
   static int maximum_active_blocks(int smem_capacity = -1) {
     CUTLASS_TRACE_HOST("BaseSplitkGrouped::maximum_active_blocks()");
 
-    int smem_size = int(sizeof(typename BaseKernel::SharedStorage));
+    int smem_size = static<int>(sizeof(typename BaseKernel::SharedStorage));
 
     CUTLASS_TRACE_HOST("  smem_size: " << smem_size << " bytes");
 
@@ -246,14 +242,14 @@ class BaseSplitkGrouped {
     }
 
     int max_active_blocks = -1;
-    result = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-        &max_active_blocks, Kernel<BaseKernel>, BaseKernel::kThreadCount, smem_size);
+    result = cudaOccupancyMaxActiveBlocksPerMultiprocessor(&max_active_blocks, Kernel<BaseKernel>,
+                                                           BaseKernel::kThreadCount, smem_size);
 
     if (result != cudaSuccess) {
       // Call cudaGetLastError() to clear the error bit
       result = cudaGetLastError();
-      CUTLASS_TRACE_HOST(
-          "  cudaOccupancyMaxActiveBlocksPerMultiprocessor() returned error " << cudaGetErrorString(result));
+      CUTLASS_TRACE_HOST("  cudaOccupancyMaxActiveBlocksPerMultiprocessor() returned error "
+                         << cudaGetErrorString(result));
       return -1;
     }
 
@@ -268,8 +264,9 @@ class BaseSplitkGrouped {
                             int64_t* offset_B_ptr, int64_t* offset_C_ptr, int64_t* offset_D_ptr) {
     std::vector<size_t> indices(problem_count);
     std::iota(indices.begin(), indices.end(), 0);
-    std::stable_sort(indices.begin(), indices.end(),
-                     [&problem_sizes_ptr](size_t i, size_t j) { return problem_sizes_ptr[i].k() > problem_sizes_ptr[j].k(); });
+    std::stable_sort(indices.begin(), indices.end(), [&problem_sizes_ptr](size_t i, size_t j) {
+      return problem_sizes_ptr[i].k() > problem_sizes_ptr[j].k();
+    });
 
     reorder_array(problem_sizes_ptr, indices);
     reorder_array(lda_host_ptr, indices);
@@ -283,8 +280,8 @@ class BaseSplitkGrouped {
   }
 
   /// Computes the number of threadblocks to launch for the grouped kernel
-  static int sufficient(
-      cutlass::gemm::GemmCoord const* problem_sizes_ptr = nullptr, int problem_count = 0, int available_sm_count = -1) {
+  static int sufficient(cutlass::gemm::GemmCoord const* problem_sizes_ptr = nullptr, int problem_count = 0,
+                        int available_sm_count = -1) {
     // Determine the number of blocks that would be launched to fill up a single
     // wave on the GPU with each SM having maximum occupancy.
     int device_idx;
@@ -363,10 +360,11 @@ class BaseSplitkGrouped {
     }
 
     // Specify shared memory capacity for kernel.
-    int smem_size = int(sizeof(typename BaseKernel::SharedStorage));
+    int smem_size = static<int>(sizeof(typename BaseKernel::SharedStorage));
 
     if (smem_size >= (48 << 10)) {
-      cudaError_t result = cudaFuncSetAttribute(Kernel<BaseKernel>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+      cudaError_t result =
+          cudaFuncSetAttribute(Kernel<BaseKernel>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
 
       if (result != cudaSuccess) {
         return Status::kErrorInternal;
@@ -414,7 +412,7 @@ class BaseSplitkGrouped {
       dim3 grid(gemm_params_.threadblock_count, 1, gemm_params_.split_k_slices);
       dim3 block(BaseKernel::kThreadCount, 1, 1);
 
-      int smem_size = int(sizeof(typename BaseKernel::SharedStorage));
+      int smem_size = static<int>(sizeof(typename BaseKernel::SharedStorage));
       cutlass::Kernel<BaseKernel><<<grid, block, smem_size, stream>>>(gemm_params_);
 
       cudaError_t result = cudaGetLastError();
@@ -430,8 +428,8 @@ class BaseSplitkGrouped {
       dim3 grid(32, gemm_params_.problem_visitor.problem_count);
       dim3 block(256);
       splitkReduction<<<grid, block, 0, stream>>>(gemm_params_.ptr_D, gemm_params_.ptr_D_split,
-                                                  gemm_params_.problem_visitor.problem_sizes, gemm_params_.split_k_slices,
-                                                  gemm_params_.splitk_buffer_offsets);
+                                                  gemm_params_.problem_visitor.problem_sizes,
+                                                  gemm_params_.split_k_slices, gemm_params_.splitk_buffer_offsets);
 
       cudaError_t result = cudaGetLastError();
 
@@ -445,9 +443,7 @@ class BaseSplitkGrouped {
   }
 
   /// Runs the kernel using initialized state.
-  Status operator()(cudaStream_t stream = nullptr) {
-    return run(stream);
-  }
+  Status operator()(cudaStream_t stream = nullptr) { return run(stream); }
 
   /// Initializes and runs the kernel.
   Status operator()(Arguments const& args, void* workspace, cudaStream_t stream = nullptr) {

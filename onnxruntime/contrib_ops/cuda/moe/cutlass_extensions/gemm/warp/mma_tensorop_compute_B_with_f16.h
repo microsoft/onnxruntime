@@ -123,10 +123,15 @@ class MmaTensorOpComputeBWithF16 {
 
   /// Architecture tag from underlying instruction
   using ArchTag = typename ArchMmaOperator::ArchTag;
-  static_assert((platform::is_same<typename ArchMmaOperator::ElementA, half_t>::value && platform::is_same<typename ArchMmaOperator::ElementB, half_t>::value) || (platform::is_same<typename ArchMmaOperator::ElementA, bfloat16_t>::value && platform::is_same<typename ArchMmaOperator::ElementB, bfloat16_t>::value && ArchTag::kMinComputeCapability >= 80),
+  static_assert((platform::is_same<typename ArchMmaOperator::ElementA, half_t>::value &&
+                 platform::is_same<typename ArchMmaOperator::ElementB, half_t>::value) ||
+                    (platform::is_same<typename ArchMmaOperator::ElementA, bfloat16_t>::value &&
+                     platform::is_same<typename ArchMmaOperator::ElementB, bfloat16_t>::value &&
+                     ArchTag::kMinComputeCapability >= 80),
                 "MmaTensorOpCvtBToA only supports underlying HMMA");
 
-  static_assert(platform::is_same<ElementA, half_t>::value || (platform::is_same<ElementA, bfloat16_t>::value && ArchTag::kMinComputeCapability >= 80),
+  static_assert(platform::is_same<ElementA, half_t>::value ||
+                    (platform::is_same<ElementA, bfloat16_t>::value && ArchTag::kMinComputeCapability >= 80),
                 "MmaTensorOpCvtBToA only supports Fp16 A or Bf16 A on Ampere+");
 
   /// Indicates class of matrix operator
@@ -138,10 +143,10 @@ class MmaTensorOpComputeBWithF16 {
   /// Instruction shape to override shared memory iterators with
   using SharedMemoryInstructionShape = SharedMemoryInstructionShape_;
 
-  static_assert(
-      SharedMemoryInstructionShape::kM == InstructionShape::kM, "M dimension of compute instruction must match load");
-  static_assert(
-      SharedMemoryInstructionShape::kN == InstructionShape::kN, "N dimension of compute instruction must match load");
+  static_assert(SharedMemoryInstructionShape::kM == InstructionShape::kM,
+                "M dimension of compute instruction must match load");
+  static_assert(SharedMemoryInstructionShape::kN == InstructionShape::kN,
+                "N dimension of compute instruction must match load");
 
   static constexpr int kExpansionFactor = SharedMemoryInstructionShape::kK / InstructionShape::kK;
 
@@ -161,8 +166,10 @@ class MmaTensorOpComputeBWithF16 {
 
  public:
   /// Iterates over the A operand in memory
-  using IteratorA = MmaTensorOpMultiplicandTileIterator<MatrixShape<Shape::kM, Shape::kK>, Operand::kA, ElementA, LayoutA,
-                                                        MatrixShape<InstructionShape::kM, InstructionShape::kK>, Policy::OpDelta::kRow, kThreadCount, kPartitionsK>;
+  using IteratorA =
+      MmaTensorOpMultiplicandTileIterator<MatrixShape<Shape::kM, Shape::kK>, Operand::kA, ElementA, LayoutA,
+                                          MatrixShape<InstructionShape::kM, InstructionShape::kK>,
+                                          Policy::OpDelta::kRow, kThreadCount, kPartitionsK>;
 
   /// Storage for A tile
   using FragmentA = typename IteratorA::Fragment;
@@ -171,9 +178,10 @@ class MmaTensorOpComputeBWithF16 {
   using TransformedFragmentA = Array<typename ArchMmaOperator::ElementA, FragmentA::kElements>;
 
   /// Iterates over the B operand in memory
-  using IteratorB = MmaTensorOpMultiplicandTileIterator<MatrixShape<Shape::kK, Shape::kN>, Operand::kB, ElementB,
-                                                        LayoutB, MatrixShape<SharedMemoryInstructionShape::kK, InstructionShape::kN>, Policy::OpDelta::kRow,
-                                                        kThreadCount, kPartitionsK>;
+  using IteratorB =
+      MmaTensorOpMultiplicandTileIterator<MatrixShape<Shape::kK, Shape::kN>, Operand::kB, ElementB, LayoutB,
+                                          MatrixShape<SharedMemoryInstructionShape::kK, InstructionShape::kN>,
+                                          Policy::OpDelta::kRow, kThreadCount, kPartitionsK>;
 
   /// Storage for B tile
   using FragmentB = typename IteratorB::Fragment;

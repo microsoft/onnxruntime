@@ -133,14 +133,14 @@ constexpr auto BiasScaleMode = cutlass::epilogue::thread::ScaleType::NoBetaScali
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpBiasSilu> {
-  using Op = cutlass::epilogue::thread::LinearCombinationSilu<ElementType, ElementsPerVectorAccess,
-                                                              ElementAccumulator, ElementAccumulator, BiasScaleMode>;
+  using Op = cutlass::epilogue::thread::LinearCombinationSilu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
+                                                              ElementAccumulator, BiasScaleMode>;
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpBiasReLU> {
-  using Op = cutlass::epilogue::thread::LinearCombinationRelu<ElementType, ElementsPerVectorAccess,
-                                                              ElementAccumulator, ElementAccumulator, BiasScaleMode>;
+  using Op = cutlass::epilogue::thread::LinearCombinationRelu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
+                                                              ElementAccumulator, BiasScaleMode>;
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
@@ -160,16 +160,14 @@ constexpr auto DefaultScaleMode = cutlass::epilogue::thread::ScaleType::Default;
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpDefaultSilu> {
-  using Op =
-      cutlass::epilogue::thread::LinearCombinationSilu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
-                                                       ElementAccumulator, DefaultScaleMode>;
+  using Op = cutlass::epilogue::thread::LinearCombinationSilu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
+                                                              ElementAccumulator, DefaultScaleMode>;
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpDefaultReLU> {
-  using Op =
-      cutlass::epilogue::thread::LinearCombinationRelu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
-                                                       ElementAccumulator, DefaultScaleMode>;
+  using Op = cutlass::epilogue::thread::LinearCombinationRelu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
+                                                              ElementAccumulator, DefaultScaleMode>;
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>

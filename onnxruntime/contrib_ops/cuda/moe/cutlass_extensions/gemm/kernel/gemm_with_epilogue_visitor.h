@@ -146,17 +146,27 @@ struct GemmWithEpilogueVisitor {
     // Methods
     //
 
-    Arguments()
-        : mode(GemmUniversalMode::kGemm), batch_count(1) {
-    }
+    Arguments() : mode(GemmUniversalMode::kGemm), batch_count(1) {}
 
     /// constructs an arguments structure
-    Arguments(GemmUniversalMode mode_, GemmCoord problem_size_, int batch_count_, TensorRefA ref_A_,
-              TensorRefB ref_B_, tk::QuantMode quant_option_, TensorRefAlphaCol ref_alpha_col_,
-              TensorRefAlphaRow ref_alpha_row_, TensorRefC ref_C_, TensorRefC ref_D_, int64_t batch_stride_A_,
-              int64_t batch_stride_B_, typename EpilogueVisitor::Arguments epilogue_visitor_)
-        : mode(mode_), problem_size(problem_size_), batch_count(batch_count_), ref_A(ref_A_), ref_B(ref_B_), quant_option(quant_option_), ref_alpha_col(ref_alpha_col_), ref_alpha_row(ref_alpha_row_), ref_C(ref_C_), ref_D(ref_D_), batch_stride_A(batch_stride_A_), batch_stride_B(batch_stride_B_), batch_stride_D(0), epilogue_visitor(epilogue_visitor_) {
-    }
+    Arguments(GemmUniversalMode mode_, GemmCoord problem_size_, int batch_count_, TensorRefA ref_A_, TensorRefB ref_B_,
+              tk::QuantMode quant_option_, TensorRefAlphaCol ref_alpha_col_, TensorRefAlphaRow ref_alpha_row_,
+              TensorRefC ref_C_, TensorRefC ref_D_, int64_t batch_stride_A_, int64_t batch_stride_B_,
+              typename EpilogueVisitor::Arguments epilogue_visitor_)
+        : mode(mode_),
+          problem_size(problem_size_),
+          batch_count(batch_count_),
+          ref_A(ref_A_),
+          ref_B(ref_B_),
+          quant_option(quant_option_),
+          ref_alpha_col(ref_alpha_col_),
+          ref_alpha_row(ref_alpha_row_),
+          ref_C(ref_C_),
+          ref_D(ref_D_),
+          batch_stride_A(batch_stride_A_),
+          batch_stride_B(batch_stride_B_),
+          batch_stride_D(0),
+          epilogue_visitor(epilogue_visitor_) {}
   };
 
   //
@@ -199,19 +209,54 @@ struct GemmWithEpilogueVisitor {
 
     CUTLASS_HOST_DEVICE
     Params()
-        : swizzle_log_tile(0), params_A(0), params_B(0), params_alpha_col(0), params_C(0), params_D(0), batch_count(0), gemm_k_size(0), mode(cutlass::gemm::GemmUniversalMode::kGemm), ptr_A(nullptr), ptr_B(nullptr), ptr_alpha_col(nullptr), ptr_alpha_row(nullptr), ptr_C(nullptr), ptr_D(nullptr), batch_stride_A(0), batch_stride_B(0) {
-    }
+        : swizzle_log_tile(0),
+          params_A(0),
+          params_B(0),
+          params_alpha_col(0),
+          params_C(0),
+          params_D(0),
+          batch_count(0),
+          gemm_k_size(0),
+          mode(cutlass::gemm::GemmUniversalMode::kGemm),
+          ptr_A(nullptr),
+          ptr_B(nullptr),
+          ptr_alpha_col(nullptr),
+          ptr_alpha_row(nullptr),
+          ptr_C(nullptr),
+          ptr_D(nullptr),
+          batch_stride_A(0),
+          batch_stride_B(0) {}
 
-    Params(
-        Arguments const& args, cutlass::gemm::GemmCoord const& grid_tiled_shape_, int gemm_k_size_, int* workspace_)
-        : problem_size(args.problem_size), swizzle_log_tile(0), params_A(args.ref_A.layout()), params_B(args.ref_B.layout()), params_alpha_col(args.ref_alpha_col.layout()), params_alpha_row(args.ref_alpha_col.layout()), params_C(args.ref_C.layout()), params_D(args.ref_D.layout()), mode(args.mode), batch_count(args.batch_count), gemm_k_size(args.problem_size.k()), ptr_A(args.ref_A.data()), ptr_B(args.ref_B.data()), quant_option(args.quant_option), ptr_alpha_col(args.ref_alpha_col.data()), ptr_alpha_row(args.ref_alpha_row.data()), ptr_C(args.ref_C.data()), ptr_D(args.ref_D.data()), batch_stride_A(args.batch_stride_A), batch_stride_B(args.batch_stride_B), epilogue_visitor(args.epilogue_visitor) {
+    Params(Arguments const& args, cutlass::gemm::GemmCoord const& grid_tiled_shape_, int gemm_k_size_, int* workspace_)
+        : problem_size(args.problem_size),
+          swizzle_log_tile(0),
+          params_A(args.ref_A.layout()),
+          params_B(args.ref_B.layout()),
+          params_alpha_col(args.ref_alpha_col.layout()),
+          params_alpha_row(args.ref_alpha_col.layout()),
+          params_C(args.ref_C.layout()),
+          params_D(args.ref_D.layout()),
+          mode(args.mode),
+          batch_count(args.batch_count),
+          gemm_k_size(args.problem_size.k()),
+          ptr_A(args.ref_A.data()),
+          ptr_B(args.ref_B.data()),
+          quant_option(args.quant_option),
+          ptr_alpha_col(args.ref_alpha_col.data()),
+          ptr_alpha_row(args.ref_alpha_row.data()),
+          ptr_C(args.ref_C.data()),
+          ptr_D(args.ref_D.data()),
+          batch_stride_A(args.batch_stride_A),
+          batch_stride_B(args.batch_stride_B),
+          epilogue_visitor(args.epilogue_visitor) {
       ThreadblockSwizzle threadblock_swizzle;
 
-      grid_tiled_shape = threadblock_swizzle.get_tiled_shape(args.problem_size,
-                                                             {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK}, args.batch_count);
+      grid_tiled_shape = threadblock_swizzle.get_tiled_shape(
+          args.problem_size, {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK}, args.batch_count);
 
       if (args.mode == GemmUniversalMode::kGemm || args.mode == GemmUniversalMode::kGemmSplitKParallel) {
-        int const kAlignK = const_max(const_max(128 / sizeof_bits<ElementA>::value, 128 / sizeof_bits<ElementB>::value), 1);
+        int const kAlignK =
+            const_max(const_max(128 / sizeof_bits<ElementA>::value, 128 / sizeof_bits<ElementB>::value), 1);
 
         gemm_k_size = round_up(ceil_div(args.problem_size.k(), args.batch_count), kAlignK);
 
@@ -228,8 +273,7 @@ struct GemmWithEpilogueVisitor {
   union SharedStorage {
     typename Mma::SharedStorage main_loop;
 
-    struct
-    {
+    struct {
       typename Epilogue::SharedStorage epilogue;
       typename EpilogueVisitor::SharedStorage visitor;
     } epilogue;
@@ -259,7 +303,8 @@ struct GemmWithEpilogueVisitor {
       isAMisaligned = problem_size.k() % kAlignmentA;
     } else if (platform::is_same<LayoutA, layout::ColumnMajor>::value) {
       isAMisaligned = problem_size.m() % kAlignmentA;
-    } else if (platform::is_same<LayoutA, layout::ColumnMajorInterleaved<32>>::value || platform::is_same<LayoutA, layout::ColumnMajorInterleaved<64>>::value) {
+    } else if (platform::is_same<LayoutA, layout::ColumnMajorInterleaved<32>>::value ||
+               platform::is_same<LayoutA, layout::ColumnMajorInterleaved<64>>::value) {
       isAMisaligned = problem_size.k() % kAlignmentA;
     }
 
@@ -267,7 +312,8 @@ struct GemmWithEpilogueVisitor {
       isBMisaligned = problem_size.n() % kAlignmentB;
     } else if (platform::is_same<LayoutB, layout::ColumnMajor>::value) {
       isBMisaligned = problem_size.k() % kAlignmentB;
-    } else if (platform::is_same<LayoutB, layout::RowMajorInterleaved<32>>::value || platform::is_same<LayoutB, layout::RowMajorInterleaved<64>>::value) {
+    } else if (platform::is_same<LayoutB, layout::RowMajorInterleaved<32>>::value ||
+               platform::is_same<LayoutB, layout::RowMajorInterleaved<64>>::value) {
       isBMisaligned = problem_size.k() % kAlignmentB;
     }
 
@@ -275,7 +321,8 @@ struct GemmWithEpilogueVisitor {
       isCMisaligned = problem_size.n() % kAlignmentC;
     } else if (platform::is_same<LayoutC, layout::ColumnMajor>::value) {
       isCMisaligned = problem_size.m() % kAlignmentC;
-    } else if (platform::is_same<LayoutC, layout::ColumnMajorInterleaved<32>>::value || platform::is_same<LayoutC, layout::ColumnMajorInterleaved<64>>::value) {
+    } else if (platform::is_same<LayoutC, layout::ColumnMajorInterleaved<32>>::value ||
+               platform::is_same<LayoutC, layout::ColumnMajorInterleaved<64>>::value) {
       isCMisaligned = problem_size.n() % kAlignmentC;
     }
 
@@ -299,9 +346,7 @@ struct GemmWithEpilogueVisitor {
     return Status::kSuccess;
   }
 
-  static Status can_implement(Arguments const& args) {
-    return can_implement(args.problem_size);
-  }
+  static Status can_implement(Arguments const& args) { return can_implement(args.problem_size); }
 
   static size_t get_extra_workspace_size(Arguments const& args, cutlass::gemm::GemmCoord const& grid_tiled_shape) {
     return 0;
@@ -318,7 +363,8 @@ struct GemmWithEpilogueVisitor {
     cutlass::gemm::GemmCoord threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
     // Early exit if CTA is out of range
-    if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() || params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
+    if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() ||
+        params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
       return;
     }
 
@@ -359,11 +405,11 @@ struct GemmWithEpilogueVisitor {
     int thread_idx = threadIdx.x;
 
     // Construct iterators to A and B operands
-    typename Mma::IteratorA iterator_A(
-        params.params_A, ptr_A, {params.problem_size.m(), problem_size_k}, thread_idx, tb_offset_A);
+    typename Mma::IteratorA iterator_A(params.params_A, ptr_A, {params.problem_size.m(), problem_size_k}, thread_idx,
+                                       tb_offset_A);
 
-    typename Mma::IteratorB iterator_B(
-        params.params_B, ptr_B, {problem_size_k, params.problem_size.n()}, thread_idx, tb_offset_B);
+    typename Mma::IteratorB iterator_B(params.params_B, ptr_B, {problem_size_k, params.problem_size.n()}, thread_idx,
+                                       tb_offset_B);
 
     // Broadcast the warp_id computed by lane 0 to ensure dependent code
     // is compiled as warp-uniform.
@@ -395,8 +441,8 @@ struct GemmWithEpilogueVisitor {
     threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
     // assume identity swizzle
-    MatrixCoord threadblock_offset(
-        threadblock_tile_offset.m() * Mma::Shape::kM, threadblock_tile_offset.n() * Mma::Shape::kN);
+    MatrixCoord threadblock_offset(threadblock_tile_offset.m() * Mma::Shape::kM,
+                                   threadblock_tile_offset.n() * Mma::Shape::kN);
 
     int block_idx = threadblock_tile_offset.m() + threadblock_tile_offset.n() * params.grid_tiled_shape.m();
 
@@ -404,10 +450,10 @@ struct GemmWithEpilogueVisitor {
     // Construct the epilogue visitor
     //
 
-    EpilogueVisitor epilogue_visitor(params.epilogue_visitor, shared_storage.epilogue.visitor,
-                                     params.problem_size.mn(), thread_idx, warp_idx, lane_idx, params.params_alpha_col, params.params_C,
-                                     params.params_D, params.quant_option, params.ptr_alpha_row, params.ptr_alpha_col, params.ptr_C,
-                                     params.ptr_D, threadblock_offset, blockIdx.y * params.problem_size.m());
+    EpilogueVisitor epilogue_visitor(
+        params.epilogue_visitor, shared_storage.epilogue.visitor, params.problem_size.mn(), thread_idx, warp_idx,
+        lane_idx, params.params_alpha_col, params.params_C, params.params_D, params.quant_option, params.ptr_alpha_row,
+        params.ptr_alpha_col, params.ptr_C, params.ptr_D, threadblock_offset, blockIdx.y * params.problem_size.m());
 
     if (params.mode == GemmUniversalMode::kGemm) {
       // Indicate which position in a serial reduction the output operator is currently updating
@@ -449,11 +495,11 @@ struct GemmWithEpilogueVisitor {
 #elif (__CUDA_ARCH__ >= 800) && (__CUDA_ARCH__ < 900)
     run_kernel<arch::Sm80>(params, shared_storage);
 #elif (__CUDA_ARCH__ >= 900)
-    // TODO - replace with CUTLASS_NOT_IMPLEMENTED() and upgrade to 3.x kernels.
+    // replace with CUTLASS_NOT_IMPLEMENTED() and upgrade to 3.x kernels.
     run_kernel<arch::Sm80>(params, shared_storage);
 #else
-    static_assert(
-        false, "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
+    static_assert(false,
+                  "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
 #endif
 #else
     CUTLASS_NOT_IMPLEMENTED();

@@ -44,7 +44,8 @@ struct GemmMoeProblemVisitor
   static bool const kTransposed = Transposed;
 
   using ProblemSizeHelper = detail::GemmGroupedProblemSizeHelper<ThreadblockShape, Transposed>;
-  using Base = MoeProblemVisitor<ProblemSizeHelper, ThreadblockShape, GroupScheduleMode_, PrefetchTileCount, ThreadCount>;
+  using Base =
+      MoeProblemVisitor<ProblemSizeHelper, ThreadblockShape, GroupScheduleMode_, PrefetchTileCount, ThreadCount>;
   using Params = typename Base::Params;
   using SharedStorage = typename Base::SharedStorage;
 
@@ -53,8 +54,7 @@ struct GemmMoeProblemVisitor
   //
   CUTLASS_DEVICE
   GemmMoeProblemVisitor(Params const& params_, SharedStorage& shared_storage_, int32_t block_idx)
-      : Base(params_, shared_storage_, block_idx) {
-  }
+      : Base(params_, shared_storage_, block_idx) {}
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

@@ -90,8 +90,11 @@ template <
     typename Shape_,
     ///
     WeightOnlyQuantOp QuantOp_>
-class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, bfloat16_t, layout::RowMajor, 32, QuantOp_,
-                             typename platform::enable_if<MmaOperator_::ArchTag::kMinComputeCapability >= 80 && platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
+class MmaTensorOpDequantizer<
+    MmaOperator_, Shape_, Operand::kB, bfloat16_t, layout::RowMajor, 32, QuantOp_,
+    typename platform::enable_if<
+        MmaOperator_::ArchTag::kMinComputeCapability >= 80 &&
+        platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
  public:
   /// Mma Operator
   using MmaOperator = MmaOperator_;
@@ -141,8 +144,7 @@ class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, bfloat16_t, layo
 
   CUTLASS_DEVICE
   MmaTensorOpDequantizer(TensorRef smem_scales, int const warp_idx_n, int const lane_idx)
-      : MmaTensorOpDequantizer(smem_scales, TensorRef(), warp_idx_n, lane_idx) {
-  }
+      : MmaTensorOpDequantizer(smem_scales, TensorRef(), warp_idx_n, lane_idx) {}
 
   CUTLASS_DEVICE
   void load(FragmentScale& scale_frag) {
@@ -177,8 +179,8 @@ class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, bfloat16_t, layo
   }
 
   CUTLASS_DEVICE
-  void dequantize(
-      FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag, FragmentScale const& zero_frag) {
+  void dequantize(FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag,
+                  FragmentScale const& zero_frag) {
     // Slow path not implemented here on purpose. If we need to do HMMA on older arch, scale conversion should
     // happen before scales are stored to shared memory and we should use the fp16 dequantizer. This will avoid
     // numerous conversion instructions in GEMM main loop.
@@ -208,8 +210,11 @@ template <
     typename Shape_,
     ///
     WeightOnlyQuantOp QuantOp_>
-class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, half_t, layout::RowMajor, 32, QuantOp_,
-                             typename platform::enable_if<MmaOperator_::ArchTag::kMinComputeCapability >= 75 && platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
+class MmaTensorOpDequantizer<
+    MmaOperator_, Shape_, Operand::kB, half_t, layout::RowMajor, 32, QuantOp_,
+    typename platform::enable_if<
+        MmaOperator_::ArchTag::kMinComputeCapability >= 75 &&
+        platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
  public:
   /// Mma Operator
   using MmaOperator = MmaOperator_;
@@ -259,8 +264,7 @@ class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, half_t, layout::
 
   CUTLASS_DEVICE
   MmaTensorOpDequantizer(TensorRef smem_scales, int const warp_idx_n, int const lane_idx)
-      : MmaTensorOpDequantizer(smem_scales, TensorRef(), warp_idx_n, lane_idx) {
-  }
+      : MmaTensorOpDequantizer(smem_scales, TensorRef(), warp_idx_n, lane_idx) {}
 
   CUTLASS_DEVICE
   void load(FragmentScale& scale_frag) {
@@ -274,8 +278,9 @@ class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, half_t, layout::
   void dequantize(FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag) {
     using _MmaOperandB = typename ArchMmaOperator::FragmentB;
     using ExpandedMmaOperandB = Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
-    static_assert(ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
-                  "");
+    static_assert(
+        ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
+        "");
 
     multiplies<ExpandedMmaOperandB> mul_op;
 
@@ -303,12 +308,13 @@ class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, half_t, layout::
   }
 
   CUTLASS_DEVICE
-  void dequantize(
-      FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag, FragmentScale const& zero_frag) {
+  void dequantize(FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag,
+                  FragmentScale const& zero_frag) {
     using _MmaOperandB = typename ArchMmaOperator::FragmentB;
     using ExpandedMmaOperandB = Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
-    static_assert(ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
-                  "");
+    static_assert(
+        ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
+        "");
 
     multiplies<ExpandedMmaOperandB> mul_op;
     ExpandedMmaOperandB* operand_frag_ptr = reinterpret_cast<ExpandedMmaOperandB*>(&operand_frag);
@@ -318,7 +324,8 @@ class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, half_t, layout::
 
       CUTLASS_PRAGMA_UNROLL
       for (int mma_n_iter = 0; mma_n_iter < MmaOperator::MmaIterations::kColumn; ++mma_n_iter) {
-        operand_frag_ptr[mma_n_iter] = plus_op(mul_op(operand_frag_ptr[mma_n_iter], scale_frag[mma_n_iter]), zero_frag[mma_n_iter]);
+        operand_frag_ptr[mma_n_iter] =
+            plus_op(mul_op(operand_frag_ptr[mma_n_iter], scale_frag[mma_n_iter]), zero_frag[mma_n_iter]);
       }
     } else {
       CUTLASS_PRAGMA_UNROLL
@@ -351,8 +358,11 @@ template <
     typename Shape_,
     ///
     WeightOnlyQuantOp QuantOp_>
-class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, half_t, layout::RowMajor, 32, QuantOp_,
-                             typename platform::enable_if<platform::is_same<typename MmaOperator_::ArchTag, arch::Sm70>::value && platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::RowMajor>::value>::type> {
+class MmaTensorOpDequantizer<
+    MmaOperator_, Shape_, Operand::kB, half_t, layout::RowMajor, 32, QuantOp_,
+    typename platform::enable_if<
+        platform::is_same<typename MmaOperator_::ArchTag, arch::Sm70>::value &&
+        platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::RowMajor>::value>::type> {
  public:
   static_assert(platform::is_same<typename MmaOperator_::InterleavedTileShape, GemmShape<32, 32, 4>>::value, "");
 
@@ -431,8 +441,11 @@ template <
     typename Shape_,
     ///
     WeightOnlyQuantOp QuantOp_>
-class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, half_t, layout::RowMajor, 32, QuantOp_,
-                             typename platform::enable_if<platform::is_same<typename MmaOperator_::ArchTag, arch::Sm70>::value && platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
+class MmaTensorOpDequantizer<
+    MmaOperator_, Shape_, Operand::kB, half_t, layout::RowMajor, 32, QuantOp_,
+    typename platform::enable_if<
+        platform::is_same<typename MmaOperator_::ArchTag, arch::Sm70>::value &&
+        platform::is_same<typename MmaOperator_::ArchMmaOperator::LayoutB, layout::ColumnMajor>::value>::type> {
  public:
   static_assert(platform::is_same<typename MmaOperator_::InterleavedTileShape, GemmShape<32, 32, 4>>::value, "");
 
