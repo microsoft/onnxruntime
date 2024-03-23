@@ -9,21 +9,26 @@ import logging
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import onnx
 
 import onnxruntime
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-from .quant_utils import add_pre_process_metadata
+from .quant_utils import (
+    add_pre_process_metadata,
+    extract_raw_data_from_model,
+    get_model_path_from_input_model,
+    has_external_data,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def quant_pre_process(
-    input_model_path: str,
-    output_model_path: str,
+    input_model: Union[str, Path, onnx.ModelProto],
+    output_model_path: Union[str, Path],
     skip_optimization: bool = False,
     skip_onnx_shape: bool = False,
     skip_symbolic_shape: bool = False,
@@ -39,7 +44,7 @@ def quant_pre_process(
     """Shape inference and model optimization, in preparation for quantization.
 
     Args:
-        input_model_path: Path to the input model file")
+        input_model: Path to the input model file or ModelProto
         output_model_path: Path to the output model file
         skip_optimization: Skip model optimization step if true. This may result in ONNX shape
             inference failure for some models.
@@ -68,8 +73,9 @@ def quant_pre_process(
 
         if not skip_symbolic_shape:
             logger.info("Performing symbolic shape inference...")
+            loaded_model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
             model = SymbolicShapeInference.infer_shapes(
-                onnx.load(input_model_path),
+                loaded_model,
                 int_max,
                 auto_merge,
                 guess_output_rank,
@@ -80,18 +86,18 @@ def quant_pre_process(
             # Use ORT optimizers (native code) to optimize model
             if not skip_symbolic_shape:
                 # Need to save the inferenced model to file so as to run the optimizer
-                input_model_path = str(temp_path / "symbolic_shape_inferred.onnx")
+                input_model = str(temp_path / "symbolic_shape_inferred.onnx")
                 if save_as_external_data:
                     onnx.save_model(
                         model,
-                        input_model_path,
+                        input_model,
                         save_as_external_data=True,
                         all_tensors_to_one_file=all_tensors_to_one_file,
                         size_threshold=external_data_size_threshold,
                         convert_attribute=False,
                     )
                 else:
-                    onnx.save(model, input_model_path)
+                    onnx.save(model, input_model)
                 model = None
 
             opt_model_path = str(temp_path / "optimized.onnx")
@@ -99,7 +105,19 @@ def quant_pre_process(
                 sess_option = onnxruntime.SessionOptions()
                 sess_option.optimized_model_filepath = opt_model_path
                 sess_option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-                sess = onnxruntime.InferenceSession(input_model_path, sess_option, providers=["CPUExecutionProvider"])
+                # For large model, extract external data from model and add to session options
+                if isinstance(input_model, onnx.ModelProto):
+                    if has_external_data(input_model):
+                        raise ValueError(
+                            "ModelProto has external data not loaded into memory, ORT cannot create session. "
+                            "Please load external data before calling this function. "
+                            "See https://onnx.ai/onnx/repo-docs/ExternalData.html for more information."
+                        )
+                    external_names, external_values = extract_raw_data_from_model(input_model)
+                    sess_option.add_external_initializers(list(external_names), list(external_values))
+                    input_model = input_model.SerializeToString()
+
+                sess = onnxruntime.InferenceSession(input_model, sess_option, providers=["CPUExecutionProvider"])
                 # Close the session to avoid the cleanup error on Windows for temp folders
                 # https://github.com/microsoft/onnxruntime/issues/17627
                 del sess
@@ -109,7 +127,7 @@ def quant_pre_process(
                 )
                 logger.error(traceback.format_exc())
 
-            input_model_path = opt_model_path
+            input_model = opt_model_path
 
         if not skip_onnx_shape:
             # ONNX shape inference.
@@ -117,26 +135,27 @@ def quant_pre_process(
             # If the skip optimization is specified, we could be dealing with a
             # large model. So be on the safe side, save the model
             if model is not None:
-                input_model_path = str(temp_path / "symbolic_shape_inferred.onnx")
+                input_model = str(temp_path / "symbolic_shape_inferred.onnx")
                 if save_as_external_data:
                     onnx.save_model(
                         model,
-                        input_model_path,
+                        input_model,
                         save_as_external_data=True,
                         all_tensors_to_one_file=all_tensors_to_one_file,
                         size_threshold=external_data_size_threshold,
                         convert_attribute=False,
                     )
                 else:
-                    onnx.save(model, input_model_path)
+                    onnx.save(model, input_model)
                 model = None
 
+            input_model = get_model_path_from_input_model(input_model, str(Path(quant_tmp_dir) / "model_input.onnx"))
             inferred_model_path = str(temp_path / "onnx_shape_inferred.onnx")
-            onnx.shape_inference.infer_shapes_path(input_model_path, inferred_model_path)
+            onnx.shape_inference.infer_shapes_path(input_model, inferred_model_path)
             model = onnx.load(inferred_model_path)
 
     if model is None:
-        model = onnx.load(input_model_path)
+        model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
 
     add_pre_process_metadata(model)
 

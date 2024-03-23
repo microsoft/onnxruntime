@@ -4,6 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import onnx
@@ -19,7 +20,7 @@ MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 
 
 
 def get_qnn_qdq_config(
-    model_input: Path,
+    model_input: Union[str, Path, onnx.ModelProto],
     calibration_data_reader: CalibrationDataReader,
     calibrate_method=CalibrationMethod.MinMax,
     activation_type=QuantType.QUInt8,
@@ -29,7 +30,11 @@ def get_qnn_qdq_config(
     if per_channel:
         raise ValueError("QNN EP does not yet support per-channel quantization.")
 
-    model = onnx.load_model(model_input, load_external_data=False)
+    model = (
+        model_input
+        if isinstance(model_input, onnx.ModelProto)
+        else onnx.load_model(model_input, load_external_data=False)
+    )
 
     op_types = set()
     tensor_quant_overrides = {}

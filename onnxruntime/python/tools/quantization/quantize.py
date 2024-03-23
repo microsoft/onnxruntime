@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Union
 
 import onnx
-from onnx_model import ONNXModel
 
 from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
@@ -18,6 +17,7 @@ from .quant_utils import (
     QuantFormat,
     QuantizationMode,
     QuantType,
+    get_model_path_from_input_model,
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
 )
@@ -489,11 +489,7 @@ def quantize_static(
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-        if isinstance(model_input, onnx.ModelProto):
-            model_path = str(Path(quant_tmp_dir) / "model_input.onnx")
-            onnx_model = ONNXModel(model_input)
-            onnx_model.save_model_to_file(model_path, use_external_data_format)
-            model_input = model_path
+        model_input = get_model_path_from_input_model(model_input, str(Path(quant_tmp_dir) / "model_input.onnx"))
 
         calibrator = create_calibrator(
             Path(model_input),
