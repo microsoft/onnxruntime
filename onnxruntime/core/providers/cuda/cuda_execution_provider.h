@@ -175,7 +175,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
     Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
-    void IncrementRegularRunCountBeforeGraphCapture();
+    void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
    private:
     cublasHandle_t cublas_handle_ = nullptr;
@@ -194,7 +194,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_
     // is put under PerThreadContext.
     CUDAGraph cuda_graph_;
-    int regular_run_count_before_graph_capture_ = 0;
+    // Map of graph id to regular_run_count_before_graph_capture
+    std::unordered_map<CudaGraphAnnotation_t, int> graph_id_to_run_count_;
 
     // There is chance that the second regular run allocates GPU memory for causes like:
     // (1) memory pattern is enabled. (2) arena allocation for stream.

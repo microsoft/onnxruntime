@@ -122,9 +122,11 @@ class TestQuantizeBlockwise4Bits(unittest.TestCase):
                                     dequantize_blockwise_4bits(
                                         quant_value_ref[c, k],
                                         scales_ref[c, k],
-                                        (zero_point_ref[c, k // 2] >> 4)
-                                        if (k & 1)
-                                        else (zero_point_ref[c, k // 2] & 0x0F),
+                                        (
+                                            (zero_point_ref[c, k // 2] >> 4)
+                                            if (k & 1)
+                                            else (zero_point_ref[c, k // 2] & 0x0F)
+                                        ),
                                         min(block_size, rows - k * block_size),
                                     ),
                                     dequantize_blockwise_4bits(

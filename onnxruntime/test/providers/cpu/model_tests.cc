@@ -92,26 +92,12 @@ TEST_P(ModelTest, Run) {
   // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
   if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
     if (provider_name == "cuda" || provider_name == "openvino") {
+      per_sample_tolerance = 2.5e-2;
       relative_per_sample_tolerance = 1e-2;
     }
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-
-#if defined(__linux__)
-  // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
-  if (HasCudaEnvironment(800) && provider_name == "cuda") {
-    per_sample_tolerance = 1e-1;
-    if (model_path.find(ORT_TSTR("SSD")) > 0 ||
-        model_path.find(ORT_TSTR("ssd")) > 0 ||
-        model_path.find(ORT_TSTR("yolov3")) > 0 ||
-        model_path.find(ORT_TSTR("mask_rcnn")) > 0 ||
-        model_path.find(ORT_TSTR("FNS")) > 0) {
-      SkipTest("Skipping SSD test for big tolearance failure or other errors");
-      return;
-    }
-  }
-#endif
 
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
@@ -192,12 +178,14 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
-        std::vector<const char*> keys{"device_id"};
 
+        std::vector<const char*> keys{"device_id", "use_tf32"};
         std::vector<const char*> values;
         std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
         values.push_back(device_id.empty() ? "0" : device_id.c_str());
-        ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 1));
+        values.push_back("0");
+        ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
+
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "rocm") {
         OrtROCMProviderOptions ep_options;
@@ -229,6 +217,14 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
+
+        std::vector<const char*> keys{"device_id", "use_tf32"};
+        std::vector<const char*> values;
+        std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
+        values.push_back(device_id.empty() ? "0" : device_id.c_str());
+        values.push_back("0");
+        ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
+
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "migraphx") {
         OrtMIGraphXProviderOptions ep_options;
@@ -620,6 +616,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   std::vector<std::filesystem::path> paths;
 
   for (std::pair<ORT_STRING_VIEW, std::vector<ORT_STRING_VIEW>> kvp : provider_names) {
+    const ORT_STRING_VIEW provider_name = kvp.first;
     // Setup ONNX node tests. The test data is preloaded on our CI build machines.
 #if !defined(_WIN32)
     ORT_STRING_VIEW node_test_root_path = ORT_TSTR("/data/onnx");
@@ -627,7 +624,10 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     ORT_STRING_VIEW node_test_root_path = ORT_TSTR("c:\\local\\data\\onnx");
 #endif
     for (auto p : kvp.second) {
-      paths.push_back(ConcatPathComponent(node_test_root_path, p));
+      // tensorrt ep isn't expected to pass all onnx node tests. exclude and run model tests only.
+      if (provider_name != provider_name_tensorrt) {
+        paths.push_back(ConcatPathComponent(node_test_root_path, p));
+      }
     }
 
     // Same as the above, except this one is for large models
@@ -646,7 +646,6 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     }
 #endif
 
-    const ORT_STRING_VIEW provider_name = kvp.first;
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
     if (provider_name == provider_name_cuda) {

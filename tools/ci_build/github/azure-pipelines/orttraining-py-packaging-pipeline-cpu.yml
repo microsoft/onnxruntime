@@ -46,7 +46,7 @@ stages:
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
             --build-arg BUILD_UID=$(id -u)
-          Repository: onnxruntimetrainingcpubuild
+          Repository: onnxruntimetrainingcpubuild_$(PythonVersion)
 
       - task: CmdLine@2
         displayName: 'build onnxruntime'
@@ -63,7 +63,7 @@ stages:
               -e BUILD_BUILDNUMBER \
               -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
               -e DEFAULT_TRAINING_PACKAGE_DEVICE \
-              onnxruntimetrainingcpubuild \
+              onnxruntimetrainingcpubuild_$(PythonVersion) \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Debug Release \

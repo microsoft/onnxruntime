@@ -229,9 +229,11 @@ def create_group_query_attention_graph_prompt(
             [
                 config.batch_size,
                 config.q_sequence_length,
-                (config.num_heads * config.head_size)
-                if not packed
-                else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size),
+                (
+                    (config.num_heads * config.head_size)
+                    if not packed
+                    else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size)
+                ),
             ],
         ),
         helper.make_tensor_value_info(
@@ -415,9 +417,11 @@ def create_group_query_attention_graph_past(
             [
                 config.batch_size,
                 config.sequence_length,
-                (config.num_heads * config.head_size)
-                if not packed
-                else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size),
+                (
+                    (config.num_heads * config.head_size)
+                    if not packed
+                    else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size)
+                ),
             ],
         ),
         helper.make_tensor_value_info(
@@ -1212,8 +1216,6 @@ def parity_check_gqa_prompt(
         dtype=torch.float16,
         requires_grad=False,
     )
-    # print(k.shape)
-    # print(new_k.shape)
 
     window_size = (-1, -1)
     left_window_size = -1
@@ -1323,10 +1325,6 @@ def parity_check_gqa_prompt(
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
-
-    # print(cache_seqlens[0])
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[0, 0, :, 0])
-    # print((out - out_ref)[0, :, 0, 0])
 
     # Make sure past-present buffer updating correctly
     assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
@@ -1720,9 +1718,6 @@ def parity_check_gqa_past(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # print(cache_seqlens[0])
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[0, 0, cache_seqlens[0], :])
-
     # Make sure past-present buffer updating correctly
     assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
@@ -1935,18 +1930,6 @@ def parity_check_gqa_past_no_buff(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # print(cache_seqlens[0])
-    # print((out - out_ref)[0])
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[0, 0, :, 0])
-
-    # Make sure past-present buffer updating correctly
-    # assert numpy.allclose(
-    #     present_k[:, :, :-1, :], k_cache_ref.detach().cpu().numpy()[:, :, :-1, :], rtol=rtol, atol=atol, equal_nan=True
-    # )
-    # assert numpy.allclose(
-    #     present_v[:, :, :-1, :], v_cache_ref.detach().cpu().numpy()[:, :, :-1, :], rtol=rtol, atol=atol, equal_nan=True
-    # )
-
     # Compare results
     print(
         "NO buff",
@@ -2074,10 +2057,27 @@ class TestGQA(unittest.TestCase):
             for sq, skv in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for past_kv_format in [Formats.BNSH]:
-                            config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                            parity_check_gqa_prompt(config, past_format=past_kv_format)
-                            parity_check_gqa_prompt_no_buff(config, past_format=past_kv_format)
+                        for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
+                            for packed in [False, True]:
+                                config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                                parity_check_gqa_prompt(
+                                    config,
+                                    rtol=2e-3,
+                                    atol=2e-3,
+                                    past_format=Formats.BNSH,
+                                    rotary=rotary,
+                                    rotary_interleaved=rotary_interleaved,
+                                    packed=packed,
+                                )
+                                parity_check_gqa_prompt_no_buff(
+                                    config,
+                                    rtol=2e-3,
+                                    atol=2e-3,
+                                    past_format=Formats.BNSH,
+                                    rotary=rotary,
+                                    rotary_interleaved=rotary_interleaved,
+                                    packed=packed,
+                                )
         if major < 8 or platform.system() != "Linux":
             return
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
@@ -2088,12 +2088,12 @@ class TestGQA(unittest.TestCase):
                     for h in h_sizes:
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
-                                for past_kv_format, packed in [(Formats.BNSH, False), (Formats.BNSH, True)]:
+                                for packed in [False, True]:
                                     config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                                     parity_check_gqa_prompt(
                                         config,
                                         local=local,
-                                        past_format=past_kv_format,
+                                        past_format=Formats.BNSH,
                                         rotary=rotary,
                                         rotary_interleaved=rotary_interleaved,
                                         packed=packed,
@@ -2101,7 +2101,7 @@ class TestGQA(unittest.TestCase):
                                     parity_check_gqa_prompt_no_buff(
                                         config,
                                         local=local,
-                                        past_format=past_kv_format,
+                                        past_format=Formats.BNSH,
                                         rotary=rotary,
                                         rotary_interleaved=rotary_interleaved,
                                         packed=packed,
@@ -2141,21 +2141,28 @@ class TestGQA(unittest.TestCase):
             for s, s2 in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for past_kv_format in [Formats.BNSH]:
-                            sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                            config = Config(b, s, s2, sp, n, n2, h)
-                            parity_check_gqa_past(
-                                config,
-                                past_format=past_kv_format,
-                                rtol=1e-3,
-                                atol=1e-3,
-                            )
-                            parity_check_gqa_past_no_buff(
-                                config,
-                                past_format=past_kv_format,
-                                rtol=1e-3,
-                                atol=1e-3,
-                            )
+                        for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
+                            for packed in [False, True]:
+                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                                config = Config(b, s, s2, sp, n, n2, h)
+                                parity_check_gqa_past(
+                                    config,
+                                    past_format=Formats.BNSH,
+                                    rtol=1e-3,
+                                    atol=1e-3,
+                                    rotary=rotary,
+                                    rotary_interleaved=rotary_interleaved,
+                                    packed=packed,
+                                )
+                                parity_check_gqa_past_no_buff(
+                                    config,
+                                    past_format=Formats.BNSH,
+                                    rtol=1e-3,
+                                    atol=1e-3,
+                                    rotary=rotary,
+                                    rotary_interleaved=rotary_interleaved,
+                                    packed=packed,
+                                )
         if major < 8 or platform.system() != "Linux":
             return
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
@@ -2166,13 +2173,13 @@ class TestGQA(unittest.TestCase):
                     for h in h_sizes:
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
-                                for past_kv_format, packed in [(Formats.BNSH, False), (Formats.BNSH, True)]:
+                                for packed in [False, True]:
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)
                                     parity_check_gqa_past(
                                         config,
                                         local=local,
-                                        past_format=past_kv_format,
+                                        past_format=Formats.BNSH,
                                         rtol=1e-3,
                                         atol=1e-3,
                                         rotary=rotary,
@@ -2182,7 +2189,7 @@ class TestGQA(unittest.TestCase):
                                     parity_check_gqa_past_no_buff(
                                         config,
                                         local=local,
-                                        past_format=past_kv_format,
+                                        past_format=Formats.BNSH,
                                         rtol=1e-3,
                                         atol=1e-3,
                                         rotary=rotary,

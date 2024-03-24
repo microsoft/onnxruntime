@@ -253,7 +253,7 @@ export interface TensorFactory {
   /**
    * create a tensor from an ImageBitmap object
    *
-   * @param bitMap - the ImageBitmap object to create tensor from
+   * @param bitmap - the ImageBitmap object to create tensor from
    * @param options - An optional object representing options for creating tensor from URL.
    *
    * The following default settings will be applied:

@@ -31,9 +31,7 @@ def _check_binary_size(path, readelf, threshold, os_str, arch, build_config):
 
     if threshold is not None and sections_total > threshold:
         raise RuntimeError(
-            "Sections total size for {} of {} exceeds threshold of {} by {}. On-disk size={}".format(
-                path, sections_total, threshold, sections_total - threshold, ondisk_size
-            )
+            f"Sections total size for {path} of {sections_total} exceeds threshold of {threshold} by {sections_total - threshold}. On-disk size={ondisk_size}"
         )
 
 

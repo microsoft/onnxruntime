@@ -179,7 +179,7 @@ def print_wins(wins, rows, test_name):
         for row in rows:
             if row["run_id"] == key:
                 logger.info(
-                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f}, top1_match={:.4f}, size={}_MB, experiment={}, {}".format(
+                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f}, top1_match={:.4f}, size={}_MB, experiment={}, {}".format(  # noqa: G001
                         rank,
                         value,
                         key,

@@ -687,189 +687,23 @@ QuantizeARow_CompInt8(
     }
 }
 
-template <size_t NCols, size_t SubBlkLen, bool HasZeroPoint>
-MLAS_FORCEINLINE void
-ComputeDotProducts_BlkBitWidth4_CompInt8(
-    size_t BlkLen,
-    const std::byte* QuantARowPtr,
-    const std::byte* QuantBDataColPtr,
-    const float* QuantBScaleColPtr,
-    const std::byte* QuantBZeroPointColPtr,
-    float* SumPtr,
-    size_t CountK,
-    size_t StrideQuantBData,
-    size_t StrideQuantBScale,
-    size_t StrideQuantBZeroPoint,
-    const float* BiasPtr
-)
-{
-    constexpr size_t BlkBitWidth = 4;
-
-    static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
-    static_assert(SubBlkLen == 16 || SubBlkLen == 32, "SubBlkLen must be 16 or 32");
-
-    assert(BlkLen >= SubBlkLen && BlkLen % SubBlkLen == 0);
-
-    [[maybe_unused]] const uint8x8_t LowMaskU8x8 = vdup_n_u8(0x0F);     // only used if SubBlkLen == 16
-    [[maybe_unused]] const uint8x16_t LowMaskU8x16 = vdupq_n_u8(0x0F);  // only used if SubBlkLen == 32
-
-    const std::byte* QuantA = QuantARowPtr;
-
-    const std::byte* QuantBData = QuantBDataColPtr;
-    const float* QuantBScale = QuantBScaleColPtr;
-    [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
-                                                     // only used if HasZeroPoint == true
-
-    float32x4_t acc[NCols]{};
-
-    for (size_t k = 0; k < CountK; k += BlkLen) {
-        const size_t k_blk_len = std::min(CountK - k, BlkLen);
-
-        const float a_scale = Q8BlkScale(QuantA);
-        const int8_t* a_data = Q8BlkData(QuantA);
-
-        float b_scale[NCols];
-        UnrolledLoop<NCols>([&](size_t i) { b_scale[i] = QuantBScale[i * StrideQuantBScale]; });
-
-        [[maybe_unused]] int8_t b_zp[NCols];  // only used if HasZeroPoint == true
-        if constexpr (HasZeroPoint) {
-            UnrolledLoop<NCols>([&](size_t i) {
-                const std::byte zp_packed =
-                    QuantBZeroPointColPtr[i * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
-                b_zp[i] = ((QuantBZeroPointIdx & 1) == 1)
-                              ? std::to_integer<int8_t>(zp_packed >> 4)
-                              : std::to_integer<int8_t>(zp_packed & std::byte{0x0F});
-            });
-        }
-
-        for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += SubBlkLen) {
-            // load A row vector
-            int8x16_t av[SubBlkLen / 16];
-            UnrolledLoop<SubBlkLen / 16>([&](size_t i) {
-                av[i] = vld1q_s8(a_data + k_idx_in_blk + i * 16);
-            });
-
-            // load B column vectors
-            int8x16_t bv[NCols][SubBlkLen / 16];
-
-            const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
-
-            if constexpr (SubBlkLen == 16) {
-                uint8x8_t bv_packed[NCols];
-                UnrolledLoop<NCols>([&](size_t i) {
-                    bv_packed[i] = vld1_u8(
-                        reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
-                    );
-                });
-
-                UnrolledLoop<NCols>([&](size_t i) {
-                    const int8x8_t lo = vreinterpret_s8_u8(vand_u8(bv_packed[i], LowMaskU8x8));
-                    const int8x8_t hi = vreinterpret_s8_u8(vshr_n_u8(bv_packed[i], 4));
-                    bv[i][0] = vcombine_s8(lo, hi);
-                });
-            } else {
-                static_assert(SubBlkLen == 32);
-
-                uint8x16_t bv_packed[NCols];
-                UnrolledLoop<NCols>([&](size_t i) {
-                    bv_packed[i] = vld1q_u8(
-                        reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
-                    );
-                });
-
-                UnrolledLoop<NCols>([&](size_t i) {
-                    bv[i][0] = vreinterpretq_s8_u8(vandq_u8(bv_packed[i], LowMaskU8x16));
-                    bv[i][1] = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed[i], 4));
-                });
-            }
-
-            // subtract B zero point
-            if constexpr (HasZeroPoint) {
-                UnrolledLoop<NCols>([&](size_t i) {
-                    const int8x16_t zp_v = vdupq_n_s8(b_zp[i]);
-                    UnrolledLoop<SubBlkLen / 16>([&](size_t j) {
-                        bv[i][j] = vsubq_s8(bv[i][j], zp_v);
-                    });
-                });
-            } else {
-                const int8x16_t zp_v = vdupq_n_s8(8);
-
-                UnrolledLoop<NCols>([&](size_t i) {
-                    UnrolledLoop<SubBlkLen / 16>([&](size_t j) {
-                        bv[i][j] = vsubq_s8(bv[i][j], zp_v);
-                    });
-                });
-            }
-
-            // compute quantized dot product
-            int32x4_t dot[NCols]{};
-            UnrolledLoop<NCols>([&](size_t i) {
-                UnrolledLoop<SubBlkLen / 16>([&](size_t j) {
-                    dot[i] = vdotq_s32(dot[i], av[j], bv[i][j]);
-                });
-            });
-
-            // convert dot product result to float
-            float32x4_t dot_f32[NCols];
-            UnrolledLoop<NCols>([&](size_t i) {
-                dot_f32[i] = vcvtq_f32_s32(dot[i]);
-            });
-
-            // multiply dot product result by scale and update accumulator
-            UnrolledLoop<NCols>([&](size_t i) {
-                const float32x4_t scale_v = vdupq_n_f32(a_scale * b_scale[i]);
-                acc[i] = vfmaq_f32(acc[i], dot_f32[i], scale_v);
-            });
-        }
-
-        // increment pointers to next block
-        QuantA += Q8BlkSize(BlkLen);
-        QuantBData += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        QuantBScale += 1;
-        if constexpr (HasZeroPoint) {
-            QuantBZeroPointIdx += 1;
-        }
-    }
-
-    if constexpr (NCols == 4) {
-        float32x4_t sum = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
-
-        if (BiasPtr != nullptr) {
-            sum = vaddq_f32(sum, vld1q_f32(BiasPtr));
-        }
-
-        vst1q_f32(SumPtr, sum);
-    } else {
-        for (size_t i = 0; i < NCols; ++i) {
-            SumPtr[i] = vaddvq_f32(acc[i]);
-            if (BiasPtr != nullptr) {
-                SumPtr[i] += BiasPtr[i];
-            }
-        }
-    }
-}
-
-template <size_t NCols, size_t SubBlkLen, bool HasZeroPoint>
+template <bool HasZeroPoint>
 void
-SQ4BitGemmM1Kernel_CompInt8_Impl(
-    size_t BlkLen,
+SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen16(
     const std::byte* QuantA,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountN,
-    size_t CountK,
-    size_t BlockStrideQuantB,
+    size_t BlockCountK,
     const float* Bias
 )
 {
     constexpr size_t BlkBitWidth = 4;
+    constexpr size_t BlkLen = 16;
 
-    const std::byte* QuantARowPtr = QuantA;
     float* CRowPtr = C;
-
-    const size_t BlockCountK = BlockStrideQuantB;
 
     const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t StrideQuantBScale = BlockCountK;
@@ -883,39 +717,399 @@ SQ4BitGemmM1Kernel_CompInt8_Impl(
 
     float* SumPtr = CRowPtr;
 
-    int64_t nblk = static_cast<int64_t>(CountN) - NCols;
+    const uint8x16_t LowMaskU8x16 = vdupq_n_u8(0x0F);
+    const uint8x8_t LowMaskU8x8 = vdup_n_u8(0x0F);
 
-    while (nblk >= 0) {
-        ComputeDotProducts_BlkBitWidth4_CompInt8<NCols, SubBlkLen, HasZeroPoint>(
-            BlkLen,
-            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
-        );
+    for (size_t n = 0; n < CountN; ++n) {
+        const std::byte* QuantAPtr = QuantA;
+        const std::byte* QuantBDataPtr = QuantBDataColPtr;
+        const float* QuantBScalePtr = QuantBScaleColPtr;
+        const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
 
-        // move to next `NCols` columns
+        float32x4_t acc0{}, acc1{};
 
-        QuantBDataColPtr += NCols * StrideQuantBData;
-        QuantBScaleColPtr += NCols * StrideQuantBScale;
-        if constexpr (HasZeroPoint) {
-            QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
+        size_t k_blks_remaining = BlockCountK;
+        for (; k_blks_remaining > 1; k_blks_remaining -= 2) {
+            const std::byte* QuantABlk0 = QuantAPtr;
+            const std::byte* QuantABlk1 = QuantABlk0 + Q8BlkSize(BlkLen);
+
+            // compute combined scale
+            const float32x4_t scale0 = vdupq_n_f32(Q8BlkScale(QuantABlk0) * QuantBScalePtr[0]);
+            const float32x4_t scale1 = vdupq_n_f32(Q8BlkScale(QuantABlk1) * QuantBScalePtr[1]);
+
+            // load B zero point
+            const int8x16_t bzp0 = vdupq_n_s8(
+                HasZeroPoint ? std::to_integer<int8_t>(QuantBZeroPointPtr[0] & std::byte{0x0F}) : 8
+            );
+            const int8x16_t bzp1 = vdupq_n_s8(
+                HasZeroPoint ? std::to_integer<int8_t>(QuantBZeroPointPtr[0] >> 4) : 8
+            );
+
+            // load A
+            const int8x16_t av0 = vld1q_s8(Q8BlkData(QuantABlk0));
+            const int8x16_t av1 = vld1q_s8(Q8BlkData(QuantABlk1));
+
+            // load B
+            const uint8x16_t bv_packed01 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+
+            const uint8x16_t bv_lo01 = vandq_u8(bv_packed01, LowMaskU8x16);
+            const uint8x16_t bv_hi01 = vshrq_n_u8(bv_packed01, 4);
+
+            int8x16_t bv0 = vreinterpretq_s8_u8(vcombine_u8(vget_low_u8(bv_lo01), vget_low_u8(bv_hi01)));
+            int8x16_t bv1 = vreinterpretq_s8_u8(vcombine_u8(vget_high_u8(bv_lo01), vget_high_u8(bv_hi01)));
+
+            // subtract B zero point
+            bv0 = vsubq_s8(bv0, bzp0);
+            bv1 = vsubq_s8(bv1, bzp1);
+
+            // quantized dot product
+            const int32x4_t dot0 = vdotq_s32(vdupq_n_s32(0), av0, bv0);
+            const int32x4_t dot1 = vdotq_s32(vdupq_n_s32(0), av1, bv1);
+
+            // convert to float
+            const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
+            const float32x4_t dot_f32_1 = vcvtq_f32_s32(dot1);
+
+            // multiply by scale and update accumulator
+            acc0 = vfmaq_f32(acc0, dot_f32_0, scale0);
+            acc1 = vfmaq_f32(acc1, dot_f32_1, scale1);
+
+            // increment block pointers
+
+            QuantAPtr += Q8BlkSize(BlkLen) * 2;
+            QuantBDataPtr += 8 * 2;
+            QuantBScalePtr += 2;
+            if constexpr (HasZeroPoint) {
+                QuantBZeroPointPtr += 1;
+            }
         }
 
-        BiasPtr += BiasPtr != nullptr ? NCols : 0;
-        SumPtr += NCols;
+        if (k_blks_remaining > 0) {
+            const std::byte* QuantABlk0 = QuantAPtr;
 
-        nblk -= NCols;
+            // compute combined scale
+            const float32x4_t scale0 = vdupq_n_f32(Q8BlkScale(QuantABlk0) * (*QuantBScalePtr));
+
+            // load B zero point
+            const int8x16_t bzp0 = vdupq_n_s8(
+                HasZeroPoint ? std::to_integer<int8_t>(QuantBZeroPointPtr[0] & std::byte{0x0F}) : 8
+            );
+
+            // load A
+            const int8x16_t av0 = vld1q_s8(Q8BlkData(QuantABlk0));
+
+            // load B
+            const uint8x8_t bv_packed0 = vld1_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+
+            const uint8x8_t bv_lo0 = vand_u8(bv_packed0, LowMaskU8x8);
+            const uint8x8_t bv_hi0 = vshr_n_u8(bv_packed0, 4);
+
+            int8x16_t bv0 = vreinterpretq_s8_u8(vcombine_u8(bv_lo0, bv_hi0));
+
+            // subtract B zero point
+            bv0 = vsubq_s8(bv0, bzp0);
+
+            // quantized dot product
+            const int32x4_t dot0 = vdotq_s32(vdupq_n_s32(0), av0, bv0);
+
+            // convert to float
+            const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
+
+            // multiply by scale and update accumulator
+            acc0 = vfmaq_f32(acc0, dot_f32_0, scale0);
+        }
+
+        *SumPtr = vaddvq_f32(acc0) + vaddvq_f32(acc1);
+        if (BiasPtr) {
+            *SumPtr += *BiasPtr;
+        }
+
+        // move to next column
+
+        QuantBDataColPtr += StrideQuantBData;
+        QuantBScaleColPtr += StrideQuantBScale;
+        if constexpr (HasZeroPoint) {
+            QuantBZeroPointColPtr += StrideQuantBZeroPoint;
+        }
+
+        BiasPtr += BiasPtr != nullptr ? 1 : 0;
+        SumPtr += 1;
     }
+}
 
-    // left over columns less than `NCols`?
-    nblk += NCols;
-    for (int64_t n = 0; n < nblk; ++n) {
-        ComputeDotProducts_BlkBitWidth4_CompInt8<1, SubBlkLen, HasZeroPoint>(
-            BlkLen,
-            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
-        );
+template <bool HasZeroPoint>
+void
+SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32(
+    const std::byte* QuantA,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias
+)
+{
+    constexpr size_t BlkBitWidth = 4;
+    constexpr size_t BlkLen = 32;
+
+    float* CRowPtr = C;
+
+    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t StrideQuantBScale = BlockCountK;
+    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
+
+    const float* BiasPtr = Bias;
+
+    const std::byte* QuantBDataColPtr = QuantBData;
+    const float* QuantBScaleColPtr = QuantBScale;
+    const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
+
+    float* SumPtr = CRowPtr;
+
+    const uint8x16_t LowMaskU8x16 = vdupq_n_u8(0x0F);
+
+    for (size_t n = 0; n < CountN; ++n) {
+        const std::byte* QuantAPtr = QuantA;
+        const std::byte* QuantBDataPtr = QuantBDataColPtr;
+        const float* QuantBScalePtr = QuantBScaleColPtr;
+        const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
+
+        float32x4_t acc0{}, acc1{};
+
+        size_t k_blks_remaining = BlockCountK;
+        for (; k_blks_remaining > 1; k_blks_remaining -= 2) {
+            const std::byte* QuantABlk0 = QuantAPtr;
+            const std::byte* QuantABlk1 = QuantABlk0 + Q8BlkSize(BlkLen);
+
+            // compute combined scale
+            const float32x4_t scale0 = vdupq_n_f32(Q8BlkScale(QuantABlk0) * QuantBScalePtr[0]);
+            const float32x4_t scale1 = vdupq_n_f32(Q8BlkScale(QuantABlk1) * QuantBScalePtr[1]);
+
+            // load B zero point
+            const int8x16_t bzp0 = vdupq_n_s8(
+                HasZeroPoint ? std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{0x0F}) : 8
+            );
+            const int8x16_t bzp1 = vdupq_n_s8(
+                HasZeroPoint ? std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4) : 8
+            );
+
+            // load A
+            const int8x16_t av_lo0 = vld1q_s8(Q8BlkData(QuantABlk0));
+            const int8x16_t av_hi0 = vld1q_s8(Q8BlkData(QuantABlk0) + 16);
+            const int8x16_t av_lo1 = vld1q_s8(Q8BlkData(QuantABlk1));
+            const int8x16_t av_hi1 = vld1q_s8(Q8BlkData(QuantABlk1) + 16);
+
+            // load B
+            const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+            const uint8x16_t bv_packed1 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr) + 16);
+
+            int8x16_t bv_lo0 = vreinterpretq_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
+            int8x16_t bv_hi0 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed0, 4));
+            int8x16_t bv_lo1 = vreinterpretq_s8_u8(vandq_u8(bv_packed1, LowMaskU8x16));
+            int8x16_t bv_hi1 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed1, 4));
+
+            // subtract B zero point
+            bv_lo0 = vsubq_s8(bv_lo0, bzp0);
+            bv_hi0 = vsubq_s8(bv_hi0, bzp0);
+            bv_lo1 = vsubq_s8(bv_lo1, bzp1);
+            bv_hi1 = vsubq_s8(bv_hi1, bzp1);
+
+            // quantized dot product
+            int32x4_t dot0{}, dot1{};
+            dot0 = vdotq_s32(vdotq_s32(dot0, av_lo0, bv_lo0), av_hi0, bv_hi0);
+            dot1 = vdotq_s32(vdotq_s32(dot1, av_lo1, bv_lo1), av_hi1, bv_hi1);
+
+            // convert to float
+            const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
+            const float32x4_t dot_f32_1 = vcvtq_f32_s32(dot1);
+
+            // multiply by scale and update accumulator
+            acc0 = vfmaq_f32(acc0, dot_f32_0, scale0);
+            acc1 = vfmaq_f32(acc1, dot_f32_1, scale1);
+
+            // increment block pointers
+
+            QuantAPtr += Q8BlkSize(BlkLen) * 2;
+            QuantBDataPtr += 16 * 2;
+            QuantBScalePtr += 2;
+            if constexpr (HasZeroPoint) {
+                QuantBZeroPointPtr += 1;
+            }
+        }
+
+        if (k_blks_remaining > 0) {
+            const std::byte* QuantABlk0 = QuantAPtr;
+
+            // compute combined scale
+            const float32x4_t scale0 = vdupq_n_f32(Q8BlkScale(QuantABlk0) * (*QuantBScalePtr));
+
+            // load B zero point
+            const int8x16_t bzp0 = vdupq_n_s8(
+                HasZeroPoint ? std::to_integer<int8_t>((*QuantBZeroPoint) & std::byte{0x0F}) : 8
+            );
+
+            // load A
+            const int8x16_t av_lo0 = vld1q_s8(Q8BlkData(QuantABlk0));
+            const int8x16_t av_hi0 = vld1q_s8(Q8BlkData(QuantABlk0) + 16);
+
+            // load B
+            const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+
+            int8x16_t bv_lo0 = vreinterpretq_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
+            int8x16_t bv_hi0 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed0, 4));
+
+            // subtract B zero point
+            bv_lo0 = vsubq_s8(bv_lo0, bzp0);
+            bv_hi0 = vsubq_s8(bv_hi0, bzp0);
+
+            // quantized dot product
+            int32x4_t dot0{};
+            dot0 = vdotq_s32(vdotq_s32(dot0, av_lo0, bv_lo0), av_hi0, bv_hi0);
+
+            // convert to float
+            const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
+
+            // multiply by scale and update accumulator
+            acc0 = vfmaq_f32(acc0, dot_f32_0, scale0);
+        }
+
+        *SumPtr = vaddvq_f32(acc0) + vaddvq_f32(acc1);
+        if (BiasPtr) {
+            *SumPtr += *BiasPtr;
+        }
+
+        // move to next column
+
+        QuantBDataColPtr += StrideQuantBData;
+        QuantBScaleColPtr += StrideQuantBScale;
+        if constexpr (HasZeroPoint) {
+            QuantBZeroPointColPtr += StrideQuantBZeroPoint;
+        }
+
+        BiasPtr += BiasPtr != nullptr ? 1 : 0;
+        SumPtr += 1;
+    }
+}
+
+template <bool HasZeroPoint>
+void
+SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias
+)
+{
+    constexpr size_t BlkBitWidth = 4;
+
+    assert(BlkLen > 32);
+    assert(BlkLen % 32 == 0);
+
+    float* CRowPtr = C;
+
+    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t StrideQuantBScale = BlockCountK;
+    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
+
+    const float* BiasPtr = Bias;
+
+    const std::byte* QuantBDataColPtr = QuantBData;
+    const float* QuantBScaleColPtr = QuantBScale;
+    const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
+
+    float* SumPtr = CRowPtr;
+
+    const uint8x16_t LowMaskU8x16 = vdupq_n_u8(0x0F);
+
+    // process blocks in 32-element sub-blocks
+    const size_t SubBlksPerBlk = BlkLen / 32;
+
+    for (size_t n = 0; n < CountN; ++n) {
+        const std::byte* QuantAPtr = QuantA;
+        const std::byte* QuantBDataPtr = QuantBDataColPtr;
+        const float* QuantBScalePtr = QuantBScaleColPtr;
+        const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
+
+        float32x4_t acc0{}, acc1{};
+
+        for (size_t k_blk_idx = 0; k_blk_idx < BlockCountK; ++k_blk_idx) {
+            // compute combined scale
+            const float32x4_t scale = vdupq_n_f32(Q8BlkScale(QuantAPtr) * (*QuantBScalePtr));
+
+            // load B zero point
+            const int8x16_t bzp = [&]() -> int8x16_t {
+                if constexpr (HasZeroPoint) {
+                    return vdupq_n_s8(
+                        ((k_blk_idx & 1) == 0) ? std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{0x0F})
+                                               : std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4)
+                    );
+                } else {
+                    return vdupq_n_s8(8);
+                }
+            }();
+
+            const int8_t* QuantADataPtr = Q8BlkData(QuantAPtr);
+
+            for (size_t sub_blk_idx = 0; sub_blk_idx < SubBlksPerBlk; sub_blk_idx += 2) {
+                // load A
+                const int8x16_t av0 = vld1q_s8(QuantADataPtr + 0);
+                const int8x16_t av1 = vld1q_s8(QuantADataPtr + 16);
+                const int8x16_t av2 = vld1q_s8(QuantADataPtr + 32);
+                const int8x16_t av3 = vld1q_s8(QuantADataPtr + 48);
+
+                // load B
+                const uint8x16_t bv_packed0 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+                const uint8x16_t bv_packed1 = vld1q_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr) + 16);
+
+                int8x16_t bv0 = vreinterpretq_s8_u8(vandq_u8(bv_packed0, LowMaskU8x16));
+                int8x16_t bv1 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed0, 4));
+                int8x16_t bv2 = vreinterpretq_s8_u8(vandq_u8(bv_packed1, LowMaskU8x16));
+                int8x16_t bv3 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed1, 4));
+
+                // subtract B zero point
+                bv0 = vsubq_s8(bv0, bzp);
+                bv1 = vsubq_s8(bv1, bzp);
+                bv2 = vsubq_s8(bv2, bzp);
+                bv3 = vsubq_s8(bv3, bzp);
+
+                // quantized dot product
+                int32x4_t dot0{}, dot1{};
+                dot0 = vdotq_s32(vdotq_s32(dot0, av0, bv0), av1, bv1);
+                dot1 = vdotq_s32(vdotq_s32(dot1, av2, bv2), av3, bv3);
+
+                // convert to float
+                const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
+                const float32x4_t dot_f32_1 = vcvtq_f32_s32(dot1);
+
+                // multiply by scale and update accumulator
+                acc0 = vfmaq_f32(acc0, dot_f32_0, scale);
+                acc1 = vfmaq_f32(acc1, dot_f32_1, scale);
+
+                // increment block data pointers to next sub-block
+                QuantADataPtr += 16 * 4;
+                QuantBDataPtr += 16 * 2;
+            }
+
+            // increment other block pointers
+
+            QuantAPtr += Q8BlkSize(BlkLen);
+            QuantBScalePtr += 1;
+
+            if constexpr (HasZeroPoint) {
+                QuantBZeroPointPtr += ((k_blk_idx & 1) == 0) ? 0 : 1;
+            }
+        }
+
+        *SumPtr = vaddvq_f32(acc0) + vaddvq_f32(acc1);
+        if (BiasPtr) {
+            *SumPtr += *BiasPtr;
+        }
 
         // move to next column
 
@@ -940,26 +1134,34 @@ SQ4BitGemmM1Kernel_CompInt8_DispatchOnBlkLen(
     const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountN,
-    size_t CountK,
     size_t BlockStrideQuantB,
     const float* Bias
 )
 {
     if (BlkLen == 16) {
-        SQ4BitGemmM1Kernel_CompInt8_Impl<4, 16, HasZeroPoint>(
-            BlkLen,
+        SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen16<HasZeroPoint>(
             QuantA,
             QuantBData,
             QuantBScale,
             QuantBZeroPoint,
             C,
             CountN,
-            CountK,
+            BlockStrideQuantB,
+            Bias
+        );
+    } else if (BlkLen == 32) {
+        SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32<HasZeroPoint>(
+            QuantA,
+            QuantBData,
+            QuantBScale,
+            QuantBZeroPoint,
+            C,
+            CountN,
             BlockStrideQuantB,
             Bias
         );
     } else {
-        SQ4BitGemmM1Kernel_CompInt8_Impl<4, 32, HasZeroPoint>(
+        SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32<HasZeroPoint>(
             BlkLen,
             QuantA,
             QuantBData,
@@ -967,7 +1169,6 @@ SQ4BitGemmM1Kernel_CompInt8_DispatchOnBlkLen(
             QuantBZeroPoint,
             C,
             CountN,
-            CountK,
             BlockStrideQuantB,
             Bias
         );
@@ -984,7 +1185,7 @@ SQ4BitGemmM1Kernel_CompInt8(
     const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountN,
-    size_t CountK,
+    size_t /*CountK*/,
     size_t BlockStrideQuantB,
     const float* Bias
 )
@@ -998,7 +1199,6 @@ SQ4BitGemmM1Kernel_CompInt8(
             QuantBZeroPoint,
             C,
             CountN,
-            CountK,
             BlockStrideQuantB,
             Bias
         );
@@ -1011,7 +1211,6 @@ SQ4BitGemmM1Kernel_CompInt8(
             QuantBZeroPoint,
             C,
             CountN,
-            CountK,
             BlockStrideQuantB,
             Bias
         );
