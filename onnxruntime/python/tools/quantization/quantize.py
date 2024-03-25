@@ -20,6 +20,7 @@ from .quant_utils import (
     get_model_path_from_input_model,
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
+    save_and_reload_model_with_shape_infer,
 )
 from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 
@@ -439,7 +440,11 @@ def quantize_static(
         qdq_ops = list(QDQRegistry.keys())
         op_types_to_quantize = list(set(q_linear_ops + qdq_ops))
 
-    model = model_input if isinstance(model_input, onnx.ModelProto) else load_model_with_shape_infer(Path(model_input))
+    model = (
+        save_and_reload_model_with_shape_infer(model_input)
+        if isinstance(model_input, onnx.ModelProto)
+        else load_model_with_shape_infer(Path(model_input))
+    )
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
@@ -615,7 +620,11 @@ def quantize_dynamic(
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = model_input if isinstance(model_input, onnx.ModelProto) else load_model_with_shape_infer(Path(model_input))
+    model = (
+        save_and_reload_model_with_shape_infer(model_input)
+        if isinstance(model_input, onnx.ModelProto)
+        else load_model_with_shape_infer(Path(model_input))
+    )
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
