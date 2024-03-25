@@ -401,7 +401,7 @@ stages:
             arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
             workingDirectory: '$(Build.BinariesDirectory)'
 
-        - ${{ eq(parameters.buildJava, true) }}:
+        - ${{ if eq(parameters.buildJava, 'true') }}:
           - template: flex-downloadPipelineArtifact.yml
             parameters:
               ArtifactName: "'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'"
