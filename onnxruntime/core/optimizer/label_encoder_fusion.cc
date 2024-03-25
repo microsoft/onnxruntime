@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/label_encoder_fusion.h"
 #include <map>
 #include <vector>
 #include <string>
 
+#include "core/optimizer/label_encoder_fusion.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
