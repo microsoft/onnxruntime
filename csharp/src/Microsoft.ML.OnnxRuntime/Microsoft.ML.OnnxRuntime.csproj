@@ -39,7 +39,7 @@
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Azure') AND
                             '$(IncludeMobileTargets)' == 'true'">
-    <MobileTargets>$(MobileTargets);net6.0-android;net6.0-ios</MobileTargets>
+    <MobileTargets>$(MobileTargets);net6.0-android;net6.0-ios;net6.0-maccatalyst</MobileTargets>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training' AND
@@ -121,9 +121,9 @@
     <IsAndroidTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' OR
                                 $(TargetFramework.StartsWith('monoandroid'))">true</IsAndroidTarget>
     <IsIOSTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' OR
+                            $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst' OR
                             $(TargetFramework.StartsWith('xamarinios'))">true</IsIOSTarget>
-    <IsMacTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos' OR
-                            $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">true</IsMacTarget>
+    <IsMacTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos'">true</IsMacTarget>
   </PropertyGroup>
 
   <!-- Enable training APIs for the build. The native package must be
