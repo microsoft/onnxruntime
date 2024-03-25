@@ -20,9 +20,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    # We need macOS-12 to run the Android emulator for now.
-    # https://github.com/actions/runner-images/issues/7671
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   variables:
   - name: runCodesignValidationInjection
     value: false
