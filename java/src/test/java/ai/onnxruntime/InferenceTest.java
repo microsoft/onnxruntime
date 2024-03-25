@@ -20,10 +20,14 @@ import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode;
 import ai.onnxruntime.OrtSession.SessionOptions.OptLevel;
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -334,6 +338,33 @@ public class InferenceTest {
       } catch (OrtException e) {
         // System.out.println(e.getMessage());
         // pass
+      }
+    }
+  }
+
+  @Test
+  public void createSessionFromByteBuffer() throws IOException, OrtException {
+    Path modelPath = TestHelpers.getResourcePath("/squeezenet.onnx");
+    try (RandomAccessFile file = new RandomAccessFile(modelPath.toFile(), "r");
+        FileChannel channel = file.getChannel()) {
+      MappedByteBuffer modelBuffer = channel.map(MapMode.READ_ONLY, 0, channel.size());
+      try (OrtSession.SessionOptions options = new SessionOptions();
+          OrtSession session = env.createSession(modelBuffer, options)) {
+        assertNotNull(session);
+        assertEquals(1, session.getNumInputs()); // 1 input node
+        Map<String, NodeInfo> inputInfoList = session.getInputInfo();
+        assertNotNull(inputInfoList);
+        assertEquals(1, inputInfoList.size());
+        NodeInfo input = inputInfoList.get("data_0");
+        assertEquals("data_0", input.getName()); // input node name
+        assertTrue(input.getInfo() instanceof TensorInfo);
+        TensorInfo inputInfo = (TensorInfo) input.getInfo();
+        assertEquals(OnnxJavaType.FLOAT, inputInfo.type);
+        int[] expectedInputDimensions = new int[] {1, 3, 224, 224};
+        assertEquals(expectedInputDimensions.length, inputInfo.shape.length);
+        for (int i = 0; i < expectedInputDimensions.length; i++) {
+          assertEquals(expectedInputDimensions[i], inputInfo.shape[i]);
+        }
       }
     }
   }
