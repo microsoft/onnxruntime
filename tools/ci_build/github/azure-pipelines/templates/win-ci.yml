@@ -200,9 +200,12 @@ stages:
             Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Force
             Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
             Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.pdb -File -Recurse | ForEach-Object { $_.Delete() }
+            Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.lib -File -Recurse | ForEach-Object { $_.Delete() }
+            Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
+            Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime4j_jni.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
             cd $(Agent.TempDirectory)/RelWithDebInfo
             tree /f
-          displayName: 'Copy test needs files'
+          displayName: 'Copy native test needs files'
           workingDirectory: '$(Build.BinariesDirectory)'
         - task: PublishPipelineArtifact@1
           inputs:
@@ -247,44 +250,6 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
-
-      - task: CmdLine@2
-        condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-        displayName: 'Add symbols and notices to Java'
-        inputs:
-          script: |
-            @echo on
-            cd $(Build.SourcesDirectory)\java
-            call $(Build.SourcesDirectory)\java\gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-            if %errorlevel% neq 0 exit /b %errorlevel%
-            cd $(Build.BinariesDirectory)\RelWithDebInfo
-            set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
-            mkdir %NATIVE_FOLDER%
-            echo "Directories created"
-            copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-            pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-            set artifact_id=${{ parameters.java_artifact_id }}
-            jar xf onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
-            move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-$(OnnxRuntimeVersion).pom
-            rd /s /q META-INF
-            popd
-            copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
-            copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
-            copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\Privacy.md
-            copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ThirdPartyNotices.txt
-            @echo $(OnnxRuntimeGitCommitHash) > $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\GIT_COMMIT_ID
-            pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
-            jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime.pdb
-            jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
-            jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
-            popd
-
-      - task: PublishBuildArtifacts@1
-        condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-        displayName: 'Publish Java temp binaries'
-        inputs:
-          pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
         - task: CredScan@3
@@ -397,22 +362,46 @@ stages:
             workingDirectory: '$(Build.BinariesDirectory)'
 
         - ${{ if eq(parameters.buildJava, 'true') }}:
-          - template: flex-downloadPipelineArtifact.yml
-            parameters:
-              ArtifactName: "'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'"
-              StepName: 'Download Pipeline Artifact - Windows Java ${{parameters.artifact_name_suffix}} Build'
-              TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
-              SpecificArtifact: ${{ parameters.SpecificArtifact }}
-              BuildId: ${{ parameters.BuildId }}
-
           - task: CmdLine@2
-            displayName: 'Run Java Test'
+            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+            displayName: 'Add symbols and notices to Java'
             inputs:
               script: |
                 @echo on
+                cd $(Build.SourcesDirectory)\java
+                call $(Build.SourcesDirectory)\java\gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+                if %errorlevel% neq 0 exit /b %errorlevel%
+                cd $(Build.BinariesDirectory)\RelWithDebInfo
+                set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
+                mkdir %NATIVE_FOLDER%
+                echo "Directories created"
+                copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+                pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+                set artifact_id=${{ parameters.java_artifact_id }}
+                jar xf onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
+                move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-$(OnnxRuntimeVersion).pom
+                rd /s /q META-INF
+                popd
+                copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
+                copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
+                copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\Privacy.md
+                copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ThirdPartyNotices.txt
+                @echo $(OnnxRuntimeGitCommitHash) > $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\GIT_COMMIT_ID
+                pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
+                jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime.pdb
+                jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
+                jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
+                popd
                 pushd $(Build.SourcesDirectory)\java\build\resources\test
                 rd /s /q ai\onnxruntime\native
                 jar uvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
                 popd
                 rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
                 dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+
+          - task: PublishBuildArtifacts@1
+            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+            displayName: 'Publish Java temp binaries'
+            inputs:
+              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
