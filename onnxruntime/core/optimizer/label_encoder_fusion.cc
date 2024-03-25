@@ -10,8 +10,6 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
 namespace onnxruntime {
 
 #define KEYS_ATTR_NAME(T) ("keys_" + GetTypename<T>() + "s")
@@ -48,7 +46,7 @@ bool LabelEncoderFusion::IsValidForFusion(const Node& node, const Node& next_nod
 Transform that fuses two consecutive LabelEncoder nodes
 into one LabelEncoder node.
  */
-bool LabelEncoderFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
+bool LabelEncoderFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& /*logger*/) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(
           node, "LabelEncoder", {4}, "ai.onnx.ml") ||
       node.GetOutputEdgesCount() != 1) {
@@ -146,7 +144,7 @@ Status LabelEncoderFusion::ApplyHelper(
         graph, node, next_node, rule_effect);          \
   }
 
-Status LabelEncoderFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
+Status LabelEncoderFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   auto& next_node = *graph.GetNode(node.OutputNodesBegin()->Index());
 
   FUSE_IF_VALID(std::string, std::string, std::string);
