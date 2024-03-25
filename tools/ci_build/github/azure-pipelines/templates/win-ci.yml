@@ -199,6 +199,7 @@ stages:
             New-Item $(Agent.TempDirectory)/RelWithDebInfo -Force -ItemType Directory
             Get-ChildItem -Path "$(Build.BinariesDirectory)/RelWithDebInfo" -File  | ForEach-Object { Copy-Item $_.FullName -Destination $(Agent.TempDirectory)/RelWithDebInfo -Force }
             Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
+            Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.pdb -File -Recurse | ForEach-Object { $_.Delete() }
             cd $(Agent.TempDirectory)/RelWithDebInfo
             tree /f
           displayName: 'Copy test needs files'
