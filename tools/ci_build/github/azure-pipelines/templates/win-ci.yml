@@ -198,7 +198,7 @@ stages:
         - powershell: |
             New-Item $(Agent.TempDirectory)/RelWithDebInfo -Force -ItemType Directory
             Get-ChildItem -Path "$(Build.BinariesDirectory)/RelWithDebInfo" -File  | ForEach-Object { Copy-Item $_.FullName -Destination $(Agent.TempDirectory)/RelWithDebInfo -Force }
-            Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo" -Destination $(Agent.TempDirectory)/RelWithDebInfo -Recurse -Force
+            Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
             cd $(Agent.TempDirectory)/RelWithDebInfo
             tree /f
           displayName: 'Copy test needs files'
@@ -355,10 +355,13 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-        - script:
+        - powershell: |
             tree /f
-          displayName: 'List built files'
-          workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
+            $drive = -join((Get-Location).Drive.Name,':')
+            $file = 'CTestTestfile.cmake'
+            (Get-Content $file ) -replace 'C:', '$drive' | Set-Content $file
+          displayName: 'List built files and update CTestTestfile.cmake drive letter'
+          workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/'
 
         - template: telemetry-steps.yml
 
