@@ -278,11 +278,6 @@ stages:
             jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
             jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
             popd
-            pushd $(Build.SourcesDirectory)\java\build\classes\java\test
-            if %errorlevel% neq 0 exit /b %errorlevel%
-            jar cvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
-            if %errorlevel% neq 0 exit /b %errorlevel%
-            popd
 
       - task: PublishBuildArtifacts@1
         condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
