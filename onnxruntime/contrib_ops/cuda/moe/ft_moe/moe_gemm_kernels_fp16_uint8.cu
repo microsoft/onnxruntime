@@ -25,7 +25,6 @@
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
-
 namespace ort_fastertransformer {
-template class MoeGemmRunner<float, float>;
+template class MoeGemmRunner<half, uint8_t>;
 }  // namespace ort_fastertransformer
