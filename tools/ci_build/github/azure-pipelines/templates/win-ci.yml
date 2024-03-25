@@ -365,12 +365,12 @@ stages:
 
         - template: telemetry-steps.yml
 
-      - ${{ if eq(parameters['buildJava'], 'true') }}:
-        - task: JavaToolInstaller@0
-          inputs:
-            versionSpec: "11"
-            jdkArchitectureOption: ${{ parameters.buildArch }}
-            jdkSourceOption: 'PreInstalled'
+        - ${{ if eq(parameters['buildJava'], 'true') }}:
+          - task: JavaToolInstaller@0
+            inputs:
+              versionSpec: "11"
+              jdkArchitectureOption: ${{ parameters.buildArch }}
+              jdkSourceOption: 'PreInstalled'
 
         - task: UsePythonVersion@0
           inputs:
@@ -392,6 +392,7 @@ stages:
               ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
                 DownloadCUDA: true
                 DownloadTRT: true
+
         - powershell: |
             Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
           displayName: 'Append dotnet x86  Directory to PATH'
