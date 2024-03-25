@@ -325,8 +325,8 @@ protected:
     auto p_event_list = GetEventListForUniqueCorrelationId(unique_correlation_id);
     if (p_event_list != nullptr) {
       p_event_list->insert(p_event_list->end(),
-                           std::make_move_iterator(events.begin()),
-                           std::make_move_iterator(events.end()));
+                           std::make_move_iterator(events.begin()).base(),
+                           std::make_move_iterator(events.end()).base());
     }
   }
 
@@ -379,8 +379,8 @@ class GPUProfilerBase : public EpProfiler {
   void MergeEvents(std::map<uint64_t, Events>& events_to_merge, Events& events) {
     Events merged_events;
 
-    auto event_iter = std::make_move_iterator(events.begin());
-    auto event_end = std::make_move_iterator(events.end());
+    auto event_iter = std::make_move_iterator(events.begin()).base();
+    auto event_end = std::make_move_iterator(events.end()).base();
     for (auto& map_iter : events_to_merge) {
       if (map_iter.second.empty()) {
         continue;
@@ -423,8 +423,8 @@ class GPUProfilerBase : public EpProfiler {
       }
 
       merged_events.insert(merged_events.end(),
-                           std::make_move_iterator(map_iter.second.begin()),
-                           std::make_move_iterator(map_iter.second.end()));
+                           std::make_move_iterator(map_iter.second.begin()).base(),
+                           std::make_move_iterator(map_iter.second.end()).base());
     }
 
     // move any remaining events

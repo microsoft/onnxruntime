@@ -108,7 +108,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
                            " is smaller than requested bytes of ", rounded_bytes);
   }
 
-  auto safe_alloc = [this](size_t alloc_bytes) {
+  auto safe_alloc = [this](size_t alloc_bytes) -> void* {
     void* new_mem = nullptr;
     ORT_TRY {
       new_mem = device_allocator_->Alloc(alloc_bytes);
