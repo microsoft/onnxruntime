@@ -54,7 +54,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * the state of this buffer without first getting the reference via {@link #getBufferRef()}.
    *
    * @return True if the buffer in this OnnxTensor was allocated by it on construction (i.e., it is
-   *     a copy of a user buffer.)
+   *     a copy of a user buffer or array.)
    */
   public boolean ownsBuffer() {
     return this.ownsBuffer;
@@ -62,8 +62,8 @@ public class OnnxTensor extends OnnxTensorLike {
 
   /**
    * Returns a reference to the buffer which backs this {@code OnnxTensor}. If the tensor is not
-   * backed by a buffer (i.e., it was created from a Java array, or is backed by memory allocated by
-   * ORT) this method returns an empty {@link Optional}.
+   * backed by a buffer (i.e., it is backed by memory allocated by ORT) this method returns an empty
+   * {@link Optional}.
    *
    * <p>Changes to the buffer elements will be reflected in the native {@code OrtValue}, this can be
    * used to repeatedly update a single tensor for multiple different inferences without allocating
@@ -77,7 +77,115 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return A reference to the buffer.
    */
   public Optional<Buffer> getBufferRef() {
-    return Optional.ofNullable(buffer);
+    return Optional.ofNullable(duplicate(buffer));
+  }
+
+  /**
+   * Duplicates the buffer to ensure concurrent reads don't disrupt the buffer position. Concurrent
+   * writes will modify the underlying memory in a racy way, don't do that.
+   *
+   * <p>Can be replaced to a call to buf.duplicate() in Java 9+.
+   *
+   * @param buf The buffer to duplicate.
+   * @return A copy of the buffer which refers to the same underlying memory, but has an independent
+   *     position, limit and mark.
+   */
+  private static Buffer duplicate(Buffer buf) {
+    if (buf instanceof ByteBuffer) {
+      return ((ByteBuffer) buf).duplicate().order(ByteOrder.nativeOrder());
+    } else if (buf instanceof ShortBuffer) {
+      return ((ShortBuffer) buf).duplicate();
+    } else if (buf instanceof IntBuffer) {
+      return ((IntBuffer) buf).duplicate();
+    } else if (buf instanceof LongBuffer) {
+      return ((LongBuffer) buf).duplicate();
+    } else if (buf instanceof FloatBuffer) {
+      return ((FloatBuffer) buf).duplicate();
+    } else if (buf instanceof DoubleBuffer) {
+      return ((DoubleBuffer) buf).duplicate();
+    } else {
+      throw new IllegalStateException("Unknown buffer type " + buf.getClass());
+    }
+  }
+
+  /**
+   * Checks that the buffer is the right type for the {@code info.type}, and if it's a {@link
+   * ByteBuffer} then convert it to the right type. If it's not convertible it throws {@link
+   * IllegalStateException}.
+   *
+   * <p>Note this method converts FP16 and BFLOAT16 ShortBuffers into FP32 FloatBuffers.
+   *
+   * @param buf The buffer to convert.
+   * @return The buffer with the expected type.
+   */
+  private Buffer castBuffer(Buffer buf) {
+    switch (info.type) {
+      case FLOAT:
+        if (buf instanceof FloatBuffer) {
+          return buf;
+        } else if (buf instanceof ByteBuffer) {
+          return ((ByteBuffer) buf).asFloatBuffer();
+        }
+        break;
+      case DOUBLE:
+        if (buf instanceof DoubleBuffer) {
+          return buf;
+        } else if (buf instanceof ByteBuffer) {
+          return ((ByteBuffer) buf).asDoubleBuffer();
+        }
+        break;
+      case BOOL:
+      case INT8:
+      case UINT8:
+        if (buf instanceof ByteBuffer) {
+          return buf;
+        }
+        break;
+      case BFLOAT16:
+        if (buf instanceof ShortBuffer) {
+          ShortBuffer bf16Buf = (ShortBuffer) buf;
+          return Fp16Conversions.convertBf16BufferToFloatBuffer(bf16Buf);
+        } else if (buf instanceof ByteBuffer) {
+          ShortBuffer bf16Buf = ((ByteBuffer) buf).asShortBuffer();
+          return Fp16Conversions.convertBf16BufferToFloatBuffer(bf16Buf);
+        }
+        break;
+      case FLOAT16:
+        if (buf instanceof ShortBuffer) {
+          ShortBuffer fp16Buf = (ShortBuffer) buf;
+          return Fp16Conversions.convertFp16BufferToFloatBuffer(fp16Buf);
+        } else if (buf instanceof ByteBuffer) {
+          ShortBuffer fp16Buf = ((ByteBuffer) buf).asShortBuffer();
+          return Fp16Conversions.convertFp16BufferToFloatBuffer(fp16Buf);
+        }
+        break;
+      case INT16:
+        if (buf instanceof ShortBuffer) {
+          return buf;
+        } else if (buf instanceof ByteBuffer) {
+          return ((ByteBuffer) buf).asShortBuffer();
+        }
+        break;
+      case INT32:
+        if (buf instanceof IntBuffer) {
+          return buf;
+        } else if (buf instanceof ByteBuffer) {
+          return ((ByteBuffer) buf).asIntBuffer();
+        }
+        break;
+      case INT64:
+        if (buf instanceof LongBuffer) {
+          return buf;
+        } else if (buf instanceof ByteBuffer) {
+          return ((ByteBuffer) buf).asLongBuffer();
+        }
+        break;
+    }
+    throw new IllegalStateException(
+        "Invalid buffer type for cast operation, found "
+            + buf.getClass()
+            + " expected something convertible to "
+            + info.type);
   }
 
   @Override
@@ -133,15 +241,26 @@ public class OnnxTensor extends OnnxTensorLike {
       Object carrier = info.makeCarrier();
       if (info.getNumElements() > 0) {
         // If the tensor has values copy them out
-        getArray(OnnxRuntime.ortApiHandle, nativeHandle, carrier);
+        if (info.type == OnnxJavaType.STRING) {
+          // We read the strings out from native code in a flat array and then reshape
+          // to the desired output shape if necessary.
+          getStringArray(OnnxRuntime.ortApiHandle, nativeHandle, (String[]) carrier);
+          if (info.shape.length != 1) {
+            carrier = OrtUtil.reshape((String[]) carrier, info.shape);
+          }
+        } else {
+          // Wrap ORT owned memory in buffer, otherwise use our reference
+          Buffer buf;
+          if (buffer == null) {
+            buf = castBuffer(getBuffer());
+          } else {
+            buf = castBuffer(duplicate(buffer));
+          }
+          // Copy out buffer into arrays
+          OrtUtil.fillArrayFromBuffer(info, buf, 0, carrier);
+        }
       }
-      if ((info.type == OnnxJavaType.STRING) && (info.shape.length != 1)) {
-        // We read the strings out from native code in a flat array and then reshape
-        // to the desired output shape.
-        return OrtUtil.reshape((String[]) carrier, info.shape);
-      } else {
-        return carrier;
-      }
+      return carrier;
     }
   }
 
@@ -175,8 +294,8 @@ public class OnnxTensor extends OnnxTensorLike {
   public ByteBuffer getByteBuffer() {
     checkClosed();
     if (info.type != OnnxJavaType.STRING) {
-      ByteBuffer buffer = getBuffer(OnnxRuntime.ortApiHandle, nativeHandle);
-      ByteBuffer output = ByteBuffer.allocate(buffer.capacity());
+      ByteBuffer buffer = getBuffer();
+      ByteBuffer output = ByteBuffer.allocate(buffer.capacity()).order(ByteOrder.nativeOrder());
       output.put(buffer);
       output.rewind();
       return output;
@@ -201,12 +320,12 @@ public class OnnxTensor extends OnnxTensorLike {
       output.rewind();
       return output;
     } else if (info.type == OnnxJavaType.FLOAT16) {
-      // if it's fp16 we need to copy it out by hand.
+      // if it's fp16 we need to convert it.
       ByteBuffer buf = getBuffer();
       ShortBuffer buffer = buf.asShortBuffer();
       return Fp16Conversions.convertFp16BufferToFloatBuffer(buffer);
     } else if (info.type == OnnxJavaType.BFLOAT16) {
-      // if it's bf16 we need to copy it out by hand.
+      // if it's bf16 we need to convert it.
       ByteBuffer buf = getBuffer();
       ShortBuffer buffer = buf.asShortBuffer();
       return Fp16Conversions.convertBf16BufferToFloatBuffer(buffer);
@@ -331,7 +450,7 @@ public class OnnxTensor extends OnnxTensorLike {
 
   private native boolean getBool(long apiHandle, long nativeHandle) throws OrtException;
 
-  private native void getArray(long apiHandle, long nativeHandle, Object carrier)
+  private native void getStringArray(long apiHandle, long nativeHandle, String[] carrier)
       throws OrtException;
 
   private native void close(long apiHandle, long nativeHandle);
@@ -387,21 +506,32 @@ public class OnnxTensor extends OnnxTensorLike {
               info);
         }
       } else {
+        Buffer buf;
         if (info.shape.length == 0) {
-          data = OrtUtil.convertBoxedPrimitiveToArray(info.type, data);
-          if (data == null) {
+          buf = OrtUtil.convertBoxedPrimitiveToBuffer(info.type, data);
+          if (buf == null) {
             throw new OrtException(
                 "Failed to convert a boxed primitive to an array, this is an error with the ORT Java API, please report this message & stack trace. JavaType = "
                     + info.type
                     + ", object = "
                     + data);
           }
+        } else {
+          buf = OrtUtil.convertArrayToBuffer(info, data);
         }
         return new OnnxTensor(
-            createTensor(
-                OnnxRuntime.ortApiHandle, allocator.handle, data, info.shape, info.onnxType.value),
+            createTensorFromBuffer(
+                OnnxRuntime.ortApiHandle,
+                allocator.handle,
+                buf,
+                0,
+                info.type.size * info.numElements,
+                info.shape,
+                info.onnxType.value),
             allocator.handle,
-            info);
+            info,
+            buf,
+            true);
       }
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor with a closed OrtAllocator.");
@@ -627,7 +757,26 @@ public class OnnxTensor extends OnnxTensorLike {
    */
   public static OnnxTensor createTensor(OrtEnvironment env, ShortBuffer data, long[] shape)
       throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape);
+    return createTensor(env, env.defaultAllocator, data, shape, OnnxJavaType.INT16);
+  }
+
+  /**
+   * Create an OnnxTensor backed by a direct ShortBuffer. The buffer should be in nativeOrder.
+   *
+   * <p>If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
+   * of the tensor. Uses the default allocator.
+   *
+   * @param env The current OrtEnvironment.
+   * @param data The tensor data.
+   * @param shape The shape of tensor.
+   * @param type The type of the data in the buffer, can be either {@link OnnxJavaType#INT16},
+   *     {@link OnnxJavaType#FLOAT16} or {@link OnnxJavaType#BFLOAT16}.
+   * @return An OnnxTensor of the required shape.
+   * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
+   */
+  public static OnnxTensor createTensor(
+      OrtEnvironment env, ShortBuffer data, long[] shape, OnnxJavaType type) throws OrtException {
+    return createTensor(env, env.defaultAllocator, data, shape, type);
   }
 
   /**
@@ -640,15 +789,23 @@ public class OnnxTensor extends OnnxTensorLike {
    * @param allocator The allocator to use.
    * @param data The tensor data.
    * @param shape The shape of tensor.
+   * @param type The type of the data in the buffer, can be either {@link OnnxJavaType#INT16},
+   *     {@link OnnxJavaType#FLOAT16} or {@link OnnxJavaType#BFLOAT16}.
    * @return An OnnxTensor of the required shape.
    * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
    */
   static OnnxTensor createTensor(
-      OrtEnvironment env, OrtAllocator allocator, ShortBuffer data, long[] shape)
+      OrtEnvironment env, OrtAllocator allocator, ShortBuffer data, long[] shape, OnnxJavaType type)
       throws OrtException {
     if (!allocator.isClosed()) {
-      OnnxJavaType type = OnnxJavaType.INT16;
-      return createTensor(type, allocator, data, shape);
+      if ((type == OnnxJavaType.BFLOAT16)
+          || (type == OnnxJavaType.FLOAT16)
+          || (type == OnnxJavaType.INT16)) {
+        return createTensor(type, allocator, data, shape);
+      } else {
+        throw new IllegalArgumentException(
+            "Only int16, float16 or bfloat16 tensors can be created from ShortBuffer.");
+      }
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
@@ -767,10 +924,6 @@ public class OnnxTensor extends OnnxTensorLike {
         tuple.data,
         tuple.isCopy);
   }
-
-  private static native long createTensor(
-      long apiHandle, long allocatorHandle, Object data, long[] shape, int onnxType)
-      throws OrtException;
 
   private static native long createTensorFromBuffer(
       long apiHandle,
