@@ -43,9 +43,10 @@ stages:
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: > 
-          --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" 
-          --enable_cuda_profiling 
+          --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8"
+          --enable_cuda_profiling
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
           --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
         msbuildPlatform: x64
         isX86: false
@@ -67,7 +68,6 @@ stages:
           --enable_pybind --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8"
           --skip_onnx_tests
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
-          --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -108,7 +108,6 @@ stages:
           --cuda_home="$(Agent.TempDirectory)\v11.8"
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
-          --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo

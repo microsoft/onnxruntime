@@ -151,6 +151,7 @@ stages:
               --enable_pybind --build_java \
               --use_cache \
               --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75 \
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON \
               --cmake_extra_defines  onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON; \
                 ccache -sv; \
                 ccache -z"
