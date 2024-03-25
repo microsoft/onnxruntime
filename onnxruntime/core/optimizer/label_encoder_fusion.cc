@@ -3,7 +3,9 @@
 
 #include "core/optimizer/label_encoder_fusion.h"
 #include <sys/_types/_pid_t.h>
-#include <iostream>
+#include <map>
+#include <vector>
+#include <string>
 
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_utils.h"
