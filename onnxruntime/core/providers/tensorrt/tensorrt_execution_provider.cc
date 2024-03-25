@@ -587,28 +587,28 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 
       switch (tensor_type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-          auto input = std::make_unique<int32_t[]>(shape_size);
-          auto status = GetShapeOfShapeTensor<int32_t>(input_tensor, input.get(), shape_size, stream);
+          auto buffer = std::make_unique<int32_t[]>(shape_size);
+          auto status = GetShapeOfShapeTensor<int32_t>(input_tensor, buffer.get(), shape_size, stream);
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
           }
           shape_tensor_values[input_name].resize(shape_size);
           for (int j = 0; j < shape_size; ++j) {
-            shape_tensor_values[input_name][j] = input[j];
-            values[j] = input[j];
+            shape_tensor_values[input_name][j] = buffer[j];
+            values[j] = buffer[j];
           }
           break;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-          auto input = std::make_unique<int64_t[]>(shape_size);
-          auto status = GetShapeOfShapeTensor<int64_t>(input_tensor, input.get(), shape_size, stream);
+          auto buffer = std::make_unique<int64_t[]>(shape_size);
+          auto status = GetShapeOfShapeTensor<int64_t>(input_tensor, buffer.get(), shape_size, stream);
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
           }
           shape_tensor_values_int64[input_name].resize(shape_size);
           for (int j = 0; j < shape_size; ++j) {
-            shape_tensor_values_int64[input_name][j] = input[j];
-            values[j] = static_cast<int32_t>(input[j]);
+            shape_tensor_values_int64[input_name][j] = buffer[j];
+            values[j] = static_cast<int32_t>(buffer[j]);
           }
           break;
         }
