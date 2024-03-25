@@ -128,5 +128,146 @@ Status ScatterNDImpl(
   return Status::OK();
 }
 
+template <class T>
+struct FuncAdd {
+  __device__ __inline__ void operator()(T* start_addr, T value) const {
+    atomic_add(start_addr, value);
+  }
+};
+
+template <class T>
+struct FuncMul {
+  __device__ __inline__ void operator()(T* start_addr, T value) const {
+    atomic_mul(start_addr, value);
+  }
+};
+
+template <class T>
+struct FuncMax {
+  __device__ __inline__ void operator()(T* start_addr, T value) const {
+    atomic_max(start_addr, value);
+  }
+};
+
+template <class T>
+struct FuncMin {
+  __device__ __inline__ void operator()(T* start_addr, T value) const {
+    atomic_min(start_addr, value);
+  }
+};
+
+template <typename T, typename TFunc>
+__global__ void _ScatterNDKernelReduction(
+    T* output_data,
+    const size_t num_indices,
+    const int64_t* indices_data,
+    const int64_t last_index_dimension,
+    const int64_t* element_counts_and_input_dims,
+    const T* updates_data,
+    const size_t num_updates_elements,
+    const TFunc func) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, num_indices);
+
+  // Compute the base offset into the output data
+  int64_t data_offset = 0;
+
+  size_t indices_start = last_index_dimension * id;
+  size_t indices_end = indices_start + last_index_dimension;
+  for (size_t i = indices_start; i < indices_end; ++i) {
+    int64_t index = indices_data[i];
+
+    int64_t element_count_dim = element_counts_and_input_dims[i - indices_start];
+    int64_t dim_value = element_counts_and_input_dims[i - indices_start + last_index_dimension];
+
+    // Clamp the index if out of range
+    // This would have been an error in the CPU kernel, but throwing in the CUDA EP
+    // is hard. This is the approach taken by other frameworks for out of bound indices
+    // in their corresponding GPU backends as well.
+    // index >= -dim_value && index < dim_value
+
+    if (index >= 0) {
+      if (index >= dim_value) {
+        index = dim_value - 1;
+      }
+    } else {
+      if (index < -dim_value) {
+        index = 0;
+      } else {
+        index += dim_value;
+      }
+    }
+
+    data_offset += (index * element_count_dim);
+  }
+
+  const T* updates_data_base = updates_data + num_updates_elements * id;
+  T* output_data_base = output_data + data_offset;
+
+  for (size_t i = 0; i < num_updates_elements; ++i) {
+    func(output_data_base + i, updates_data_base[i]);
+  }
+}
+
+#define SCATTERND_TYPE_CASE(FuncReduction, T)                                           \
+  _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>( \
+      reinterpret_cast<T*>(output_data),                                                \
+      num_indices,                                                                      \
+      indices_data,                                                                     \
+      last_index_dimension,                                                             \
+      element_counts_and_input_dims,                                                    \
+      reinterpret_cast<const T*>(updates_data),                                         \
+      num_updates_elements,                                                             \
+      FuncReduction<T>());
+
+#define SCATTERND_REDUCTION_CASE(FuncReduction)                                                                   \
+  switch (element_type) {                                                                                         \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                                                              \
+      SCATTERND_TYPE_CASE(FuncReduction, float)                                                                   \
+      break;                                                                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:                                                            \
+      SCATTERND_TYPE_CASE(FuncReduction, half)                                                                    \
+      break;                                                                                                      \
+    default:                                                                                                      \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator."); \
+  }                                                                                                               \
+  break;
+
+Status ScatterNDImplReduction(
+    cudaStream_t stream,
+    void* output_data,
+    const int32_t element_type,
+    const size_t num_indices,
+    const int64_t* indices_data,
+    const int64_t last_index_dimension,
+    const int64_t* element_counts_and_input_dims,
+    const void* updates_data,
+    const size_t num_updates_elements,
+    ScatterNDReduction reduction) {
+  if (num_indices == 0)
+    return Status::OK();
+
+  // Parallelize on number of indices
+  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(num_indices) / GridDim::maxThreadsPerBlock));
+
+  switch (reduction) {
+    case ScatterNDReduction::Add:
+      SCATTERND_REDUCTION_CASE(FuncAdd)
+      break;
+    case ScatterNDReduction::Mul:
+      SCATTERND_REDUCTION_CASE(FuncMul)
+      break;
+    case ScatterNDReduction::Min:
+      SCATTERND_REDUCTION_CASE(FuncMin)
+      break;
+    case ScatterNDReduction::Max:
+      SCATTERND_REDUCTION_CASE(FuncMax)
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reduction ", static_cast<int>(reduction), " not implemented for ScatterND operator.");
+  }
+
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime
