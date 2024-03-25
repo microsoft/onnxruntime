@@ -222,6 +222,8 @@ stages:
     buildJava: true
     java_artifact_id: onnxruntime_gpu
     CudaVersion: 11.8
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 # CUDA with Tensorrt
 - template: templates/win-ci.yml
