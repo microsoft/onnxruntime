@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/label_encoder_fusion.h"
-#include <sys/_types/_pid_t.h>
 #include <map>
 #include <vector>
 #include <string>
@@ -10,8 +9,6 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
-#include "core/framework/op_kernel_info.h"
-#include "onnx/proto_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
