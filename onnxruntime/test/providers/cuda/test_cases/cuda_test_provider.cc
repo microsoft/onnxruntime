@@ -6,12 +6,11 @@
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 
+#include "gtest/gtest.h"
 #include <memory>
 #include <chrono>
 
 #include "core/common/gsl.h"
-#include "gtest/gtest.h"
-
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -64,8 +63,15 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
 
   void cuda__Impl_Cast(void*, const float*, double*, size_t) override {}
 
-  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
-  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
+  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode,
+                        const char* msg, const char* file, const int line) override {
+    return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName,
+                                      cudaError(successCode), msg, file, line);
+  }
+  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode,
+                     const char* msg, const char* file, const int line) override {
+    CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line);
+  }
 
   void CopyGpuToCpu(void*, const void*, const size_t, const OrtMemoryInfo&, const OrtMemoryInfo&) override {}
 
@@ -93,7 +99,9 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     return nullptr;
   }
 
-  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t, size_t, onnxruntime::ArenaExtendStrategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo&, const OrtArenaCfg*) override {
+  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t, size_t, onnxruntime::ArenaExtendStrategy,
+                                                  onnxruntime::CUDAExecutionProviderExternalAllocatorInfo&,
+                                                  const OrtArenaCfg*) override {
     return nullptr;
   }
 

@@ -12,14 +12,13 @@
  */
 
 #include "blkq4_fp16_gemm_sm80.h"
+
+#include "gtest/gtest.h"
+#include <thrust/host_vector.h>
 #include <random>
 
 #include "core/framework/float16.h"
 #include "core/mlas/inc/mlas_q4.h"
-
-#include <thrust/host_vector.h>
-
-#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

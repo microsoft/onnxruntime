@@ -14,13 +14,14 @@
 
 #pragma once
 
+#include "test/cuda_host/blkq4_fp16_quant_sm80.h"
+
 #include <random>
+#include <thrust/host_vector.h>
 
 #include "core/common/common.h"
 #include "core/mickey/blk_q4/f16_prepack_sm80.h"
 #include "core/util/matrix_layout.h"
-#include "test/cuda_host/blkq4_fp16_quant_sm80.h"
-#include <thrust/host_vector.h>
 
 namespace onnxruntime {
 namespace cuda {

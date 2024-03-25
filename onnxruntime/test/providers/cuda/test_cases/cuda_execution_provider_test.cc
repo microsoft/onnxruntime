@@ -6,12 +6,13 @@
 //  1. slow down performance critical applications and
 //  2. increase binary size of ORT.
 
+#include "gtest/gtest.h"
+#include <iostream>
+
 #include "core/framework/run_options.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
-#include "gtest/gtest.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace cuda {
