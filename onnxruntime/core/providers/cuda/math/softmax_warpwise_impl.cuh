@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
@@ -54,7 +54,6 @@ __device__ __forceinline__ void warp_reduce(acc_t* sum) {
     }
   }
 }
-
 
 // The softmax_warp_* methods perform softmax forward and backward propagation on samples spanning the fast dimension.
 // Each sample contains element_count scalar elements. element_count can be any integer value <= 1024.
@@ -163,7 +162,6 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   }
 }
 
-
 // softmax_warp_forward uses register to store data in fp32 even when data is fp16, which will cause register resource oversubscription when data is large,
 // and will lead to low CUDA warp occupancy and thus a poor kernel performance.
 // softmax_warp_forward_resource_efficient is implemented to solve the issue, it caches data in original data type, and casts it into fp32 when needed,
@@ -176,17 +174,18 @@ __global__ void softmax_warp_forward_resource_efficient(output_t* dst, const inp
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
 
   int local_idx = threadIdx.x;
-  src +=  blockIdx.x * stride + local_idx;
-  dst +=  blockIdx.x * stride + local_idx;
+  src += blockIdx.x * stride + local_idx;
+  dst += blockIdx.x * stride + local_idx;
   extern __shared__ unsigned char smem[];
-  input_t (&elements)[WARP_ITERATIONS][WARP_SIZE] = *reinterpret_cast<input_t (*)[WARP_ITERATIONS][WARP_SIZE]>(smem);
+  input_t(&elements)[WARP_ITERATIONS][WARP_SIZE] = *reinterpret_cast<input_t(*)[WARP_ITERATIONS][WARP_SIZE]>(smem);
 #pragma unroll
   for (int it = 0; it < WARP_ITERATIONS; ++it) {
     int element_index = local_idx + it * WARP_SIZE;
     if (element_index < element_count) {
       elements[it][local_idx] = src[it * WARP_SIZE];
     } else {
-      elements[it][local_idx] = -std::numeric_limits<input_t>::infinity();
+      static_assert(!std::is_same<acc_t, half>::value, "acc_t can no be half, as the infinity function will return 0 instead of inf");
+      elements[it][local_idx] = (input_t)-std::numeric_limits<acc_t>::infinity();
     }
   }
   // compute max_value
