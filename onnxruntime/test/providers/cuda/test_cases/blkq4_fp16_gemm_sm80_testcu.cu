@@ -114,11 +114,14 @@ void compute_gemm_ref(
 template <
     typename Element,
     typename LayoutCutlass,
-    typename Layout = std::conditional_t<std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value, ColumnMajorLayout, RowMajorLayout>>
+    typename Layout = std::conditional_t<std::is_same<LayoutCutlass,
+                                                      cutlass::layout::ColumnMajor>::value,
+                                         ColumnMajorLayout, RowMajorLayout>>
 __forceinline__
     MatrixRef<Element, Layout, true>
     make_MatrixRef(cutlass::HostTensor<Element, LayoutCutlass> const& tensor) {
-  static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value || std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
+  static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value ||
+                std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
   auto shape = make_Position(tensor.extent().row(), tensor.extent().column());
   auto* ptr = const_cast<typename std::remove_const<Element>::type*>(tensor.host_data());
   return MatrixRef<Element, Layout, true>(ptr, tensor.capacity(), shape);
@@ -127,11 +130,13 @@ __forceinline__
 template <
     typename Element,
     typename LayoutCutlass,
-    typename Layout = std::conditional_t<std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value, ColumnMajorLayout, RowMajorLayout>>
+    typename Layout = std::conditional_t<std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value,
+                                         ColumnMajorLayout, RowMajorLayout>>
 __forceinline__
     MatrixRef<Element const, Layout, true>
     make_ConstMatrixRef(cutlass::HostTensor<Element, LayoutCutlass> const& tensor) {
-  static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value || std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
+  static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value ||
+                std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
   auto shape = make_Position(tensor.extent().row(), tensor.extent().column());
   return MatrixRef<Element const, Layout, true>(tensor.host_data(), tensor.capacity(), shape);
 }
@@ -175,7 +180,8 @@ void run_blkq4_gemm(int m, int n, int k) {
 
   const cutlass::gemm::GemmCoord problem_size = {m, n, k};
   const auto q_weight_shape = cutlass::make_Coord(problem_size.k() / 2, problem_size.n());
-  const auto meta_shape = cutlass::make_Coord(problem_size.k() / QuantBlocking::kRow, problem_size.n() / QuantBlocking::kColumn);
+  const auto meta_shape = cutlass::make_Coord(problem_size.k() / QuantBlocking::kRow, problem_size.n() /
+                                                                                          QuantBlocking::kColumn);
 
   //
   // Generate quantized and dequantizeed input matrix B [K, N]
