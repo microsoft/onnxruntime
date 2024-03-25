@@ -13,7 +13,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", JsepSupportedDataTypes()),
-    DepthToSpace<true, true>);
+    DepthToSpace<true>);
 
 ONNX_OPERATOR_KERNEL_EX(
     DepthToSpace,
@@ -22,7 +22,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", JsepSupportedDataTypes()),
-    DepthToSpace<true, false>);
+    DepthToSpace<false>);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     DepthToSpace,
@@ -31,7 +31,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", JsepSupportedDataTypes()),
-    DepthToSpace<true, true>);
+    DepthToSpace<true>);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     DepthToSpace,
@@ -40,7 +40,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", JsepSupportedDataTypes()),
-    DepthToSpace<true, false>);
+    DepthToSpace<false>);
 
 }  // namespace js
 }  // namespace onnxruntime

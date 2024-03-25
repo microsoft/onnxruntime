@@ -11,30 +11,27 @@
 namespace onnxruntime {
 namespace js {
 
-template <bool has_mode, bool is_channels_last>
+template <bool is_channels_last>
 class DepthToSpace final : public JsKernel {
  public:
   DepthToSpace(const OpKernelInfo& info) : JsKernel(info) {
-    ORT_ENFORCE(info.GetAttr<int64_t>("blocksize", &blocksize_).IsOK(), "Attribute blocksize is not set.");
-    std::string mode = has_mode ? info.GetAttrOrDefault<std::string>("mode", "DCR") : "DCR";
+    int64_t blocksize;
+    std::string mode;
+    ORT_ENFORCE(info.GetAttr<int64_t>("blocksize", &blocksize).IsOK(), "Attribute blocksize is not set.");
+    mode = info.GetAttrOrDefault<std::string>("mode", "DCR");
 
     if (mode != "DCR" && mode != "CRD") {
       ORT_THROW("Invalid mode attribute value: ", mode);
     }
-    mode_ = std::move(mode);
 
     JSEP_INIT_KERNEL_ATTRIBUTE(DepthToSpace, ({
                                  "blocksize" : $1,
                                  "mode" : UTF8ToString($2),
                                  "format" : $3 ? "NHWC" : "NCHW"
                                }),
-                               static_cast<int32_t>(blocksize_),
-                               mode_.c_str(), static_cast<int32_t>(is_channels_last));
+                               static_cast<int32_t>(blocksize),
+                               mode.c_str(), static_cast<int32_t>(is_channels_last));
   }
-
- private:
-  int64_t blocksize_;
-  std::string mode_;
 };
 
 }  // namespace js

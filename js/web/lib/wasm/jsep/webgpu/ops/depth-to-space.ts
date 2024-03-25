@@ -57,15 +57,12 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
     perm = isDCRmode ? [0, 3, 4, 1, 5, 2] : [0, 1, 4, 2, 5, 3];
   }
   const reshapedInputTensor = inputTensor.reshape(shape);
-
-  const shapeBeforePerm = reshapedInputTensor.dims;
-  const shapeAfterPerm = ShapeUtil.sortBasedOnPerm(shapeBeforePerm, perm);
-
-  const inputDataType = inputTensor.dataType;
-  const reshapedInput = inputVariable('a', inputDataType, shapeBeforePerm);
-  const permedOutput = outputVariable('output', inputDataType, shapeAfterPerm);
-
   const reshapedInputRank = reshapedInputTensor.dims.length;
+  const inputDataType = inputTensor.dataType;
+
+  const reshapedInput = inputVariable('a', inputDataType, reshapedInputRank);
+  const permedOutput = outputVariable('output', inputDataType, reshapedInputRank);
+
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(reshapedInput, permedOutput)}
 
@@ -87,11 +84,13 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
       const outputShape = isChannelLast ? [n, h * blocksize, w * blocksize, c / (blocksize ** 2)] :
                                           [n, c / (blocksize ** 2), h * blocksize, w * blocksize];
       const outputSize = ShapeUtil.size(outputShape);
+      const shapeBeforePerm = reshapedInputTensor.dims;
+      const shapeAfterPerm = ShapeUtil.sortBasedOnPerm(shapeBeforePerm, perm);
       return {
         outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
         dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
         programUniforms:
-            [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputs[0].dims, outputShape)],
+            [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(shapeBeforePerm, shapeAfterPerm)],
       };
     },
     getShaderSource,
