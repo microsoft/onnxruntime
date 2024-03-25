@@ -454,7 +454,7 @@ SQ4BitGemmM1Kernel_CompFp32_Impl(
     }
 }
 
-MLAS_FORCEINLINE void
+void
 SQ4BitGemmM1Kernel_CompFp32(
     size_t BlkLen,
     const float* A,
@@ -497,7 +497,7 @@ SQ4BitGemmM1Kernel_CompFp32(
     }
 }
 
-MLAS_FORCEINLINE void
+void
 Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlkLen,
     float* FpData,
@@ -666,7 +666,7 @@ QuantizeBlock(
     }
 }
 
-void MLASCALL
+void
 QuantizeARow_CompInt8(
     size_t BlkLen,
     const float* A,
@@ -1175,7 +1175,6 @@ SQ4BitGemmM1Kernel_CompInt8_DispatchOnBlkLen(
     }
 }
 
-MLAS_FORCEINLINE
 void
 SQ4BitGemmM1Kernel_CompInt8(
     size_t BlkLen,
