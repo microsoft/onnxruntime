@@ -6496,3 +6496,39 @@ def test_bert_result_with_layerwise_recompute():
     torch.cuda.synchronize()
     if original_val is not None:
         os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+
+
+def test_bert_memory_inspection(caplog):
+    original_val = os.environ.get("ORTMODULE_PRINT_MEMORY_STATS", None)
+
+    # Create PyTorch model with dropout disabled.
+    pt_model = _get_bert_for_sequence_classification_model(
+        "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
+    )
+
+    os.environ["ORTMODULE_PRINT_MEMORY_STATS"] = "1"
+    pt_model.eval()  # Put it in evaluate mode by intention, in case some initialization in ORTModule use the module.is_training for its checks by mistake.
+    ort_model = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO)  # The logged memory info is in INFO level.
+    )
+
+    def run_step(model, x, y, z):
+        outputs = model(x, y, None, None, None, None, z)
+        loss = outputs[0]
+        loss.backward()
+
+    ort_model.train()
+    for _ in range(32):
+        x, y, z = _get_bert_for_sequence_classification_sample_data_with_random_shapes("cuda")
+        run_step(ort_model, x, y, z)
+
+    info_records = [
+        record.message for record in caplog.records if record.levelname == "INFO" and "(MiB) | phase:" in record.message
+    ]
+
+    assert len(info_records) == 4 * 11
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_PRINT_MEMORY_STATS"] = original_val
