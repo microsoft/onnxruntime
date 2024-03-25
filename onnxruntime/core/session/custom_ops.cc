@@ -870,7 +870,7 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     int* output_index = nullptr;
     size_t len = op->GetMayInplace(&input_index, &output_index);
     if (len > 0) {
-      for (int i = 0; i < len; i++) def_builder.MayInplace(input_index[i], output_index[i]);
+      for (size_t i = 0; i < len; i++) def_builder.MayInplace(input_index[i], output_index[i]);
       free(input_index);
       free(output_index);
     }
