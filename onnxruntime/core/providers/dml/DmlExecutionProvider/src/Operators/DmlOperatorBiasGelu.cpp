@@ -23,20 +23,31 @@ public:
         ML_CHECK_VALID_ARGUMENT(inputDescs.size() == 2);
         ML_CHECK_VALID_ARGUMENT(outputDescs.size() == 1);
 
-        DML_ACTIVATION_GELU_OPERATOR_DESC geluDesc = {};
-        DML_OPERATOR_DESC geluOpDesc = { DML_OPERATOR_ACTIVATION_GELU, &geluDesc };
+        if (kernelCreationContext.IsInputValid(1))
+        {
+            DML_ACTIVATION_GELU_OPERATOR_DESC geluDesc = {};
+            DML_OPERATOR_DESC geluOpDesc = { DML_OPERATOR_ACTIVATION_GELU, &geluDesc };
 
-        DML_ELEMENT_WISE_ADD1_OPERATOR_DESC addDesc = {};
-        addDesc.ATensor = &inputDescs[0];
-        addDesc.BTensor = &inputDescs[1];
-        addDesc.FusedActivation = &geluOpDesc;
-        addDesc.OutputTensor = &outputDescs[0];
-        DML_OPERATOR_DESC addOpDesc = { DML_OPERATOR_ELEMENT_WISE_ADD1, &addDesc };
-
-        SetDmlOperatorDesc(addOpDesc, kernelCreationContext);
+            DML_ELEMENT_WISE_ADD1_OPERATOR_DESC addDesc = {};
+            addDesc.ATensor = &inputDescs[0];
+            addDesc.BTensor = &inputDescs[1];
+            addDesc.FusedActivation = &geluOpDesc;
+            addDesc.OutputTensor = &outputDescs[0];
+            DML_OPERATOR_DESC addOpDesc = { DML_OPERATOR_ELEMENT_WISE_ADD1, &addDesc };
+            SetDmlOperatorDesc(addOpDesc, kernelCreationContext);
+        }
+        else
+        {
+            DML_ACTIVATION_GELU_OPERATOR_DESC geluDesc;
+            geluDesc.InputTensor = &inputDescs[0];
+            geluDesc.OutputTensor = &outputDescs[0];
+            DML_OPERATOR_DESC geluOpDesc = { DML_OPERATOR_ACTIVATION_GELU, &geluDesc };
+            SetDmlOperatorDesc(geluOpDesc, kernelCreationContext);
+        }
     }
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(BiasGelu, DmlOperatorBiasGelu);
+DML_OP_DEFINE_CREATION_FUNCTION(FastGelu, DmlOperatorBiasGelu);
 
 } // namespace Dml
