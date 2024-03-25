@@ -17,7 +17,6 @@ from .quant_utils import (
     QuantFormat,
     QuantizationMode,
     QuantType,
-    get_model_path_from_input_model,
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
     save_and_reload_model_with_shape_infer,
@@ -494,7 +493,14 @@ def quantize_static(
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-        model_input = get_model_path_from_input_model(model_input, str(Path(quant_tmp_dir) / "model_input.onnx"))
+        if isinstance(model_input, onnx.ModelProto):
+            output_path = str(Path(quant_tmp_dir) / "model_input.onnx")
+            onnx.save_model(
+                model_input,
+                output_path,
+                save_as_external_data=True,
+            )
+            model_input = output_path
 
         calibrator = create_calibrator(
             Path(model_input),

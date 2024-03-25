@@ -3,7 +3,6 @@ import os
 import tempfile
 from enum import Enum
 from pathlib import Path
-from typing import Union
 
 import numpy
 import onnx
@@ -13,8 +12,6 @@ from onnx.helper import make_graph, make_model, make_node, make_tensor_value_inf
 from onnx.reference import ReferenceEvaluator
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
-
-from .onnx_model import ONNXModel
 
 try:
     from onnx.reference.custom_element_types import float8e4m3fn
@@ -752,14 +749,6 @@ def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
     raise ValueError(
         f"Only float type is supported. Weights {initializer.name} is {type_to_name[initializer.data_type]}"
     )
-
-
-def get_model_path_from_input_model(input_model: Union[str, Path, onnx.ModelProto], output_path: str) -> str:
-    if not isinstance(input_model, onnx.ModelProto):
-        return str(input_model)
-    onnx_model = ONNXModel(input_model)
-    onnx_model.save_model_to_file(output_path, True)
-    return output_path
 
 
 def add_quant_suffix(tensor_name: str) -> str:

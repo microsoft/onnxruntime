@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Union
 
 import onnx
 
@@ -17,8 +16,8 @@ from .fusion_lpnorm import FusionLpNormalization
 
 
 def qnn_preprocess_model(
-    model_input: Union[str, Path, onnx.ModelProto],
-    model_output: Union[str, Path],
+    model_input: str | Path | onnx.ModelProto,
+    model_output: str | Path,
     fuse_layernorm: bool = False,
     save_as_external_data: bool = False,
     all_tensors_to_one_file: bool = False,

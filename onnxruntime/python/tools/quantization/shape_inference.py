@@ -17,7 +17,7 @@ import onnxruntime
 from onnxruntime.python.tools.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-from .quant_utils import add_pre_process_metadata, get_model_path_from_input_model
+from .quant_utils import add_pre_process_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,17 @@ def quant_pre_process(
                     onnx.save(model, input_model)
                 model = None
 
-            input_model = get_model_path_from_input_model(input_model, str(Path(quant_tmp_dir) / "model_input.onnx"))
+            if isinstance(input_model, onnx.ModelProto):
+                input_model = str(Path(quant_tmp_dir) / "model_input.onnx")
+                onnx.save_model(
+                    model,
+                    input_model,
+                    save_as_external_data=True,
+                    all_tensors_to_one_file=all_tensors_to_one_file,
+                    size_threshold=external_data_size_threshold,
+                    convert_attribute=False,
+                )
+
             inferred_model_path = str(temp_path / "onnx_shape_inferred.onnx")
             onnx.shape_inference.infer_shapes_path(input_model, inferred_model_path)
             model = onnx.load(inferred_model_path)
