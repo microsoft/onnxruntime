@@ -6500,7 +6500,7 @@ def test_bert_result_with_layerwise_recompute():
 
 
 @pytest.mark.parametrize("softmax_compute_type", [torch.float16, torch.float32])
-def test_overriden_softmax_export(softmax_compute_type):
+def test_overridden_softmax_export(softmax_compute_type):
     class CustomSoftmaxExportTest(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -6510,7 +6510,9 @@ def test_overriden_softmax_export(softmax_compute_type):
 
     device = "cuda"
     pt_model = CustomSoftmaxExportTest().to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="overriden_softmax_export"))
+    ort_model = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="overridden_softmax_export")
+    )
 
     def run_step(model, attn_weight):
         prediction = model(attn_weight)
