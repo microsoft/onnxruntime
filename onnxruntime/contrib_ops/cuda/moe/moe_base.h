@@ -172,20 +172,6 @@ class MoEBase {
     return Status::OK();
   }
 
-  Status CheckInputs(MoEParameters parameters,
-                     const Tensor* input,
-                     const Tensor* router_probs,
-                     const Tensor* fc1_experts_weights,
-                     const Tensor* fc1_experts_bias_optional,
-                     const Tensor* fc2_experts_weights,
-                     const Tensor* fc2_experts_bias_optional,
-                     const Tensor* fc3_experts_weights_optional,
-                     const Tensor* fc3_experts_bias_optional) const {
-    return CheckInputs(parameters, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
-                       fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
-                       fc3_experts_bias_optional, false);
-  }
-
  protected:
   MoEBase(const OpKernelInfo& op_kernel_info) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());

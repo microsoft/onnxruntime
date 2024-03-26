@@ -48,7 +48,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
                                   fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
-                                  fc3_experts_bias_optional));
+                                  fc3_experts_bias_optional, false));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   auto stream = context->GetComputeStream();
