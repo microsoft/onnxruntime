@@ -64,3 +64,25 @@ index 0aab3e26..0f859267 100644
 +#endif
 +
  #endif // ! ONNX_ONNX_PB_H
+diff --git a/onnx/common/file_utils.h b/onnx/common/file_utils.h
+index b847798e..a6c31904 100644
+--- a/onnx/common/file_utils.h
++++ b/onnx/common/file_utils.h
+@@ -6,7 +6,6 @@
+
+ #pragma once
+
+-#include <filesystem>
+ #include <fstream>
+ #include <string>
+
+@@ -17,8 +16,7 @@ namespace ONNX_NAMESPACE {
+
+ template <typename T>
+ void LoadProtoFromPath(const std::string proto_path, T& proto) {
+-  std::filesystem::path proto_u8_path = std::filesystem::u8path(proto_path);
+-  std::fstream proto_stream(proto_u8_path, std::ios::in | std::ios::binary);
++  std::fstream proto_stream(proto_path, std::ios::in | std::ios::binary);
+   if (!proto_stream.good()) {
+     fail_check("Unable to open proto file: ", proto_path, ". Please check if it is a valid proto. ");
+   }
