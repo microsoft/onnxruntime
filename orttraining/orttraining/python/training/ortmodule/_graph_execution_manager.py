@@ -58,7 +58,16 @@ class GraphExecutionManager(GraphExecutionInterface):
         fallback_manager: _FallbackManager,
         logger: logging.Logger,
     ):
-        """Manages construction and execution of ONNX graphs"""
+        """Manages construction and execution of ONNX graphs.
+
+        Args:
+            module: The flatten PyTorch module to be executed.
+            debug_options: Debug options for ORTModule.
+            export_mode: export mode, should be torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL.
+            fallback_manager: Fallback manager to handle exceptions.
+            logger: Logger for ORTModule.
+
+        """
 
         super().__init__(module._original_module)
 

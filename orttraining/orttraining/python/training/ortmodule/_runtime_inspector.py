@@ -47,6 +47,13 @@ class RuntimeInspector:
     """
 
     def __init__(self, logger: Logger, module: torch.nn.Module, training: bool):
+        """Initialize runtime inspector.
+
+        Args:
+            logger: Logger.
+            module: Torch module.
+            training: a boolean indicating whether the module is in training mode.
+        """
         self._logger = logger
 
         self.input_density_ob: Union[InputDensityObserver, None] = None
@@ -480,6 +487,13 @@ class MemoryObserver:
     NORMALIZER_UNIT = "MiB"
 
     def __init__(self, m: torch.nn.Module, logger: Logger, training: bool):
+        """Initialize memory observer.
+
+        Args:
+            m: Torch module.
+            logger: Logger.
+            training: a boolean indicating whether the module is in training mode.
+        """
         self._logger = logger
         self._is_enabled = True
 
