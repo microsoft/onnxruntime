@@ -184,8 +184,9 @@ __global__ void softmax_warp_forward_resource_efficient(output_t* dst, const inp
     if (element_index < element_count) {
       elements[it][local_idx] = src[it * WARP_SIZE];
     } else {
-      static_assert(!std::is_same<acc_t, half>::value, "acc_t can no be half, as the infinity function will return 0 instead of inf");
-      elements[it][local_idx] = (input_t)-std::numeric_limits<acc_t>::infinity();
+      static_assert(std::numeric_limits<acc_t>::has_infinity,
+                    "type of acc_t should have infinity to avoid infinity function return 0");
+      elements[it][local_idx] = static_cast<input_t>(-std::numeric_limits<acc_t>::infinity());
     }
   }
   // compute max_value
