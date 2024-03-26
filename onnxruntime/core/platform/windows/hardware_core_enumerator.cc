@@ -15,7 +15,8 @@ struct LogicalProcessorInformation {
 
 struct CoreCounter {
   uint32_t PhysicalCores = 0;
-  uint32_t SocDieCores = 0;
+  uint32_t LLCCores = 0;
+
 };
 
 static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RELATIONSHIP relationship) {
@@ -42,7 +43,7 @@ uint32_t CountSetBits(DWORD input) {
   return c;
 }
 
-static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
+static CoreCounter GetCoreInfo() {
   auto logicalProcessorInformation = GetLogicalProcessorInfos(RelationAll);
 
   CoreCounter cores;
@@ -73,17 +74,18 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
 
     read += currentProcessorInfo->Size;
   }
+  //Cores with L2 and LLC cache levels = # Physical Cores - # logical cores without LLC
+  cores.LLCCores = cores.PhysicalCores - CountSetBits(dwLevel2GroupMask & ~dwLevel3GroupMask);
 
-  cores.SocDieCores = CountSetBits(dwLevel2GroupMask & ~dwLevel3GroupMask);
   return cores;
 }
 
 uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of physical cores = # of P cores + # of E Cores + # of Soc Cores.
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
-  auto cores = GetNumberOPhysicalAndEngineeringCores();
-  // We want to use the number of physical cores, but exclude soc cores
-  return cores.PhysicalCores - cores.SocDieCores;
+  auto cores = GetCoreInfo();
+
+  return cores.LLCCores;
 }
 
 }  // namespace onnxruntime
