@@ -82,7 +82,6 @@ jobs:
     condition: and(succeeded(), eq('$(Agent.Diagnostic)', 'true'))
   - script: |
       mkdir $(Agent.TempDirectory)\web\test_multi_browsers\02
-      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
       npm test -- suite0 -b=wasm,webgl -e=firefox --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\02
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Firefox)'
