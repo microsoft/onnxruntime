@@ -26,8 +26,8 @@ extern TensorrtLogger& GetTensorrtLogger();
  * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
-  static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
-  static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+  static thread_local std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+  static thread_local std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain.get());
     return Status::OK();
