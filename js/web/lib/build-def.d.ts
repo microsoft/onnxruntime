@@ -34,6 +34,16 @@ interface BuildDefinitions {
    * defines whether to disable training APIs in WebAssembly backend.
    */
   readonly DISABLE_TRAINING: boolean;
+
+  /**
+   * defines whether to enable code splitting in the build.
+   */
+  readonly CODE_SPLITTING: boolean;
+
+  /**
+   * a placeholder for import.meta.url in ESM.
+   */
+  readonly IMPORT_META_URL: string;
 }
 
 declare const BUILD_DEFS: BuildDefinitions;

@@ -48,6 +48,8 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
   'BUILD_DEFS.DISABLE_TRAINING': 'true',
+  'BUILD_DEFS.CODE_SPLITTING': 'false',
+  'BUILD_DEFS.IMPORT_META_URL': 'import.meta.url',
 };
 
 const COPYRIGHT_HEADER = `/*!
@@ -239,15 +241,28 @@ async function buildOrt({
   };
   // #endregion
 
+  // When output format is esm, we use code splitting to split the output into multiple files:
+  // - [bundle-name].js
+  // - [bundle-name].proxy.worker.js
+  // - ort[-training]-wasm[-simd][-threaded][.jsep].js
+  // - ort-wasm-threaded.worker.js
+  const external = isNode ? ['onnxruntime-common'] : [];
+  const plugins = isNode ? [] : [excludeNodejsImports];
+  if (format === 'esm') {
+    define['BUILD_DEFS.CODE_SPLITTING'] = 'true';
+    external.push('../ort-*.js');
+  } else {
+    plugins.push(proxyWorkerHandler, wasmThreadedHandler, emscriptenThreadedJsHandler);
+  }
+
   await buildBundle({
     entryPoints: ['web/lib/index.ts'],
     outfile: `web/dist/${outputBundleName}.js`,
     platform: isNode ? 'node' : 'browser',
     format,
     globalName: 'ort',
-    plugins: isNode ? undefined :
-                      [excludeNodejsImports, proxyWorkerHandler, wasmThreadedHandler, emscriptenThreadedJsHandler],
-    external: isNode ? ['onnxruntime-common'] : undefined,
+    plugins,
+    external,
     define,
     sourcemap: isProduction ? 'linked' : 'inline',
     minify: isProduction,
@@ -295,12 +310,13 @@ async function main() {
    * add one build task
    */
   const addBuildTask = async (task: Promise<void>) => {
-    if (DEBUG) {
-      // in DEBUG mode, build sequentially
-      await task;
-    } else {
-      buildTasks.push(task);
-    }
+    await task;
+    // if (DEBUG) {
+    //   // in DEBUG mode, build sequentially
+    //   await task;
+    // } else {
+    //   buildTasks.push(task);
+    // }
   };
   /**
    * add all 6 build tasks for web bundles. Includes:
@@ -387,51 +403,51 @@ async function main() {
     // ort.all[.min].js
     await addAllWebBuildTasks({outputBundleName: 'ort.all'});
 
-    // ort[.min].js
-    await addAllWebBuildTasks({
-      outputBundleName: 'ort',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true'},
-    });
-    // ort.webgpu[.min].js
-    await addAllWebBuildTasks({
-      outputBundleName: 'ort.webgpu',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
-    });
-    // ort.wasm[.min].js
-    await addAllWebBuildTasks({
-      outputBundleName: 'ort.wasm',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
-    });
-    // ort.webgl[.min].js
-    await addAllWebBuildTasks({
-      outputBundleName: 'ort.webgl',
-      define: {
-        ...DEFAULT_DEFINE,
-        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
-        'BUILD_DEFS.DISABLE_WASM': 'true',
-      },
-    });
-    // ort.wasm-core[.min].js
-    await addAllWebBuildTasks({
-      outputBundleName: 'ort.wasm-core',
-      define: {
-        ...DEFAULT_DEFINE,
-        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
-        'BUILD_DEFS.DISABLE_WEBGL': 'true',
-        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
-      },
-    });
-    // ort.training.wasm[.min].js
-    await addAllWebBuildTasks({
-      outputBundleName: 'ort.training.wasm',
-      define: {
-        ...DEFAULT_DEFINE,
-        'BUILD_DEFS.DISABLE_TRAINING': 'false',
-        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
-        'BUILD_DEFS.DISABLE_WEBGL': 'true',
-      },
-    });
+    // // ort[.min].js
+    // await addAllWebBuildTasks({
+    //   outputBundleName: 'ort',
+    //   define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true'},
+    // });
+    // // ort.webgpu[.min].js
+    // await addAllWebBuildTasks({
+    //   outputBundleName: 'ort.webgpu',
+    //   define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
+    // });
+    // // ort.wasm[.min].js
+    // await addAllWebBuildTasks({
+    //   outputBundleName: 'ort.wasm',
+    //   define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
+    // });
+    // // ort.webgl[.min].js
+    // await addAllWebBuildTasks({
+    //   outputBundleName: 'ort.webgl',
+    //   define: {
+    //     ...DEFAULT_DEFINE,
+    //     'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+    //     'BUILD_DEFS.DISABLE_WASM': 'true',
+    //   },
+    // });
+    // // ort.wasm-core[.min].js
+    // await addAllWebBuildTasks({
+    //   outputBundleName: 'ort.wasm-core',
+    //   define: {
+    //     ...DEFAULT_DEFINE,
+    //     'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+    //     'BUILD_DEFS.DISABLE_WEBGL': 'true',
+    //     'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+    //     'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
+    //   },
+    // });
+    // // ort.training.wasm[.min].js
+    // await addAllWebBuildTasks({
+    //   outputBundleName: 'ort.training.wasm',
+    //   define: {
+    //     ...DEFAULT_DEFINE,
+    //     'BUILD_DEFS.DISABLE_TRAINING': 'false',
+    //     'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+    //     'BUILD_DEFS.DISABLE_WEBGL': 'true',
+    //   },
+    // });
   }
 
   if (BUNDLE_MODE === 'dev' || BUNDLE_MODE === 'perf') {
@@ -447,6 +463,10 @@ async function main() {
     await fs.writeFile(path.resolve(__dirname, '../dist/cjs', 'package.json'), '{"type": "commonjs"}');
     await fs.writeFile(path.resolve(__dirname, '../dist/esm', 'package.json'), '{"type": "module"}');
   }
+
+  await fs.copyFile(
+      path.resolve(__dirname, '../lib/wasm/binding/ort-wasm-simd.jsep.js'),
+      path.resolve(__dirname, '../dist/ort-wasm-simd.jsep.js'));
 }
 
 void main();

@@ -4,23 +4,27 @@
 import * as path from 'node:path';
 import {Env} from 'onnxruntime-common';
 
+import {esmLoaderImport} from './binding/esm-loader/loader.js';
 import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 let ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule>;
+let ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule>;
 
-if (!BUILD_DEFS.DISABLE_TRAINING) {
-  ortWasmFactory = require('./binding/ort-training-wasm-simd.js');
-} else {
-  ortWasmFactory =
-      BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
+if (!BUILD_DEFS.CODE_SPLITTING) {
+  if (!BUILD_DEFS.DISABLE_TRAINING) {
+    ortWasmFactory = require('./binding/ort-training-wasm-simd.js');
+  } else {
+    ortWasmFactory =
+        BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
+  }
+
+  ortWasmFactoryThreaded = !BUILD_DEFS.DISABLE_WASM_THREAD ?
+      (BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm-threaded.js') :
+                                   require('./binding/ort-wasm-simd-threaded.jsep.js')) :
+      ortWasmFactory;
 }
-
-const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> = !BUILD_DEFS.DISABLE_WASM_THREAD ?
-    (BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm-threaded.js') :
-                                 require('./binding/ort-wasm-simd-threaded.jsep.js')) :
-    ortWasmFactory;
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 let wasm: OrtWasmModule|undefined;
@@ -135,6 +139,13 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const wasmFileName = getWasmFileName(useSimd, useThreads);
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[wasmFileName] : undefined;
 
+  if (BUILD_DEFS.CODE_SPLITTING) {
+    ortWasmFactory = await esmLoaderImport(useThreads);
+  } else {
+    if (useThreads) {
+      ortWasmFactory = ortWasmFactoryThreaded;
+    }
+  }
   let isTimeout = false;
 
   const tasks: Array<Promise<void>> = [];
@@ -151,18 +162,19 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   // promise for module initialization
   tasks.push(new Promise((resolve, reject) => {
-    const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
     const config: Partial<OrtWasmModule> = {
       locateFile: (fileName: string, scriptDirectory: string) => {
         if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && fileName.endsWith('.worker.js') &&
             typeof Blob !== 'undefined') {
-          return URL.createObjectURL(new Blob(
-              [
-                // This require() function is handled by esbuild plugin to load file content as string.
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                require('./binding/ort-wasm-threaded.worker.js')
-              ],
-              {type: 'text/javascript'}));
+          return BUILD_DEFS.CODE_SPLITTING ?
+              new URL('../ort-wasm-threaded.worker.js', BUILD_DEFS.IMPORT_META_URL).href :
+              URL.createObjectURL(new Blob(
+                  [
+                    // This require() function is handled by esbuild plugin to load file content as string.
+                    // eslint-disable-next-line @typescript-eslint/no-require-imports
+                    require('./binding/ort-wasm-threaded.worker.js')
+                  ],
+                  {type: 'text/javascript'}));
         }
 
         if (fileName.endsWith('.wasm')) {
@@ -171,16 +183,18 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
           }
 
           const prefix = wasmPrefixOverride ?? scriptDirectory;
-
+          let adjustedFileName = fileName;
           if (!BUILD_DEFS.DISABLE_WEBGPU) {
             if (wasmFileName === 'ort-wasm-simd.wasm') {
-              return prefix + 'ort-wasm-simd.jsep.wasm';
+              adjustedFileName = 'ort-wasm-simd.jsep.wasm';
             } else if (wasmFileName === 'ort-wasm-simd-threaded.wasm') {
-              return prefix + 'ort-wasm-simd-threaded.jsep.wasm';
+              adjustedFileName = 'ort-wasm-simd-threaded.jsep.wasm';
             }
           }
 
-          return prefix + wasmFileName;
+          return BUILD_DEFS.CODE_SPLITTING && !prefix ?
+              new URL('../' + adjustedFileName, BUILD_DEFS.IMPORT_META_URL).href :
+              prefix + adjustedFileName;
         }
 
         return scriptDirectory + fileName;
@@ -192,12 +206,12 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
-        const scriptSourceCode = `var ortWasmThreaded=${factory.toString()};`;
+        const scriptSourceCode = `var ortWasmThreaded=${ortWasmFactory.toString()};`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
       }
     }
 
-    factory(config).then(
+    ortWasmFactory(config).then(
         // wasm module initialized successfully
         module => {
           initializing = false;
