@@ -2811,6 +2811,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   if (!has_dynamic_shape) {
     std::string timing_cache_path = "";
+    bool engine_update = false;
     if (timing_cache_enable_) {
       timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
     }
