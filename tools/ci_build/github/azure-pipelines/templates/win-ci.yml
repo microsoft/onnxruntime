@@ -210,8 +210,8 @@ stages:
 
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - powershell: |
-              New-Item $(Agent.TempDirectory)/RelWithDebInfo -Force -ItemType Directory
               Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/java" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
+              cd $(Agent.TempDirectory)/RelWithDebInfo
               tree /f
             displayName: 'Copy java folder for java test'
             workingDirectory: '$(Build.BinariesDirectory)'
@@ -302,6 +302,7 @@ stages:
       workspace:
         clean: all
       pool: ${{ parameters.ort_build_pool_name }}
+      timeoutInMinutes: 120
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
@@ -321,9 +322,10 @@ stages:
 
         - powershell: |
             tree /f
-            $drive = -join((Get-Location).Drive.Name,':')
+            $drive = (Get-Location).Drive.Name
             $file = 'CTestTestfile.cmake'
-            (Get-Content $file ) -replace 'C:', $drive | Set-Content $file
+            (Get-Content $file ) -replace 'C:\\a', -join($drive, ':\\a') | Set-Content $file
+            (Get-Content $file ) -replace 'C:/a', -join($drive, ':/a') | Set-Content $file
           displayName: 'List built files and update CTestTestfile.cmake drive letter'
           workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/'
 
