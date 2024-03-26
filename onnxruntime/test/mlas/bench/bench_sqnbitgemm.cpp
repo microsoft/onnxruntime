@@ -42,8 +42,8 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
-  auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
-  auto B = RandomVectorUniform(static_cast<size_t>(K * N), -1.0f, 1.0f);
+  const auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
+  const auto B = RandomVectorUniform(static_cast<size_t>(K * N), -1.0f, 1.0f);
   std::vector<float> C(static_cast<size_t>(M * N));
 
   std::vector<uint8_t> QuantBData(QuantBDataSizeInBytes);
