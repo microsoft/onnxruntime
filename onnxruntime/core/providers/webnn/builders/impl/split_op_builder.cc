@@ -143,16 +143,16 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     }
   }
 
-  if (split.size()) {
+  if (!split.empty()) {
     int64_t sum = 0;
     // TODO: Allow 0 size dimensions.
     // https://github.com/webmachinelearning/webnn/issues/391
-    for (size_t i = 0; i < split.size(); i++) {
-      if (split[i] <= 0) {
+    for (uint32_t split_value : split) {
+      if (split_value <= 0) {
         LOGS(logger, VERBOSE) << "Value of split should be greater than 0.";
         return false;
       }
-      sum += split[i];
+      sum += split_value;
     }
     if (sum != input_shape[axis]) {
       LOGS(logger, VERBOSE) << "Sum of the split's values must be equal to the dim value at 'axis' specified.";
