@@ -26,6 +26,7 @@ async function retry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 100): Prom
       }
       await new Promise(resolve => setTimeout(resolve, delay));
     }
+    // eslint-disable-next-line no-constant-condition
   } while (true);
 }
 
