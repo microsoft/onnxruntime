@@ -1319,6 +1319,108 @@ lib_name = ORT_TSTR("./libcustom_op_local_function.so");
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if defined(__ANDROID__)
+// Disable on android because custom op libraries are not copied to the emulator.
+TEST(CApiTest, DISABLED_test_custom_op_local_function_tree_ensemble) {
+#else
+TEST(CApiTest, test_custom_op_local_function_tree_ensemble) {
+#endif  // defined(__ANDROID__)
+  const auto* model_path = TSTR("testdata/custom_op_local_function/plot_op_tree_ensemble_implementations_custom2.onnx");
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+
+  // input 0 (float type)
+  input_names.emplace_back("X");
+  std::vector<int64_t> input_0_dims = {100, 500};
+
+  std::vector<float> input_0_data(input_0_dims[0] * input_0_dims[1]);
+  for (size_t i = 0; i < input_0_data.size(); ++i) {
+    input_0_data[i] = 1.0f / static_cast<float>(i + 1);
+  }
+
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+  const char* output_name = "variable";
+
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_local_function.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_local_function.dylib");
+#else
+lib_name = ORT_TSTR("./libcustom_op_local_function.so");
+#endif
+
+  Ort::SessionOptions session_opts;
+
+  session_opts.RegisterCustomOpsLibrary(lib_name);
+
+  Ort::Session session(*ort_env, model_path, session_opts);
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+  session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+              &output_name, 1);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if defined(__ANDROID__)
+// Disable on android because custom op libraries are not copied to the emulator.
+TEST(CApiTest, DISABLED_test_custom_op_local_function_tree_ensemble2) {
+#else
+TEST(CApiTest, test_custom_op_local_function_tree_ensemble2) {
+#endif  // defined(__ANDROID__)
+  const auto* model_path = TSTR("testdata/custom_op_local_function/plot_op_tree_ensemble_implementations_custom2.onnx");
+
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_local_function.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_local_function.dylib");
+#else
+lib_name = ORT_TSTR("./libcustom_op_local_function.so");
+#endif
+
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+  Ort::Env env;
+  Ort::SessionOptions session_options;
+  session_options.RegisterCustomOpsLibrary(lib_name);
+
+  Ort::Session session(*ort_env, model_path, session_options);
+
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"variable"};
+
+  int64_t vector_1_dim[] = {100, 500};
+  std::vector<float> vector_1_value(vector_1_dim[0] * vector_1_dim[1]);
+  for (size_t i = 0; i < vector_1_value.size(); ++i) {
+    vector_1_value[i] = 1.0f / static_cast<float>(i + 1);
+  }
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[] = {Ort::Value::CreateTensor<float>(memory_info, vector_1_value.data(), vector_1_value.size(), vector_1_dim, 2)};
+
+  Ort::RunOptions run_options;
+  const int N = 10;
+  for (int i = 0; i < N; ++i) {
+    auto out = session.Run(run_options, input_names, input_tensors, 1, output_names, 1);
+    ASSERT_EQ(out.size(), 1);
+  }
+  auto output_tensors = session.Run(run_options, input_names, input_tensors, 1, output_names, 1);
+  const auto& vector_filterred = output_tensors.at(0);
+  auto type_shape_info = vector_filterred.GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_shape_info.GetDimensionsCount(), 2);
+  const float* floats_output = static_cast<const float*>(vector_filterred.GetTensorRawData());
+  ASSERT_NE(floats_output, nullptr);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   // Tests a custom operator that wraps an OpenVINO MNIST model (.xml and .bin files serialized into node attributes).
