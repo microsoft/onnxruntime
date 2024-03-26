@@ -76,7 +76,7 @@ inline void blkq4_weights_gen(
 
   const auto q_weight_shape = Base::get_quant_weights_shape(rows, columns);
   const auto meta_shape = Base::get_quant_meta_shape(rows, columns);
-  const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
+  [[maybe_unused]] const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
 
   //
   // For testing quantization and dequantization, it is not straight
