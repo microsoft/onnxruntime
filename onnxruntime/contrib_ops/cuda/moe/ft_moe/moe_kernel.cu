@@ -660,7 +660,7 @@ inline __device__ Half4 operator*(const Half4 a, const Half4 b) {
   result.y = a.y * b.y;
   return result;
 #else
-    return Half4{__hmul2(a.x, b.x), __hmul2(a.y, b.y)};
+  return Half4{a.x * b.x, a.y * b.y};
 #endif
 }
 
