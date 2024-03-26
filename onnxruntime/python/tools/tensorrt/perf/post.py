@@ -311,7 +311,7 @@ def get_specs(specs, branch, commit_hash, commit_datetime):
     :return: The updated table.
     """
 
-    init_id = int(specs.tail(1).get(".", 0)) + 1
+    init_id = int(specs.tail(1).get(".", 0).iloc[0]) + 1
     specs_additional = pd.DataFrame(
         {
             ".": [init_id, init_id + 1, init_id + 2],
