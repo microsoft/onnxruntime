@@ -14,8 +14,8 @@ from typing import Optional, Union
 import onnx
 
 import onnxruntime
-from onnxruntime.python.tools.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+from onnxruntime.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 
 from .quant_utils import add_pre_process_metadata
 
