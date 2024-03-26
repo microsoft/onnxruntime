@@ -11,6 +11,7 @@ import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
 import {cumsum, parseCumSumAttributes} from './ops/cumsum';
+import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
 import {einsum, parseEinsumAttributes} from './ops/einsum';
 import {expand} from './ops/expand';
 import {fastGelu} from './ops/fast-gelu';
@@ -67,6 +68,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Cos', [unaryOps.cos]],
   ['Cosh', [unaryOps.cosh]],
   ['CumSum', [cumsum, parseCumSumAttributes]],
+  ['DepthToSpace', [depthToSpace, parseDepthToSpaceAttributes]],
   ['Div', [binaryOps.div]],
   ['Einsum', [einsum, parseEinsumAttributes]],
   ['Elu', [unaryOps.elu, unaryOps.parseAlphaAttributes]],
