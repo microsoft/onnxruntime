@@ -2456,9 +2456,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     // A flag to determine whether engine quick load flow is applicable (to bypass the builder creation whenever
-    // a serialized engine is present which does not depend on dynamic shapes, i.e. the profile file does not exist).
+    // a serialized engine is present which does not depend on dynamic shapes, i.e. the profile file does not exist,
+    // OR the dynamic shape range is explicitly specified by user).
     const bool serialized_engine_flow = (weightless_engine_enable_ && single_serialized_weightless_engine_exists_)
-        || (!profile_file_exists_ && (single_serialized_engine_exists_ || single_serialized_encrypted_engine_exists_));
+        || ((!profile_file_exists_ || explicit_dynamic_shape_range_exists_)
+              && (single_serialized_engine_exists_ || single_serialized_encrypted_engine_exists_));
 
     Status status;
     if (GraphHasCtxNode(graph_body_viewer) || serialized_engine_flow) {
@@ -2813,122 +2815,156 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
     }
     {
-      // Engine serialization/deserialization and engine build are in critical section.
-      // It needs lock protection to prevent race condition when inferencing with multithreading.
+      // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
       auto lock = GetApiLock();
 
-      // Set INT8 per tensor dynamic range
-      if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
-        trt_config->setInt8Calibrator(nullptr);
-        if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                  "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node.Name());
-        }
-      }
-
-      // Load timing cache from file. Create a fresh cache if the file doesn't exist
-      std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
-      if (timing_cache_enable_) {
-        std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
-        timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()),
-                                                        loaded_timing_cache.size()));
-        if (timing_cache == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                  "TensorRT EP could not create timing cache: " + timing_cache_path);
-        }
-        trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
-        if (detailed_build_log_) {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
-        }
-      }
-
-      // Build engine
-      std::chrono::steady_clock::time_point engine_build_start;
-      if (detailed_build_log_) {
-        engine_build_start = std::chrono::steady_clock::now();
-      }
-      std::unique_ptr<nvinfer1::IHostMemory> serialized_engine{trt_builder->buildSerializedNetwork(*trt_network,
-                                                                                                  *trt_config)};
-      if (serialized_engine == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                "TensorRT EP failed to create engine from network for fused node: "
-                                + fused_node.Name());
-      }
-      trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(),
-                                                                                          serialized_engine->size()));
-      if (trt_engine == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                "TensorRT EP failed to deserialize engine for fused node: " + fused_node.Name());
-      }
-      if (detailed_build_log_) {
-        auto engine_build_stop = std::chrono::steady_clock::now();
-        LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count()
-              << "ms" << std::endl;
-      }
-      if (engine_cache_enable_) {
-        // Serialize engine profile if it has explicit profiles
-        if (has_explicit_profile) {
-          SerializeProfileV2(profile_cache_path, input_explicit_shape_ranges);
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
-        }
-
-        if (engine_decryption_enable_) {
-          // Encrypt engine. The library is not always deployed with the encrypt function,
-          // so check if it is available first.
-          if (engine_encryption_ != nullptr) {
-            if (!engine_encryption_(encrypted_engine_cache_path.c_str(),
-                                    reinterpret_cast<char*>(serialized_engine->data()),
-                                    serialized_engine->size())) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                      "TensorRT EP call to engine encryption library failed");
-            }
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
-          } else {
-            LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. "
-                                  << "No cache is written to disk";
-          }
+      // If explicit profile flag is on and engine cache enable flag is on,
+      // we need to compare explicit profiles and profiles used to build the engine in order to decide whether to rebuild the engine.
+      if (has_explicit_profile && engine_cache_enable_) {
+        engine_update = CompareProfiles(profile_cache_path, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+        if (engine_update) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine will be built";
         } else {
-          std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
-          file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine won't be rebuilt";
         }
       }
-      if (weightless_engine_enable_) {
-        std::ofstream file(weightless_engine_cache_path, std::ios::binary | std::ios::out);
-        file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized weightless engine " + weightless_engine_cache_path;
-      }
-      // serialize and save timing cache
-      if (timing_cache_enable_) {
-        auto timing_cache = trt_config->getTimingCache();
-        std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
-        if (timingCacheHostData == nullptr) {
+
+      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
+      if (engine_cache_enable_ && !engine_decryption_enable_ && engine_file && !engine_update) {
+        engine_file.seekg(0, std::ios::end);
+        size_t engine_size = engine_file.tellg();
+        engine_file.seekg(0, std::ios::beg);
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        engine_file.read((char*)engine_buf.get(), engine_size);
+        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+        if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                  "TensorRT EP could not serialize timing cache: " + timing_cache_path);
+                                 "TensorRT EP could not deserialize engine from cache: " + engine_cache_path);
         }
-        saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
-        if (detailed_build_log_) {
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
+      } else if (engine_decryption_enable_ && engine_cache_enable_ && std::filesystem::exists(encrypted_engine_cache_path) && !engine_update) {
+        // Decrypt engine
+        size_t engine_size = 0;
+        if (!engine_decryption_(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not get engine buffer size");
         }
-      }
-      // dump EP context node model
-      if (dump_ep_context_model_) {
-        // "ep_cache_context" node attribute should be a relative path to context model directory
-        if (ep_cache_context_attr_.empty()) {
-          auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-          ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir)
-                                    .append(cache_file_name.string()).string();
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        if (!engine_decryption_(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not call engine decryption function decrypt");
+        }
+        // Deserialize engine
+        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
+        if (trt_engine == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
+        }
+      } else {
+        // Set INT8 per tensor dynamic range
+        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
+          trt_config->setInt8Calibrator(nullptr);
+          if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node.Name());
+          }
         }
 
-        std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-                                                                                ep_cache_context_attr_,
-                                                                    reinterpret_cast<char*>(serialized_engine->data()),
-                                                                                serialized_engine->size(),
-                                                                                ep_context_embed_mode_,
-                                                                                compute_capability_,
-                                                                                GetLogger())};
-        DumpCtxModel(model_proto.get(), ctx_model_path_);
+        // Load timing cache from file. Create a fresh cache if the file doesn't exist
+        std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
+        if (timing_cache_enable_) {
+          std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
+          timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+          if (timing_cache == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not create timing cache: " + timing_cache_path);
+          }
+          trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
+          if (detailed_build_log_) {
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
+          }
+        }
+
+        // Build engine
+        std::chrono::steady_clock::time_point engine_build_start;
+        if (detailed_build_log_) {
+          engine_build_start = std::chrono::steady_clock::now();
+        }
+        std::unique_ptr<nvinfer1::IHostMemory> serialized_engine{trt_builder->buildSerializedNetwork(*trt_network, *trt_config)};
+        if (serialized_engine == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP failed to create engine from network for fused node: " + fused_node.Name());
+        }
+        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
+        if (trt_engine == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP failed to deserialize engine for fused node: " + fused_node.Name());
+        }
+        if (detailed_build_log_) {
+          auto engine_build_stop = std::chrono::steady_clock::now();
+          LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+        }
+        if (engine_cache_enable_) {
+          // Serialize engine profile if it has explicit profiles
+          if (has_explicit_profile) {
+            SerializeProfileV2(profile_cache_path, input_explicit_shape_ranges);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+          }
+
+          if (engine_decryption_enable_) {
+            // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
+            if (engine_encryption_ != nullptr) {
+              if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size())) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                       "TensorRT EP call to engine encryption library failed");
+              }
+              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
+            } else {
+              LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
+            }
+          } else {
+            std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
+            file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
+          }
+        }
+        if (weightless_engine_enable_) {
+          std::ofstream file(weightless_engine_cache_path, std::ios::binary | std::ios::out);
+          file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized weightless engine " + weightless_engine_cache_path;
+        }
+        // serialize and save timing cache
+        if (timing_cache_enable_) {
+          auto timing_cache = trt_config->getTimingCache();
+          std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+          if (timingCacheHostData == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                    "TensorRT EP could not serialize timing cache: " + timing_cache_path);
+          }
+          saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
+          if (detailed_build_log_) {
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
+          }
+        }
+        // dump EP context node model
+        if (dump_ep_context_model_) {
+          // "ep_cache_context" node attribute should be a relative path to context model directory
+          if (ep_cache_context_attr_.empty()) {
+            auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+            ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir)
+                                      .append(cache_file_name.string()).string();
+          }
+
+          std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
+                                                                                  ep_cache_context_attr_,
+                                                                      reinterpret_cast<char*>(serialized_engine->data()),
+                                                                                  serialized_engine->size(),
+                                                                                  ep_context_embed_mode_,
+                                                                                  compute_capability_,
+                                                                                  GetLogger())};
+          DumpCtxModel(model_proto.get(), ctx_model_path_);
+        }
       }
     }
 
@@ -3598,23 +3634,23 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     else { // if (single_serialized_encrypted_engine_exists_)
       // Decrypt engine
       size_t engine_size = 0;
-      if (!engine_decryption_(serialized_weightless_engine_cache_path_.c_str(), nullptr, &engine_size)) {
+      if (!engine_decryption_(serialized_encrypted_engine_cache_path_.c_str(), nullptr, &engine_size)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                 "TensorRT EP could not get engine buffer size");
       }
       std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-      if (!engine_decryption_(serialized_weightless_engine_cache_path_.c_str(), &engine_buf[0], &engine_size)) {
+      if (!engine_decryption_(serialized_encrypted_engine_cache_path_.c_str(), &engine_buf[0], &engine_size)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                 "TensorRT EP could not call engine decryption function decrypt");
       }
       // Deserialize engine
       trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(),
                                                                                           engine_size));
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + serialized_weightless_engine_cache_path_;
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + serialized_encrypted_engine_cache_path_;
       if (trt_engine == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                 "TensorRT EP could not deserialize engine from encrypted cache: "
-                                + serialized_weightless_engine_cache_path_);
+                                + serialized_encrypted_engine_cache_path_);
       }
     }
   }
@@ -3954,7 +3990,13 @@ bool TensorrtExecutionProvider::IsSingleCachedEnginePresent(const std::string& s
                   serialized_encrypted_engine_cache_path_,
                   serialized_weightless_engine_cache_path_,
                   profile_cache_path);
-  profile_file_exists_ = std::filesystem::exists(profile_cache_path);
+  std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
+  if (profile_file) {
+    profile_file_exists_ = true;
+    // Deserialize profile
+    const auto shape_ranges = DeserializeProfileV2(profile_file);
+    explicit_dynamic_shape_range_exists_ = shape_ranges.empty();
+  }
 
   std::string second_engine_cache_path;
   std::string second_encrypted_engine_cache_path;

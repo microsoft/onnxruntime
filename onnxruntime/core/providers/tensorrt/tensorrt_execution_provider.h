@@ -283,6 +283,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string cache_path_;
   std::string engine_decryption_lib_path_;
   mutable bool profile_file_exists_ = false;
+  mutable bool explicit_dynamic_shape_range_exists_ = false;
   mutable bool single_serialized_engine_exists_ = false;
   mutable std::string serialized_engine_cache_path_;
   mutable bool single_serialized_encrypted_engine_exists_ = false;
