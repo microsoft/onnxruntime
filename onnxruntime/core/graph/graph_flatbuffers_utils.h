@@ -72,7 +72,7 @@ constexpr uint32_t kMinimumSizeForExternalData = 64;
 Status SaveInitializerOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
     const Path& model_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor,
-    const ExternalDataWriter external_writer = nullptr);
+    const ExternalDataWriter& external_writer = nullptr);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status SaveSparseInitializerOrtFormat(
@@ -100,7 +100,7 @@ Status SaveAttributeOrtFormat(
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
                                 ONNX_NAMESPACE::TensorProto& initializer,
                                 const OrtFormatLoadOptions& load_options,
-                                const ExternalDataReader external_reader = nullptr);
+                                const ExternalDataReader& external_reader = nullptr);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,

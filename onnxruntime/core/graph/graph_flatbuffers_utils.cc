@@ -30,7 +30,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                 const TensorProto& initializer,
                                 const Path& model_path,
                                 flatbuffers::Offset<fbs::Tensor>& fbs_tensor,
-                                const ExternalDataWriter external_writer) {
+                                const ExternalDataWriter& external_writer) {
   auto name = SaveStringToOrtFormat(builder, initializer.has_name(), initializer.name());
   auto doc_string = SaveStringToOrtFormat(builder, initializer.has_doc_string(), initializer.doc_string());
   auto dims = SaveDims(builder, initializer.dims());
@@ -184,7 +184,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& initializer,
                                 const OrtFormatLoadOptions& load_options,
-                                const ExternalDataReader external_reader) {
+                                const ExternalDataReader& external_reader) {
   initializer.Clear();
 
   LOAD_STR_FROM_ORT_FORMAT(initializer, name, fbs_tensor.name());
