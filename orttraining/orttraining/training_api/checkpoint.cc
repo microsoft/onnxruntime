@@ -3,6 +3,8 @@
 
 #include "orttraining/training_api/checkpoint.h"
 
+#include <filesystem>
+
 #include "core/flatbuffers/checkpoint_version.h"
 #include "core/flatbuffers/schema/ort_training_checkpoint.fbs.h"
 #include "core/framework/framework_common.h"
@@ -143,6 +145,11 @@ Status OrtValuesFromFlatbufferTensors(
   return Status::OK();
 }
 
+PathString ExternalCheckpointDataPath(const PathString& checkpoint_path) {
+  // TODO: Not sure this is valid or what the current checkpoint filename looks like. Adjust as needed.
+  return checkpoint_path + ORT_TSTR(".data");
+}
+
 namespace save {
 
 /**
@@ -194,35 +201,99 @@ Status FromTensorProtos(
 
   constexpr size_t m_bytes = 1024 * 1024;
   size_t fbs_buffer_size = 0U;
+  size_t fbs_potential_external_buffer_size = 0;
   for (const auto& tensor_proto : trainable_tensor_protos) {
-    fbs_buffer_size += tensor_proto.ByteSizeLong();
+    auto bytes = tensor_proto.ByteSizeLong();
+    fbs_buffer_size += bytes;
+
+    if (bytes > onnxruntime::fbs::utils::kMinimumSizeForExternalData) {  // assuming strings aren't trainable
+      fbs_potential_external_buffer_size += bytes;
+    }
   }
+
   for (const auto& tensor_proto : non_trainable_tensor_protos) {
-    fbs_buffer_size += tensor_proto.ByteSizeLong();
+    auto bytes = tensor_proto.ByteSizeLong();
+    fbs_buffer_size += bytes;
+
+    if (bytes > onnxruntime::fbs::utils::kMinimumSizeForExternalData &&
+        tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+      fbs_potential_external_buffer_size += bytes;
+    }
   }
 
   // Align buffer size to 1MB.
+  // TODO: This should probably also have an allowance for the other parts of the tensor if we're trying to avoid
+  // all reallocs during serialization. e.g. name, shape, data type, offset if external data is used.
   fbs_buffer_size = std::max(fbs_buffer_size, m_bytes);
   fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
+
+  // 2GB is the real limit, but fbs_buffer_size doesn't include space for initializer names and shapes.
+  // for now, arbitrarily use ~1.8GB as a conservative 'safe' value with a 10% buffer.
+  const bool use_external_data = fbs_buffer_size >= 1800 * m_bytes;
+
+  fbs::utils::ExternalDataWriter external_data_writer = nullptr;
+  std::optional<std::ofstream> external_data_stream;
+
+  if (use_external_data) {
+    // 2GB. Have to use external file for data.
+    fbs_buffer_size -= fbs_potential_external_buffer_size;  // reduce fbs buffer size to account for external data
+
+    auto data_path = ExternalCheckpointDataPath(checkpoint_path);
+    external_data_stream = std::ofstream(data_path, std::ios::binary);
+
+    ORT_RETURN_IF(external_data_stream->fail(), "Failed to create checkpoint's external data file: ",
+                  ToUTF8String(data_path));
+
+    // setup the data writer to write aligned data to external_data_stream
+    external_data_writer = [&external_data_stream](int32_t data_type, gsl::span<const uint8_t> bytes) {
+      // for now align everything to 4 or 8 bytes. we can optimize this later if needed.
+      int32_t alignment = 4;
+
+      // TODO: Add more special-cased 8 byte types if needed.
+      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
+          data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+        alignment = 8;
+      }
+
+      int64_t pos = external_data_stream->tellp();
+      while (pos % alignment != 0) {
+        external_data_stream->put(0);
+        ++pos;
+      }
+
+      external_data_stream->write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+      // temporary sanity check. should we check for fail() on every write or just at the end?
+      assert(pos + int64_t(bytes.size()) == external_data_stream->tellp());
+
+      return pos;  // return offset for start of data
+    };
+  }
+
   flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
 
-  const auto tensor_protos_to_fbs_tensors = [&builder](const auto& tensor_protos, auto& fbs_tensors) {
-    fbs_tensors.reserve(tensor_protos.size());
-    for (const auto& tensor_proto : tensor_protos) {
-      flatbuffers::Offset<fbs::Tensor> fbs_tensor;
-      ORT_RETURN_IF_ERROR(
-          fbs::utils::SaveInitializerOrtFormat(builder, tensor_proto, Path(), fbs_tensor));
-      fbs_tensors.push_back(fbs_tensor);
-    }
+  const auto tensor_protos_to_fbs_tensors =
+      [&builder, &external_data_writer](const auto& tensor_protos, auto& fbs_tensors) {
+        fbs_tensors.reserve(tensor_protos.size());
+        for (const auto& tensor_proto : tensor_protos) {
+          flatbuffers::Offset<fbs::Tensor> fbs_tensor;
+          ORT_RETURN_IF_ERROR(
+              fbs::utils::SaveInitializerOrtFormat(builder, tensor_proto, Path(), fbs_tensor, external_data_writer));
+          fbs_tensors.push_back(fbs_tensor);
+        }
 
-    return Status::OK();
-  };
+        return Status::OK();
+      };
 
   std::vector<flatbuffers::Offset<fbs::Tensor>> trainable_tensors;
   ORT_RETURN_IF_ERROR(tensor_protos_to_fbs_tensors(trainable_tensor_protos, trainable_tensors));
 
   std::vector<flatbuffers::Offset<fbs::Tensor>> non_trainable_tensors;
   ORT_RETURN_IF_ERROR(tensor_protos_to_fbs_tensors(non_trainable_tensor_protos, non_trainable_tensors));
+
+  if (external_data_stream) {
+    ORT_RETURN_IF(external_data_stream->fail(), "Failed writing external checkpoint data.");
+    external_data_stream->close();
+  }
 
   const auto fbs_trainable_tensors = builder.CreateVector(trainable_tensors);
   const auto fbs_non_trainable_tensors = builder.CreateVector(non_trainable_tensors);
@@ -231,6 +302,7 @@ Status FromTensorProtos(
   module_state_builder.add_requires_grad_params(fbs_trainable_tensors);
   module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
   module_state_builder.add_is_nominal_state(nominal_checkpoint);
+  module_state_builder.add_has_external_data(use_external_data);
   flatbuffers::Offset<fbs::ModuleState> fbs_module_state = module_state_builder.Finish();
 
   fbs::CheckpointBuilder checkpoint_builder(builder);
@@ -626,7 +698,8 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
  * @return Status of the operation.
  */
 Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
-                    ONNX_NAMESPACE::ModelProto& model_proto) {
+                    ONNX_NAMESPACE::ModelProto& model_proto,
+                    const PathString& checkpoint_path) {
   flatbuffers::Verifier verifier(checkpoint_bytes.data(), checkpoint_bytes.size());
   ORT_RETURN_IF_NOT(fbs::VerifyCheckpointBuffer(verifier), "Checkpoint verification failed.");
 
@@ -654,21 +727,38 @@ Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
                 "Cannot load a nominal checkpoint to a model proto. "
                 "Expected: Complete checkpoint. Actual: Nominal checkpoint.");
 
+  fbs::utils::ExternalDataReader external_data_reader = nullptr;
+  std::optional<std::ifstream> external_data_stream;
+
+  if (module_state->has_external_data()) {
+    auto data_path = ExternalCheckpointDataPath(checkpoint_path);
+    external_data_stream = std::ifstream(data_path, std::ios::binary);
+    ORT_RETURN_IF_NOT(external_data_stream->is_open(),
+                      "Failed to open checkpoint's external data file: ", ToUTF8String(data_path));
+
+    external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
+      external_data_stream->seekg(offset);
+      external_data_stream->get(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
+    };
+  }
+
   InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
   param_tensor_protos.reserve(
       static_cast<size_t>(requires_grad_params->size()) + static_cast<size_t>(frozen_params->size()));
 
-  const auto flatbuffer_tensors_to_tensor_protos = [&param_tensor_protos](const auto& flatbuffer_tensors) {
-    OrtFormatLoadOptions load_options{false, false};
-    for (const auto* fbs_tensor : flatbuffer_tensors) {
-      ORT_RETURN_IF_NOT(fbs_tensor, "Checkpoint is invalid. Expected: Valid flatbuffer tensor. Actual: nullptr.");
-      ONNX_NAMESPACE::TensorProto tensor_proto;
-      ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, tensor_proto, load_options));
-      param_tensor_protos.insert({fbs_tensor->name()->str(), tensor_proto});
-    }
+  const auto flatbuffer_tensors_to_tensor_protos =
+      [&param_tensor_protos, &external_data_reader](const auto& flatbuffer_tensors) {
+        OrtFormatLoadOptions load_options{false, false};
+        for (const auto* fbs_tensor : flatbuffer_tensors) {
+          ORT_RETURN_IF_NOT(fbs_tensor, "Checkpoint is invalid. Expected: Valid flatbuffer tensor. Actual: nullptr.");
+          ONNX_NAMESPACE::TensorProto tensor_proto;
+          ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, tensor_proto, load_options,
+                                                                   external_data_reader));
+          param_tensor_protos.insert({fbs_tensor->name()->str(), tensor_proto});
+        }
 
-    return Status::OK();
-  };
+        return Status::OK();
+      };
 
   ORT_RETURN_IF_ERROR(flatbuffer_tensors_to_tensor_protos(*requires_grad_params));
   ORT_RETURN_IF_ERROR(flatbuffer_tensors_to_tensor_protos(*frozen_params));
@@ -782,7 +872,7 @@ Status LoadCheckpointToModel(const PathString& checkpoint_path,
 
   InlinedVector<uint8_t> checkpoint_bytes;
   ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
-  return load::ToModelProto(checkpoint_bytes, model_proto);
+  return load::ToModelProto(checkpoint_bytes, model_proto, checkpoint_path);
 }
 #endif
 

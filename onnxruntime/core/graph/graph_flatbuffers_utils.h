@@ -40,9 +40,39 @@ struct SparseTensor;
 
 namespace utils {
 
+/// <summary>
+/// Delegate to write initializer data to an external file/buffer.
+/// Data should be aligned to an appropriate boundary for the data type and or any potential mmap'd usage of the file.
+/// `data_type` is value returned by TensorProto::data_type() and is a value from onnx::TensorTypeProto_DataType.
+/// The function is not called for onnx::TensorTypeProto_DataType_STRING.
+/// The function should return the offset to the start of the data in the external file/buffer.
+/// </summary>
+using ExternalDataWriter = std::function<uint64_t(int32_t data_type, gsl::span<const uint8_t> bytes)>;
+
+// inverse to ExternalDataWriter.
+// The reader should write bytes to the output_buffer which is pre-allocated with the correct size.
+using ExternalDataReader = std::function<void(uint64_t offset, gsl::span<uint8_t> output_buffer)>;
+
+/// <summary>
+/// Minimum number of bytes for data to be written as external data.
+/// </summary>
+/// <remarks>arbitrary choice to keep small values local. adjust as needed. consider if it needs to be configurable.
+/// </remarks>
+constexpr uint32_t kMinimumSizeForExternalData = 64;
+
+/// <summary>
+/// Save an initializer to an ORT format flatbuffer.
+/// </summary>
+/// <param name="builder">Builder to write initializer with.</param>
+/// <param name="initializer">Initializer to serialize</param>
+/// <param name="model_path">Model path. Used if TensorProto has external data.</param>
+/// <param name="fbs_tensor">Tensor in flatbuffer.</param>
+/// <param name="external_writer">Optional delegate to write the initializer data to an external file
+/// if the initializer contains kMinimumSizeForExternalData bytes or more, and not string data.</param>
 Status SaveInitializerOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
-    const Path& model_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
+    const Path& model_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor,
+    const ExternalDataWriter external_writer = nullptr);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status SaveSparseInitializerOrtFormat(
@@ -65,10 +95,12 @@ Status SaveAttributeOrtFormat(
 /// <param name="fbs_tensor">Flatbuffer Tensor</param>
 /// <param name="initializer">TensorProto to load data into</param>
 /// <param name="load_options">ORT format load options</param>
+/// <param name="external_reader">Optional delegate to read from external data file.</param>
 /// <returns>Status</returns>
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
                                 ONNX_NAMESPACE::TensorProto& initializer,
-                                const OrtFormatLoadOptions& load_options);
+                                const OrtFormatLoadOptions& load_options,
+                                const ExternalDataReader external_reader = nullptr);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,
