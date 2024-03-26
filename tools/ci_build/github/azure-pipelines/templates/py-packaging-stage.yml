@@ -274,9 +274,9 @@ stages:
         displayName: 'Clean Agent Directories'
         condition: always()
 
-- stage: Python_Packaging_GPU
-  dependsOn: []
-  - ${{ if eq(parameters.enable_windows_gpu, true) }}:
+- ${{ if eq(parameters.enable_windows_gpu, true) }}:
+  - stage: Python_Packaging_GPU
+    dependsOn: []
       - template: py-win-gpu.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
@@ -357,9 +357,9 @@ stages:
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
 
-- stage: Python_Packaging_MacOS
-  dependsOn: []
-  - ${{ if eq(parameters.enable_mac_cpu, true) }}:
+- ${{ if eq(parameters.enable_mac_cpu, true) }}:
+  - stage: Python_Packaging_MacOS
+    dependsOn: []
     jobs:
     - job: MacOS_py_Wheels
       timeoutInMinutes: 180
@@ -428,21 +428,26 @@ stages:
         parameters:
           condition: 'succeeded'
 
-- stage: Python_Packaging_Linux
-  dependsOn: []
+
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
-      - template: py-linux.yml
-        parameters:
-          arch: 'aarch64'
-          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-          base_image: 'arm64v8/almalinux:8'
-          devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
-          ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
-          prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
+    - stage: Python_Packaging_Linux_ARM
+      dependsOn: []
+      jobs:
+        - template: py-linux.yml
+          parameters:
+            arch: 'aarch64'
+            machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+            base_image: 'arm64v8/almalinux:8'
+            devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+            ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+            prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
 
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
+    - stage: Python_Packaging_Linux_CPU
+      dependsOn: []
+      jobs:
       - template: py-linux.yml
         parameters:
           arch: 'x86_64'
@@ -456,6 +461,9 @@ stages:
 
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
+    - stage: Python_Packaging_Linux_GPU
+      dependsOn: []
+      jobs:
       - template: py-linux-gpu.yml
         parameters:
           arch: 'x86_64'
@@ -463,9 +471,10 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
-- stage: Python_Packaging_QNN
-  dependsOn: []
   - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
+    - stage: Python_Packaging_Windows_ARM64_QNN
+      dependsOn: []
+      jobs:
       - template: py-win-arm64-qnn.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
@@ -473,8 +482,11 @@ stages:
           PYTHON_VERSION: '3.11'
           NUMPY_VERSION: '1.25.2'
 
-  - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
-      - template: py-win-x64-qnn.yml
-        parameters:
-          MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-          QNN_SDK: 'qnn-v2.18.0.240101_win'
+  - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
+    - stage: Python_Packaging_Windows_ARM64_QNN
+      dependsOn: []
+      jobs:
+        - template: py-win-x64-qnn.yml
+          parameters:
+            MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+            QNN_SDK: 'qnn-v2.18.0.240101_win'
