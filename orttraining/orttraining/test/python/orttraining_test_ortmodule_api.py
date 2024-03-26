@@ -33,6 +33,7 @@ from onnxruntime.training.optim import AdamWMode, FusedAdam
 from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
+from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 DEFAULT_OPSET = 17
 
@@ -6496,3 +6497,56 @@ def test_bert_result_with_layerwise_recompute():
     torch.cuda.synchronize()
     if original_val is not None:
         os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+
+
+@pytest.mark.parametrize("softmax_compute_type", [torch.float16, torch.float32])
+def test_overridden_softmax_export(softmax_compute_type):
+    class CustomSoftmaxExportTest(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, attn_weight):
+            return torch.nn.functional.softmax(attn_weight, dim=-1, dtype=softmax_compute_type)
+
+    device = "cuda"
+    pt_model = CustomSoftmaxExportTest().to(device)
+    ort_model = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="overridden_softmax_export")
+    )
+
+    def run_step(model, attn_weight):
+        prediction = model(attn_weight)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    attn_weight = torch.randn([20, 6, 10, 10], dtype=torch.float, device=device, requires_grad=True)
+    ort_attn_weight = copy.deepcopy(attn_weight)
+    pt_prediction = run_step(pt_model, attn_weight)
+    ort_prediction = run_step(ort_model, ort_attn_weight)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(attn_weight.grad, ort_attn_weight.grad)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+    # Check the ONNX Softmax is running in float32.
+    execution_mgr = ort_model._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    # Keep the logic aligned with _graph_execution_manager.py
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "torch_exported", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = [n for n in onnx_model.graph.node]
+
+    assert onnx_nodes[0].op_type == "Cast"
+    to_attr = onnx_nodes[0].attribute[0]
+    assert to_attr.name == "to"
+    to_value = to_attr.i
+    assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
