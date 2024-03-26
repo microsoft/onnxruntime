@@ -518,7 +518,7 @@ class MemoryObserver:
         self._rank_info = f"[{self._rank}/{self._world_size}]"
         self._pre_phase = Phase.INVALID
 
-        # Cannot infer it is for training or inferencing pupose from module.mode,
+        # Cannot infer it is for training or inferencing purpose from module.training,
         # because it probabbly is not set correctly when this happens.
         self._last_phase = Phase.POST_BACKWARD if training else Phase.POST_FORWARD
 
