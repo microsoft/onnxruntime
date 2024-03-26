@@ -207,6 +207,15 @@ stages:
             tree /f
           displayName: 'Copy native test needs files'
           workingDirectory: '$(Build.BinariesDirectory)'
+
+        - ${{ if eq(parameters['buildJava'], 'true') }}:
+          - powershell: |
+              New-Item $(Agent.TempDirectory)/RelWithDebInfo -Force -ItemType Directory
+              Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/java" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
+              tree /f
+            displayName: 'Copy java folder for java test'
+            workingDirectory: '$(Build.BinariesDirectory)'
+
         - task: PublishPipelineArtifact@1
           inputs:
             targetPath: '$(Agent.TempDirectory)/RelWithDebInfo'
