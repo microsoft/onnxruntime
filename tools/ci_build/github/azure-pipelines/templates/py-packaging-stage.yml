@@ -57,9 +57,8 @@ parameters:
    - MinSizeRel
 
 stages:
-- stage: Python_Packaging
+- stage: Python_Packaging_Windows_CPU
   dependsOn: []
-
   jobs:
   - ${{ if eq(parameters.enable_windows_cpu, true) }}:
     - job: Windows_py_Wheels
@@ -275,6 +274,8 @@ stages:
         displayName: 'Clean Agent Directories'
         condition: always()
 
+- stage: Python_Packaging_GPU
+  dependsOn: []
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
       - template: py-win-gpu.yml
         parameters:
@@ -356,7 +357,10 @@ stages:
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
 
+- stage: Python_Packaging_MacOS
+  dependsOn: []
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
+    jobs:
     - job: MacOS_py_Wheels
       timeoutInMinutes: 180
       workspace:
@@ -424,6 +428,8 @@ stages:
         parameters:
           condition: 'succeeded'
 
+- stage: Python_Packaging_Linux
+  dependsOn: []
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
       - template: py-linux.yml
         parameters:
@@ -457,6 +463,8 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
+- stage: Python_Packaging_QNN
+  dependsOn: []
   - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
       - template: py-win-arm64-qnn.yml
         parameters:
