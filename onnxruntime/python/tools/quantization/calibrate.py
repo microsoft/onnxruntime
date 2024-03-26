@@ -734,13 +734,11 @@ class HistogramCollector(CalibrationDataCollector):
         for tensor, data_arr in name_to_arr.items():
             if isinstance(data_arr, list):
                 for arr in data_arr:
-                    if not isinstance(arr, np.ndarray):
-                        raise ValueError(f"Unexpected type {type(arr)} for tensor={tensor!r}")
-                dtypes = set(a.dtype for a in arr)
-                if len(dtypes) != 1:
-                    raise ValueError(
-                        f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
-                    )
+                    assert isinstance(arr, np.ndarray), f"Unexpected type {type(arr)} for tensor={tensor!r}"
+                dtypes = set(a.dtype for a in data_arr)
+                assert (
+                    len(dtypes) == 1
+                ), f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
                 data_arr_np = np.asarray(data_arr)
             elif not isinstance(data_arr, np.ndarray):
                 raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
