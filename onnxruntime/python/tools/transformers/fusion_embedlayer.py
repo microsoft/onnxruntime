@@ -28,7 +28,9 @@ class FusionEmbedLayerNoMask(Fusion):
             description,
         )
         self.utils = FusionUtils(model)
-        self.shape_infer_helper = self.model.infer_runtime_shape({}, update=True)
+        self.shape_infer = None
+        self.shape_infer_done = False
+
         # The following will be reset in each fuse call of FusionEmbedLayerNormalization
         self.attention = None
         self.embed_node = None
@@ -329,9 +331,13 @@ class FusionEmbedLayerNoMask(Fusion):
         segment_ids = segment_embedding_gather.input[1] if segment_embedding_gather else None
         position_ids = position_embedding_gather.input[1]
 
-        if self.shape_infer_helper is not None:
-            input_ids_shape = self.shape_infer_helper.get_edge_shape(input_ids)
-            position_ids_shape = self.shape_infer_helper.get_edge_shape(position_ids)
+        if not self.shape_infer_done:
+            self.shape_infer = self.model.infer_runtime_shape(update=True)
+            self.shape_infer_done = True
+
+        if self.shape_infer is not None:
+            input_ids_shape = self.shape_infer.get_edge_shape(input_ids)
+            position_ids_shape = self.shape_infer.get_edge_shape(position_ids)
             assert input_ids_shape and position_ids_shape
             if not (
                 len(input_ids_shape) == 2
@@ -339,18 +345,13 @@ class FusionEmbedLayerNoMask(Fusion):
                 and input_ids_shape[1] == position_ids_shape[1]
             ):
                 logger.info(
-                    "Cannot fuse EmbedLayerNormalization: input_ids and position_ids not matched in 2nd dimension: {} vs {}".format(
-                        input_ids_shape, position_ids_shape
-                    )
+                    f"Cannot fuse EmbedLayerNormalization: input_ids and position_ids not matched in 2nd dimension: {input_ids_shape} vs {position_ids_shape}"
                 )
                 return False
 
-            if segment_ids and not self.shape_infer_helper.compare_shape(input_ids, segment_ids):
+            if segment_ids and not self.shape_infer.compare_shape(input_ids, segment_ids):
                 logger.info(
-                    "Cannot fuse EmbedLayerNormalization: input_ids and segment_ids does not have same shape: {} != {}".format(
-                        input_ids_shape,
-                        self.shape_infer_helper.get_edge_shape(segment_ids),
-                    )
+                    f"Cannot fuse EmbedLayerNormalization: input_ids and segment_ids does not have same shape: {input_ids_shape} != {self.shape_infer.get_edge_shape(segment_ids)}"
                 )
                 return False
 

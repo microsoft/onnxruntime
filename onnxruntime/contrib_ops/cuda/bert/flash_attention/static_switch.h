@@ -23,11 +23,15 @@
     }                                           \
   }()
 
-#define FP16_SWITCH(COND, ...)         \
-  [&] {                                \
-    assert(COND);                      \
-    using elem_type = cutlass::half_t; \
-    return __VA_ARGS__();              \
+#define FP16_SWITCH(COND, ...)               \
+  [&] {                                      \
+    if (COND) {                              \
+      using elem_type = cutlass::half_t;     \
+      return __VA_ARGS__();                  \
+    } else {                                 \
+      using elem_type = cutlass::bfloat16_t; \
+      return __VA_ARGS__();                  \
+    }                                        \
   }()
 
 #define FWD_HEADDIM_SWITCH(HEADDIM, ...)   \

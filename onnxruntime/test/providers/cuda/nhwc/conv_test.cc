@@ -9,8 +9,8 @@ namespace test {
 
 template <typename T>
 struct ConvOp {
-  const std::vector<int64_t> input_dims;
-  const std::vector<int64_t> kernel_shape;
+  std::vector<int64_t> input_dims;
+  std::vector<int64_t> kernel_shape;
   int64_t channels;
   int64_t group = 1;
   bool bias = false;
@@ -52,20 +52,31 @@ struct ConvOp {
 };
 
 TYPED_TEST(CudaNhwcTypedTest, ConvNhwcBias) {
-  auto op = ConvOp<TypeParam>{.input_dims = {1, 16, 64, 64}, .kernel_shape = {3, 3}, .channels = 16, .bias = true};
+  auto op = ConvOp<TypeParam>{};
+  op.input_dims = {1, 16, 64, 64};
+  op.kernel_shape = {3, 3};
+  op.channels = 16;
+  op.bias = true;
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvNhwcGroupNoBias) {
-  auto op = ConvOp<TypeParam>{.input_dims = {1, 16, 64, 64}, .kernel_shape = {3, 3}, .channels = 16, .group = 4};
+  auto op = ConvOp<TypeParam>{};
+  op.input_dims = {1, 16, 64, 64};
+  op.kernel_shape = {3, 3};
+  op.channels = 16;
+  op.group = 4;
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvNhwcPadding) {
-  auto op =
-      ConvOp<TypeParam>{.input_dims = {2, 4, 64, 64}, .kernel_shape = {3, 3}, .channels = 4, .padding = {4, 4, 4, 4}};
+  auto op = ConvOp<TypeParam>{};
+  op.input_dims = {2, 4, 64, 64};
+  op.kernel_shape = {3, 3};
+  op.channels = 4;
+  op.padding = {4, 4, 4, 4};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }

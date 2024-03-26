@@ -4,6 +4,7 @@
 #ifdef ENABLE_TRAINING
 
 #include <onnx/defs/attr_proto_util.h>
+#include "core/common/string_utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
@@ -26,38 +27,38 @@ UpStreamGatherGraphTransformer::UpStreamGatherGraphTransformer(
       // 2. Whether the outputs have the same dim changes if the Gather node moves before that operator.
       // 3. Should all inputs be allowed when tracking back further (bottom-up);
       //    if not, add the input index restriction as MatMul did.
-      {GetFullQualifiedOpName("Add", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Add", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_14_13_7_6_1)},
-      {GetFullQualifiedOpName("BiasGelu", kMSDomain),
+      {utils::GetFullQualifiedOpName("BiasGelu", kMSDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(), opset_1)},
 
-      {GetFullQualifiedOpName("Cast", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Cast", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_19_13_9_6_1)},
-      {GetFullQualifiedOpName("Div", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Div", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_14_13_7_6_1)},
-      {GetFullQualifiedOpName("Dropout", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Dropout", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_13_12_10_7_6_1)},
-      {GetFullQualifiedOpName("Gelu", kMSDomain),
+      {utils::GetFullQualifiedOpName("Gelu", kMSDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_1)},
       {// Be noted, this is our own implementation of ONNX domain op.
-       GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
+       utils::GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<LayerNormalizationGatherActor>(),
                                                             opset_1)},
-      {GetFullQualifiedOpName("MatMul", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("MatMul", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<MatMulGatherActor>(),
                                                             opset_13_9_1)},
-      {GetFullQualifiedOpName("Reshape", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Reshape", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<ReshapeGatherActor>(),
                                                             opset_19_14_13_5_1)},
-      {GetFullQualifiedOpName("Softmax", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Softmax", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SoftmaxGatherActor>(),
                                                             opset_13_11_1)},
-      {GetFullQualifiedOpName("Transpose", kOnnxDomain),
+      {utils::GetFullQualifiedOpName("Transpose", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<TransposeGatherActor>(),
                                                             opset_13_1)},
   });
@@ -69,7 +70,7 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
     const OpPassThroughConfig<UpStreamGatherOperatorActorBase>& pass_through_config,
     const logging::Logger& logger) const {
   Node& slice_node = *info.node_ptr;
-  const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
+  const std::string op_type = utils::GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
   std::unordered_map<int, int> propagate_input_indices;
   std::unordered_map<int, std::vector<DimCompare>> all_input_cmp_rets;

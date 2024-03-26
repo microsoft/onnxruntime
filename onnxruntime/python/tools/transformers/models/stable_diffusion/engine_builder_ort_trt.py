@@ -6,16 +6,15 @@
 import gc
 import logging
 import os
-import shutil
 
 import torch
 from cuda import cudart
 from diffusion_models import PipelineInfo
 from engine_builder import EngineBuilder, EngineType
-from ort_utils import CudaSession
 from packaging import version
 
 import onnxruntime as ort
+from onnxruntime.transformers.io_binding_helper import CudaSession
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +109,6 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
         self,
         pipeline_info: PipelineInfo,
         max_batch_size=16,
-        hf_token=None,
         device="cuda",
         use_cuda_graph=False,
     ):
@@ -122,8 +120,6 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
                 Version and Type of pipeline.
             max_batch_size (int):
                 Maximum batch size for dynamic batch engine.
-            hf_token (str):
-                HuggingFace User Access Token to use for downloading Stable Diffusion model checkpoints.
             device (str):
                 device to run.
             use_cuda_graph (bool):
@@ -133,7 +129,6 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
             EngineType.ORT_TRT,
             pipeline_info,
             max_batch_size=max_batch_size,
-            hf_token=hf_token,
             device=device,
             use_cuda_graph=use_cuda_graph,
         )
@@ -165,7 +160,6 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
         opt_image_height,
         opt_image_width,
         opt_batch_size=1,
-        force_engine_rebuild=False,
         static_batch=False,
         static_image_shape=True,
         max_workspace_size=0,
@@ -174,14 +168,6 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
     ):
         self.torch_device = torch.device("cuda", device_id)
         self.load_models(framework_model_dir)
-
-        if force_engine_rebuild:
-            if os.path.isdir(onnx_dir):
-                logger.info("Remove existing directory %s since force_engine_rebuild is enabled", onnx_dir)
-                shutil.rmtree(onnx_dir)
-            if os.path.isdir(engine_dir):
-                logger.info("Remove existing directory %s since force_engine_rebuild is enabled", engine_dir)
-                shutil.rmtree(engine_dir)
 
         if not os.path.isdir(engine_dir):
             os.makedirs(engine_dir)
@@ -297,8 +283,6 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
             built_engines[model_name] = engine
 
         self.engines = built_engines
-
-        return built_engines
 
     def run_engine(self, model_name, feed_dict):
         return self.engines[model_name].infer(feed_dict)

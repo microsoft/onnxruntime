@@ -1,14 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {readFile} from 'node:fs/promises';
-import {env, InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
+import {InferenceSession, InferenceSessionHandler, SessionHandler, Tensor, TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
 
-import {SerializableModeldata, TensorMetadata} from './proxy-messages';
-import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, isOrtEnvInitialized, releaseSession, run} from './proxy-wrapper';
+import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
+import {copyFromExternalBuffer, createSession, endProfiling, releaseSession, run} from './proxy-wrapper';
 import {isGpuBufferSupportedType} from './wasm-common';
-
-let runtimeInitializationPromise: Promise<void>|undefined;
+import {loadFile} from './wasm-utils-load-file';
 
 export const encodeTensorMetadata = (tensor: Tensor, getName: () => string): TensorMetadata => {
   switch (tensor.location) {
@@ -44,41 +42,30 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
   inputNames: string[];
   outputNames: string[];
 
-  async createSessionAllocate(path: string): Promise<SerializableModeldata> {
-    // fetch model from url and move to wasm heap. The arraybufffer that held the http
-    // response is freed once we return
-    const response = await fetch(path);
-    if (response.status !== 200) {
-      throw new Error(`failed to load model: ${path}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    return createSessionAllocate(new Uint8Array(arrayBuffer));
+  async fetchModelAndCopyToWasmMemory(path: string): Promise<SerializableInternalBuffer> {
+    // fetch model from url and move to wasm heap.
+    return copyFromExternalBuffer(await loadFile(path));
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
-    if (!(await isOrtEnvInitialized())) {
-      if (!runtimeInitializationPromise) {
-        runtimeInitializationPromise = initializeRuntime(env);
-      }
-      await runtimeInitializationPromise;
-      runtimeInitializationPromise = undefined;
-    }
+    TRACE_FUNC_BEGIN();
+    let model: Parameters<typeof createSession>[0];
 
     if (typeof pathOrBuffer === 'string') {
       if (typeof process !== 'undefined' && process.versions && process.versions.node) {
         // node
-        const model = await readFile(pathOrBuffer);
-        [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+        model = await loadFile(pathOrBuffer);
       } else {
         // browser
-        // fetch model and move to wasm heap.
-        const modelData: SerializableModeldata = await this.createSessionAllocate(pathOrBuffer);
-        // create the session
-        [this.sessionId, this.inputNames, this.outputNames] = await createSessionFinalize(modelData, options);
+        // fetch model and copy to wasm heap.
+        model = await this.fetchModelAndCopyToWasmMemory(pathOrBuffer);
       }
     } else {
-      [this.sessionId, this.inputNames, this.outputNames] = await createSession(pathOrBuffer, options);
+      model = pathOrBuffer;
     }
+
+    [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+    TRACE_FUNC_END();
   }
 
   async dispose(): Promise<void> {
@@ -87,6 +74,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
 
   async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
       Promise<SessionHandler.ReturnType> {
+    TRACE_FUNC_BEGIN();
     const inputArray: Tensor[] = [];
     const inputIndices: number[] = [];
     Object.entries(feeds).forEach(kvp => {
@@ -124,6 +112,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
     for (let i = 0; i < results.length; i++) {
       resultMap[this.outputNames[outputIndices[i]]] = outputArray[i] ?? decodeTensorMetadata(results[i]);
     }
+    TRACE_FUNC_END();
     return resultMap;
   }
 

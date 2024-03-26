@@ -4,7 +4,10 @@
 #include <fstream>
 #include <unordered_map>
 #include <string>
+#include <vector>
+#include <sstream>
 #include <iostream>
+#include <filesystem>
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
@@ -456,10 +459,10 @@ std::string GetComputeCapacity(const cudaDeviceProp& prop) {
  * Get Timing by compute capability
  *
  */
-std::string GetTimingCachePath(const std::string& root, cudaDeviceProp prop) {
+std::string GetTimingCachePath(const std::string& root, std::string& compute_cap) {
   // append compute capability of the GPU as this invalidates the cache and TRT will throw when loading the cache
   const std::string timing_cache_name = "TensorrtExecutionProvider_cache_sm" +
-                                        GetComputeCapacity(prop) + ".timing";
+                                        compute_cap + ".timing";
   return GetCachePath(root, timing_cache_name);
 }
 
@@ -494,7 +497,15 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
   }
 }
 
-// Helper class to generate engine id via model name/model content/env metadata
+/**
+ * <summary>
+ * Helper class to generate engine id via model name/model content/env metadata
+ * </summary>
+ * <remarks>
+ * The TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
+ * compiled kernels, so the name must be unique and deterministic across models and sessions.
+ * </remarks>
+ */
 HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
   HashValue model_hash = 0;
 
@@ -693,5 +704,50 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
   }
 
   return true;
+}
+
+std::vector<std::string> split(const std::string& str, char delimiter) {
+  std::vector<std::string> tokens;
+  std::string token;
+  std::istringstream tokenStream(str);
+  while (std::getline(tokenStream, token, delimiter)) {
+    tokens.push_back(token);
+  }
+  return tokens;
+}
+
+std::string join(const std::vector<std::string>& vec, const std::string& delimiter) {
+  std::string result;
+  for (size_t i = 0; i < vec.size(); ++i) {
+    result += vec[i];
+    if (i < vec.size() - 1) {
+      result += delimiter;
+    }
+  }
+  return result;
+}
+
+/*
+ * Parse engine cache name suffix when user customizes prefix for engine cache name
+ *
+ * For example:
+ * When default subgraph name is "TensorrtExecutionProvider_TRTKernel_graph_torch-jit-export_2068723788287043730_189_189_fp16"
+ * This func will generate the suffix "2068723788287043730_189_fp16"
+ *
+ */
+std::string GetCacheSuffix(const std::string& fused_node_name, const std::string& trt_node_name_with_precision) {
+  std::vector<std::string> split_fused_node_name = split(fused_node_name, '_');
+  if (split_fused_node_name.size() >= 3) {
+    // Get index of model hash from fused_node_name
+    std::string model_hash = split_fused_node_name[split_fused_node_name.size() - 3];
+    size_t index = fused_node_name.find(model_hash);
+    // Parse suffix from trt_node_name_with_precision, as it has additional precision info
+    std::vector<std::string> suffix_group = split(trt_node_name_with_precision.substr(index), '_');
+    if (suffix_group.size() > 2) {
+      suffix_group.erase(suffix_group.begin() + 2);
+    }
+    return join(suffix_group, "_");
+  }
+  return "";
 }
 }  // namespace onnxruntime

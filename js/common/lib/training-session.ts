@@ -11,7 +11,7 @@ export declare namespace TrainingSession {
   /**
    * Either URI file path (string) or Uint8Array containing model or checkpoint information.
    */
-  type URIorBuffer = string|Uint8Array;
+  type UriOrBuffer = string|Uint8Array;
 }
 
 /**
@@ -21,6 +21,12 @@ export declare namespace TrainingSession {
  */
 export interface TrainingSession {
   // #region run()
+
+  /**
+   * Lazily resets the gradients of all trainable parameters to zero. Should happen after the invocation of
+   * runOptimizerStep.
+   */
+  lazyResetGrad(): Promise<void>;
 
   /**
    * Run TrainStep asynchronously with the given feeds and options.
@@ -39,11 +45,43 @@ export interface TrainingSession {
    * @param feeds - Representation of the model input.
    * @param fetches - Representation of the model output.
    * detail.
-   * @param options - Optional. A set of options that controls the behavior of model inference.
+   * @param options - Optional. A set of options that controls the behavior of model training.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
    values.
    */
   runTrainStep(
+      feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
+      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+
+  /**
+   * Runs a single optimizer step, which performs weight updates for the trainable parameters using the optimizer model.
+   *
+   * @param options - Optional. A set of options that controls the behavior of model optimizing.
+   */
+  runOptimizerStep(options?: InferenceSession.RunOptions): Promise<void>;
+
+  /**
+   * Run a single eval step with the given inputs and options using the eval model.
+   *
+   * @param feeds - Representation of the model input.
+   * @param options - Optional. A set of options that controls the behavior of model eval step.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runEvalStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
+      Promise<InferenceSession.ReturnType>;
+
+  /**
+   * Run a single eval step with the given inputs and options using the eval model.
+   *
+   * @param feeds - Representation of the model input.
+   * @param fetches - Representation of the model output.
+   * detail.
+   * @param options - Optional. A set of options that controls the behavior of model eval step.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runEvalStep(
       feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
@@ -60,13 +98,13 @@ export interface TrainingSession {
   getParametersSize(trainableOnly: boolean): Promise<number>;
 
   /**
-   * Copies parameter values from the given array to the training state. Currently, only supporting models with
+   * Copies parameter values from the given buffer to the training state. Currently, only supporting models with
    * parameters of type Float32.
    *
-   * @param buffer - Float32 buffer containing parameters converted to a Uint8Array.
+   * @param buffer - A Uint8Array representation of Float32 parameters.
    * @param trainableOnly - True if trainable parameters only to be modified, false otherwise. Default value is true.
    */
-  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
+  loadParametersBuffer(buffer: Uint8Array, trainableOnly: boolean): Promise<void>;
 
   /**
    * Copies the model parameters to a contiguous buffer. Usually used in the context of Federated Learning.
@@ -90,14 +128,25 @@ export interface TrainingSession {
   // #region metadata
 
   /**
-   * Get input names of the loaded model.
+   * Get input names of the loaded training model.
    */
-  readonly inputNames: readonly string[];
+  readonly trainingInputNames: readonly string[];
 
   /**
-   * Get output names of the loaded model.
+   * Get output names of the loaded training model.
    */
-  readonly outputNames: readonly string[];
+  readonly trainingOutputNames: readonly string[];
+
+  /**
+   * Get input names of the loaded eval model. Is an empty array if no eval model is loaded.
+   */
+  readonly evalInputNames: readonly string[];
+
+  /**
+   * Get output names of the loaded eval model. Is an empty array if no eval model is loaded.
+   */
+  readonly evalOutputNames: readonly string[];
+
   // #endregion
 }
 
@@ -108,19 +157,19 @@ export interface TrainingSessionCreateOptions {
   /**
    * URI or buffer for a .ckpt file that contains the checkpoint for the training model.
    */
-  checkpointState: TrainingSession.URIorBuffer;
+  checkpointState: TrainingSession.UriOrBuffer;
   /**
    * URI or buffer for the .onnx training file.
    */
-  trainModel: TrainingSession.URIorBuffer;
+  trainModel: TrainingSession.UriOrBuffer;
   /**
    * Optional. URI or buffer for the .onnx optimizer model file.
    */
-  optimizerModel?: TrainingSession.URIorBuffer;
+  optimizerModel?: TrainingSession.UriOrBuffer;
   /**
    * Optional. URI or buffer for the .onnx eval model file.
    */
-  evalModel?: TrainingSession.URIorBuffer;
+  evalModel?: TrainingSession.UriOrBuffer;
 }
 
 /**

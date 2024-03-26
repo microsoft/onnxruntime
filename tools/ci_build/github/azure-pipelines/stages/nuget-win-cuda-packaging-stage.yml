@@ -139,9 +139,24 @@ stages:
             filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
             arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
             workingFolder: '$(Build.ArtifactStagingDirectory)'
+        - script: |
+            dir
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+          displayName: 'List ArtifactStagingDirectory before delete'
+
+        - task: DeleteFiles@1
+          displayName: 'Clean up none zip files from ArtifactStagingDirectory'
+          inputs:
+            SourceFolder: $(Build.ArtifactStagingDirectory)
+            Contents: '*/'
+
+        - script: |
+            dir
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+          displayName: 'List ArtifactStagingDirectory after delete'
 
         - task: PublishPipelineArtifact@0
           displayName: 'Publish Pipeline Combined GPU Package Artifact'
           inputs:
             artifactName: 'onnxruntime-win-x64-gpu'
-            targetPath: '$(Build.ArtifactStagingDirectory)'
+            targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'

@@ -6,12 +6,18 @@
 #include <windows.h>
 #include <psapi.h>
 #include <libloaderapi.h>
+#include <set>
 #else
 #include <dlfcn.h>
 #endif
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
+#include "QnnTypes.h"
 #include "System/QnnSystemInterface.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -27,16 +33,18 @@ class QnnBackendManager {
  public:
   QnnBackendManager(std::string&& backend_path,
                     ProfilingLevel profiling_level,
-                    uint32_t rpc_control_latency,
-                    HtpPerformanceMode htp_performance_mode,
                     ContextPriority context_priority,
-                    std::string&& qnn_saver_path)
+                    std::string&& qnn_saver_path,
+                    uint32_t device_id,
+                    QnnHtpDevice_Arch_t htp_arch,
+                    uint32_t soc_model)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
-        rpc_control_latency_(rpc_control_latency),
-        htp_performance_mode_(htp_performance_mode),
         context_priority_(context_priority),
-        qnn_saver_path_(qnn_saver_path) {
+        qnn_saver_path_(qnn_saver_path),
+        device_id_(device_id),
+        htp_arch_(htp_arch),
+        soc_model_(soc_model) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -75,11 +83,18 @@ class QnnBackendManager {
 
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
-  Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model);
+  Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
-  Status SetHtpPowerConfig();
+  Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
+
+  Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
+                           HtpPerformanceMode htp_performance_mode);
+
+  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
+                              uint32_t rpc_control_latency);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -117,13 +132,18 @@ class QnnBackendManager {
   void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
 
   Status ExtractBackendProfilingInfo();
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile, bool backendSupportsExtendedEventData);
-  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile, bool backendSupportsExtendedEventData);
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
+                                   bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
+  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                               std::ofstream& outfile, bool backendSupportsExtendedEventData,
+                               bool tracelogging_provider_ep_enabled);
 
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
   const std::string& GetSdkVersion() { return sdk_build_version_; }
+
+  Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
@@ -133,8 +153,6 @@ class QnnBackendManager {
   Status LoadQnnSaverBackend();
 
   Status UnloadLib(void* handle);
-
-  Status DestroyHTPPowerConfigID();
 
   void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
 
@@ -175,13 +193,25 @@ class QnnBackendManager {
     return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
   }
 
-  Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile);
-  Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile);
+  Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                                    std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+  Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                                       std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
   static const std::string& GetUnitString(QnnProfile_EventUnit_t unitType);
   static const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap();
   static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
   static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
+#ifdef _WIN32
+  void LogQnnProfileEventAsTraceLogging(
+      uint64_t timestamp,
+      const std::string& message,
+      const std::string& qnnScalarValue,
+      const std::string& unit,
+      const std::string& timingSource,
+      const std::string& eventLevel,
+      const char* eventIdentifier);
+#endif
 
  private:
   const std::string backend_path_;
@@ -204,15 +234,15 @@ class QnnBackendManager {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
-  uint32_t rpc_control_latency_ = 0;
-  HtpPerformanceMode htp_performance_mode_;
   ContextPriority context_priority_;
   std::string sdk_build_version_ = "";
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
   const std::string qnn_saver_path_;
-  uint32_t htp_power_config_client_id_ = 0;
+  uint32_t device_id_ = 0;
+  QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
+  uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
 };
 
 }  // namespace qnn

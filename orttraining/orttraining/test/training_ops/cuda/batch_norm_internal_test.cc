@@ -68,6 +68,7 @@ static void TestBatchNormInternal(bool test_double = false, bool T_is_half = fal
     test.AddOutput<double>("running_var", channel_dims, running_var_double);
     test.AddOutput<double>("saved_mean", channel_dims, saved_mean_double);
     test.AddOutput<double>("saved_inv_std", channel_dims, saved_inv_std_double);
+    test.SetOutputTolerance(0.0001f);
   } else {
     if (T_is_half) {
       std::vector<MLFloat16> X_half(X.size());

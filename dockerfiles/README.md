@@ -277,7 +277,7 @@ Nothing else from ONNX Runtime source tree will be copied/installed to the image
 Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropiate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
 
 ## MIGraphX
-**Ubuntu 20.04, ROCm5.4, AMDMIGraphX v1.2**
+**Ubuntu 20.04, ROCm6.0, MIGraphX**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -291,7 +291,7 @@ Note: When running the container you built in Docker, please either use 'nvidia-
   ```
 
    ## ROCm
-**Ubuntu 20.04, ROCm5.4**
+**Ubuntu 20.04, ROCm6.0**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```

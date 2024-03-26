@@ -31,7 +31,7 @@ using MaskingSpecialization = ck::tensor_operation::device::MaskingSpecializatio
 
 using PassThrough = ck::tensor_operation::element_wise::PassThrough;
 
-using ck::tensor_operation::device::DeviceBatchedGemmSoftmaxGemmPermute;  // the interface
+using ck::tensor_operation::device::DeviceBatchedGemmSoftmaxGemmPermute;               // the interface
 using ck::tensor_operation::device::DeviceBatchedGemmSoftmaxGemmPermute_Xdl_CShuffle;  // the implementation
 
 static constexpr auto GemmDefault = ck::tensor_operation::device::GemmSpecialization::Default;
@@ -140,6 +140,35 @@ std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
     MaskingSpecialization::MaskDisabled>>>
 GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
     F16, ck::Tuple<F16, F16>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskDisabled>();
+
+template <>
+std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
+    2, 1, 1, 1, 1,
+    F16, F16, F16, F16, ck::Tuple<>, ck::Tuple<>,
+    PassThrough, PassThrough, PreSoftmaxAttentionScoreOp, PassThrough, PassThrough,
+    MaskingSpecialization::MaskOutUpperTriangle>>>
+GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
+    F16, ck::Tuple<>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskOutUpperTriangle>();
+
+// fp16, biased, non-masked
+template <>
+std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
+    2, 1, 1, 1, 1,
+    F16, F16, F16, F16, ck::Tuple<F16>, ck::Tuple<>,
+    PassThrough, PassThrough, PreSoftmaxAttentionScoreOp, PassThrough, PassThrough,
+    MaskingSpecialization::MaskOutUpperTriangle>>>
+GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
+    F16, ck::Tuple<F16>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskOutUpperTriangle>();
+
+// fp16, biased, fp16 masked, basically, two bias
+template <>
+std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
+    2, 1, 1, 1, 1,
+    F16, F16, F16, F16, ck::Tuple<F16, F16>, ck::Tuple<>,
+    PassThrough, PassThrough, PreSoftmaxAttentionScoreOp, PassThrough, PassThrough,
+    MaskingSpecialization::MaskOutUpperTriangle>>>
+GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
+    F16, ck::Tuple<F16, F16>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskOutUpperTriangle>();
 
 }  // namespace internal
 }  // namespace rocm

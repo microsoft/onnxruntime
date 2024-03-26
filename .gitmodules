@@ -7,4 +7,4 @@
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
-	branch = 3.1.44
+	branch = 3.1.51

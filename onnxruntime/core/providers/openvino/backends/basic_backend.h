@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -37,6 +37,7 @@ class BasicBackend : public IBackend {
   void EnableCaching();
   void EnableGPUThrottling(ov::AnyMap& device_config);
   void EnableStreams();
+  void SetNumThreads(ov::AnyMap& device_config);
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
 #ifdef IO_BUFFER_ENABLED

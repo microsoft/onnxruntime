@@ -17,7 +17,7 @@ TEST(CudaGemmOptions, TestDefaultOptions) {
   EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUBLAS_COMPUTE_32F);
 #else
-  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_TENSOR_OP_MATH);
+  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUDA_R_32F);
 #endif
 }
@@ -30,7 +30,7 @@ TEST(CudaGemmOptions, TestCompute16F) {
   EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUBLAS_COMPUTE_16F);
 #else
-  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_TENSOR_OP_MATH);
+  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUDA_R_16F);
 #endif
 }
@@ -43,7 +43,7 @@ TEST(CudaGemmOptions, NoReducedPrecision) {
   EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION);
   EXPECT_EQ(gemm_options.GetComputeType(), CUBLAS_COMPUTE_32F);
 #else
-  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_TENSOR_OP_MATH);
+  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUDA_R_32F);
 #endif
 }
@@ -56,7 +56,7 @@ TEST(CudaGemmOptions, Pedantic) {
   EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_PEDANTIC_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUBLAS_COMPUTE_32F_PEDANTIC);
 #else
-  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_TENSOR_OP_MATH);
+  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUDA_R_32F);
 #endif
 }
@@ -69,7 +69,7 @@ TEST(CudaGemmOptions, Compute16F_Pedantic) {
   EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_PEDANTIC_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUBLAS_COMPUTE_16F_PEDANTIC);
 #else
-  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_TENSOR_OP_MATH);
+  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUDA_R_16F);
 #endif
 }
@@ -82,7 +82,7 @@ TEST(CudaGemmOptions, Compute16F_NoReducedPrecision) {
   EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUBLAS_COMPUTE_16F);
 #else
-  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_TENSOR_OP_MATH);
+  EXPECT_EQ(gemm_options.GetMathMode(), CUBLAS_DEFAULT_MATH);
   EXPECT_EQ(gemm_options.GetComputeType(), CUDA_R_16F);
 #endif
 }

@@ -5,6 +5,7 @@
 // performance limitations when the reduced axis is long. Need to add
 // a optimized codepath for this.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -73,8 +74,8 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
       }
       ${shaderHelper.registerUniform('packedCols', 'i32').declareVariables(x, output)}
       ${shaderHelper.mainStart()}
-        let gindex = i32(global_id.x);
-        let lindex = i32(local_id.x);
+        let gindex = i32(global_idx);
+        let lindex = i32(local_idx);
         const wg = ${WG};
         let row = gindex / wg;
         let cols = uniforms.packedCols;
@@ -136,7 +137,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
     getRunData: () => ({
       outputs: [{dims: shape, dataType: input.dataType}],
       dispatchGroup: {x: rows},
-      programUniforms: [{type: 'uint32', data: packedCols}]
+      programUniforms: [{type: DataType.uint32, data: packedCols}]
     }),
     getShaderSource,
   };

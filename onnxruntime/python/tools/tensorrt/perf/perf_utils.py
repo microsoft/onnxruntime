@@ -39,6 +39,7 @@ latency_over_time_name = "latency_over_time"
 specs_name = "specs"
 session_name = "session"
 session_over_time_name = "session_over_time"
+op_metrics_name = "op_metrics"
 
 # column names
 model_title = "Model"

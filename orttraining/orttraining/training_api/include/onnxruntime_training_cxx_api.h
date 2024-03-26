@@ -58,6 +58,8 @@ using Property = std::variant<int64_t, float, std::string>;
  * training state (including model parameters, its gradients, the optimizer states and the properties).
  * The Ort::TrainingSession does not hold a copy of the Ort::CheckpointState and as a result, it is required
  * that the checkpoint state outlive the lifetime of the training session.
+ * \note Note that the checkpoint state can be either the complete checkpoint state or the nominal checkpoint
+ * state depending on the version provided while loading the checkpoint.
  *
  */
 class CheckpointState : public detail::Base<OrtCheckpointState> {
@@ -386,6 +388,9 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
   Value ToBuffer(const bool only_trainable);
 
   /** \brief Loads the training session model parameters from a contiguous buffer
+   *
+   * In case the training session was created with a nominal checkpoint, invoking this function is required
+   * to load the updated parameters onto the checkpoint to complete it.
    *
    * \param[in] buffer Contiguous buffer to load the parameters from.
    */

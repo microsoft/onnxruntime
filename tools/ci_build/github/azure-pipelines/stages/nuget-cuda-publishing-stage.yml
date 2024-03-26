@@ -1,0 +1,71 @@
+parameters:
+  - name: artifact_feed
+    type: string
+    default: 'onnxruntime-cuda-12'
+
+stages:
+  - stage: NuGet_Publishing_GPU
+    jobs:
+      - job:
+        workspace:
+          clean: all
+        variables:
+        - name: GDN_CODESIGN_TARGETDIRECTORY
+          value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+        pool: 'onnxruntime-Win-CPU-2022'
+        steps:
+          - checkout: none
+
+          - task: NuGetToolInstaller@1
+            inputs:
+              versionSpec: 6.8.x
+
+          - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+          
+          - download: build
+            displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+            artifact: 'drop-signed-nuget-GPU'
+       
+          - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+          
+          - powershell: |
+              New-Item -Path $(Agent.TempDirectory) -Name "binfiles" -ItemType "directory"
+              $base_path_name = Join-Path -Path $(Agent.TempDirectory) -ChildPath "binfiles"
+              Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact\final-package -Filter *.nupkg |
+                  Foreach-Object {
+                   $dir_name = Join-Path -Path $base_path_name -ChildPath $_.Basename
+                   $cmd = "7z.exe x $($_.FullName) -y -o$dir_name"
+                   Write-Output $cmd
+                   Invoke-Expression -Command $cmd
+                  }
+              dir $(Agent.TempDirectory)
+              tree $(Agent.TempDirectory)
+            workingDirectory: '$(Agent.TempDirectory)'
+
+          - task: CodeSign@1
+            displayName: 'Run Codesign Validation'
+
+          - task: PublishSecurityAnalysisLogs@3
+            displayName: 'Publish Security Analysis Logs'
+            continueOnError: true
+
+          - task: PostAnalysis@2
+            inputs:
+              GdnBreakAllTools: true
+              GdnBreakPolicy: M365
+              GdnBreakPolicyMinSev: Error
+
+          - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
+            parameters:
+              packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+          #This task must be run on a Windows machine
+          - task: NuGetCommand@2
+            displayName: 'NuGet push ${{ parameters.artifact_feed }}'
+            inputs:
+              command: push
+              packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
+              publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/d3daa2b0-aa56-45ac-8145-2c3dc0661c87'
+              allowPackageConflicts: true
+
+
+

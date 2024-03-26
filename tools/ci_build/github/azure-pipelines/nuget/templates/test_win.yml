@@ -3,15 +3,19 @@ parameters:
   NugetPackageName : ''
   ArtifactSuffix: ''
   StageSuffix: 'CPU'
+  # More Suffix is used to differentiate testing for GPU and GPU-Windows/GPU-Linux packages
+  MoreSuffix: ''
   # For inference packages, the test data artifact name is drop-extra and no suffix is required.
   # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
   # the parent pipeline.
   TestDataArtifactSuffix: ''
   Skipx86Tests: 'false'
   CudaVersion: ''
+  SpecificArtifact: false
+  BuildId: ''
 
 stages:
-- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
+- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
@@ -58,11 +62,13 @@ stages:
         arguments: 'amd64'
         modifyEnvironment: true
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact'
-      inputs:
-        artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+    - template: ../../templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact'
+        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+        TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:

@@ -34,6 +34,14 @@ export declare namespace Env {
     simd?: boolean;
 
     /**
+     * set or get a boolean value indicating whether to enable trace.
+     *
+     * @deprecated Use `env.trace` instead. If `env.trace` is set, this property will be ignored.
+     * @defaultValue `false`
+     */
+    trace?: boolean;
+
+    /**
      * Set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds. A zero
      * value indicates no timeout is set.
      *
@@ -92,18 +100,95 @@ export declare namespace Env {
     async?: boolean;
   }
 
+  export interface WebGpuProfilingDataV1TensorMetadata {
+    dims: readonly number[];
+    dataType: string;
+  }
+  export interface WebGpuProfilingDataV1 {
+    version: 1;
+    inputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    outputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    kernelId: number;
+    kernelType: string;
+    kernelName: string;
+    programName: string;
+    startTime: number;
+    endTime: number;
+  }
+
+  export type WebGpuProfilingData = WebGpuProfilingDataV1;
+
   export interface WebGpuFlags {
     /**
      * Set or get the profiling mode.
+     *
+     * @deprecated Use `env.webgpu.profiling.mode` instead. If `env.webgpu.profiling.mode` is set, this property will be
+     * ignored.
      */
     profilingMode?: 'off'|'default';
     /**
+     * Set or get the profiling configuration.
+     */
+    profiling?: {
+      /**
+       * Set or get the profiling mode.
+       *
+       * @defaultValue `'off'`
+       */
+      mode?: 'off'|'default';
+
+      /**
+       * Set or get a callback function when a profiling data is received. If not set, the profiling data will be
+       * printed to console.
+       */
+      ondata?: (data: WebGpuProfilingData) => void;
+    };
+    /**
+     * Set or get the power preference.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as options for `navigator.gpu.requestAdapter()`.
+     *
+     * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
+     *
+     * @defaultValue `undefined`
+     */
+    powerPreference?: 'low-power'|'high-performance';
+    /**
+     * Set or get the force fallback adapter flag.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as options for `navigator.gpu.requestAdapter()`.
+     *
+     * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
+     *
+     * @defaultValue `undefined`
+     */
+    forceFallbackAdapter?: boolean;
+    /**
+     * Set or get the adapter for WebGPU.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as the GPU adapter for the underlying WebGPU backend to create GPU device.
+     *
+     * If this property is not set, it will be available to get after the first WebGPU inference session is created. The
+     * value will be the GPU adapter that created by the underlying WebGPU backend.
+     *
+     * When use with TypeScript, the type of this property is `GPUAdapter` defined in "@webgpu/types".
+     * Use `const adapter = env.webgpu.adapter as GPUAdapter;` in TypeScript to access this property with correct type.
+     *
+     * see comments on {@link Tensor.GpuBufferType}
+     */
+    adapter: unknown;
+    /**
      * Get the device for WebGPU.
+     *
+     * This property is only available after the first WebGPU inference session is created.
      *
      * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
      * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
      *
-     * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
+     * see comments on {@link Tensor.GpuBufferType} for more details about why not use types defined in "@webgpu/types".
      */
     readonly device: unknown;
     /**
@@ -122,12 +207,20 @@ export interface Env {
    * @defaultValue `'warning'`
    */
   logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
+
   /**
    * Indicate whether run in debug mode.
    *
    * @defaultValue `false`
    */
   debug?: boolean;
+
+  /**
+   * set or get a boolean value indicating whether to enable trace.
+   *
+   * @defaultValue `false`
+   */
+  trace?: boolean;
 
   /**
    * Get version of the current package.

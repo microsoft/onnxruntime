@@ -38,26 +38,28 @@ class CudnnRNN {
     }
   }
 
-  Status Set(const cudnnHandle_t& cudnnHandle, int64_t hidden_size, int num_layers,
+  Status Set(int64_t input_size, int64_t hidden_size, int64_t proj_size, int num_layers,
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
-             cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
+             cudnnRNNMode_t rnn_mode, bool has_bias, cudnnDataType_t dataType) {
     if (!cudnn_rnn_desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
 
-    CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v6(cudnnHandle,
-                                                   cudnn_rnn_desc_,
+    CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v8(cudnn_rnn_desc_,
+                                                   CUDNN_RNN_ALGO_STANDARD,  // CUDNN_RNN_ALGO_PERSIST_STATIC, CUDNN_RNN_ALGO_PERSIST_DYNAMIC
+                                                   rnn_mode,
+                                                   has_bias ? CUDNN_RNN_DOUBLE_BIAS : CUDNN_RNN_NO_BIAS,
+                                                   cudnn_direction_model,
+                                                   CUDNN_LINEAR_INPUT,
+                                                   dataType,
+                                                   dataType,
+                                                   dataType == CUDNN_DATA_HALF ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH,
+                                                   gsl::narrow_cast<int>(input_size),
                                                    gsl::narrow_cast<int>(hidden_size),
+                                                   gsl::narrow_cast<int>(proj_size),  // projected size
                                                    num_layers,
                                                    cudnn_dropout_desc,
-                                                   CUDNN_LINEAR_INPUT,  // We can also skip the input matrix transformation
-                                                   cudnn_direction_model,
-                                                   rnn_mode,
-                                                   CUDNN_RNN_ALGO_STANDARD,  // CUDNN_RNN_ALGO_PERSIST_STATIC, CUDNN_RNN_ALGO_PERSIST_DYNAMIC
-                                                   dataType));
-
-    if (prop.major >= 7 && dataType == CUDNN_DATA_HALF) {
-      cudnnSetRNNMatrixMathType(cudnn_rnn_desc_, CUDNN_TENSOR_OP_MATH);
-    }
+                                                   // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
+                                                   CUDNN_RNN_PADDED_IO_ENABLED));
 
     return Status::OK();
   }
@@ -119,8 +121,7 @@ class CudnnRnnBase : public CudaKernel {
  private:
   Status SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
                                const cudnnRNNDescriptor_t rnn_desc,
-                               const cudnnTensorDescriptor_t x_desc,
-                               const cudnnFilterDescriptor_t w_desc,
+                               size_t w_data_size,
                                void* w_data,
                                const T* W_data,
                                const T* R_data,
@@ -128,23 +129,22 @@ class CudnnRnnBase : public CudaKernel {
                                cudaStream_t cuda_stream) const;
 
   Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
+                           size_t& target_w_data_size_in_bytes,
                            IAllocatorUniquePtr<void>& target_w_data,
                            CudnnFilterDescriptor& target_w_desc,
                            CudnnRNN& rnn_desc,
                            onnxruntime::Stream* ort_stream) const;
 
-  void SetWeightBias(const cudnnHandle_t handle,
-                     const cudnnRNNDescriptor_t rnn_desc,
-                     const int pseudo_layer,
-                     const cudnnTensorDescriptor_t x_desc,
-                     const cudnnFilterDescriptor_t w_desc,
-                     const cudnnFilterDescriptor_t filter_desc,
-                     const void* w_data,
-                     const int lin_layer_id,
-                     const T* pos,
-                     int& offset,
-                     bool is_matrix,
-                     cudaStream_t cuda_stream) const;
+  Status SetWeightBias(const cudnnHandle_t handle,
+                       const cudnnRNNDescriptor_t rnn_desc,
+                       const int pseudo_layer,
+                       size_t w_data_size,
+                       const void* w_data,
+                       const int lin_layer_id,
+                       const T* pos,
+                       int& offset,
+                       bool is_matrix,
+                       cudaStream_t cuda_stream) const;
 
   void SetZeroSequences(const int64_t zero_seq_index_cache_size,
                         const std::vector<int32_t> zero_seq_index_cache,
@@ -167,6 +167,7 @@ class CudnnRnnBase : public CudaKernel {
   cudnnRNNMode_t rnn_mode_;
   // w_desc_cache_ & w_data_cache_ are changed in Constructor if we can get the weights as constant input
   CudnnFilterDescriptor w_desc_cache_;
+  size_t w_data_cache_size_in_bytes_;
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
   int64_t layout_;

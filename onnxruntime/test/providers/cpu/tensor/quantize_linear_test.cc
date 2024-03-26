@@ -34,16 +34,21 @@ TEST(DequantizeLinearOpTest, Int8) {
 
 // scalar zero & scale with int8
 TEST(DequantizeLinearOpTest, Int32) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
-  }
-
   OpTester test("DequantizeLinear", 10);
   std::vector<int64_t> dims{4};
   test.AddInput<int32_t>("x", dims, {-30, -3, 100, 127});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", dims, {-60.f, -6.f, 200.f, 254.f});
+  test.Run();
+}
+
+TEST(DequantizeLinearOpTest_BroadcastTensor, Int32) {
+  OpTester test("DequantizeLinear", 13);
+  test.AddInput<int32_t>("x", {4}, {-30, -3, 100, 127});
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddInput<float>("x_scale", {1}, {2.0f});
+  test.AddInput<int32_t>("x_zero_point", {1}, {0});
+  test.AddOutput<float>("y", {4}, {-60.f, -6.f, 200.f, 254.f});
   test.Run();
 }
 
@@ -88,11 +93,6 @@ TEST(DequantizeLinearOpMLFloat16Test, Scalar) {
 
 // dequantize without zero point
 TEST(DequantizeLinearOpTest, Without_Zero_Point) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
-  }
-
   OpTester test("DequantizeLinear", 10);
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});

@@ -11,8 +11,8 @@
 #include "QnnInterface.h"
 #include "qnn_def.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
@@ -178,7 +178,7 @@ class QnnModelWrapper {
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                std::vector<uint8_t>& unpacked_tensor) const;
 
-  QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
+  QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 

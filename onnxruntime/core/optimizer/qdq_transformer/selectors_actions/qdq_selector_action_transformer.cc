@@ -105,8 +105,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when unary QLinear* ops support 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
+  std::vector<const char*> providers = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
                                                           {"LeakyRelu", {}},
@@ -123,20 +123,43 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 void BinaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 4 nodes. 2 x DQ for inputs, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
-  const std::string action_name{"2DQ"};
-  std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
+  {
+    const std::string action_name{"2DQ"};
+    std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when binary QLinear* ops support 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>();
-  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
-                                                         {{"Add", {}},
-                                                          {"Mul", {}}},
-                                                         std::move(selector),
-                                                         std::move(action));
+    // TODO: Enable 16-bit types in selector when binary QLinear* ops support 16-bit.
+    std::vector<const char*> providers = {kCpuExecutionProvider};
+    std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>(providers);
+    qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                           {{"Add", {}},
+                                                            {"Mul", {}}},
+                                                           std::move(selector),
+                                                           std::move(action));
 
 #else
-  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+    qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+  }
+
+#ifdef USE_DML
+  {
+    const std::string action_name{"2DQ_DML"};
+    std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
+
+#if !defined(ORT_MINIMAL_BUILD)
+    std::vector<const char*> providers = {kDmlExecutionProvider};
+    std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>(providers);
+
+    qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                           {{"Add", {}}},
+                                                           std::move(selector),
+                                                           std::move(action));
+
+#else
+#error "ORT_MINIMAL_BUILD and USE_DML are not expected simultaneously. This would require RegisterAction to be called here."
+#endif
+  }
 #endif
 }
 
@@ -193,7 +216,8 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when QLinearMatMul and MatMulInteger support 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::MatMulSelector>(is_int8_allowed);
+  std::vector<const char*> providers = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::MatMulSelector>(providers, is_int8_allowed);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},
                                                          std::move(selector),
@@ -214,8 +238,8 @@ void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::GemmReplaceWithQuant>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when QGemm supports 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>();
+  std::vector<const char*> providers = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Gemm", {}}},
                                                          std::move(selector),
@@ -235,8 +259,9 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::WhereReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when QLinearWhere supports 16-bit.
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>();
+
+  std::vector<const char*> providers = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::WhereSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Where", {}}},
                                                          std::move(selector),
@@ -271,8 +296,8 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
           "QDQSelectorActionTransformer",
           CreateSelectorActionRegistry(is_int8_allowed),
           apply_context,
-          // this transformer is only compatible with the CPU EP
-          {kCpuExecutionProvider}} {
+          // this transformer is only compatible with the CPU and DML EP
+          {kCpuExecutionProvider, kDmlExecutionProvider}} {
 }
 
 }  // namespace onnxruntime

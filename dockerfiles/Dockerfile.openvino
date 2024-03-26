@@ -1,9 +1,9 @@
 #-------------------------------------------------------------------------
-# Copyright(C) 2021-2023 Intel Corporation.
+# Copyright(C) 2021-2024 Intel Corporation.
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2023.0.0
+ARG OPENVINO_VERSION=2024.0.0
 
 
 # Build stage
@@ -17,7 +17,7 @@ ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH=main
 
-ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
+ENV OpenVINO_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 
 USER root
 RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev

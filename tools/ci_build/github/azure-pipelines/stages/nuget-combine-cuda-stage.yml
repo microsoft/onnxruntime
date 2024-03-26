@@ -31,6 +31,8 @@ stages:
       variables:
         breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
         ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+        BuildDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
+        BuildTime: $[format('{0:HHmm}', pipeline.startTime)]
 
       steps:
         - checkout: self
@@ -149,7 +151,8 @@ stages:
             solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
             configuration: RelWithDebInfo
             platform: 'Any CPU'
-            msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+            msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+                              -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentDate=$(BuildDate) -p:CurrentTime=$(BuildTime)'
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
         - task: BatchScript@1
@@ -189,16 +192,26 @@ stages:
           parameters:
             PackageType: 'nuget'
             PackagePath: '$(Build.ArtifactStagingDirectory)'
-            PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
             PlatformsSupported: 'win-x64,linux-x64'
+            # 1* stands for version number. we use it to filter Gpu.Windows and Gpu.Linux packages
+            PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.1*nupkg'
             VerifyNugetSigning: false
 
-        - task: PublishPipelineArtifact@0
-          displayName: 'Publish Pipeline NuGet Artifact'
-          inputs:
-            artifactName: 'drop-signed-nuget-GPU'
-            targetPath: '$(Build.ArtifactStagingDirectory)'
+        - template: ../templates/validate-package.yml
+          parameters:
+            PackageType: 'nuget'
+            PackagePath: '$(Build.ArtifactStagingDirectory)'
+            PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows.*nupkg'
+            PlatformsSupported: 'win-x64'
+            VerifyNugetSigning: false
 
+        - template: ../templates/validate-package.yml
+          parameters:
+            PackageType: 'nuget'
+            PackagePath: '$(Build.ArtifactStagingDirectory)'
+            PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux.*nupkg'
+            PlatformsSupported: 'linux-x64'
+            VerifyNugetSigning: false
 
         - task: MSBuild@1
           displayName: 'Clean C#'
@@ -220,6 +233,12 @@ stages:
         - template: ../templates/component-governance-component-detection-steps.yml
           parameters:
             condition: 'succeeded'
+
+        - task: PublishPipelineArtifact@0
+          displayName: 'Publish Pipeline NuGet Artifact'
+          inputs:
+            artifactName: 'drop-signed-nuget-GPU'
+            targetPath: '$(Build.ArtifactStagingDirectory)'
 
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'

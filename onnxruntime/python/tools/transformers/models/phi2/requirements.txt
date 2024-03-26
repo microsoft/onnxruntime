@@ -1,0 +1,3 @@
+onnx>=1.15.0
+transformers>=4.36.2
+onnxscript>=0.1.0.dev20240126

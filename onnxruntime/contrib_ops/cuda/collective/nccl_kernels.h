@@ -7,16 +7,20 @@
 
 #if defined(ORT_USE_NCCL)
 #include <algorithm>
-#include <tuple>
 #include <optional>
-#include <string>
+#include <tuple>
 #include <nccl.h>
 #include <sstream>
+#include <string>
 #endif
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr))
+
+ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type);
 
 // -----------------------------------------------------------------------
 // Defines a new version of nccl classes

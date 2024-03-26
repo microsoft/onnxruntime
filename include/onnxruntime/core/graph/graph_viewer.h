@@ -165,7 +165,8 @@ class GraphViewer {
            if a const initializer is part of the underlying Graph but not part of this GraphViewer,
            it will still be returned instead of nullptr
   */
-  const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
+  const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name,
+                                                            bool check_outer_scope = true) const;
 
   /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
   const Node* ParentNode() const noexcept { return graph_->ParentNode(); }

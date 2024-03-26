@@ -3,12 +3,14 @@
 
 #pragma once
 
+#include <map>
+
 #include "core/common/common.h"
 #include "core/framework/allocator_stats.h"
+// some enums are defined in session/onnxruntime_c_api.h but used in ortdevice.h/ortmemory.h
 #include "core/session/onnxruntime_c_api.h"
-#include "ortdevice.h"
-#include "ortmemoryinfo.h"
-#include <map>
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -68,8 +70,12 @@ class IAllocator {
   IAllocator(const OrtMemoryInfo& info) : memory_info_(info) {}
   virtual ~IAllocator() = default;
   /**
-  @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
-  */
+   * Allocate memory of the specified size.
+   * If size is 0, nullptr is returned.
+   * If allocation fails, an exception is thrown.
+   *
+   * @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
+   */
   virtual void* Alloc(size_t size) = 0;
 
   virtual void Free(void* p) = 0;
@@ -100,7 +106,8 @@ class IAllocator {
    * \param out Total size required after any alignment is applied
    * \return true, successful. false, overflow
    */
-  [[nodiscard]] static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept;
+  [[nodiscard]] static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment,
+                                                             size_t* out) noexcept;
 
   /**
    * https://cwe.mitre.org/data/definitions/190.html
@@ -120,8 +127,10 @@ class IAllocator {
    */
   void* AllocArray(size_t nmemb, size_t size) {
     size_t len;
-    if (!CalcMemSizeForArray(nmemb, size, &len))
-      return nullptr;
+    if (!CalcMemSizeForArray(nmemb, size, &len)) {
+      ORT_THROW("Invalid size requested for allocation: ", nmemb, " * ", size);
+    }
+
     return Alloc(len);
   }
 
@@ -131,8 +140,10 @@ class IAllocator {
   template <size_t alignment>
   void* AllocArrayWithAlignment(size_t nmemb, size_t size) {
     size_t len;
-    if (!CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, &len))
-      return nullptr;
+    if (!CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, &len)) {
+      ORT_THROW("Invalid size requested for allocation: ", nmemb, " * ", size, " with alignment ", alignment);
+    }
+
     return Alloc(len);
   }
 
@@ -144,13 +155,14 @@ class IAllocator {
      @param stream Which stream instance allocated chunk will be used with.
      @param wait_fn If the allocator want to dynamic reuse a chunk from another stream, use this wait_fn to sync on
                     the target stream to make the reuse safe.
-     @returns std::unique_ptr with allocated memory and deleter.
+     @returns std::unique_ptr with allocated memory and deleter. Throws if it cannot allocate memory.
   */
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
                                               bool use_reserve = false,
                                               Stream* stream = nullptr, WaitNotificationFn wait_fn = nullptr) {
-    if (allocator == nullptr) return nullptr;
+    ValidateAllocator(allocator);
+
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
     // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
     // static_assert(std::is_fundamental<T>::value, "Fundamental type required as no destructors are called.");
@@ -161,38 +173,73 @@ class IAllocator {
     if constexpr (!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
-      if (!CalcMemSizeForArray(
-              count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type), &alloc_size)) {
-        return nullptr;
-      }
+      constexpr auto size = sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type);
+      alloc_size = ValidatedCalcMemSizeForArray(count_or_bytes, size);
     }
 
     // allocate
     T* p = static_cast<T*>(AllocateBufferWithOptions(*allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
-    return IAllocatorUniquePtr<T>{
-        p,
-        [allocator = std::move(allocator)](T* p) { allocator->Free(p); }};
+    ValidateAllocation(p, alloc_size);
+
+    return IAllocatorUniquePtr<T>{p,
+                                  [allocator = std::move(allocator)](T* p) {
+                                    allocator->Free(p);
+                                  }};
   }
 
+  /**
+     Create a std::unique_ptr that is allocated and freed by the provided OrtAllocator.
+     @param ort_allocator The allocator.
+     @param count_or_bytes The exact bytes to allocate if T is void, otherwise the number of elements to allocate.
+     @returns std::unique_ptr with allocated memory and deleter. Throws if it cannot allocate memory.
+  */
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator, size_t count_or_bytes) {
-    if (!ort_allocator) return nullptr;
+    ValidateAllocator(ort_allocator);
 
     size_t alloc_size = count_or_bytes;
     // if T is not void, 'count_or_bytes' == number of items so allow for that
     if constexpr (!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
-      if (!CalcMemSizeForArray(
-              count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type), &alloc_size)) {
-        return nullptr;
-      }
+      constexpr auto size = sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type);
+      alloc_size = ValidatedCalcMemSizeForArray(count_or_bytes, size);
     }
-    T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, count_or_bytes));
-    return IAllocatorUniquePtr<T>{p, [ort_allocator](T* p) { ort_allocator->Free(ort_allocator, p); }};
+
+    T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, alloc_size));
+    ValidateAllocation(p, alloc_size);
+
+    return IAllocatorUniquePtr<T>{p,
+                                  [ort_allocator](T* p) {
+                                    ort_allocator->Free(ort_allocator, p);
+                                  }};
   }
 
  private:
+  //
+  // validation functions. split out from methods that are templatized on the data type to minimize binary size.
+  //
+
+  template <typename T>
+  static void ValidateAllocator(const T& allocator) {
+    ORT_ENFORCE(allocator != nullptr);
+  }
+
+  static size_t ValidatedCalcMemSizeForArray(size_t count, size_t size) {
+    size_t alloc_size = 0;
+    if (!CalcMemSizeForArray(count, size, &alloc_size)) {
+      ORT_THROW("Invalid size requested for allocation: ", count, " * ", size);
+    }
+
+    return alloc_size;
+  }
+
+  static void ValidateAllocation(void* p, size_t size) {
+    // allocator should throw directly but in case it didn't ensure we do here so that calling code doesn't
+    // need to check for nullptr when an actual allocation was expected.
+    ORT_ENFORCE(p != nullptr || size == 0, "Memory allocation failed. Size=", size);
+  };
+
   OrtMemoryInfo memory_info_;
 };
 

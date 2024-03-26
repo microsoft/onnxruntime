@@ -5,6 +5,7 @@
 # license information.
 # --------------------------------------------------------------------------
 import abc
+import copy
 import itertools
 import os
 import uuid
@@ -21,13 +22,61 @@ import onnxruntime
 from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distribution
 
 
+def rel_entr(pk: np.ndarray, qk: np.ndarray) -> np.ndarray:
+    """
+    See https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.rel_entr.html#scipy.special.rel_entr.
+    Python implementation.
+    """
+    res = np.empty(pk.shape, dtype=pk.dtype)
+    res[:] = pk[:] * np.log(pk[:] / qk[:])
+    c2 = (pk == 0) & (qk >= 0)
+    res[c2] = 0
+    c1 = (pk > 0) & (qk > 0)
+    res[~c1] = np.inf
+    return res
+
+
+def entropy(
+    pk: np.ndarray,
+    qk: np.ndarray,
+    base: Optional[float] = None,
+    axis: int = 0,
+) -> np.ndarray:
+    """
+    Simplifeied version of entropy.
+    Source: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.entropy.html.
+    This avoids taking a dependency on scipy just for this function.
+    """
+    assert base is None or base > 0, "base={base} must be a positive number or `None`."
+    assert qk is not None, "qk is None"
+
+    pk = np.asarray(pk).astype(np.float32)
+    pk = 1.0 * pk / np.sum(pk, axis=axis, keepdims=True)
+
+    qk = np.asarray(qk).astype(np.float32)
+    pk, qk = np.broadcast_arrays(pk, qk)
+    qk = 1.0 * qk / np.sum(qk, axis=axis, keepdims=True)
+    vec = rel_entr(pk, qk)
+
+    s = np.sum(vec, axis=axis)
+    if base is not None:
+        s /= np.log(base)
+    return s.astype(pk.dtype)
+
+
 class TensorData:
     _allowed = frozenset(["avg", "std", "lowest", "highest", "hist", "hist_edges", "bins"])
+    _floats = frozenset(["avg", "std", "lowest", "highest", "hist_edges"])
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             if k not in TensorData._allowed:
                 raise ValueError(f"Unexpected value {k!r} not in {TensorData._allowed}.")
+            if k in TensorData._floats:
+                if not hasattr(v, "dtype"):
+                    raise ValueError(f"Unexpected type {type(v)} for k={k!r}")
+                if v.dtype not in (np.float16, np.float32):
+                    raise ValueError(f"Unexpected dtype {v.dtype} for k={k!r}")
             setattr(self, k, v)
 
     @property
@@ -171,7 +220,7 @@ class CalibraterBase:
         initializer = {init.name for init in model.graph.initializer}
 
         tensors_to_calibrate = set()
-        tensor_type_to_calibrate = {TensorProto.FLOAT}
+        tensor_type_to_calibrate = {TensorProto.FLOAT, TensorProto.FLOAT16}
 
         for node in model.graph.node:
             if not self.op_types_to_calibrate or node.op_type in self.op_types_to_calibrate:
@@ -284,7 +333,17 @@ class MinMaxCalibrater(CalibraterBase):
             )
 
             self.model.graph.node.extend([reduce_node, reshape_node])
-            self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, TensorProto.FLOAT, [1]))
+            value_infos = {vi.name: vi for vi in self.model.graph.value_info}
+            value_infos.update({o.name: o for o in self.model.graph.output})
+            value_infos.update({i.name: i for i in self.model.graph.input})
+            if tensor_name in value_infos:
+                onnx_type = value_infos[tensor_name].type.tensor_type.elem_type
+            else:
+                raise ValueError(
+                    f"Unable to guess tensor type for tensor {tensor_name!r}, "
+                    f"running shape inference before quantization may resolve this issue."
+                )
+            self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, onnx_type, [1]))
 
         for tensor in tensors:
             add_reduce_min_max(tensor, "ReduceMin")
@@ -364,24 +423,18 @@ class MinMaxCalibrater(CalibraterBase):
 
         pairs = []
         for i in range(0, len(added_output_names), 2):
-            min_value = 0
-            max_value = 0
             if self.moving_average:
                 min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis=0)
                 max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis=0)
             else:
-                min_value_array = min(merged_added_output_dict[added_output_names[i]])
-                max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
-            if isinstance(min_value_array, int) or min_value_array.size > 0:
-                min_value = float(min_value_array)
-            if isinstance(max_value_array, int) or max_value_array.size > 0:
-                max_value = float(max_value_array)
+                min_value_array = np.min(merged_added_output_dict[added_output_names[i]], axis=0)
+                max_value_array = np.max(merged_added_output_dict[added_output_names[i + 1]], axis=0)
 
             if self.symmetric:
-                max_absolute_value = max(abs(min_value), abs(max_value))
+                max_absolute_value = max(np.abs(min_value_array), np.abs(max_value_array))
                 pairs.append(tuple([-max_absolute_value, max_absolute_value]))
             else:
-                pairs.append(tuple([min_value, max_value]))
+                pairs.append(tuple([min_value_array, max_value_array]))
 
         new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs)))
         if self.calibrate_tensors_range:
@@ -679,36 +732,59 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on absolute value
         """
         for tensor, data_arr in name_to_arr.items():
-            data_arr = np.asarray(data_arr)  # noqa: PLW2901
-            data_arr = data_arr.flatten()  # noqa: PLW2901
-            if data_arr.size > 0:
-                min_value = np.min(data_arr)
-                max_value = np.max(data_arr)
+            if isinstance(data_arr, list):
+                for arr in data_arr:
+                    if not isinstance(arr, np.ndarray):
+                        raise ValueError(f"Unexpected type {type(arr)} for tensor={tensor!r}")
+                dtypes = set(a.dtype for a in arr)
+                if len(dtypes) != 1:
+                    raise ValueError(
+                        f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
+                    )
+                data_arr_np = np.asarray(data_arr)
+            elif not isinstance(data_arr, np.ndarray):
+                raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
             else:
-                min_value = 0
-                max_value = 0
+                data_arr_np = data_arr
+            data_arr_np = data_arr_np.flatten()
+            if data_arr_np.size > 0:
+                min_value = np.min(data_arr_np)
+                max_value = np.max(data_arr_np)
+            else:
+                min_value = np.array(0, dtype=data_arr_np.dtype)
+                max_value = np.array(0, dtype=data_arr_np.dtype)
 
-            data_arr = np.absolute(data_arr)  # only consider absolute value  # noqa: PLW2901
+            data_arr_np = np.absolute(data_arr_np)  # only consider absolute value
 
             if tensor not in self.histogram_dict:
                 # first time it uses num_bins to compute histogram.
-                hist, hist_edges = np.histogram(data_arr, bins=self.num_bins)
+                hist, hist_edges = np.histogram(data_arr_np, bins=self.num_bins)
+                hist_edges = hist_edges.astype(data_arr_np.dtype)
+                assert (
+                    data_arr_np.dtype != np.float64
+                ), "only float32 or float16 is supported, every constant must be explicetly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
                 old_min = old_histogram[2]
                 old_max = old_histogram[3]
+                assert hasattr(old_min, "dtype"), f"old_min should be a numpy array but is {type(old_min)}"
+                assert hasattr(old_max, "dtype"), f"old_min should be a numpy array but is {type(old_max)}"
                 old_hist = old_histogram[0]
                 old_hist_edges = old_histogram[1]
-                temp_amax = np.max(data_arr)
+                temp_amax = np.max(data_arr_np)
                 if temp_amax > old_hist_edges[-1]:
                     # increase the number of bins
                     width = old_hist_edges[1] - old_hist_edges[0]
                     # NOTE: np.arange may create an extra bin after the one containing temp_amax
                     new_bin_edges = np.arange(old_hist_edges[-1] + width, temp_amax + width, width)
                     old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
-                hist, hist_edges = np.histogram(data_arr, bins=old_hist_edges)
+                hist, hist_edges = np.histogram(data_arr_np, bins=old_hist_edges)
+                hist_edges = hist_edges.astype(data_arr_np.dtype)
                 hist[: len(old_hist)] += old_hist
+                assert (
+                    data_arr_np.dtype != np.float64
+                ), "only float32 or float16 is supported, every constant must be explicetly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
@@ -723,10 +799,10 @@ class HistogramCollector(CalibrationDataCollector):
                 min_value = np.min(data_arr)
                 max_value = np.max(data_arr)
             else:
-                min_value = 0
-                max_value = 0
+                min_value = np.array(0, dtype=data_arr.dtype)
+                max_value = np.array(0, dtype=data_arr.dtype)
 
-            threshold = max(abs(min_value), abs(max_value))
+            threshold = np.array(max(abs(min_value), abs(max_value)), dtype=data_arr.dtype)
 
             if tensor in self.histogram_dict:
                 old_histogram = self.histogram_dict[tensor]
@@ -778,7 +854,7 @@ class HistogramCollector(CalibrationDataCollector):
     def compute_collection_result(self):
         if not self.histogram_dict or len(self.histogram_dict) == 0:
             raise ValueError("Histogram has not been collected. Please run collect() first.")
-        print(f"Finding optimal threshold for each tensor using {self.method} algorithm ...")
+        print(f"Finding optimal threshold for each tensor using {self.method!r} algorithm ...")
 
         if self.method == "entropy":
             return self.compute_entropy()
@@ -811,16 +887,16 @@ class HistogramCollector(CalibrationDataCollector):
                 idx_right = np.searchsorted(cdf, percentile / 100.0)
 
                 thresholds_dict[tensor] = (
-                    -float(hist_edges[idx_right]),
-                    float(hist_edges[idx_right]),
+                    -np.array(hist_edges[idx_right], dtype=hist_edges.dtype),
+                    np.array(hist_edges[idx_right], dtype=hist_edges.dtype),
                 )
             else:
                 percent_to_cut_one_side = (100.0 - percentile) / 200.0
                 idx_right = np.searchsorted(cdf, 1.0 - percent_to_cut_one_side)
                 idx_left = np.searchsorted(cdf, percent_to_cut_one_side)
                 thresholds_dict[tensor] = (
-                    float(hist_edges[idx_left]),
-                    float(hist_edges[idx_right]),
+                    np.array(hist_edges[idx_left], dtype=hist_edges.dtype),
+                    np.array(hist_edges[idx_right], dtype=hist_edges.dtype),
                 )
             min_value = histogram[2]
             max_value = histogram[3]
@@ -842,11 +918,7 @@ class HistogramCollector(CalibrationDataCollector):
         thresholds_dict = {}  # per tensor thresholds
 
         print(f"Number of tensors : {len(histogram_dict)}")
-        print(
-            "Number of histogram bins : {} (The number may increase depends on the data it collects)".format(
-                self.num_bins
-            )
-        )
+        print(f"Number of histogram bins : {self.num_bins} (The number may increase depends on the data it collects)")
         print(f"Number of quantized bins : {self.num_quantized_bins}")
 
         for tensor, histogram in histogram_dict.items():
@@ -868,11 +940,11 @@ class HistogramCollector(CalibrationDataCollector):
         if power == 1:
             avg = (hist * values).sum() / hist.sum()
             std = ((hist * values**2).sum() / hist.sum() - avg**2) ** 0.5
-            return avg, std
+            return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
         if int(power) == power and int(power) % 2 == 1:
             avg = (hist * values**power).sum() / hist.sum()
             std = ((hist * (values**power - avg) ** 2).sum() / hist.sum()) ** 0.5
-            return avg, std
+            return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
 
         fact = np.abs(values) / values
         fact[np.isnan(fact)] = 1
@@ -880,7 +952,7 @@ class HistogramCollector(CalibrationDataCollector):
         values = np.abs(values) ** power * fact
         avg = (hist * values).sum() / hist.sum()
         std = ((hist * values**2).sum() / hist.sum() - avg**2) ** 0.5
-        return avg, std
+        return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
 
     def compute_distribution(self):
         if self.num_bins < 512:
@@ -897,13 +969,24 @@ class HistogramCollector(CalibrationDataCollector):
             hist = histogram[0]
             hist_edges = histogram[1]
 
+            assert hist_edges.dtype != np.float64
             if self.scenario == "same":
                 avg_coef, std_coef = self._avg_std(hist, hist_edges, power=1)
             elif self.scenario == "p3":
                 avg_coef, std_coef = self._avg_std(hist, hist_edges, power=1.0 / 3.0)
             else:
                 raise ValueError("Invalid scenario. Must be in {'same', 'p3'}.")
-            thresholds_dict[tensor] = TensorData(avg=avg_coef, std=std_coef, hist=hist, hist_edges=hist_edges)
+            assert avg_coef.dtype != np.float64
+            assert std_coef.dtype != np.float64
+            assert hist_edges.dtype != np.float64
+            thresholds_dict[tensor] = TensorData(
+                avg=avg_coef,
+                std=std_coef,
+                hist=hist,
+                hist_edges=hist_edges,
+                lowest=hist_edges.min(),
+                highest=hist_edges.max(),
+            )
 
             # Plot histogram for debug only
             if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
@@ -917,18 +1000,15 @@ class HistogramCollector(CalibrationDataCollector):
         `q` is a truncated version of the original distribution.
         Ref: http://on-demand.gputechconf.com/gtc/2017/presentation/s7310-8-bit-inference-with-tensorrt.pdf
         """
-        import copy
-
-        from scipy.stats import entropy
-
         hist = histogram[0]
         hist_edges = histogram[1]
         num_bins = hist.size
         zero_bin_index = num_bins // 2
         num_half_quantized_bin = num_quantized_bins // 2
 
+        dtype = histogram[1].dtype
         kl_divergence = np.zeros(zero_bin_index - num_half_quantized_bin + 1)
-        thresholds = [(0, 0) for i in range(kl_divergence.size)]
+        thresholds = [(np.array(0, dtype=dtype), np.array(0, dtype=dtype)) for i in range(kl_divergence.size)]
 
         # <------------ num bins ---------------->
         #        <--- quantized bins ---->
@@ -948,10 +1028,7 @@ class HistogramCollector(CalibrationDataCollector):
             start_index = zero_bin_index - i
             end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
 
-            thresholds[i - num_half_quantized_bin] = (
-                float(hist_edges[start_index]),
-                float(hist_edges[end_index]),
-            )
+            thresholds[i - num_half_quantized_bin] = (hist_edges[start_index], hist_edges[end_index])
 
             sliced_distribution = copy.deepcopy(hist[start_index:end_index])
 
@@ -985,15 +1062,15 @@ class HistogramCollector(CalibrationDataCollector):
 
                 norm = sum(nonzeros[start:end])
                 if norm != 0:
-                    q[start:end] = float(quantized_bins[index]) / float(norm)
+                    q[start:end] = quantized_bins[index] / norm
 
             p = smooth_distribution(p)
             q = smooth_distribution(q)
-
-            if isinstance(q, np.ndarray):
-                kl_divergence[i - num_half_quantized_bin] = entropy(p, q)
+            if p is None or q is None:
+                div = np.array(np.inf, dtype=dtype)
             else:
-                kl_divergence[i - num_half_quantized_bin] = float("inf")
+                div = np.array(entropy(p, q), dtype=dtype)
+            kl_divergence[i - num_half_quantized_bin] = div
 
         min_kl_divergence_idx = np.argmin(kl_divergence)
         optimal_threshold = thresholds[min_kl_divergence_idx]
@@ -1003,6 +1080,8 @@ class HistogramCollector(CalibrationDataCollector):
             optimal_threshold = (min_value, optimal_threshold[1])
         if optimal_threshold[1] > max_value:
             optimal_threshold = (optimal_threshold[0], max_value)
+        assert hasattr(optimal_threshold[0], "dtype")
+        assert hasattr(optimal_threshold[1], "dtype")
         return optimal_threshold
 
 
@@ -1017,12 +1096,10 @@ def create_calibrator(
     calibrator = None
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
-        symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
-        moving_average = False if "moving_average" not in extra_options else extra_options["moving_average"]
-        averaging_constant = 0.01 if "averaging_constant" not in extra_options else extra_options["averaging_constant"]
-        max_intermediate_outputs = (
-            None if "max_intermediate_outputs" not in extra_options else extra_options["max_intermediate_outputs"]
-        )
+        symmetric = extra_options.get("symmetric", False)
+        moving_average = extra_options.get("moving_average", False)
+        averaging_constant = extra_options.get("averaging_constant", 0.01)
+        max_intermediate_outputs = extra_options.get("max_intermediate_outputs", None)
         calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
@@ -1035,9 +1112,9 @@ def create_calibrator(
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
-        num_bins = 128 if "num_bins" not in extra_options else extra_options["num_bins"]
-        num_quantized_bins = 128 if "num_quantized_bins" not in extra_options else extra_options["num_quantized_bins"]
-        symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
+        num_bins = extra_options.get("num_bins", 128)
+        num_quantized_bins = extra_options.get("num_quantized_bins", 128)
+        symmetric = extra_options.get("symmetric", False)
         calibrator = EntropyCalibrater(
             model,
             op_types_to_calibrate,
@@ -1049,9 +1126,9 @@ def create_calibrator(
         )
     elif calibrate_method == CalibrationMethod.Percentile:
         # default settings for percentile algorithm
-        num_bins = 2048 if "num_bins" not in extra_options else extra_options["num_bins"]
-        percentile = 99.999 if "percentile" not in extra_options else extra_options["percentile"]
-        symmetric = True if "symmetric" not in extra_options else extra_options["symmetric"]
+        num_bins = extra_options.get("num_bins", 2048)
+        percentile = extra_options.get("percentile", 99.999)
+        symmetric = extra_options.get("symmetric", True)
         calibrator = PercentileCalibrater(
             model,
             op_types_to_calibrate,
@@ -1064,8 +1141,8 @@ def create_calibrator(
 
     elif calibrate_method == CalibrationMethod.Distribution:
         # default settings for percentile algorithm
-        num_bins = 2048 if "num_bins" not in extra_options else extra_options["num_bins"]
-        scenario = "same" if "scenario" not in extra_options else extra_options["scenario"]
+        num_bins = extra_options.get("num_bins", 2048)
+        scenario = extra_options.get("scenario", "same")
 
         calibrator = DistributionCalibrater(
             model,

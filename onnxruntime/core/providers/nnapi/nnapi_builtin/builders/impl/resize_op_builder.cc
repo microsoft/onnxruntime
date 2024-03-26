@@ -33,19 +33,18 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
-                                           const OpSupportCheckParams& /* params */) const override;
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
+                                           const OpSupportCheckParams& params) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
   // We only support Resize opset 11+ here
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 11; }
 
-  bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+  bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                    const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
@@ -74,7 +73,6 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node_unit);
   const auto& inputs = node_unit.Inputs();
   const auto android_feature_level = model_builder.GetEffectiveFeatureLevel();
@@ -92,7 +90,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     float x_scale = 0.0f;
     int32_t x_zero_point = 0;
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+        model_builder.GetGraphViewer(), node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
   }
 
@@ -147,7 +145,7 @@ bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
 }
 
-bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool ResizeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                         const OpSupportCheckParams& params) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
@@ -228,32 +226,29 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     }
   }
 
-  {  // scales and sizes (if present) must be initializers
+  // scales or sizes must be constant initializers
+  {
+    // scales is input 3, sizes input 4, one must exist. only one is used.
     const auto inputs = node_unit.Inputs();
-    if (inputs.size() < 3) {
+    bool using_scales = inputs.size() > 2 && inputs[2].node_arg.Exists();
+    bool using_sizes = !using_scales && inputs.size() > 3 && inputs[3].node_arg.Exists();
+    if (!using_scales && !using_sizes) {
       LOGS_DEFAULT(VERBOSE) << "Input scales or sizes of Resize must be known";
       return false;
     }
 
-    // scales
-    bool using_scales = (inputs.size() > 2 && inputs[2].node_arg.Exists());
-    if (using_scales && !Contains(initializers, inputs[2].node_arg.Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
-      return false;
-    }
-
-    // sizes
-    bool using_sizes = inputs.size() > 3 && inputs[3].node_arg.Exists();
-    if (using_sizes && !Contains(initializers, inputs[3].node_arg.Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be known";
-      return false;
-    }
-    bool input_is_nchw = false;
     // haven't a good solution to check layout when scale is 1.0F
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
-    if (using_scales) {  // we are using scales
-      const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
-      Initializer const unpacked_tensor(scales_tensor);
+    bool input_is_nchw = false;
+
+    if (using_scales) {
+      const auto* scales = graph_viewer.GetConstantInitializer(inputs[2].node_arg.Name());
+      if (!scales) {
+        LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be a constant initializer";
+        return false;
+      }
+
+      const Initializer unpacked_tensor(*scales);
       auto scales_data = unpacked_tensor.DataAsSpan<float>();
       input_is_nchw = scales_data[1] == 1.0F;
       float const scale_n = scales_data[0];
@@ -265,10 +260,13 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         return false;
       }
     } else {
-      // we are using sizes
-      const auto& sizes_name = inputs[3].node_arg.Name();
-      const auto& sizes_tensor = *initializers.at(sizes_name);
-      Initializer unpacked_tensor(sizes_tensor);
+      const auto* sizes = graph_viewer.GetConstantInitializer(inputs[3].node_arg.Name());
+      if (!sizes) {
+        LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be a constant initializer";
+        return false;
+      }
+
+      Initializer unpacked_tensor(*sizes);
       auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
 
       input_is_nchw = sizes_data[1] == input_shape[1];
@@ -308,7 +306,7 @@ int32_t ResizeOpBuilder::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_u
 }
 
 bool ResizeOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
@@ -323,10 +321,10 @@ bool ResizeOpBuilder::HasSupportedInputOutputsImpl(
   }
 
   if (IsQuantizedOp(node_unit)) {
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput))
+    if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kInput))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+    if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput))
       return false;
   }
 

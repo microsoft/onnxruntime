@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import pathlib
 import tempfile
+from dataclasses import dataclass
 
 import numpy as np
 import onnx
@@ -28,11 +29,22 @@ class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingBlock):
         return self.loss(output_name)
 
 
+@dataclass
+class Artifacts:
+    checkpoint_file_path: str
+    training_model_file_path: str
+    eval_model_file_path: str
+    optimizer_model_file_path: str
+    pt_model: torch.nn.Module
+    nominal_checkpoint_file_path: str | None = None
+
+
 def _create_training_artifacts(
     artifact_directory: str | os.PathLike,
     requires_grad: list[str] | None = None,
     frozen_params: list[str] | None = None,
     optimizer_type=artifacts.OptimType.AdamW,
+    nominal_checkpoint: bool = False,
 ):
     device = "cpu"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
@@ -51,14 +63,20 @@ def _create_training_artifacts(
         requires_grad=requires_grad,
         frozen_params=frozen_params,
         artifact_directory=artifact_directory,
+        nominal_checkpoint=nominal_checkpoint,
     )
 
     training_model_file = os.path.join(artifact_directory, "training_model.onnx")
     eval_model_file = os.path.join(artifact_directory, "eval_model.onnx")
     optimizer_model_file = os.path.join(artifact_directory, "optimizer_model.onnx")
     checkpoint_file = os.path.join(artifact_directory, "checkpoint")
+    nominal_checkpoint_file = None
+    if nominal_checkpoint:
+        nominal_checkpoint_file = os.path.join(artifact_directory, "nominal_checkpoint")
 
-    return checkpoint_file, training_model_file, eval_model_file, optimizer_model_file, pt_model
+    return Artifacts(
+        checkpoint_file, training_model_file, eval_model_file, optimizer_model_file, pt_model, nominal_checkpoint_file
+    )
 
 
 def test_train_step():
@@ -67,22 +85,16 @@ def test_train_step():
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            _,
-            pt_model,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Module.
-        model = Module(training_model_file_path, state)
+        model = Module(artifacts.training_model_file_path, state)
         model.train()
         ort_loss = model(inputs, labels)
 
         # Calculate loss using pytorch model to compare it with Module's output.
-        pt_outputs = pt_model(torch.from_numpy(inputs))
+        pt_outputs = artifacts.pt_model(torch.from_numpy(inputs))
         loss_fn = torch.nn.CrossEntropyLoss()
         pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).long())
 
@@ -95,17 +107,11 @@ def test_eval_step():
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            eval_model_file_path,
-            _,
-            _,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Module.
-        model = Module(training_model_file_path, state, eval_model_file_path)
+        model = Module(artifacts.training_model_file_path, state, artifacts.eval_model_file_path)
         model.train()
         model(inputs, labels)
 
@@ -121,18 +127,12 @@ def test_optimizer_step(optimizer_type):
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            optimizer_model_file_path,
-            _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        artifacts = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Module and Optimizer.
-        model = Module(training_model_file_path, state)
-        optimizer = Optimizer(optimizer_model_file_path, model)
+        model = Module(artifacts.training_model_file_path, state)
+        optimizer = Optimizer(artifacts.optimizer_model_file_path, model)
 
         model.train()
         old_flatten_params = model.get_contiguous_parameters()
@@ -147,18 +147,12 @@ def test_optimizer_step(optimizer_type):
 @pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
 def test_get_and_set_lr(optimizer_type):
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            optimizer_model_file_path,
-            _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        artifacts = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Module and Optimizer.
-        model = Module(training_model_file_path, state)
-        optimizer = Optimizer(optimizer_model_file_path, model)
+        model = Module(artifacts.training_model_file_path, state)
+        optimizer = Optimizer(artifacts.optimizer_model_file_path, model)
 
         # Test get and set learning rate.
         lr = optimizer.get_learning_rate()
@@ -178,18 +172,11 @@ def test_scheduler_step(optimizer_type):
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            optimizer_model_file_path,
-            _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
-        # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        artifacts = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Module and Optimizer.
-        model = Module(training_model_file_path, state)
-        optimizer = Optimizer(optimizer_model_file_path, model)
+        model = Module(artifacts.training_model_file_path, state)
+        optimizer = Optimizer(artifacts.optimizer_model_file_path, model)
         scheduler = LinearLRScheduler(optimizer, 1, 2, 0.2)
 
         # Test get and set learning rate.
@@ -212,17 +199,11 @@ def test_training_module_checkpoint():
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            _,
-            _,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Training Module and Training Optimizer.
-        model = Module(training_model_file_path, state)
+        model = Module(artifacts.training_model_file_path, state)
 
         model.train()
         model(inputs, labels)
@@ -237,7 +218,7 @@ def test_training_module_checkpoint():
 
         # Assert the checkpoint parameters remain after saving.
         new_state = CheckpointState.load_checkpoint(checkpoint_save_path)
-        new_model = Module(training_model_file_path, new_state)
+        new_model = Module(artifacts.training_model_file_path, new_state)
 
         new_params = new_model.get_contiguous_parameters()
 
@@ -252,23 +233,17 @@ def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            optimizer_model_file_path,
-            _,
-        ) = _create_training_artifacts(
+        artifacts = _create_training_artifacts(
             temp_dir,
             requires_grad=["fc2.weight", "fc2.bias"],
             frozen_params=["fc1.weight", "fc1.bias"],
             optimizer_type=optimizer_type,
         )
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
 
         # Create a Module and Optimizer.
-        model = Module(training_model_file_path, state)
-        optimizer = Optimizer(optimizer_model_file_path, model)
+        model = Module(artifacts.training_model_file_path, state)
+        optimizer = Optimizer(artifacts.optimizer_model_file_path, model)
 
         # Keep a copy of the parameters.
         old_output_params = model.get_contiguous_parameters(trainable_only=trainable_only)
@@ -295,19 +270,13 @@ def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
 
 def test_export_model_for_inferencing():
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            eval_model_file_path,
-            _,
-            _,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
 
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
 
         # Create a Module.
-        model = Module(training_model_file_path, state, eval_model_file_path)
+        model = Module(artifacts.training_model_file_path, state, artifacts.eval_model_file_path)
 
         # Export inference model
         inference_model_file_path = os.path.join(temp_dir, "inference_model.onnx")
@@ -317,18 +286,12 @@ def test_export_model_for_inferencing():
 
 def test_cuda_execution_provider():
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            _,
-            _,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
 
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Module.
-        model = Module(training_model_file_path, state, device="cuda")
+        model = Module(artifacts.training_model_file_path, state, device="cuda")
         params = model.get_contiguous_parameters()
 
         # Check if parameters are moved to cuda.
@@ -341,19 +304,13 @@ def test_cuda_execution_provider():
 )
 def test_add_get_property(property_value):
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            _,
-            _,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
 
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
 
         # Create a Module.
-        _ = Module(training_model_file_path, state)
+        _ = Module(artifacts.training_model_file_path, state)
 
         # Float values in python are double precision.
         # Convert to float32 to match the type of the property.
@@ -367,8 +324,8 @@ def test_add_get_property(property_value):
         assert state.properties["property"] == property_value
         assert len(state.properties) == 1
 
-        CheckpointState.save_checkpoint(state, checkpoint_file_path)
-        new_state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        CheckpointState.save_checkpoint(state, artifacts.checkpoint_file_path)
+        new_state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         assert "property" in new_state.properties
         assert new_state.properties["property"] == property_value
         assert len(new_state.properties) == 1
@@ -376,21 +333,15 @@ def test_add_get_property(property_value):
 
 def test_get_input_output_names():
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            eval_model_file_path,
-            _,
-            _,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
 
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
 
         # Create a Module.
-        model = Module(training_model_file_path, state, eval_model_file_path)
+        model = Module(artifacts.training_model_file_path, state, artifacts.eval_model_file_path)
 
-        training_model = onnx.load(training_model_file_path)
+        training_model = onnx.load(artifacts.training_model_file_path)
         assert model.input_names() == [input.name for input in training_model.graph.input][:2]
         assert model.output_names() == [output.name for output in training_model.graph.output][:1]
 
@@ -518,23 +469,18 @@ def test_train_step_with_ort_values():
     labels = OrtValue.ortvalue_from_numpy(labels_np)
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            _,
-            _,
-            pt_model,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
+
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Module.
-        model = Module(training_model_file_path, state)
+        model = Module(artifacts.training_model_file_path, state)
         model.train()
         ort_loss = model(inputs, labels)
         assert isinstance(ort_loss, OrtValue)
 
         # Calculate loss using pytorch model to compare it with Module's output.
-        pt_outputs = pt_model(torch.from_numpy(inputs_np))
+        pt_outputs = artifacts.pt_model(torch.from_numpy(inputs_np))
         loss_fn = torch.nn.CrossEntropyLoss()
         pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels_np).long())
 
@@ -549,17 +495,11 @@ def test_eval_step_with_ort_values():
     labels = OrtValue.ortvalue_from_numpy(labels_np)
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            eval_model_file_path,
-            _,
-            _,
-        ) = _create_training_artifacts(temp_dir)
+        artifacts = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
         # Create a Module.
-        model = Module(training_model_file_path, state, eval_model_file_path)
+        model = Module(artifacts.training_model_file_path, state, artifacts.eval_model_file_path)
         model.train()
         model(inputs, labels)
 
@@ -572,26 +512,20 @@ def test_eval_step_with_ort_values():
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_get_and_set_parameter_values(device):
     with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            eval_model_file_path,
-            _,
-            pt_model,
-        ) = _create_training_artifacts(
+        artifacts = _create_training_artifacts(
             temp_dir, requires_grad=["fc2.weight", "fc2.bias"], frozen_params=["fc1.weight", "fc1.bias"]
         )
 
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
 
-        model = Module(training_model_file_path, state, eval_model_file_path, device=device)
+        model = Module(artifacts.training_model_file_path, state, artifacts.eval_model_file_path, device=device)
 
-        state_dict = pt_model.state_dict()
+        state_dict = artifacts.pt_model.state_dict()
         assert len(state_dict) == len(state.parameters)
         for parameter_name, _ in state.parameters:
             assert parameter_name in state_dict
 
-        for name, pt_param in pt_model.named_parameters():
+        for name, pt_param in artifacts.pt_model.named_parameters():
             ort_param = state.parameters[name]
             assert ort_param.name == name
             assert np.allclose(pt_param.detach().cpu().numpy(), ort_param.data)
@@ -612,7 +546,7 @@ def test_get_and_set_parameter_values(device):
         labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
         loss = model(inputs, labels)
         assert loss is not None
-        for name, _ in pt_model.named_parameters():
+        for name, _ in artifacts.pt_model.named_parameters():
             ort_param = state.parameters[name]
             assert ort_param.name == name
             if name in ["fc1.weight", "fc1.bias"]:
@@ -624,3 +558,111 @@ def test_get_and_set_parameter_values(device):
 
         state.parameters["fc1.weight"] = original_param
         assert np.allclose(state.parameters["fc1.weight"].data, original_param)
+
+
+def test_model_construction_with_nominal_checkpoint():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts = _create_training_artifacts(temp_dir, nominal_checkpoint=True)
+
+        nominal_state = CheckpointState.load_checkpoint(artifacts.nominal_checkpoint_file_path)
+        model_with_nominal_state = Module(
+            artifacts.training_model_file_path, nominal_state, artifacts.eval_model_file_path
+        )
+        optimizer_with_nominal_state = Optimizer(artifacts.optimizer_model_file_path, model_with_nominal_state)
+
+        inputs = torch.randn(64, 784).numpy()
+        labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
+
+        err_msg = "Please load the parameter states first"
+
+        # Accessing the checkpoint parameter raises
+        state_dict = artifacts.pt_model.state_dict()
+        for param_name in state_dict:
+            assert param_name in nominal_state.parameters
+        with pytest.raises(Exception) as exc_info:
+            _ = nominal_state.parameters["fc1.weight"]
+
+        assert err_msg in str(exc_info.value)
+
+        err_msg = "Please load all the parameter states first"
+        with pytest.raises(Exception) as exc_info:
+            nominal_state.parameters["fc1.weight"] = np.ones((10, 10), dtype=np.float32)
+
+        assert err_msg in str(exc_info.value)
+
+        err_msg = "Please load the model parameters first."
+
+        # Getting contiguous parameters raises
+        with pytest.raises(Exception) as exc_info:
+            _ = model_with_nominal_state.get_contiguous_parameters()
+
+        assert err_msg in str(exc_info.value)
+
+        # Train step raises
+        with pytest.raises(Exception) as exc_info:
+            model_with_nominal_state.train()
+            model_with_nominal_state(inputs, labels)
+
+        assert err_msg in str(exc_info.value)
+
+        # Optimizer step raises
+        with pytest.raises(Exception) as exc_info:
+            optimizer_with_nominal_state.step()
+
+        assert err_msg in str(exc_info.value)
+
+        # Eval step raises
+        with pytest.raises(Exception) as exc_info:
+            model_with_nominal_state.eval()
+            model_with_nominal_state(inputs, labels)
+
+        assert err_msg in str(exc_info.value)
+
+        # Get parameters size does not raise
+        params_size = model_with_nominal_state.get_parameters_size()
+        assert params_size > 0
+
+
+def test_train_with_nominal_checkpoint():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts = _create_training_artifacts(temp_dir, nominal_checkpoint=True)
+
+        # Create Checkpoint State with nominal checkpoint as well as the complete checkpoint.
+        complete_state = CheckpointState.load_checkpoint(artifacts.checkpoint_file_path)
+        nominal_state = CheckpointState.load_checkpoint(artifacts.nominal_checkpoint_file_path)
+
+        # Create a Module with both complete and nominal checkpoint states.
+        model_with_complete_state = Module(artifacts.training_model_file_path, complete_state)
+        model_with_nominal_state = Module(artifacts.training_model_file_path, nominal_state)
+
+        optimizer_with_complete_state = Optimizer(artifacts.optimizer_model_file_path, model_with_complete_state)
+        optimizer_with_nominal_state = Optimizer(artifacts.optimizer_model_file_path, model_with_nominal_state)
+
+        parameter_buffer = model_with_complete_state.get_contiguous_parameters()
+        model_with_nominal_state.copy_buffer_to_parameters(parameter_buffer, trainable_only=False)
+
+        model_with_complete_state.train()
+        model_with_nominal_state.train()
+
+        # Generate random data for testing.
+        inputs = torch.randn(64, 784).numpy()
+        labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
+
+        ort_loss_1 = model_with_complete_state(inputs, labels)
+        ort_loss_2 = model_with_nominal_state(inputs, labels)
+
+        # Calculate loss using pytorch model to compare it with both the Modules' output.
+        pt_outputs = artifacts.pt_model(torch.from_numpy(inputs))
+        loss_fn = torch.nn.CrossEntropyLoss()
+        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).long())
+
+        assert np.allclose(ort_loss_1, ort_loss_2)
+        assert np.allclose(ort_loss_1, pt_loss.detach().numpy())
+
+        optimizer_with_complete_state.step()
+        optimizer_with_nominal_state.step()
+
+        new_params_1 = model_with_complete_state.get_contiguous_parameters()
+        new_params_2 = model_with_nominal_state.get_contiguous_parameters()
+
+        assert np.allclose(new_params_1.numpy(), new_params_2.numpy())

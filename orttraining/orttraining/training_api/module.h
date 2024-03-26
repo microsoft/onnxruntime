@@ -53,6 +53,7 @@ struct ModuleCheckpointState {
  public:
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
   const DataTransferManager* train_session_data_transfer_mgr;
+  bool is_nominal_state = false;
 };
 
 struct CheckpointState;
@@ -87,19 +88,28 @@ struct Module {
   ~Module();
 
   // Return the trainable/nontrainable parameters
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will raise an exception.
   std::vector<std::shared_ptr<Parameter>> Parameters() const;
 
+  // Return the trainable/nontrainable parameters as a map
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will raise an exception.
   std::unordered_map<std::string, std::shared_ptr<Parameter>> NamedParameters() const;
 
   // Reset and release the gradient buffer of all trainable params lazily.
   Status LazyResetGrad();
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs.
-  // Gradients will be accumulated within the Parameter object
+  // Gradients will be accumulated within the Parameter object.
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will return an error.
   Status TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
 
   // Eval Step – does forward computation. This will use a separate inference session
   // and take in a separate inference graph, while sharing the parameters
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will return an error.
   Status EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
 
   // Returns the output count for training graph
@@ -118,14 +128,20 @@ struct Module {
   size_t GetParametersSize(const bool trainable_only = true) const;
 
   // Copy parameters onto contiguous buffer held by parameters_buffer
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will return an error.
   Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only = true);
 
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
+  // This function is responsible for completing the nominal checkpoint state. The checkpoint
+  // state will no longer be nominal after the successful completion of this function.
   Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
-  // inferencing, and serialize to given path
+  // inferencing, and serialize to given path.
+  // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
+  // and the state has not been loaded yet, then this function will return an error.
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
 #endif
@@ -152,11 +168,28 @@ struct Module {
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
 
-  InlinedVector<std::string> train_input_names_;
+  struct TrainInputNames {
+   private:
+    InlinedVector<std::string> train_input_names_;
+    InlinedVector<size_t> train_input_index_offsets_;  // offset range[[0], [1]) = user input names
+                                                       // offset range[[1], [2]) = weights input names
+                                                       // offset range[[2], [3]) = gradient input names
+   public:
+    TrainInputNames() = default;
+    TrainInputNames(gsl::span<const std::string> user_input_names,
+                    gsl::span<const std::string> weights_input_names,
+                    gsl::span<const std::string> gradient_input_names);
+
+    gsl::span<const std::string> AllInputNames() const;
+    gsl::span<const std::string> UserInputNames() const;
+    gsl::span<const std::string> WeightsInputNames() const;
+    gsl::span<const std::string> GradientInputNames() const;
+  };
+
+  TrainInputNames train_input_names_;
   InlinedVector<std::string> train_output_names_;
   InlinedVector<std::string> eval_input_names_;
   InlinedVector<std::string> eval_output_names_;
-  InlinedVector<std::string> weight_names_;
 
   InlinedVector<OrtValue> weights_;
   InlinedVector<OrtValue> gradients_;
@@ -165,7 +198,6 @@ struct Module {
 
   bool accumulate_gradient_ = false;
   std::optional<std::string> eval_model_path_;
-  size_t train_user_input_count_{0U};
   size_t eval_user_input_count_{0U};
 };
 

@@ -1,16 +1,8 @@
 import onnx
+import onnx.helper
 
-from ..quant_utils import (
-    TENSOR_NAME_QUANT_SUFFIX,
-    QuantizedValue,
-    QuantizedValueType,
-    attribute_to_kwarg,
-    compute_scale_zp,
-    get_qmin_qmax_for_qType,
-    ms_domain,
-)
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
-from .qdq_base_operator import QDQOperatorBase
 
 
 class QLinearSoftmax(QuantOperatorBase):
@@ -80,16 +72,3 @@ class QLinearSoftmax(QuantOperatorBase):
         nodes.append(qnode)
         self.quantizer.new_nodes += nodes
         return None
-
-
-class QDQSoftmax(QDQOperatorBase):
-    def quantize(self):
-        super().quantize()
-        symmetric = self.quantizer.is_activation_symmetric
-
-        # Enforce Softmax range: 0.0 to 1.0
-        rmin, rmax = 0.0, 1.0
-        qmin, qmax = get_qmin_qmax_for_qType(self.quantizer.activation_qType, symmetric=symmetric)
-        out_zero_point, out_scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=symmetric)
-
-        self.quantizer.set_quant_scale_zp(self.node.output[0], (out_scale, out_zero_point))

@@ -27,7 +27,13 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
+  rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
+  num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
+
+  if (rotary_embedding_dim > 0) {
+    ORT_ENFORCE(num_heads > 0, "num_heads must be provided if rotary_embedding_dim is specified");
+  }
 }
 
 template <typename T>
@@ -42,6 +48,8 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
                                                                    position_ids,
                                                                    cos_cache,
                                                                    sin_cache,
+                                                                   num_heads,
+                                                                   rotary_embedding_dim,
                                                                    &parameters));
 
   Tensor* output = context->Output(0, input->Shape());
@@ -59,60 +67,65 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
-  const int num_heads = parameters.num_heads;
+  const int n_heads = parameters.num_heads;
   const int head_size = parameters.head_size;
   const int position_ids_format = parameters.position_ids_format;
-  const int half_head_size = head_size / 2;
+  const int rotary_emb_dim = parameters.rotary_embedding_dim;
+  const int half_rotary_emb_dim = rotary_emb_dim / 2;
+
   // Default input tensor shape is [batch, seq_len, hidden_size]
   int head_stride = head_size;
-  int seq_stride = num_heads * head_stride;
+  int seq_stride = n_heads * head_stride;
   int batch_stride = sequence_length * seq_stride;
   if (parameters.transposed) {
-    // Transposed input tensor shape is [batch, num_heads, seq_len, head_size]
+    // Transposed input tensor shape is [batch, n_heads, seq_len, head_size]
     seq_stride = head_size;
     head_stride = sequence_length * seq_stride;
-    batch_stride = num_heads * head_stride;
+    batch_stride = n_heads * head_stride;
   }
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   auto* tp = context->GetOperatorThreadPool();
 
-  const int loop_len = batch_size * sequence_length * num_heads;
-  const double cost = static_cast<double>(head_size);
+  const int loop_len = batch_size * sequence_length * n_heads;
+  const double cost = static_cast<double>(rotary_emb_dim);
   ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
-      const int b = static_cast<int>((ptr / num_heads) / sequence_length);
-      const int s = static_cast<int>((ptr / num_heads) % sequence_length);
-      const int n = static_cast<int>(ptr % num_heads);
+      const int b = static_cast<int>((ptr / n_heads) / sequence_length);
+      const int s = static_cast<int>((ptr / n_heads) % sequence_length);
+      const int n = static_cast<int>(ptr % n_heads);
 
       const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
 
       const T* input_data = input_src + block_offset;
       T* output_data = output_dest + block_offset;
 
-      // Cache is (M, H/2)
+      // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
       const int position_id = (position_ids_format == 0)
                                   ? static_cast<int>(pos_ids_data[0]) + s
                                   : static_cast<int>(pos_ids_data[b * sequence_length + s]);
-      const int cache_offset = position_id * half_head_size;
+      const int cache_offset = position_id * half_rotary_emb_dim;
       const T* cos_data = cos_cache_data + cache_offset;
       const T* sin_data = sin_cache_data + cache_offset;
 
       int cache_idx = 0;
       T sign = 0;
       int j = 0;
-      for (int i = 0; i < head_size; i++) {
+      for (int i = 0; i < rotary_emb_dim; i++) {
         if (interleaved) {
-          cache_idx = (i / 2) % half_head_size;
+          cache_idx = (i / 2) % half_rotary_emb_dim;
           sign = (i % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
           j = (i % 2 == 0) ? i + 1 : i - 1;  // i - sign
         } else {
-          cache_idx = i % half_head_size;
-          sign = (i < half_head_size) ? static_cast<T>(-1) : static_cast<T>(1);
-          j = (i + half_head_size) % head_size;
+          cache_idx = i % half_rotary_emb_dim;
+          sign = (i < half_rotary_emb_dim) ? static_cast<T>(-1) : static_cast<T>(1);
+          j = (i + half_rotary_emb_dim) % rotary_emb_dim;
         }
         output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+      }
+      for (int i = rotary_emb_dim; i < head_size; i++) {
+        output_data[i] = input_data[i];
       }
     }
   });

@@ -21,6 +21,8 @@ struct GroupQueryAttentionData {
   const T* past_key = nullptr;
   const T* past_value = nullptr;
   int* seqlens_k = nullptr;
+  const T* cos_cache = nullptr;
+  const T* sin_cache = nullptr;
   // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;
@@ -28,6 +30,8 @@ struct GroupQueryAttentionData {
   int* seqlens_k_total = nullptr;
   // Memory Efficient buffers
   T* fmha_buffer = nullptr;
+  T* unpacked_qkv_buffer = nullptr;
+  T* rotary_buffer = nullptr;
   T* k = nullptr;
   T* v = nullptr;
   // Output Tensors

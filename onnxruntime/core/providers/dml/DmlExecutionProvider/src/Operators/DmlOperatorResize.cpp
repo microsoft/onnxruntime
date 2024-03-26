@@ -9,11 +9,12 @@ namespace Dml
 constexpr NameAndIndex coordinateTransformationModes[] =
 {
     {"half_pixel", 0},
-    {"pytorch_half_pixel", 1},
-    {"align_corners", 2},
-    {"asymmetric", 3},
-    {"tf_half_pixel_for_nn", 4},
-    {"tf_crop_and_resize", 5},
+    {"half_pixel_symmetric", 1},
+    {"pytorch_half_pixel", 2},
+    {"align_corners", 3},
+    {"asymmetric", 4},
+    {"tf_half_pixel_for_nn", 5},
+    {"tf_crop_and_resize", 6},
 };
 
 constexpr NameAndIndex nearestNeighborRoundingModes[] =
@@ -50,7 +51,7 @@ void ComputePixelOffsetsAndScales(
     uint32_t coordinateTransformationModeValue = *optionalCoordinateTransformationModeValue;
 
     ML_CHECK_VALID_ARGUMENT(
-        !regionOfInterest.empty() || coordinateTransformationModeValue != 5 /*tf_crop_and_resize*/,
+        !regionOfInterest.empty() || coordinateTransformationModeValue != 6 /*tf_crop_and_resize*/,
         "Resize expects 'roi' tensor for 'tf_crop_and_resize' mode."
     );
 
@@ -88,6 +89,18 @@ void ComputePixelOffsetsAndScales(
             break;
 
         case 1:
+            // coordinate_transformation_mode is "half_pixel_symmetric",
+            // adjustment = output_width_int / output_width
+            // center = input_width / 2
+            // offset = center * (1 - adjustment)
+            // x_original = (x + 0.5) / scale - (0.5 - offset)
+            // x_original = (x + 0.5) / scale - (0.5 - [(input_width / 2) * (1 - (output_width_int / output_width))])
+            // output_width can be fractional when calculated with scale factor
+            inputPixelOffset = 0.5f - float((inputDimensions[i] / 2.0f) * (1.0f - outputDimensions[i] / (scales[i] * inputDimensions[i])));
+            outputPixelOffset = -0.5;
+            break;
+
+        case 2:
             // if coordinate_transformation_mode is "pytorch_half_pixel",
             // x_original = length_resized > 1 ? (x_resized + 0.5) / scale - 0.5 : 0
             if (inputDimensions[i] <= 1)
@@ -104,7 +117,7 @@ void ComputePixelOffsetsAndScales(
             }
             break;
 
-        case 2:
+        case 3:
             // if coordinate_transformation_mode is "align_corners",
             // x_original = x_resized * (length_original - 1) / (length_resized - 1)
             inputPixelOffset = 0.0;
@@ -121,7 +134,7 @@ void ComputePixelOffsetsAndScales(
             }
             break;
 
-        case 3:
+        case 4:
             // if coordinate_transformation_mode is "asymmetric",
             // x_original = x_resized / scale
             inputPixelOffset = 0.0;
@@ -129,7 +142,7 @@ void ComputePixelOffsetsAndScales(
             // Keep existing scales.
             break;
 
-        case 4:
+        case 5:
             // if coordinate_transformation_mode is "tf_half_pixel_for_nn",
             // x_original = (x_resized + 0.5) / scale
             inputPixelOffset = 0.0;
@@ -137,7 +150,7 @@ void ComputePixelOffsetsAndScales(
             // Keep existing scales.
             break;
 
-        case 5:
+        case 6:
             // if coordinate_transformation_mode is "tf_crop_and_resize",
             // x_original = length_resized > 1 ? start_x * (length_original - 1) + x_resized * (end_x - start_x) * (length_original - 1) / (length_resized - 1)
             //                                 : 0.5 * (start_x + end_x) * (length_original - 1)
@@ -177,7 +190,7 @@ class DmlOperatorResize : public DmlOperator, public ResizeHelper
 public:
     // Resample a multidimensional image to a new size.
     DmlOperatorResize(const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t opsetVersion)
-    :   DmlOperator(kernelCreationContext), 
+    :   DmlOperator(kernelCreationContext),
         ResizeHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription(), opsetVersion)
     {
         ML_CHECK_VALID_ARGUMENT(!m_scales.empty(), "Resize/Upsample expect scales, either a 2nd input tensors or 'scales' attribute.");
@@ -250,6 +263,11 @@ public:
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
         DML_INTERPOLATION_MODE interpolationMode = Dml::MapStringToInteropolationMode(mode);
 
+
+#if DML_TARGET_VERSION >= 0x6300
+        const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
+#endif
+
         // Map ONNX to DML's mode using offsets and rounding direction.
         // These offsets are in addition to the coordinate transform offsets.
         DML_AXIS_DIRECTION roundingDirection = DML_AXIS_DIRECTION_DECREASING;
@@ -289,7 +307,12 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
+#if DML_TARGET_VERSION >= 0x6300
+        DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
+        operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
+#else
         DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
+#endif
         operatorDesc.InputTensor = inputDescs.data();
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.InterpolationMode = interpolationMode;
@@ -298,8 +321,11 @@ public:
         operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
         operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
         operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
-
+#if DML_TARGET_VERSION >= 0x6300
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
+#else
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
+#endif
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
@@ -342,6 +368,10 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
 DML_OP_DEFINE_CREATION_FUNCTION(Resize10, VersionedKernel<DmlOperatorResize, 10>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize11, VersionedKernel<DmlOperatorResize, 11>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize13, VersionedKernel<DmlOperatorResize, 13>);
+#if DML_TARGET_VERSION >= 0x6300
+DML_OP_DEFINE_CREATION_FUNCTION(Resize18, VersionedKernel<DmlOperatorResize, 18>);
+DML_OP_DEFINE_CREATION_FUNCTION(Resize19, VersionedKernel<DmlOperatorResize, 19>);
+#endif
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, VersionedKernel<DmlOperatorResize, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, VersionedKernel<DmlOperatorResize, 9>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, VersionedKernel<DmlOperatorResize, 10>);

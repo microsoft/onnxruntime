@@ -20,6 +20,8 @@ CMake creates a target to this project
     <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
     <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild>
     <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">None</ExecutionProvider>
+    <IsPlatformSpecificSubPackage Condition=" '$(IsPlatformSpecificSubPackage)' == '' ">false</IsPlatformSpecificSubPackage>
+    <NuSpecName Condition=" '$(NuSpecName)' == '' ">NativeNuget.nuspec</NuSpecName>
 
     <!-- include Xamarin/MAUI Android and iOS target frameworks? Command line property overrides this value. -->
     <IncludeMobileTargets>true</IncludeMobileTargets>
@@ -45,6 +47,13 @@ CMake creates a target to this project
     <PythonExe>python</PythonExe>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- If we create multiple nuget packages in one job, major package and dependent packages version should be the same-->
+    <!-- CurrentDate and CurrentTime are only used for dev packages-->
+    <CurrentDate Condition="'$(CurrentDate)'==''">$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
+    <CurrentTime Condition="'$(CurrentTime)'==''">$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
+  </PropertyGroup>
+
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 
   <Target Name="Build">
@@ -58,7 +67,7 @@ CMake creates a target to this project
     </Exec>
   </Target>
 
-   <Target Name="ObtainPackageVersion" BeforeTargets="Build;CreatePackage;CreateWindowsAIPackage">
+   <Target Name="ObtainPackageVersion" BeforeTargets="Build;CreatePackage;CreateWindowsAIPackage;CreateNativePackage">
     <ReadLinesFromFile File="..\VERSION_NUMBER">
       <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
     </ReadLinesFromFile>
@@ -81,8 +90,6 @@ CMake creates a target to this project
       <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeSourceDirectoryAbs"/>
     </ConvertToAbsolutePath>
     <PropertyGroup>
-      <CurrentDate>$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
-      <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <PackageVersion>$(PackageVersion)$(ReleaseVersionSuffix)</PackageVersion>
       <Version>$(PackageVersion)</Version>
@@ -91,23 +98,10 @@ CMake creates a target to this project
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
   </Target>
 
-  <Target Name="CreatePackage">
-    <!-- Validate no missing UnmanagedFunctionPointer attributes on delegates. -->
-    <Exec Condition="'$(IsWindowsBuild)' == 'true' AND $(OrtPackageId) == 'Microsoft.ML.OnnxRuntime'"
-          Command="$(PythonExe) tools/ValidateNativeDelegateAttributes.py"
-          ContinueOnError="False">
-        <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
-    </Exec>
-
-    <!-- Create Microsoft.ML.OnnxRuntime.Managed with the C# bindings using the C# project -->
-    <Message Importance="High" Text="Creating Microsoft.ML.OnnxRuntime.Managed nuget package..." />
-    <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-             Targets="CopyMiscFiles;Pack"
-            Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);IncludeMobileTargets=$(IncludeMobileTargets)"/>
-
-    <!-- Manually create the nuspec for the native Microsoft.ML.OnnxRuntime package -->
-    <Message Importance="High" Text="Generating nuspec for the native Microsoft.ML.OnnxRuntime nuget package..." />
-    <Exec Command="$(PythonExe) $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)"
+  <Target Name="CreateNativePackage">
+    <!-- Create the nuspec for the native OnnxRuntime package -->
+    <Message Importance="High" Text="Generating nuspec for the native $(OrtPackageId) nuget package..." />
+    <Exec Command="$(PythonExe) $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider) --nuspec_name $(NuSpecName)"
           ContinueOnError="False"
           ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
@@ -116,7 +110,7 @@ CMake creates a target to this project
     <!-- run `nuget pack` on Windows or `dotnet pack` on Linux to create the native nupkg -->
     <Message Importance="High" Text="Bundling native shared library artifacts into Microsoft.ML.OnnxRuntime nuget package..." />
     <Exec Condition=" '$(IsWindowsBuild)' == 'true'"
-          Command="$(NugetExe) pack NativeNuget.nuspec"
+          Command="$(NugetExe) pack $(NuSpecName)"
           WorkingDirectory="$(NativeBuildOutputDirAbs)"
           ContinueOnError="False"
           ConsoleToMSBuild="true">
@@ -142,6 +136,34 @@ CMake creates a target to this project
     <Copy SourceFiles="$(NativeBuildOutputDirAbs)\$(OrtPackageId).$(PackageVersion).nupkg"
           DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-local-artifacts"
     />
+  </Target>
+
+  <Target Name="CreatePackage">
+    <!-- Validate no missing UnmanagedFunctionPointer attributes on delegates. -->
+    <Exec Condition="'$(IsWindowsBuild)' == 'true' AND $(OrtPackageId) == 'Microsoft.ML.OnnxRuntime'"
+          Command="$(PythonExe) tools/ValidateNativeDelegateAttributes.py"
+          ContinueOnError="False">
+        <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
+    </Exec>
+
+    <!-- Create Microsoft.ML.OnnxRuntime.Managed with the C# bindings using the C# project -->
+    <Message Condition="'$(IsPlatformSpecificSubPackage)'!='True'" Importance="High" Text="Creating Microsoft.ML.OnnxRuntime.Managed nuget package..." />
+    <MSBuild Condition="'$(IsPlatformSpecificSubPackage)'!='True'" Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
+             Targets="CopyMiscFiles;Pack"
+             Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);IncludeMobileTargets=$(IncludeMobileTargets)"/>
+
+    <MSBuild Projects ="$(MSBuildProjectFullPath)"
+             Targets ="CreateNativePackage" />
+
+  </Target>
+
+  <Target Name="CreateAllGpuPackages" AfterTargets="CreatePackage" Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu'">
+    <MSBuild Projects ="$(MSBuildProjectFullPath)"
+             Properties="NuSpecName=NativeGpuWinNuget.nuspec;OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu.Windows"
+             Targets ="CreateNativePackage" />
+    <MSBuild Projects ="$(MSBuildProjectFullPath)"
+             Properties="NuSpecName=NativeGpuLinuxNuget.nuspec;OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu.Linux"
+             Targets ="CreateNativePackage" />
   </Target>
 
   <ItemGroup>

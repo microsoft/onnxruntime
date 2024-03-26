@@ -37,7 +37,7 @@ from ._ir import (
 from ._lowering import lower
 from ._sorted_graph import SortedGraph
 from ._sympy_utils import parse_shape, sympy_dot
-from ._utils import may_add_brackets
+from ._utils import is_number, may_add_brackets
 
 
 class TritonCodegen(NodeVisitor):
@@ -318,7 +318,7 @@ class TritonCodegen(NodeVisitor):
         if op_type == "Cast":
             from_dtype = node.inputs[0].dtype.type
             to_dtype = node.outputs[0].dtype.type
-            if from_dtype == to_dtype:
+            if from_dtype == to_dtype or is_number(kwargs["i0"]):
                 op_type = "Identity"
             elif to_dtype == np.bool_:
                 op_type = "CastBool"

@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env, InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
+import {InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
 
-import {SerializableModeldata, TensorMetadata} from './proxy-messages';
+import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
-import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
-import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getParametersSize, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runTrainStep} from './wasm-training-core-impl';
+import {copyFromExternalBuffer} from './wasm-core-impl';
+import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getModelInputOutputNames, getParametersSize, lazyResetGrad, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runEvalStep, runOptimizerStep, runTrainStep} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
   private sessionId: number;
@@ -15,10 +15,10 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
   inputNames: string[];
   outputNames: string[];
 
-  inputEncodedNames: number[];
-  outputEncodedNames: number[];
+  evalInputNames: string[] = [];
+  evalOutputNames: string[] = [];
 
-  async uriOrBufferToHeap(uriOrBuffer: string|Uint8Array): Promise<SerializableModeldata> {
+  async uriOrBufferToHeap(uriOrBuffer: string|Uint8Array): Promise<SerializableInternalBuffer> {
     let buffer: Uint8Array;
     if (typeof uriOrBuffer === 'string') {
       const response = await fetch(uriOrBuffer);
@@ -27,21 +27,18 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     } else {
       buffer = uriOrBuffer;
     }
-    return createSessionAllocate(buffer);
+    return copyFromExternalBuffer(buffer);
   }
 
   async createTrainingSession(
       checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
       evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
       options: InferenceSession.SessionOptions) {
-    if (!isOrtEnvInitialized()) {
-      await initRuntime(env);
-    }
-    const checkpointData: SerializableModeldata = await this.uriOrBufferToHeap(checkpointStateUriOrBuffer);
-    const trainModelData: SerializableModeldata = await this.uriOrBufferToHeap(trainModelUriOrBuffer);
+    const checkpointData: SerializableInternalBuffer = await this.uriOrBufferToHeap(checkpointStateUriOrBuffer);
+    const trainModelData: SerializableInternalBuffer = await this.uriOrBufferToHeap(trainModelUriOrBuffer);
     // 0 is supposed to be the nullptr
-    let evalModelData: SerializableModeldata = [0, 0];
-    let optimizerModelData: SerializableModeldata = [0, 0];
+    let evalModelData: SerializableInternalBuffer = [0, 0];
+    let optimizerModelData: SerializableInternalBuffer = [0, 0];
 
     if (evalModelUriOrBuffer !== '') {
       evalModelData = await this.uriOrBufferToHeap(evalModelUriOrBuffer);
@@ -51,8 +48,12 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     }
 
     this.checkpointId = createCheckpointHandle(checkpointData);
-    [[this.sessionId, this.inputNames, this.outputNames], this.inputEncodedNames, this.outputEncodedNames] =
+    this.sessionId =
         createTrainingSessionHandle(this.checkpointId, trainModelData, evalModelData, optimizerModelData, options);
+    [this.inputNames, this.outputNames] = getModelInputOutputNames(this.sessionId, false);
+    if (evalModelUriOrBuffer !== '') {
+      [this.evalInputNames, this.evalOutputNames] = getModelInputOutputNames(this.sessionId, true);
+    }
   }
 
   /**
@@ -101,6 +102,10 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     return resultMap;
   }
 
+  async lazyResetGrad(): Promise<void> {
+    await lazyResetGrad(this.sessionId);
+  }
+
   async runTrainStep(
       feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
@@ -118,6 +123,27 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     return this.convertTensorMetadataToReturnType(results, outputArray, outputIndices);
   }
 
+  async runOptimizerStep(options: InferenceSession.RunOptions): Promise<void> {
+    await runOptimizerStep(this.sessionId, options);
+  }
+
+  async runEvalStep(
+      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
+      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
+    const [, inputIndices, inputs] = this.convertMapIntoValuesArrayAndIndicesArray<Tensor, TensorMetadata>(
+        feeds, this.evalInputNames,
+        (t, i): TensorMetadata => encodeTensorMetadata(t, () => `input "${this.evalInputNames[inputIndices[i]]}"`));
+
+    const [outputArray, outputIndices, outputs] =
+        this.convertMapIntoValuesArrayAndIndicesArray<Tensor|null, TensorMetadata|null>(
+            fetches, this.evalOutputNames,
+            (t, i): TensorMetadata|null =>
+                t ? encodeTensorMetadata(t, () => `output "${this.evalOutputNames[outputIndices[i]]}"`) : null);
+
+    const results = await runEvalStep(this.sessionId, inputIndices, inputs, outputIndices, outputs, options);
+    return this.convertTensorMetadataToReturnType(results, outputArray, outputIndices);
+  }
+
   async getParametersSize(trainableOnly: boolean): Promise<number> {
     return getParametersSize(this.sessionId, trainableOnly);
   }
@@ -131,7 +157,6 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
   }
 
   async dispose(): Promise<void> {
-    return releaseTrainingSessionAndCheckpoint(
-        this.checkpointId, this.sessionId, this.inputEncodedNames, this.outputEncodedNames);
+    return releaseTrainingSessionAndCheckpoint(this.checkpointId, this.sessionId);
   }
 }

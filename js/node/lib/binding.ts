@@ -28,6 +28,8 @@ export declare namespace Binding {
     readonly outputNames: string[];
 
     run(feeds: FeedsType, fetches: FetchesType, options: RunOptions): ReturnType;
+
+    dispose(): void;
   }
 
   export interface InferenceSessionConstructor {

@@ -100,6 +100,28 @@
     "attributes": [],
     "cases": [
       {
+        "name": "data[4] indices[]",
+        "inputs": [
+          {
+            "data": [false, true, false, false],
+            "dims": [4],
+            "type": "bool"
+          },
+          {
+            "data": [1],
+            "dims": [],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [true],
+            "dims": [],
+            "type": "bool"
+          }
+        ]
+      },
+      {
         "name": "data[2,4] indices[1]",
         "inputs": [
           {

@@ -32,6 +32,7 @@ PYBIND11_PLUGIN_IMPL(_kernel_explorer) {
 KE_REGISTER(m) {
   py::class_<DeviceArray>(m, "DeviceArray")
       .def(py::init<py::array>())
+      .def(py::init<size_t, ssize_t, ssize_t>())
       .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray)
       .def("UpdateDeviceArray", &DeviceArray::UpdateDeviceArray);
 
@@ -45,6 +46,14 @@ KE_REGISTER(m) {
 
   m.def("is_hipblaslt_available", []() {
 #ifdef USE_HIPBLASLT
+    return true;
+#else
+        return false;
+#endif
+  });
+
+  m.def("is_float8_available", []() {
+#ifndef DISABLE_FLOAT8_TYPES
     return true;
 #else
         return false;

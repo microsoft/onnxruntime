@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Wraps an ONNX training model and allows training and inference calls.
@@ -1049,7 +1050,11 @@ public final class OrtTrainingSession implements AutoCloseable {
 
   /** Wrapper class for the checkpoint state. */
   static final class OrtCheckpointState implements AutoCloseable {
+    private static final Logger logger = Logger.getLogger(OrtCheckpointState.class.getName());
+
     final long nativeHandle;
+
+    private boolean closed;
 
     /**
      * Wraps an object around the checkpoint native handle.
@@ -1058,6 +1063,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      */
     OrtCheckpointState(long nativeHandle) {
       this.nativeHandle = nativeHandle;
+      this.closed = false;
     }
 
     /**
@@ -1097,6 +1103,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the checkpoint failed to save.
      */
     public void saveCheckpoint(Path outputPath, boolean saveOptimizer) throws OrtException {
+      checkClosed();
       Objects.requireNonNull(outputPath, "checkpoint path must not be null");
       String outputStr = outputPath.toString();
       saveCheckpoint(
@@ -1115,6 +1122,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the call failed.
      */
     public void addProperty(String name, float value) throws OrtException {
+      checkClosed();
       addProperty(
           OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, name, value);
     }
@@ -1127,6 +1135,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the call failed.
      */
     public void addProperty(String name, int value) throws OrtException {
+      checkClosed();
       addProperty(
           OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, name, value);
     }
@@ -1139,6 +1148,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the call failed.
      */
     public void addProperty(String name, String value) throws OrtException {
+      checkClosed();
       addProperty(
           OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, name, value);
     }
@@ -1152,6 +1162,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the property does not exist, or is of the wrong type.
      */
     public float getFloatProperty(OrtAllocator allocator, String name) throws OrtException {
+      checkClosed();
       return getFloatProperty(
           OnnxRuntime.ortApiHandle,
           OnnxRuntime.ortTrainingApiHandle,
@@ -1169,6 +1180,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the property does not exist, or is of the wrong type.
      */
     public int getIntProperty(OrtAllocator allocator, String name) throws OrtException {
+      checkClosed();
       return getIntProperty(
           OnnxRuntime.ortApiHandle,
           OnnxRuntime.ortTrainingApiHandle,
@@ -1186,6 +1198,7 @@ public final class OrtTrainingSession implements AutoCloseable {
      * @throws OrtException If the property does not exist, or is of the wrong type.
      */
     public String getStringProperty(OrtAllocator allocator, String name) throws OrtException {
+      checkClosed();
       return getStringProperty(
           OnnxRuntime.ortApiHandle,
           OnnxRuntime.ortTrainingApiHandle,
@@ -1194,9 +1207,25 @@ public final class OrtTrainingSession implements AutoCloseable {
           name);
     }
 
+    /** Checks if the OrtCheckpointState is closed, if so throws {@link IllegalStateException}. */
+    private void checkClosed() {
+      if (closed) {
+        throw new IllegalStateException("Trying to use a closed OrtCheckpointState");
+      }
+    }
+
+    public synchronized boolean isClosed() {
+      return closed;
+    }
+
     @Override
-    public void close() {
-      close(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+    public synchronized void close() {
+      if (!closed) {
+        close(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+        closed = true;
+      } else {
+        logger.warning("Closing a checkpoint twice");
+      }
     }
 
     /*

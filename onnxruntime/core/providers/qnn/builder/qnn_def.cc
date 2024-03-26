@@ -89,6 +89,15 @@ void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>
   }
 }
 
+void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, void* buf_data, uint32_t buf_size) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    qnn_tensor.v1.clientBuf.data = buf_data;
+    qnn_tensor.v1.clientBuf.dataSize = buf_size;
+  } else {
+    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+  }
+}
+
 void SetQnnTensorClientBufSize(Qnn_Tensor_t& qnn_tensor, uint32_t client_buf_size) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.clientBuf.dataSize = client_buf_size;

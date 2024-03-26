@@ -56,9 +56,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 #ifdef MIGRAPHX_STREAM_SYNC
   Status Sync() const override;
 
-  Status OnRunStart() override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
-  Status OnRunEnd(bool sync_stream) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 #endif
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -98,6 +98,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   AllocatorPtr allocator_;
   miopenHandle_t external_miopen_handle_ = nullptr;
   rocblas_handle external_rocblas_handle_ = nullptr;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 
 }  // namespace onnxruntime

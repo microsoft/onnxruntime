@@ -1,0 +1,145 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    trigger: 
+      branches:
+        include:
+        - main
+    branch: main
+
+stages:
+- stage: Publish_NuGet_Package_And_Report
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    variables:
+    - name: GDN_CODESIGN_TARGETDIRECTORY
+      value: '$(Agent.TempDirectory)\binfiles'
+    pool: 'onnxruntime-Win-CPU-2022'
+
+    steps:
+    - checkout: self
+      submodules: false
+    - template: templates/set-version-number-variables-step.yml
+    
+    - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+    
+    - download: build
+      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      artifact: 'drop-signed-nuget-CPU'
+   
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-CPU\*" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+
+    - template: nuget/templates/get-nuget-package-version-as-variable.yml
+      parameters:
+        packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+
+    # TODO: the following step has no error checking
+    - task: CmdLine@2
+      displayName: 'Post binary sizes to the dashboard database using command line'
+      inputs:
+        script: |
+            echo changing directory to artifact download path
+            cd $(Build.BinariesDirectory)/nuget-artifact/final-package
+            echo processing nupkg
+            SETLOCAL EnableDelayedExpansion
+            FOR /R %%i IN (*.nupkg) do (
+             set filename=%%~ni
+             IF NOT "!filename:~25,7!"=="Managed" (
+              echo processing %%~ni.nupkg
+              copy %%~ni.nupkg %%~ni.zip
+              echo copied to zip
+              echo listing lib files in the zip
+              REM use a single .csv file to put the data
+              echo os,arch,build_config,size > $(Build.BinariesDirectory)\binary_size_data.txt
+              7z.exe l -slt %%~ni.zip runtimes\linux-arm64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+              7z.exe l -slt %%~ni.zip runtimes\osx-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+              7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+              7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+              )
+            )
+
+    # Only report binary sizes to database if the build build was auto-triggered from the main branch
+    - task: AzureCLI@2
+      displayName: 'Azure CLI'
+      condition: and (succeeded(), and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')))
+      inputs:
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        scriptLocation: inlineScript
+        scriptType: batch
+        inlineScript: |
+          python.exe -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_to_dashboard\requirements.txt && ^
+          python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - download: build
+      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      artifact: 'drop-signed-nuget-dml'
+
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - download: build
+      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      artifact: 'drop-signed-nuget-Training-CPU'
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-Training-CPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - download: build
+      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      artifact: 'drop-signed-nuget-GPU'
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - download: build
+      displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
+      artifact: 'drop-signed-nuget-ROCm'
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - script: |
+        dir $(Build.BinariesDirectory)\nuget-artifact\final-package
+        cd $(Build.BinariesDirectory)\nuget-artifact\final-package
+        nuget verify -Signatures *.nupkg
+      displayName: List Downloaded Package
+
+    - powershell: |
+        New-Item -Path $(Agent.TempDirectory) -Name "binfiles" -ItemType "directory"
+        $base_path_name = Join-Path -Path $(Agent.TempDirectory) -ChildPath "binfiles"
+        Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact\final-package -Filter *.nupkg |
+            Foreach-Object {
+             $dir_name = Join-Path -Path $base_path_name -ChildPath $_.Basename
+             $cmd = "7z.exe x $($_.FullName) -y -o$dir_name"
+             Write-Output $cmd
+             Invoke-Expression -Command $cmd
+            }
+        dir $(Agent.TempDirectory)
+        tree $(Agent.TempDirectory)
+      workingDirectory: '$(Agent.TempDirectory)'
+
+    - task: CodeSign@1
+      displayName: 'Run Codesign Validation'
+      
+
+    - task: PublishSecurityAnalysisLogs@3
+      displayName: 'Publish Security Analysis Logs'
+      continueOnError: true
+
+    - task: PostAnalysis@2
+      inputs:
+        GdnBreakAllTools: true
+        GdnBreakPolicy: M365
+        GdnBreakPolicyMinSev: Error
+
+    #TODO: allow choosing different feeds
+    - task: NuGetCommand@2
+      displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
+      inputs:
+        command: 'push'
+        packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
+        publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()

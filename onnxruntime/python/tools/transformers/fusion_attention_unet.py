@@ -28,10 +28,19 @@ class FusionAttentionUnet(Fusion):
         enable_packed_qkv: bool,
         enable_packed_kv: bool,
     ):
-        super().__init__(model, "MultiHeadAttention" if is_cross_attention else "Attention", ["LayerNormalization"])
+        super().__init__(
+            model,
+            "Attention" if is_cross_attention and enable_packed_qkv else "MultiHeadAttention",
+            ["LayerNormalization"],
+        )
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.is_cross_attention = is_cross_attention
+
+        # Note: pack Q/K/V or K/V weights into one tensor make it harder for updating initializers for LoRA.
+        # To support LoRA, it is better to use separated Q, K and V inputs in offline optimization,
+        # and CUDA operator pre-packs those tensors to preferred format based on available kernels.
+        # In this way, we can support LoRA and get optimal performance at same time.
         self.enable_packed_qkv = enable_packed_qkv
         self.enable_packed_kv = enable_packed_kv
 
@@ -170,9 +179,7 @@ class FusionAttentionUnet(Fusion):
             return None
 
         # Sometimes weights are stored in fp16
-        if q_weight.data_type == 10:
-            logger.debug("weights are in fp16. Please run fp16 conversion after optimization")
-            return None
+        float_type = q_weight.data_type
 
         qw = NumpyHelper.to_array(q_weight)
         kw = NumpyHelper.to_array(k_weight)
@@ -212,7 +219,7 @@ class FusionAttentionUnet(Fusion):
                 matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_QKV")
                 self.add_initializer(
                     name=matmul_node_name + "_weight",
-                    data_type=TensorProto.FLOAT,
+                    data_type=float_type,
                     dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
                     vals=qkv_weight,
                 )
@@ -235,8 +242,11 @@ class FusionAttentionUnet(Fusion):
 
                 reshape_node = helper.make_node(
                     "Reshape",
-                    inputs=[matmul_node_name + "_out", matmul_node_name + "_reshape_shape"],
-                    outputs=[attention_node_name + "_input"],
+                    inputs=[
+                        matmul_node_name + "_out",
+                        matmul_node_name + "_reshape_shape",
+                    ],
+                    outputs=[attention_node_name + "_qkv_input"],
                     name=matmul_node_name + "_reshape",
                 )
                 self.node_name_to_graph_name[reshape_node.name] = self.this_graph_name
@@ -251,7 +261,7 @@ class FusionAttentionUnet(Fusion):
 
                 self.add_initializer(
                     name=attention_node_name + "_qkv_weight",
-                    data_type=TensorProto.FLOAT,
+                    data_type=float_type,
                     dims=[qw_in_size, qkv_weight_dim],
                     vals=qkv_weight,
                 )
@@ -280,7 +290,7 @@ class FusionAttentionUnet(Fusion):
                 matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_KV")
                 self.add_initializer(
                     name=matmul_node_name + "_weight",
-                    data_type=TensorProto.FLOAT,
+                    data_type=float_type,
                     dims=[kv_weight.shape[0], kv_weight.shape[1]],
                     vals=kv_weight,
                 )
@@ -303,8 +313,11 @@ class FusionAttentionUnet(Fusion):
 
                 reshape_node = helper.make_node(
                     "Reshape",
-                    inputs=[matmul_node_name + "_out", matmul_node_name + "_reshape_shape"],
-                    outputs=[k_matmul.output[0]],
+                    inputs=[
+                        matmul_node_name + "_out",
+                        matmul_node_name + "_reshape_shape",
+                    ],
+                    outputs=[attention_node_name + "_kv_input"],
                     name=matmul_node_name + "_reshape",
                 )
                 self.node_name_to_graph_name[reshape_node.name] = self.this_graph_name
@@ -317,7 +330,7 @@ class FusionAttentionUnet(Fusion):
 
         self.add_initializer(
             name=attention_node_name + "_qkv_bias",
-            data_type=TensorProto.FLOAT,
+            data_type=float_type,
             dims=[qkv_bias_dim],
             vals=qkv_bias,
         )
@@ -330,7 +343,7 @@ class FusionAttentionUnet(Fusion):
                     attention_node_name + "_qkv_bias",
                 ]
             else:
-                attention_inputs = [attention_node_name + "_input"]
+                attention_inputs = [attention_node_name + "_qkv_input"]
         else:
             if not self.enable_packed_kv:
                 attention_inputs = [
@@ -342,7 +355,7 @@ class FusionAttentionUnet(Fusion):
             else:
                 attention_inputs = [
                     q_matmul.output[0],
-                    k_matmul.output[0],
+                    attention_node_name + "_kv_input",
                 ]
 
         attention_node = helper.make_node(
@@ -360,9 +373,7 @@ class FusionAttentionUnet(Fusion):
             else "MultiHeadAttention ({})".format(
                 "self attention with packed qkv"
                 if self.enable_packed_qkv
-                else "cross attention with packed kv"
-                if self.enable_packed_kv
-                else "cross attention"
+                else "cross attention with packed kv" if self.enable_packed_kv else "cross attention"
             )
         )
         self.increase_counter(counter_name)
@@ -830,15 +841,16 @@ class FusionAttentionUnet(Fusion):
             else "MultiHeadAttention ({})".format(
                 "self attention with packed qkv"
                 if self.enable_packed_qkv
-                else "cross attention with packed kv"
-                if self.enable_packed_kv
-                else "cross attention"
+                else "cross attention with packed kv" if self.enable_packed_kv else "cross attention"
             )
         )
         self.increase_counter(counter_name)
         return attention_node
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
+        if self.fuse_a1111_fp16(normalize_node, input_name_to_nodes, output_name_to_node):
+            return
+
         node_before_layernorm = self.model.match_parent(normalize_node, "Add", 0)
 
         # In SD 1.5, for self attention, LayerNorm has parent Reshape
@@ -1168,3 +1180,125 @@ class FusionAttentionUnet(Fusion):
             return (lora_mul_node, lora_matmul_1_node)
 
         return None
+
+    def fuse_a1111_fp16(self, normalize_node, input_name_to_nodes, output_name_to_node):
+        """Fuse attention of fp16 UNet exported in A1111 (stable diffusion webui) extension"""
+        entry_path = self.model.match_parent_path(normalize_node, ["Cast", "Add"], [0, 0])
+        if entry_path is None:
+            entry_path = self.model.match_parent_path(normalize_node, ["Cast", "Reshape"], [0, 0])
+            if entry_path is None:
+                return False
+        _cast, node_before_layernorm = entry_path
+
+        root_input = node_before_layernorm.output[0]
+
+        children_nodes = input_name_to_nodes[root_input]
+        skip_add = None
+        for node in children_nodes:
+            if node.op_type == "Add":  # SkipLayerNormalization fusion is not applied yet
+                skip_add = node
+                break
+        if skip_add is None:
+            return False
+
+        match_qkv = self.match_qkv_a1111(root_input, skip_add)
+        if match_qkv is None:
+            return False
+
+        (
+            reshape_qkv,
+            transpose_qkv,
+            reshape_q,
+            matmul_q,
+            matmul_k,
+            matmul_v,
+        ) = match_qkv
+
+        cast_q = self.model.match_parent(matmul_q, "Cast", 0)
+        cast_k = self.model.match_parent(matmul_k, "Cast", 0)
+        cast_v = self.model.match_parent(matmul_v, "Cast", 0)
+        if not (
+            cast_q is not None
+            and cast_k is not None
+            and (cast_q == cast_k if not self.is_cross_attention else cast_q != cast_k)
+            and cast_k == cast_v
+        ):
+            return False
+
+        if cast_q.input[0] != normalize_node.output[0]:
+            return False
+
+        attention_last_node = reshape_qkv
+
+        q_num_heads = self.get_num_heads(reshape_q, True) or self.get_num_heads(reshape_q, False)
+        if q_num_heads <= 0:
+            logger.debug("fuse_attention: failed to detect num_heads")
+            return False
+
+        q_hidden_size = self.get_hidden_size(normalize_node)
+
+        # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
+        new_node = self.create_attention_node(
+            matmul_q,
+            matmul_k,
+            matmul_v,
+            q_num_heads,
+            q_hidden_size,
+            input=matmul_q.input[0],
+            output=attention_last_node.output[0],
+        )
+        if new_node is None:
+            return False
+
+        self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
+        self.nodes_to_remove.extend([attention_last_node, transpose_qkv])
+
+        # Use prune graph to remove nodes since they are shared by all attention nodes.
+        self.prune_graph = True
+        return True
+
+    def match_qkv_a1111(self, root_input, skip_add):
+        """Match Q, K and V paths exported by A1111 (stable diffusion webui) extension"""
+        another_input = 1 if skip_add.input[0] == root_input else 0
+        qkv_nodes = self.model.match_parent_path(
+            skip_add,
+            ["Add", "MatMul", "Reshape", "Transpose", "Reshape", "Einsum"],
+            [another_input, None, None, 0, 0, 0],
+        )
+
+        if qkv_nodes is None:
+            return None
+
+        (_, _, reshape_qkv, transpose_qkv, reshape_einsum, einsum_qkv) = qkv_nodes
+
+        v_nodes = self.model.match_parent_path(einsum_qkv, ["Reshape", "Transpose", "Reshape", "MatMul"], [1, 0, 0, 0])
+        if v_nodes is None:
+            logger.debug("fuse_attention: failed to match v path")
+            return None
+        (_, _, _, matmul_v) = v_nodes
+
+        qk_nodes = self.model.match_parent_path(
+            einsum_qkv, ["Cast", "Cast", "Softmax", "Mul", "Einsum"], [0, 0, 0, 0, None]
+        )
+        if qk_nodes is not None:
+            (_, _, _softmax_qk, _, einsum_qk) = qk_nodes
+        else:
+            logger.debug("fuse_attention: failed to match qk path")
+            return None
+
+        q_nodes = self.model.match_parent_path(einsum_qk, ["Reshape", "Transpose", "Reshape", "MatMul"], [0, 0, 0, 0])
+        if q_nodes is None:
+            logger.debug("fuse_attention: failed to match q path")
+            return None
+        (_, _transpose_q, reshape_q, matmul_q) = q_nodes
+
+        k_nodes = self.model.match_parent_path(einsum_qk, ["Reshape", "Transpose", "Reshape", "MatMul"], [1, 0, 0, 0])
+        if k_nodes is None:
+            logger.debug("fuse_attention: failed to match k path")
+            return None
+
+        (_, _, _, matmul_k) = k_nodes
+
+        return reshape_qkv, transpose_qkv, reshape_q, matmul_q, matmul_k, matmul_v
