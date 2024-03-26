@@ -1,4 +1,8 @@
 parameters:
+- name: MACHINE_POOL
+  type: string
+  default: 'onnxruntime-Win2022-GPU-T4'
+
 - name: EP_NAME
   type: string
 
@@ -207,7 +211,7 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win2022-GPU-T4
+        name: ${{parameters.MACHINE_POOL}}
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
