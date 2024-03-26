@@ -12,7 +12,7 @@ msdomain.domain = "com.microsoft"
 opsets.append(msdomain)
 
 ai_ml_domain = OperatorSetIdProto()
-ai_ml_domain.version = 4
+ai_ml_domain.version = 3
 ai_ml_domain.domain = "ai.onnx.ml"
 opsets.append(ai_ml_domain)
 
