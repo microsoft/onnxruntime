@@ -794,13 +794,13 @@ public:
         }
       }
     } else if constexpr (kMmaIterationsB % 2 == 0) {
-      const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(scales.data());
-      uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
-
       if constexpr (kHasOffset){
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+        const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(scales.data());
+        uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
         // possible buffer over read 2 bytes here.
         const uint32_t* p = reinterpret_cast<const uint32_t*>(offsets.data());
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+
         asm volatile(
           "{\n\t"
           "  .reg  .b32    rb0, rb1, rb2;\n"
