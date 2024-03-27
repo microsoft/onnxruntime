@@ -49,6 +49,8 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 
+using namespace onnxruntime::cuda;
+
 namespace ort_fastertransformer {
 static constexpr int WARP_SIZE = 32;
 
