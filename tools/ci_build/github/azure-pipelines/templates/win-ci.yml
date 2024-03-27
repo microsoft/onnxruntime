@@ -376,6 +376,8 @@ stages:
 
         - template: telemetry-steps.yml
 
+        - template: set-version-number-variables-step.yml
+
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - task: JavaToolInstaller@0
             inputs:
