@@ -206,7 +206,7 @@ stages:
 
           - task: TSAUpload@2
             displayName: 'TSA upload'
-            condition: and (succeeded())
+            condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
             inputs:
               GdnPublishTsaOnboard: false
               GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
