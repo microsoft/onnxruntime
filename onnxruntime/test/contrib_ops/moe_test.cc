@@ -127,6 +127,7 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
   }
 }
 
+#ifndef ENABLE_TRAINING
 TEST(MoETest, MoETest_Gelu) {
   int num_rows = 4;
   int num_experts = 4;
@@ -1265,6 +1266,7 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
               1, /*normalize_routing_weights*/
               2 /*top_k*/);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
