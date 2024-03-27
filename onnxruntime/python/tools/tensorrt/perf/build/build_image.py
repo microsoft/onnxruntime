@@ -275,7 +275,7 @@ def main() -> int:
     if args.install_bin:
         docker_build_trt_bin(args)
     else:
-        if args.use_tensorrt_oss_parser and args.oss_parser_commit_id != "":
+        if args.oss_parser_commit_id != "":
             overwrite_onnx_tensorrt_commit_id(args.oss_parser_commit_id)
         docker_build_trt(args)
 

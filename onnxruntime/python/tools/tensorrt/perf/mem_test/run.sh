@@ -15,18 +15,6 @@ c) CONCURRENCY=${OPTARG};;
 esac
 done
 
-# Validate deps.txt
-FILE_PATH="../../../../../../cmake/deps.txt"
-
-while IFS= read -r line; do
-    case "$line" in
-        onnx_tensorrt*)
-            echo "Found: $line"
-            exit 0
-            ;;
-    esac
-done < "$FILE_PATH"
-
 ONNX_MODEL="/data/ep-perf-models/onnx-zoo-models/squeezenet1.0-7/squeezenet/model.onnx"
 ASAN_OPTIONS="protect_shadow_gap=0:new_delete_type_mismatch=0:log_path=asan.log"
 
@@ -50,6 +38,19 @@ then
     ./build.sh --parallel --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ \
                --config Release --build_shared_lib --update --build --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
 fi
+
+# Validate deps.txt
+cd ${ORT_SOURCE}
+FILE_PATH="./cmake/deps.txt"
+
+while IFS= read -r line; do
+    case "$line" in
+        onnx_tensorrt*)
+            echo "Found: $line"
+            exit 0
+            ;;
+    esac
+done < "$FILE_PATH"
 
 cd ${WORKSPACE}
 
