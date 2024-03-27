@@ -10,7 +10,6 @@
 #include "core/common/status.h"
 #include "QnnInterface.h"
 #include "qnn_def.h"
-#include "qnn_quant_params_manager.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
