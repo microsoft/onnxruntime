@@ -357,9 +357,9 @@ struct SplitkGemmGrouped {
       ThreadblockSwizzle threadblock_swizzle;
       GemmCoord threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 
-      cutlass::gemm::GemmCoord threadblock_offset(
-          static_cast<int>(threadblock_idx / grid_shape.n()) * Mma::Shape::kM,
-          static_cast<int>(threadblock_idx % grid_shape.n()) * Mma::Shape::kN, 0);
+      cutlass::gemm::GemmCoord threadblock_offset(static_cast<int>(threadblock_idx / grid_shape.n()) * Mma::Shape::kM,
+                                                  static_cast<int>(threadblock_idx % grid_shape.n()) * Mma::Shape::kN,
+                                                  0);
 
       // Compute initial location in logical coordinates
       cutlass::MatrixCoord tb_offset_A{
