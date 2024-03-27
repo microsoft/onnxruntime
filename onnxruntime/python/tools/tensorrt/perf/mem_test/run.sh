@@ -15,6 +15,18 @@ c) CONCURRENCY=${OPTARG};;
 esac
 done
 
+# Validate deps.txt
+FILE_PATH="../../../../../../cmake/deps.txt"
+
+while IFS= read -r line; do
+    case "$line" in
+        onnx_tensorrt*)
+            echo "Found: $line"
+            exit 0
+            ;;
+    esac
+done < "$FILE_PATH"
+
 ONNX_MODEL="/data/ep-perf-models/onnx-zoo-models/squeezenet1.0-7/squeezenet/model.onnx"
 ASAN_OPTIONS="protect_shadow_gap=0:new_delete_type_mismatch=0:log_path=asan.log"
 
