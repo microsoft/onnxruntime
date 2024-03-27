@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 import argparse
 import datetime
 import json
@@ -76,6 +81,13 @@ def get_args():
         type=str,
         default="",
         help="Path to ONNX model from convert_to_onnx",
+    )
+
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default="./model_cache",
+        help="Cache dir where Hugging Face files are stored",
     )
 
     parser.add_argument(
@@ -332,6 +344,8 @@ def main():
             str(args.num_runs),
             "--log-folder",
             args.log_folder,
+            "--cache-dir",
+            args.cache_dir,
             "--auth",
         ]
         logger.info("Benchmark PyTorch without torch.compile")
@@ -362,6 +376,8 @@ def main():
             str(args.num_runs),
             "--log-folder",
             args.log_folder,
+            "--cache-dir",
+            args.cache_dir,
             "--auth",
         ]
         logger.info("Benchmark PyTorch with torch.compile")
@@ -394,6 +410,8 @@ def main():
             str(args.num_runs),
             "--log-folder",
             args.log_folder,
+            "--cache-dir",
+            args.cache_dir,
             "--auth",
         ]
         logger.info("Benchmark Optimum + ONNX Runtime")
@@ -426,6 +444,8 @@ def main():
             str(args.num_runs),
             "--log-folder",
             args.log_folder,
+            "--cache-dir",
+            args.cache_dir,
         ]
         logger.info("Benchmark Microsoft model in ONNX Runtime")
         results = benchmark(args, benchmark_cmd, "ort-msft")
@@ -457,6 +477,8 @@ def main():
             str(args.num_runs),
             "--log-folder",
             args.log_folder,
+            "--cache-dir",
+            args.cache_dir,
         ]
         logger.info("Benchmark convert_to_onnx model in ONNX Runtime")
         results = benchmark(args, benchmark_cmd, "onnxruntime")

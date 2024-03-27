@@ -4,13 +4,8 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
 #include "core/common/common.h"
-#if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
 #include <nvtx3/nvToolsExt.h>
 #include <nvtx3/nvToolsExtCuda.h>
-#else
-#include <nvToolsExt.h>
-#include <nvToolsExtCuda.h>
-#endif
 
 namespace onnxruntime {
 namespace profile {

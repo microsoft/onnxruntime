@@ -7,8 +7,26 @@ file(GLOB_RECURSE onnxruntime_graph_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/graph/*.cc"
   )
 
-# create empty list for any excludes
+# start with empty training srcs list
+set(orttraining_graph_src)
+
+if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
+  set(orttraining_graph_src
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.cc"
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.h"
+      )
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.cc"
+      )
+endif()
+
+# create empty lists for any excludes
 set(onnxruntime_graph_src_exclude_patterns)
+set(orttraining_graph_src_exclude_patterns)
 
 if (onnxruntime_MINIMAL_BUILD)
   # remove schema registration support
@@ -22,9 +40,16 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/shape_inference_functions.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/shape_inference_functions.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/dml_defs.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/dml_defs.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/function_template.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.cc"
+  )
+
+  list(APPEND orttraining_graph_src_exclude_patterns
+    "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.cc"
   )
 
   # no Function support initially
@@ -64,30 +89,12 @@ endif()
 file(GLOB onnxruntime_graph_src_exclude ${onnxruntime_graph_src_exclude_patterns})
 list(REMOVE_ITEM onnxruntime_graph_src ${onnxruntime_graph_src_exclude})
 
-file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
-)
-
-if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
-  set(orttraining_graph_src
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.cc"
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.h"
-      )
-endif()
-
-if (onnxruntime_ENABLE_TRAINING)
-  file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.cc"
-      )
-endif()
-
-set(onnxruntime_graph_lib_src ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
 if (onnxruntime_ENABLE_TRAINING_OPS)
-    list(APPEND onnxruntime_graph_lib_src ${orttraining_graph_src})
+  file(GLOB orttraining_graph_src_exclude ${orttraining_graph_src_exclude_patterns})
+  list(REMOVE_ITEM orttraining_graph_src ${orttraining_graph_src_exclude})
 endif()
 
-onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
+onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_src} ${orttraining_graph_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers::flatbuffers)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common ${WIL_TARGET} onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 
@@ -120,7 +127,7 @@ endif()
 
 set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")
 set_target_properties(onnxruntime_graph PROPERTIES LINKER_LANGUAGE CXX)
-source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
+source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_graph_src})
 if (onnxruntime_ENABLE_TRAINING_OPS)
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
 endif()

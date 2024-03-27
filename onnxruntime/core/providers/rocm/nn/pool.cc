@@ -257,7 +257,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   Tensor* I = context->Output(1, TensorShape(y_dims));
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->MutableData<int64_t>();
-    MaxPoolWithIndex<HipT>(
+    MaxPoolWithIndex<HipT, false>(
         this->Stream(context),
         x_shape,
         TensorShape(y_dims),

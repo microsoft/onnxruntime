@@ -1,8 +1,13 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 from __future__ import annotations
 
 import numpy as np
 import torch
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoTokenizer
 
 from onnxruntime import InferenceSession, OrtValue
 
@@ -222,7 +227,8 @@ def get_msft_sample_inputs(
 # Create past_key_values
 # Each is of shape (batch_size, num_heads, past_sequence_length, head_size)
 def get_past_kv_inputs(config: AutoConfig, batch_size: int, past_seq_len: int, use_fp16: bool, world_size: int = 1):
-    num_heads, head_size = config.num_key_value_heads // world_size, config.hidden_size // config.num_attention_heads
+    num_heads = config.num_key_value_heads // world_size
+    head_size = config.head_dim if hasattr(config, "head_dim") else config.hidden_size // config.num_attention_heads
     torch_dtype = torch.float16 if use_fp16 else torch.float32
     past_kv = [
         (
@@ -268,6 +274,8 @@ def convert_inputs_for_ort(
     return ort_inputs
 
 
+# Re-allocate KV caches from (batch_size, num_heads, past_sequence_length, head_size) to
+# (batch_size, num_heads, max_sequence_length, head_size) for past-present buffer sharing
 def enable_past_present_share_buffer(ort_inputs: dict, past_seq_len: int, max_seq_len: int):
     for k, v in ort_inputs.items():
         # Allocate new buffers with max_sequence_length for GQA
@@ -280,13 +288,41 @@ def enable_past_present_share_buffer(ort_inputs: dict, past_seq_len: int, max_se
     return ort_inputs
 
 
-# Add IO bindings for execution providers
-def add_io_bindings(
+# Verify ONNX Runtime inputs with model
+def verify_ort_inputs(model: InferenceSession, ort_inputs: dict):
+    # Check that all model inputs will be provided
+    model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
+    user_inputs = set(ort_inputs.keys())
+    missing_inputs = model_inputs - user_inputs
+    if len(missing_inputs):
+        print(f"The following model inputs are missing: {missing_inputs}")
+        raise Exception("There are missing inputs to the model. Please add them and try again.")
+
+    # Remove unnecessary inputs from model inputs
+    unnecessary_inputs = user_inputs - model_inputs
+    if len(unnecessary_inputs):
+        for unnecessary_input in unnecessary_inputs:
+            print(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
+            del ort_inputs[unnecessary_input]
+
+    return ort_inputs
+
+
+# Add IO bindings for execution providers using OrtValue
+# Use when you need to run inference once or twice to save memory
+def add_io_bindings_as_ortvalues(
     model: InferenceSession, ort_inputs: dict, device: str, device_id: int, use_gqa: bool, kv_cache_ortvalues: dict
 ):
     io_binding = model.io_binding()
 
+    model_inputs = set(map(lambda i: i.name, model.get_inputs()))
     for k, v in ort_inputs.items():
+        # Use this check to handle scenarios such as INT4 CUDA and FP16 CUDA models with
+        # GQA + RotaryEmbedding fusion where `position_ids` is removed as an ONNX model input
+        # but `position_ids` is used as a PyTorch model input
+        if k not in model_inputs:
+            continue
+
         # Bind OrtValue inputs to device
         if use_gqa and ("cache" in k or "past_key_values" in k):
             if k not in kv_cache_ortvalues:
@@ -310,3 +346,163 @@ def add_io_bindings(
             io_binding.bind_output(name, device_type=device, device_id=device_id)
 
     return io_binding, kv_cache_ortvalues
+
+
+# Add IO bindings for execution providers using PyTorch tensors
+# Use when you need to run inference many times
+def add_io_bindings_as_tensors(
+    model: InferenceSession, inputs: dict, outputs: dict, use_fp16: bool, use_buffer_share: bool
+):
+    # Verify model inputs
+    inputs = verify_ort_inputs(model, inputs)
+
+    device = None
+    pt_to_np = {
+        "torch.int32": np.int32,
+        "torch.int64": np.int64,
+        "torch.float16": np.float16,
+        "torch.float32": np.float32,
+    }
+
+    # Bind inputs/outputs to IO binding
+    io_binding = model.io_binding()
+    for k, v in inputs.items():
+        io_binding.bind_input(
+            name=k,
+            device_type=v.device.type,
+            device_id=0 if v.device.type == "cpu" else v.device.index,
+            element_type=pt_to_np[repr(v.dtype)],
+            shape=tuple(v.shape),
+            buffer_ptr=v.data_ptr(),
+        )
+        device = v.device
+
+    for output in model.get_outputs():
+        name = output.name
+        if use_buffer_share and "present" in name:
+            # Bind KV cache outputs to KV cache inputs
+            v = inputs[name.replace("present", "past_key_values")]
+            io_binding.bind_output(
+                name=name,
+                device_type=v.device.type,
+                device_id=v.device.index,
+                element_type=np.float16,
+                shape=tuple(v.shape),
+                buffer_ptr=v.data_ptr(),
+            )
+        else:
+            v = outputs[name]
+            io_binding.bind_output(
+                name=name,
+                device_type=device.type,
+                device_id=0 if device.type == "cpu" else device.index,
+                element_type=(np.float16 if use_fp16 else np.float32),
+                shape=tuple(v.shape),
+                buffer_ptr=v.data_ptr(),
+            )
+
+    return io_binding
+
+
+# Get actual inputs when using real data (instead of sample data) and initialize outputs
+def get_initial_inputs_and_outputs(
+    config: AutoConfig,
+    tokenizer: AutoTokenizer,
+    requested_length: int,
+    prompt: list[str],
+    device: torch.device,
+    use_fp16: bool,
+    use_buffer_share: bool,
+    engine: str,
+):
+    tokenizer.pad_token = "[PAD]"
+    encodings_dict = tokenizer.batch_encode_plus(prompt, padding=True)
+    torch_dtype = torch.float16 if use_fp16 else torch.float32
+
+    # input_ids:      pad token id is 0
+    # attention_mask: pad token id is 0
+    # position_ids:   pad token id is 1
+    input_ids = torch.tensor(encodings_dict["input_ids"], device=device, dtype=torch.int64)
+    attention_mask = torch.tensor(encodings_dict["attention_mask"], device=device, dtype=torch.int64)
+    position_ids = get_position_ids(attention_mask, use_past_kv=False)
+
+    # Check if tokenized prompt length matches the requested prompt length
+    tokenized_length = input_ids.shape[-1]
+    if tokenized_length > requested_length:
+        # Shorten the inputs from (batch_size, tokenized_length) to (batch_size, requested_length)
+        input_ids = input_ids[:, :requested_length]
+        attention_mask = attention_mask[:, :requested_length]
+        position_ids = get_position_ids(attention_mask, use_past_kv=False)
+    elif tokenized_length < requested_length:
+        # Lengthen the inputs from (batch_size, tokenized_length) to (batch_size, requested_length)
+        input_ids_first_col = input_ids[:, 0].unsqueeze(0).T
+        attention_mask_first_col = attention_mask[:, 0].unsqueeze(0).T
+        for _ in range(requested_length - tokenized_length):
+            input_ids = torch.hstack((input_ids_first_col, input_ids))
+            attention_mask = torch.hstack((attention_mask_first_col, attention_mask))
+        position_ids = get_position_ids(attention_mask, use_past_kv=False)
+
+    tokenized_length = input_ids.shape[-1]
+    assert tokenized_length == requested_length
+
+    # Create inputs
+    inputs = {
+        "input_ids": input_ids.contiguous() if engine == "ort" else input_ids,
+        "attention_mask": attention_mask.contiguous() if engine == "ort" else attention_mask,
+        "position_ids": position_ids.contiguous() if engine == "ort" else position_ids,
+    }
+    if engine != "ort":
+        inputs["past_key_values"] = []
+
+    # Get shape of KV cache inputs
+    batch_size, sequence_length = input_ids.shape
+    max_sequence_length = config.max_position_embeddings
+    num_heads = config.num_key_value_heads
+    head_size = config.head_dim if hasattr(config, "head_dim") else config.hidden_size // config.num_attention_heads
+
+    # Create KV cache inputs
+    for i in range(config.num_hidden_layers):
+        past_key = torch.zeros(
+            batch_size,
+            num_heads,
+            max_sequence_length if use_buffer_share else 0,
+            head_size,
+            device=device,
+            dtype=torch_dtype,
+        )
+        past_value = torch.zeros(
+            batch_size,
+            num_heads,
+            max_sequence_length if use_buffer_share else 0,
+            head_size,
+            device=device,
+            dtype=torch_dtype,
+        )
+        if engine == "ort":
+            inputs.update(
+                {
+                    f"past_key_values.{i}.key": past_key.contiguous(),
+                    f"past_key_values.{i}.value": past_value.contiguous(),
+                }
+            )
+        else:
+            inputs["past_key_values"].append((past_key, past_value))
+
+    outputs = None
+    if engine == "ort":
+        # Create outputs
+        logits = torch.zeros(batch_size, sequence_length, config.vocab_size, device=device, dtype=torch_dtype)
+        outputs = {"logits": logits.contiguous()}
+        if not use_buffer_share:
+            for i in range(config.num_hidden_layers):
+                present_key = torch.zeros(
+                    batch_size, num_heads, sequence_length, head_size, device=device, dtype=torch_dtype
+                )
+                present_value = torch.zeros(
+                    batch_size, num_heads, sequence_length, head_size, device=device, dtype=torch_dtype
+                )
+                outputs.update(
+                    {f"present.{i}.key": present_key.contiguous(), f"present.{i}.value": present_value.contiguous()}
+                )
+
+    return inputs, outputs
