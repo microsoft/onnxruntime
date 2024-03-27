@@ -381,11 +381,11 @@ Status QnnModelWrapper::InitQnnQuantParams(const std::optional<onnxruntime::Node
   const int32_t scale_rank = scale_shape->dim_size();
 
   constexpr int64_t DEFAULT_QDQ_AXIS = 1;
-  uint32_t axis = static_cast<uint32_t>(ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS));
+  int64_t axis = ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS);
   if (axis < 0) {
     axis += scale_rank;
   }
-  ORT_RETURN_IF_NOT(scale_rank == 0 || (axis >= 0 && axis < static_cast<uint32_t>(scale_rank)),
+  ORT_RETURN_IF_NOT(scale_rank == 0 || (axis >= 0 && axis < scale_rank),
                     "Quantization axis must be within the range [0, rank - 1]");
 
   const bool is_per_tensor = scale_rank == 0;
@@ -432,7 +432,7 @@ Status QnnModelWrapper::InitQnnQuantParams(const std::optional<onnxruntime::Node
       scale_offset_data_.push_back({scales[i], no_zero_points ? 0 : zero_points[i]});
     }
 
-    qnn_quant_params.axisScaleOffsetEncoding.axis = axis;
+    qnn_quant_params.axisScaleOffsetEncoding.axis = static_cast<int32_t>(axis);
     qnn_quant_params.axisScaleOffsetEncoding.numScaleOffsets = static_cast<uint32_t>(num_elems);
     qnn_quant_params.axisScaleOffsetEncoding.scaleOffset = &scale_offset_data_[data_location];
   }
