@@ -1,0 +1,15 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// run flatc.exe from a debug build. Should be in <build output dir>/_deps/flatbuffers-build/Debug\flatc.exe
+// e.g. ..\..\..\build\Windows\Debug\_deps\flatbuffers-build\Debug\flatc.exe --cpp .\flatbuffers_utils_test.fbs
+// Diff the old and new generated header. Copy #include info from old as it has some customizations.
+include "../../core/flatbuffers/schema/ort.fbs";
+
+namespace onnxruntime.fbs.test;
+
+table TestData {
+    initializers:[Tensor];
+}
+
+root_type TestData;

@@ -35,10 +35,31 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto doc_string = SaveStringToOrtFormat(builder, initializer.has_doc_string(), initializer.doc_string());
   auto dims = SaveDims(builder, initializer.dims());
 
+  // we have to set these prior to creating the TensorBuilder instance.
   flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> string_data;
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
+  int64_t external_data_offset = -1;
 
   auto src_type = initializer.data_type();
+  bool has_string_data = src_type == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+
+  if (has_string_data) {
+    std::vector<std::string> string_data_vec(initializer.string_data().size());
+    std::copy(initializer.string_data().cbegin(), initializer.string_data().cend(), string_data_vec.begin());
+    string_data = builder.CreateVectorOfStrings(string_data_vec);
+  } else {
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
+
+    if (external_writer && unpacked_tensor.size() >= kMinimumSizeForExternalData) {
+      // write bytes to external buffer/file and record offset for the start of the data
+      uint64_t offset = 0;
+      ORT_RETURN_IF_ERROR(external_writer(src_type, unpacked_tensor, offset));
+      external_data_offset = onnxruntime::narrow<int64_t>(offset);  // offset in fb is int64_t so -1 can make not in use
+    } else {
+      raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
+    }
+  }
 
   fbs::TensorBuilder tb(builder);
   tb.add_name(name);
@@ -46,24 +67,15 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   tb.add_dims(dims);
   tb.add_data_type(static_cast<fbs::TensorDataType>(src_type));
 
-  if (src_type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-    std::vector<std::string> string_data_vec(initializer.string_data().size());
-    std::copy(initializer.string_data().cbegin(), initializer.string_data().cend(), string_data_vec.begin());
-    string_data = builder.CreateVectorOfStrings(string_data_vec);
+  if (has_string_data) {
     tb.add_string_data(string_data);
   } else {
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
-
-    if (external_writer && unpacked_tensor.size() >= kMinimumSizeForExternalData) {
-      // write bytes to external buffer/file and record offset for the start of the data
-      tb.add_external_data_offset(external_writer(src_type, unpacked_tensor));
+    if (external_data_offset >= 0) {
+      tb.add_external_data_offset(external_data_offset);
     } else {
-      raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
       tb.add_raw_data(raw_data);
     }
   }
-
   fbs_tensor = tb.Finish();
 
   return Status::OK();
@@ -241,13 +253,15 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
 
       // FUTURE: This could be setup similarly to can_use_flatbuffer_for_initializers above if the external data file
       // is memory mapped and guaranteed to remain valid. This would avoid the copy.
-      auto num_bytes = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), int64_t(1), std::multiplies<int64_t>());
+      // Use SafeInt to check for overflow. Use size_t in case this is being used on an x86 platform.
+      auto num_bytes = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), SafeInt<size_t>(1),
+                                       std::multiplies<size_t>());
       // pre-allocate so we can write directly to the string buffer
       std::string& raw_data = *initializer.mutable_raw_data();
       raw_data.resize(num_bytes);
       auto output_buffer = gsl::make_span<uint8_t>(reinterpret_cast<uint8_t*>(raw_data.data()), num_bytes);
 
-      external_reader(external_data_offset, output_buffer);
+      ORT_RETURN_IF_ERROR(external_reader(external_data_offset, output_buffer));
     }
   }
 

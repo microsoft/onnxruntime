@@ -3,8 +3,6 @@
 
 #include "orttraining/training_api/checkpoint.h"
 
-#include <filesystem>
-
 #include "core/flatbuffers/checkpoint_version.h"
 #include "core/flatbuffers/schema/ort_training_checkpoint.fbs.h"
 #include "core/framework/framework_common.h"
@@ -178,10 +176,9 @@ Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder&
  * @param checkpoint_path file where checkpoint is saved.
  * @return Status
  */
-Status FromTensorProtos(
-    gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
-    gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
-    const PathString& checkpoint_path, const bool nominal_checkpoint) {
+Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
+                        gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
+                        const PathString& checkpoint_path, const bool nominal_checkpoint) {
   const auto check_unique = [](gsl::span<const ONNX_NAMESPACE::TensorProto> tensor_protos,
                                InlinedHashSet<std::string>& unique_names) {
     for (const auto& tensor_proto : tensor_protos) {
@@ -245,7 +242,8 @@ Status FromTensorProtos(
                   ToUTF8String(data_path));
 
     // setup the data writer to write aligned data to external_data_stream
-    external_data_writer = [&external_data_stream](int32_t data_type, gsl::span<const uint8_t> bytes) {
+    external_data_writer = [&external_data_stream](int32_t data_type, gsl::span<const uint8_t> bytes,
+                                                   uint64_t& offset) {
       // for now align everything to 4 or 8 bytes. we can optimize this later if needed.
       int32_t alignment = 4;
 
@@ -256,16 +254,26 @@ Status FromTensorProtos(
       }
 
       int64_t pos = external_data_stream->tellp();
-      while (pos % alignment != 0) {
-        external_data_stream->put(0);
-        ++pos;
+
+      if (pos % alignment != 0) {
+        // 8 bytes of 0's so we can pad to alignment 8 in a single `write`
+        constexpr static const uint64_t zeros = 0;
+        int64_t padding = alignment - (pos % alignment);
+        // skipping validation of this write. doesn't matter if this or the 'real' write below fails. if this does the
+        // other will as well as nothing will clear the failure bit in the ofstream in between the calls.
+        external_data_stream->write(reinterpret_cast<const char*>(&zeros), padding);
+        pos += padding;
       }
 
       external_data_stream->write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-      // temporary sanity check. should we check for fail() on every write or just at the end?
+      // TODO: include error code/message for why it failed. requires platform specific code
+      ORT_RETURN_IF(external_data_stream->fail(), "Failed writing external checkpoint data.");
+
+      // temporary sanity check. remove when code is unit tested
       assert(pos + int64_t(bytes.size()) == external_data_stream->tellp());
 
-      return pos;  // return offset for start of data
+      offset = pos;
+      return Status::OK();
     };
   }
 
@@ -733,12 +741,18 @@ Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
   if (module_state->has_external_data()) {
     auto data_path = ExternalCheckpointDataPath(checkpoint_path);
     external_data_stream = std::ifstream(data_path, std::ios::binary);
-    ORT_RETURN_IF_NOT(external_data_stream->is_open(),
+    ORT_RETURN_IF_NOT(external_data_stream->fail(),
                       "Failed to open checkpoint's external data file: ", ToUTF8String(data_path));
 
     external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
       external_data_stream->seekg(offset);
-      external_data_stream->get(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
+      external_data_stream->read(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
+
+      // TODO: Add platform specific code to get reason for failure and include in error message.
+      ORT_RETURN_IF(external_data_stream->fail(),
+                    "Failed to read external checkpoint data. Offset:", offset, " Bytes:", output_buffer.size());
+
+      return Status::OK();
     };
   }
 

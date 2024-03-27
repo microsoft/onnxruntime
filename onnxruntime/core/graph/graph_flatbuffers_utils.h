@@ -45,13 +45,13 @@ namespace utils {
 /// Data should be aligned to an appropriate boundary for the data type and or any potential mmap'd usage of the file.
 /// `data_type` is value returned by TensorProto::data_type() and is a value from onnx::TensorTypeProto_DataType.
 /// The function is not called for onnx::TensorTypeProto_DataType_STRING.
-/// The function should return the offset to the start of the data in the external file/buffer.
+/// The function should set `offset` to the start of the data in the external file/buffer.
 /// </summary>
-using ExternalDataWriter = std::function<uint64_t(int32_t data_type, gsl::span<const uint8_t> bytes)>;
+using ExternalDataWriter = std::function<Status(int32_t data_type, gsl::span<const uint8_t> bytes, uint64_t& offset)>;
 
 // inverse to ExternalDataWriter.
 // The reader should write bytes to the output_buffer which is pre-allocated with the correct size.
-using ExternalDataReader = std::function<void(uint64_t offset, gsl::span<uint8_t> output_buffer)>;
+using ExternalDataReader = std::function<Status(uint64_t offset, gsl::span<uint8_t> output_buffer)>;
 
 /// <summary>
 /// Minimum number of bytes for data to be written as external data.
