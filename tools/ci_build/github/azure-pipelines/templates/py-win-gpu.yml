@@ -206,7 +206,6 @@ stages:
 
           - task: TSAUpload@2
             displayName: 'TSA upload'
-            condition: and (succeeded())
             inputs:
               GdnPublishTsaOnboard: false
               GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
