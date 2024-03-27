@@ -110,7 +110,7 @@ steps:
 
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
-- $${{ if eq(parameters.InstallONNX, true}}:
+- ${{ if eq(parameters.InstallONNX, true) }}:
   - ${{ if eq(parameters.WITHCACHE, true) }}:
     - task: Cache@2
       # machinepool is used to ensure the compiler is same
