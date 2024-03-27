@@ -81,6 +81,8 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
   }
 }
 
+// TODO(wy): Add python parity tests that can serve as examples. Need cutlass upgrade to build cutlass extensions to
+// add weights preprocesser to onnxruntime_pybind_quant.cc
 static void RunQMoETest(const std::vector<float>& input, const std::vector<float>& router_probs,
                         const std::vector<uint8_t>& fc1_experts_weights,
                         const std::vector<uint8_t>& fc2_experts_weights,
