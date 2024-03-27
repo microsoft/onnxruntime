@@ -656,6 +656,7 @@ inline __device__ float4 operator*(const float4 a, const float4 b) {
   return make_float4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
 }
 
+// TODO(wy): use cuda common header and investigate pipeline build issue.
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && \
     ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
 inline __device__ half operator*(const half a, const half b) {
@@ -667,6 +668,7 @@ inline __device__ half2 operator*(const half2 a, const half2 b) {
 }
 #endif
 
+// TODO(wy): use cuda common header and investigate pipeline build issue.
 inline __device__ Half4 operator*(const Half4 a, const Half4 b) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && \
     ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
