@@ -159,7 +159,7 @@ jobs:
       - task: AzureCLI@2
         displayName: 'Post EP Perf Results to Dashboard'
         inputs:
-          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          azureSubscription: AI Infra Build
           scriptLocation: inlineScript
           scriptType: bash
           inlineScript: |
