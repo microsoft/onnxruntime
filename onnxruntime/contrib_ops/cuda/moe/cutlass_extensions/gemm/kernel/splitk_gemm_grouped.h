@@ -243,7 +243,7 @@ struct SplitkGemmGrouped {
           splitk_buffer_offsets(nullptr) {}
 
     CUTLASS_HOST_DEVICE
-    Params(Arguments const& args, void* workspace = nullptr, int tile_count = 0)
+    explicit(Arguments const& args, void* workspace = nullptr, int tile_count = 0)
         : problem_visitor(args.problem_sizes, args.problem_count, workspace, tile_count),
           host_problem_sizes(args.host_problem_sizes),
           threadblock_count(args.threadblock_count),

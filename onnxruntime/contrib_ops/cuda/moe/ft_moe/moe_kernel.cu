@@ -797,7 +797,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(const T*, const T*, c
                                                            const WeightType*, const T*, int, const int, const int, int,
                                                            int, int, int k, char*, T*, T*, int*, int*, cudaStream_t) {
   // MoE gemm only supports Volta+ architectures
-  ;
+  ORT_THROW("[FT Error][Run MoE FC] MoE gemm only supports Volta+ architectures");
 }
 #else
 template <typename T, typename WeightType, typename Enable>

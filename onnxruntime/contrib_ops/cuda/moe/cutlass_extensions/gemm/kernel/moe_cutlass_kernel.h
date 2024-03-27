@@ -211,7 +211,7 @@ struct MoeFCGemm {
     Params() : ptr_A(nullptr), ptr_B(nullptr), weight_scales(nullptr), ptr_C(nullptr), ptr_D(nullptr) {}
 
     CUTLASS_HOST_DEVICE
-    Params(Arguments const& args, void* workspace = nullptr, int tile_count = 0)
+    explicit Params(Arguments const& args, void* workspace = nullptr, int tile_count = 0)
         : problem_visitor(args.total_rows_before_expert, args.gemm_n, args.gemm_k, args.problem_count, workspace,
                           tile_count),
           threadblock_count(args.threadblock_count),
@@ -268,9 +268,7 @@ struct MoeFCGemm {
     } else if (args.group_size != args.gemm_k) {
       CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - scale shape should be (1, gemm_n)");
       return Status::kInvalid;
-    }
-    // Handle the case the input is too short
-    else if (static_cast<size_t>(args.gemm_n) < Mma::IteratorB::AccessType::kElements) {
+    } else if (static_cast<size_t>(args.gemm_n) < Mma::IteratorB::AccessType::kElements) {
       CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - gemm_n is smaller than the input alignment");
       return Status::kInvalid;
     }
@@ -454,8 +452,9 @@ struct MoeFCGemm {
     run_kernel<arch::Sm80>(params,
                            shared_storage);  // Don't compile these for Hopper or later. Use CUTLASS 3.x kernels.
 #else
-    static_assert(false,
-                  "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
+    // static_assert(false,
+    //               "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
+    ;
 #endif
 #else
     CUTLASS_NOT_IMPLEMENTED();

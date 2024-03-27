@@ -4,7 +4,7 @@
 #include <type_traits>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "moe_quantization.h"
+#include "contrib_ops/cuda/quantization/moe_quantization.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -23,8 +23,6 @@ namespace cuda {
                           QMoE);
 
 REGISTER_KERNEL()
-
-using namespace ONNX_NAMESPACE;
 
 namespace {
 template <typename T, bool use_quint4x2>
@@ -89,7 +87,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  // TODO: allocate one buffer and reuse it.
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, ws_size, false, stream);
   IAllocatorUniquePtr<void> fc2_output = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
   IAllocatorUniquePtr<void> expert_scales =

@@ -36,6 +36,7 @@
 #pragma once
 
 #include <algorithm>
+#include <type_traits>
 
 #include "cutlass/cutlass.h"
 
@@ -43,8 +44,6 @@
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/matrix_coord.h"
 #include "cutlass/semaphore.h"
-
-#include <type_traits>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
