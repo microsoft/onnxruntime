@@ -47,8 +47,6 @@
 #include "cub/util_type.cuh"
 #endif
 
-#include "core/providers/cuda/cu_inc/common.cuh"
-
 namespace ort_fastertransformer {
 static constexpr int WARP_SIZE = 32;
 
@@ -658,11 +656,27 @@ inline __device__ float4 operator*(const float4 a, const float4 b) {
   return make_float4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
 }
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && \
+    ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+inline __device__ half operator*(const half a, const half b) {
+  return __float2half(__half2float(a) * __half2float(b));
+}
+
+inline __device__ half2 operator*(const half2 a, const half2 b) {
+  return make_half2(a.x * b.x, a.y * b.y);
+}
+#endif
+
 inline __device__ Half4 operator*(const Half4 a, const Half4 b) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530 && \
+    ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
   Half4 result;
   result.x = a.x * b.x;
   result.y = a.y * b.y;
   return result;
+#else
+  return Half4{__hmul2(a.x, b.x), __hmul2(a.y, b.y)};
+#endif
 }
 
 }  // anonymous namespace
