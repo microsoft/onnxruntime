@@ -118,7 +118,7 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
-  Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
+  Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info);
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,
@@ -183,6 +183,11 @@ class QnnModelWrapper {
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
+  Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
+  Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name, std::vector<int32_t>& zero_points) const;
+  Status QnnModelWrapper::InitQnnQuantParams(const std::optional<onnxruntime::NodeUnitIODef::QuantParam>& ort_quant_params,
+                                             /*out*/ Qnn_QuantizeParams_t& qnn_quant_params);
+
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
                                    const std::vector<std::string>& names,
@@ -239,6 +244,10 @@ class QnnModelWrapper {
   const std::vector<uint32_t> nchw2hwcn_perm_{2, 3, 1, 0};
   const std::vector<uint32_t> cnhw2hwcn_perm_{2, 3, 0, 1};
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
+
+  // For per-channel quantization, this buffer stores the actual scale and zp values
+  // to which the Qnn_QuantizeParams_t structures point.
+  std::vector<Qnn_ScaleOffset_t> scale_offset_data_;  // For axisScaleOffset
 };  // QnnModelWrapper
 
 }  // namespace qnn
