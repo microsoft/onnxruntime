@@ -51,10 +51,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()).Alias(0, 0),
     IdentityOp<false>);
 
-// Opset 19 supported float 8 types.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Identity,
+    19, 20,
+    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()).Alias(0, 0),
+    IdentityOp<false>);
+
+// TODO: Opset 21 supported int4 and uint4 types.
 ONNX_CPU_OPERATOR_KERNEL(
     Identity,
-    19,
+    21,
     KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()).Alias(0, 0),
     IdentityOp<false>);
 

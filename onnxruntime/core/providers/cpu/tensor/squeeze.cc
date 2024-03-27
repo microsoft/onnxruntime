@@ -25,9 +25,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze);
 
 // axes is input instead of attribute
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze,
     13,
+    20,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .Alias(0, 0),
+    Squeeze);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Squeeze,
+    21,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .Alias(0, 0),
