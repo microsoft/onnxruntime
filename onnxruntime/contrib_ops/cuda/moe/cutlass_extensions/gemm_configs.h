@@ -92,7 +92,10 @@ enum class EpilogueScheduleType {
         // architectures older than hopper, the epilogue is always performed by the same thread block as the main loop.
 };
 
-enum class ClusterShape { ClusterShape_1x1x1, ClusterShape_2x1x1, ClusterShape_1x2x1, ClusterShape_2x2x1 };
+enum class ClusterShape { ClusterShape_1x1x1,
+                          ClusterShape_2x1x1,
+                          ClusterShape_1x2x1,
+                          ClusterShape_2x2x1 };
 
 struct CutlassGemmConfig {
   CutlassTileConfig tile_config = CutlassTileConfig::ChooseWithHeuristic;
