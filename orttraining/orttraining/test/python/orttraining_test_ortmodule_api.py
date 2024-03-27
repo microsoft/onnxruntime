@@ -5725,8 +5725,6 @@ def test_gradient_correctness_bce_with_logits():
 @pytest.mark.parametrize("label_is_sparse", [False, True])
 @pytest.mark.parametrize("rank", [1, 2])
 def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank, caplog):
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
-
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
             super().__init__()
@@ -5797,10 +5795,12 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     "test_cases",
     [
         ("Add", 0),
+        ("Add", 1),
         ("Add", 2),
         ("Add", 3),
         ("Add", 4),
         ("Sub", 0),
+        ("Sub", 1),
         ("Sub", 2),
         ("Sub", 3),
         ("Sub", 4),
@@ -5808,12 +5808,22 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         ("Mul", 2),
         ("Mul", 3),
         ("Mul", 4),
+        ("Div", 0),
+        ("Div", 2),
+        ("Div", 3),
+        ("Div", 4),
+        ("Pow", 0),
+        ("Pow", 1),
+        ("Pow", 2),
+        ("Pow", 3),
+        ("Pow", 4),
         ("MatMul", 0),
         ("MatMul", 1),
         ("Dropout", 0),
         ("LayerNormalization", 0),
         ("LayerNormalization", 1),
         ("Cast", 0),
+        ("Sqrt", 0),
         ("BiasGelu", 0),
         ("Gelu", 0),
         ("ReduceMean", 0),
@@ -5821,7 +5831,6 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     ],
 )
 def test_ops_for_padding_elimination(test_cases):
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     test_op = test_cases[0]
     case = test_cases[1]
 
@@ -5848,7 +5857,7 @@ def test_ops_for_padding_elimination(test_cases):
         #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
         # in case 3, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [1, hidden_size],
         #            the test_op should be included in padding elimination subgraph and a 'Expand + FlattenAndUnpad'
-        #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
+        #            pattern should be insert to the arg of [1, hidden_size].
         # in case 4, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
         #            the test_op should be included in padding elimination subgraph and the PadAndUnflatten should be added to
         #            output of test_op. Besides, the other input of Add should be added 'FlattenAndUnpad' to
@@ -5858,6 +5867,8 @@ def test_ops_for_padding_elimination(test_cases):
             one_input = None
             if case == 0:
                 one_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
+            elif case == 1:
+                one_input = 1
             elif case == 2:
                 one_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
             elif case == 3:
@@ -5872,6 +5883,10 @@ def test_ops_for_padding_elimination(test_cases):
                 output = one_input - inputs_embeds
             elif test_op == "Mul":
                 output = one_input * inputs_embeds
+            elif test_op == "Div":
+                output = inputs_embeds / one_input
+            elif test_op == "Pow":
+                output = inputs_embeds ** (one_input * 2)
             else:
                 output = None
             return output
@@ -5911,6 +5926,8 @@ def test_ops_for_padding_elimination(test_cases):
                 output = torch.nn.functional.gelu(inputs_embeds + bias)
             elif test_op == "Gelu":
                 output = torch.nn.functional.gelu(inputs_embeds)
+            elif test_op == "Sqrt":
+                output = torch.sqrt(inputs_embeds)
             elif test_op == "ReduceMean":
                 # In case 0, the inputs_embeds are reduced at last dimension, the ReduceMean should be included in padding
                 # elimination subgraph and the PadAndUnflatten should be added to output of ReduceMean.
@@ -5924,7 +5941,7 @@ def test_ops_for_padding_elimination(test_cases):
             return output
 
         def forward(self, input_ids):
-            if test_op in ["Add", "Mul", "Sub"]:
+            if test_op in ["Add", "Mul", "Sub", "Div", "Pow"]:
                 output = self.test_elementwise(input_ids)
             elif test_op == "MatMul":
                 output = self.test_matmul(input_ids)
@@ -5953,7 +5970,7 @@ def test_ops_for_padding_elimination(test_cases):
     model(x)
 
     training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
-    if test_op == "Sub":
+    if test_op == "Sub" or test_op == "Pow":
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
@@ -5974,7 +5991,7 @@ def test_ops_for_padding_elimination(test_cases):
         return result[0].op_type if len(result) == 1 else None
 
     recover_pad_input_optypes = [find_input_node_type(training_model, arg) for arg in recover_pad_node.input]
-    if test_op == "Add" or test_op == "Mul" or test_op == "Sub":
+    if test_op == "Add" or test_op == "Mul" or test_op == "Sub" or test_op == "Div" or test_op == "Pow":
         assert test_op in recover_pad_input_optypes
     else:
         if case == 0:
@@ -5982,11 +5999,8 @@ def test_ops_for_padding_elimination(test_cases):
         else:
             assert "ATen" in recover_pad_input_optypes
 
-    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
-
 
 def test_e2e_padding_elimination():
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     seed = 5033
     random.seed(seed)
     np.random.seed(seed)
@@ -6129,7 +6143,6 @@ def test_e2e_padding_elimination():
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "FlattenAndUnpad" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
-    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
 
 
 @pytest.mark.skipif(
