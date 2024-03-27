@@ -18,13 +18,14 @@
 using onnxruntime::narrow;
 
 void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
-  if (state.range(0) <= 0) throw std::invalid_argument("N must greater than 0!");
-  if (state.range(1) <= 0) throw std::invalid_argument("D must greater than 0!");
-  if (state.range(2) <= 0) throw std::invalid_argument("Threads must greater than 0!");
+  const auto Aligned = narrow<bool>(state.range(0));
+  const auto N = narrow<int>(state.range(1));
+  const auto D = narrow<int>(state.range(2));
+  const auto Threads = narrow<int>(state.range(3));
 
-  const auto N = narrow<int>(state.range(0));
-  const auto D = narrow<int>(state.range(1));
-  const auto Threads = narrow<int>(state.range(2));
+  if (N <= 0 || D <= 0 || Threads <= 0) {
+    throw std::invalid_argument("N, D, and Threads must be greater than 0!");
+  }
 
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = Threads;
@@ -34,23 +35,34 @@ void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
-  auto buffer = RandomVectorUniform(static_cast<size_t>(N * D), -1.0f, 1.0f);
+  auto buffer = RandomVectorUniform<float>(static_cast<size_t>(N * D + 32 + 1), -1.0f, 1.0f);
+
+  const float* input = nullptr;
+  float* output = nullptr;
+  if (Aligned) {
+    input = reinterpret_cast<const float*>((reinterpret_cast<uintptr_t>(buffer.data()) + 32) & ~31);
+    output = reinterpret_cast<float*>((reinterpret_cast<uintptr_t>(buffer.data()) + 32) & ~31);
+  } else {
+    input = reinterpret_cast<const float*>(((reinterpret_cast<uintptr_t>(buffer.data()) + 32) & ~31) + 1);
+    output = reinterpret_cast<float*>(((reinterpret_cast<uintptr_t>(buffer.data()) + 32) & ~31) + 1);
+  }
 
   // warm up run
-  MlasComputeSoftmax(buffer.data(), buffer.data(), N, D, false, tp.get());
+  MlasComputeSoftmax(input, output, N, D, false, tp.get());
 
   for (auto _ : state) {
-    MlasComputeSoftmax(buffer.data(), buffer.data(), N, D, false, tp.get());
+    MlasComputeSoftmax(input, output, N, D, false, tp.get());
   }
 }
 
 static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
-  b->ArgNames({"N", "D", "Threads"});
+  b->ArgNames({"Aligned", "N", "D", "Threads"});
 
   b->ArgsProduct({
-      {240000},     // N
-      {15, 2000},   // D
-      {8},          // Threads
+      {true, false},  // aligned
+      {240000},       // N
+      {31, 32}, //{15, 2000},   // D
+      {1, 8},         // Threads
   });
 }
 
