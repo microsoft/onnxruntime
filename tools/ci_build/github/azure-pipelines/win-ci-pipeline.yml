@@ -68,6 +68,7 @@ stages:
           BuildConfig: Debug
           MachinePool: 'onnxruntime-Win-CPU-2022'
           WithCache: false
+          InstallONNX: false
           Today: $(TODAY)
 
       - task: PythonScript@0
@@ -155,7 +156,7 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
-        
+
 - stage: x86_release
   dependsOn: []
   jobs:
@@ -256,5 +257,3 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
-
-
