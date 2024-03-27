@@ -6,7 +6,7 @@
 #include <memory>
 
 #include <wrl/client.h>
-#include <d3d12.h>
+#include "directx/d3d12.h"
 #include "core/framework/provider_options.h"
 #include "core/providers/providers.h"
 #include "core/providers/dml/dml_provider_factory.h"
