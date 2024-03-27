@@ -97,7 +97,7 @@ export class ProgramManager {
         {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
 
     TRACE_FUNC_END(programInfo.name);
-    return {programInfo, computePipeline};
+    return {programInfo, computePipeline, uniformVariablesInfo: shaderHelper.variablesInfo};
   }
 
   normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['getRunData']>['dispatchGroup']):
