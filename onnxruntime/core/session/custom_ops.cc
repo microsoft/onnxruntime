@@ -865,7 +865,7 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     def_builder.Provider(onnxruntime::kCpuExecutionProvider);
   }
 
-  if (op->version >= 18) {
+  if (op->version >= 18 && op->GetMayInplace != nullptr) {
     int* input_index = nullptr;
     int* output_index = nullptr;
     size_t len = op->GetMayInplace(&input_index, &output_index);
