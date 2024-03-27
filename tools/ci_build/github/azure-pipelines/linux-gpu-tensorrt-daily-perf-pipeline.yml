@@ -14,6 +14,8 @@ parameters:
   - 8.5.cuda_11_8_cudnn_8
   - 8.6.cuda_11_8_cudnn_8
   - 8.6.cuda_12_3_cudnn_9
+  - 10.0.cuda_11_8_cudnn_8
+  - 10.0.cuda_12_3_cudnn_9
   - BIN
 
 - name: UseTensorrtOssParser
