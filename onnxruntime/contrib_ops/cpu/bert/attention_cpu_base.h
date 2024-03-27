@@ -170,6 +170,21 @@ class AttentionCPUBase : public AttentionBase {
           } else if (nullptr != present_key) {
             k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i);
           }
+        }
+      });
+
+#if 0
+      ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t i = begin; i != end; ++i) {
+          const int output_offset = static_cast<int>(i) * sequence_length * total_sequence_length;
+          T* output = attention_probs + output_offset;
+
+          const T* k = K + kv_input_chunk_length * i;
+          if (nullptr != present) {
+            k = present + i * present_chunk_length;
+          } else if (nullptr != present_key) {
+            k = present_key + i * present_chunk_length;
+          }
 
           // Compute Q*K' + AttentionMask
           //                     original                 transposed             each iteration
@@ -179,6 +194,41 @@ class AttentionCPUBase : public AttentionBase {
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
                                     Q + q_input_chunk_length * i, k, mask_data != nullptr ? 1.0f : 0.0f,
                                     output, nullptr);
+        }
+      });
+#endif
+
+      {
+        // Compute Q*K' + AttentionMask
+        //                     original                 transposed             each iteration
+        // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
+        // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
+        // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
+
+        std::vector<MLAS_SGEMM_DATA_PARAMS> data(loop_len);
+        for (int i = 0; i < loop_len; i++) {
+          data[i].BIsPacked = false;
+          data[i].A = Q + q_input_chunk_length * i;
+          data[i].lda = head_size;
+          data[i].B = K + kv_input_chunk_length * i;
+          if (nullptr != present) {
+            data[i].B = present + i * present_chunk_length;
+          } else if (nullptr != present_key) {
+            data[i].B = present_key + i * present_chunk_length;
+          }
+          data[i].ldb = head_size;
+          data[i].C = attention_probs + i * sequence_length * total_sequence_length;
+          data[i].ldc = total_sequence_length;
+          data[i].alpha = alpha;
+          data[i].beta = mask_data != nullptr ? 1.0f : 0.0f;
+        }
+        MlasGemmBatch(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, data.data(), loop_len, tp);
+      }
+
+       ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t i = begin; i != end; ++i) {
+          const int output_offset = static_cast<int>(i) * sequence_length * total_sequence_length;
+          T* output = attention_probs + output_offset;
 
           if (relative_position_bias_data != nullptr) {
             for (int j = 0; j < sequence_length * total_sequence_length; j++) {
