@@ -22,10 +22,7 @@ class QnnTensorStruct:
 
 def is_quantized_data_type(qnn_data_type):
     # QNN_DATATYPE_UFIXED_POINT_8 QNN_DATATYPE_UFIXED_POINT_16 QNN_DATATYPE_FIXED_POINT_8 QNN_DATATYPE_FIXED_POINT_16
-    if qnn_data_type == 0x0408 or qnn_data_type == 0x0416 or qnn_data_type == 0x0308 or qnn_data_type == 0x0316:
-        return True
-    else:
-        return False
+    return qnn_data_type == 0x0408 or qnn_data_type == 0x0416 or qnn_data_type == 0x0308 or qnn_data_type == 0x0316
 
 
 def qnn_data_type_to_onnx_data_type(qnn_data_type):
