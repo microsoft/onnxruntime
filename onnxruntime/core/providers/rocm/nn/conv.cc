@@ -125,10 +125,8 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     if (input_dims_changed)
       s_.last_x_dims = gsl::make_span(x_dims);
 
-    if (w_dims_changed) {
+    if (w_dims_changed)
       s_.last_w_dims = gsl::make_span(w_dims);
-      s_.cached_benchmark_fwd_results.clear();
-    }
 
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, channels_last));
 
@@ -277,35 +275,6 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       HIP_CALL_THROW(hipMalloc(&s_.b_zero, malloc_size));
       HIP_CALL_THROW(hipMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
     }
-
-    if (!s_.cached_benchmark_fwd_results.contains(x_dims_miopen)) {
-      miopenConvAlgoPerf_t perf;
-      int algo_count = 1;
-      const ROCMExecutionProvider* rocm_ep = static_cast<const ROCMExecutionProvider*>(this->Info().GetExecutionProvider());
-      static constexpr int num_algos = MIOPEN_CONVOLUTION_FWD_ALGO_COUNT;
-      size_t max_ws_size = rocm_ep->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetMiopenHandle(context), s_, kAllAlgos, num_algos)
-                                                                   : AlgoSearchWorkspaceSize;
-      IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
-      MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionForwardAlgorithm(
-          GetMiopenHandle(context),
-          s_.x_tensor,
-          s_.x_data,
-          s_.w_desc,
-          s_.w_data,
-          s_.conv_desc,
-          s_.y_tensor,
-          s_.y_data,
-          1,            // requestedAlgoCount
-          &algo_count,  // returnedAlgoCount
-          &perf,
-          algo_search_workspace.get(),
-          max_ws_size,
-          false));  // Do not do exhaustive algo search.
-      s_.cached_benchmark_fwd_results.insert(x_dims_miopen, {perf.fwd_algo, perf.memory});
-    }
-    const auto& perf = s_.cached_benchmark_fwd_results.at(x_dims_miopen);
-    s_.fwd_algo = perf.fwd_algo;
-    s_.workspace_bytes = perf.memory;
   } else {
     // set Y
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
@@ -318,6 +287,34 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     } else {
       s_.y_data = reinterpret_cast<HipT*>(s_.Y->MutableData<T>());
     }
+  }
+  {
+    /* FindConvolution must always be called by the runtime */
+    TensorShapeVector x_dims_miopen{x_dims.begin(), x_dims.end()};
+    miopenConvAlgoPerf_t perf;
+    int algo_count = 1;
+    const ROCMExecutionProvider* rocm_ep = static_cast<const ROCMExecutionProvider*>(this->Info().GetExecutionProvider());
+    static constexpr int num_algos = MIOPEN_CONVOLUTION_FWD_ALGO_COUNT;
+    size_t max_ws_size = rocm_ep->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetMiopenHandle(context), s_, kAllAlgos, num_algos)
+                                                                   : AlgoSearchWorkspaceSize;
+    IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
+    MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionForwardAlgorithm(
+        GetMiopenHandle(context),
+        s_.x_tensor,
+        s_.x_data,
+        s_.w_desc,
+        s_.w_data,
+        s_.conv_desc,
+        s_.y_tensor,
+        s_.y_data,
+        1,            // requestedAlgoCount
+        &algo_count,  // returnedAlgoCount
+        &perf,
+        algo_search_workspace.get(),
+        max_ws_size,
+        false));  // Do not do exhaustive algo search.
+    s_.fwd_algo = perf.fwd_algo;
+    s_.workspace_bytes = perf.memory;
   }
   return Status::OK();
 }

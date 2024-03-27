@@ -127,12 +127,13 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
       y_data = reinterpret_cast<HipT*>(p.Y->MutableData<T>());
 
-      if (!s_.cached_benchmark_bwd_results.contains(x_dims)) {
-        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
-
-        miopenConvAlgoPerf_t perf;
-        int algo_count = 1;
-        MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardDataAlgorithm(
+    }
+    // The following is required before calling convolution, we cannot cache the results
+    {
+      IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
+      miopenConvAlgoPerf_t perf;
+      int algo_count = 1;
+      MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardDataAlgorithm(
             GetMiopenHandle(context),
             s_.x_tensor,
             x_data,
@@ -147,10 +148,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
             algo_search_workspace.get(),
             AlgoSearchWorkspaceSize,
             false));
-        s_.cached_benchmark_bwd_results.insert(x_dims, {perf.bwd_data_algo, perf.memory});
-      }
 
-      const auto& perf = s_.cached_benchmark_bwd_results.at(x_dims);
       s_.bwd_data_algo = perf.bwd_data_algo;
       s_.workspace_bytes = perf.memory;
     }
