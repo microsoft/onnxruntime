@@ -22,14 +22,22 @@ void FindLayerBoundaryLayerNormNodes(
     const InlinedHashMap<NodeIndex, ptrdiff_t>&
         node_index_to_its_order_in_topological_sort_map,
     const ptrdiff_t& yield_op_order_in_topological_sort,
-    InlinedHashSet<const Node*>& layer_boundary_ln_nodes) {
+    InlinedVector<const Node*>& layer_boundary_ln_nodes) {
   // Loop all nodes to find LayerNormalization nodes.
   // For each LayerNormalization node, keep checking its output nodes,
   // until find a node that is Softmax or BiasSoftmax or another LayerNormalization.
   // If the found node is Softmax or BiasSoftmax, the LayerNormalization node as ATTENTION.
   // If the found node is another LayerNormalization, the LayerNormalization node as MLP.
-  const InlinedHashSet<std::string_view> softmax_ops{"Softmax", "BiasSoftmax"};
-  const InlinedHashSet<std::string_view> layernorm_ops{"LayerNormalization", "SkipLayerNormalization"};
+  const InlinedHashSet<std::string_view> softmax_ops{
+      "Softmax",
+      "BiasSoftmax",
+  };
+  const InlinedHashSet<std::string_view> layernorm_ops{
+      "LayerNormalization",
+      "SkipLayerNormalization",
+      "SimplifiedLayerNormalization",
+      "SkipSimplifiedLayerNormalization",
+  };
 
   layer_boundary_ln_nodes.clear();
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
@@ -49,10 +57,11 @@ void FindLayerBoundaryLayerNormNodes(
       }
     }
 
-    bool unexpected_failure = false;
+    // For a perfect layer match, all those three flags should be true after exiting while loop.
+    // except the layernorm after the last layer, which expects no more softmax and layernorm are found.
     bool found_softmax = false;
-    bool found_layernorm = false;
-    ptrdiff_t next_layernorm_execution_oder = -1;
+    bool found_mid_layernorm = false;
+    bool found_end_layernorm = false;
     while (!nodes_to_check.empty()) {
       const Node* next_node = nodes_to_check.front();
       nodes_to_check.pop_front();
@@ -65,37 +74,38 @@ void FindLayerBoundaryLayerNormNodes(
       if (softmax_ops.find(next_node->OpType()) != softmax_ops.end()) {
         found_softmax = true;
       } else if (layernorm_ops.find(next_node->OpType()) != layernorm_ops.end()) {
-        if (found_layernorm) {
-          // If we found another LayerNormalization node, we would report as warning, and do nothing for layer boundary detection.
-          unexpected_failure = true;
-          break;
+        // mid layernorm MUST appear before end layernorm, because it is a single in and out connector (despite of its weights)
+        if (found_mid_layernorm) {
+          found_end_layernorm = true;
+          // std::cout << "Found end LayerNormalization node 3333." << next_node->Name() << std::endl;
+          break;  // exit the while loop since we found the end LayerNormalization node.
+        } else {
+          // std::cout << "Found mid LayerNormalization node 4444." << next_node->Name() << std::endl;
+          found_mid_layernorm = true;
         }
-        found_layernorm = true;  // don't trace further
-        next_layernorm_execution_oder = node_index_to_its_order_in_topological_sort_map.at(next_node->Index());
-        continue;
-      } else {
-        for (auto node_it = next_node->OutputNodesBegin(); node_it != next_node->OutputNodesEnd(); ++node_it) {
-          // Stop if the node is after next Layernorm node in execution order.
-          if (found_layernorm &&
-              node_index_to_its_order_in_topological_sort_map.at(node_it->Index()) >= next_layernorm_execution_oder) {
-            continue;
-          }
-          nodes_to_check.push_back(&(*node_it));
+      }
+
+      for (auto node_it = next_node->OutputNodesBegin(); node_it != next_node->OutputNodesEnd(); ++node_it) {
+        // Stop if the node is after YieldOp.
+        if (node_index_to_its_order_in_topological_sort_map.at(node_it->Index()) >= yield_op_order_in_topological_sort) {
+          continue;
         }
+        nodes_to_check.push_back(&(*node_it));
       }
     }
 
-    if (unexpected_failure) {
-      layer_boundary_ln_nodes.clear();
-      break;
-    }
-
-    if (found_softmax) {
-      layer_boundary_ln_nodes.insert(&node);
-    } else if (!found_layernorm) {
+    if (found_softmax && found_mid_layernorm && found_end_layernorm) {
+      // std::cout << "Found LayerNormalization node 1111." << std::endl;
+      if (std::find(layer_boundary_ln_nodes.begin(), layer_boundary_ln_nodes.end(), &node) == layer_boundary_ln_nodes.end()) {
+        layer_boundary_ln_nodes.push_back(&node);
+      }
+    } else if (!found_softmax && !found_mid_layernorm && !found_end_layernorm) {
+      // std::cout << "Found LayerNormalization node 2222." << found_mid_layernorm << found_mid_layernorm << found_end_layernorm << std::endl;
       // If no Softmax found, and no other LayerNormalization found, this should be the last LayerNormalization node,
       // we also consider it as boundary node.
-      layer_boundary_ln_nodes.insert(&node);
+      if (std::find(layer_boundary_ln_nodes.begin(), layer_boundary_ln_nodes.end(), &node) == layer_boundary_ln_nodes.end()) {
+        layer_boundary_ln_nodes.push_back(&node);
+      }
     }
   }
 }

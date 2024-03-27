@@ -257,7 +257,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                                      is_forward_nodes,
                                                      logger));
 
-  InlinedHashSet<const Node*> layer_boundary_ln_nodes;
+  InlinedVector<const Node*> layer_boundary_ln_nodes;
   FindLayerBoundaryLayerNormNodes(graph_viewer, logger, node_index_to_its_order_in_topological_sort_map,
                                   yield_op_order_in_topological_sort, layer_boundary_ln_nodes);
 
