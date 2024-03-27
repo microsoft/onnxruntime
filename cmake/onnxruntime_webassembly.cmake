@@ -312,5 +312,9 @@ else()
 
   list(JOIN target_name_list  "-" target_name)
 
+  if (onnxruntime_USE_JSEP)
+    string(APPEND target_name ".jsep")
+  endif()
+
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name})
 endif()
