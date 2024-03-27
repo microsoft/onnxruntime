@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -44,6 +44,29 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_createSession__JJLjava_la
   checkOrtStatus(jniEnv, api, api->CreateSession((OrtEnv*)envHandle, cPath, (OrtSessionOptions*)optsHandle, &session));
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, modelPath, cPath);
 #endif
+
+  return (jlong)session;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession
+ * Method:    createSession
+ * Signature: (JJLjava/nio/ByteBuffer;IIJ)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_createSession__JJLjava_nio_ByteBuffer_2IIJ(JNIEnv* jniEnv, jclass jclazz, jlong apiHandle, jlong envHandle, jobject buffer, jint bufferPos, jint bufferSize, jlong optsHandle) {
+  (void)jclazz;  // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtEnv* env = (OrtEnv*)envHandle;
+  OrtSessionOptions* opts = (OrtSessionOptions*)optsHandle;
+  OrtSession* session = NULL;
+
+  // Extract the buffer
+  char* bufferArr = (char*)(*jniEnv)->GetDirectBufferAddress(jniEnv, buffer);
+  // Increment by bufferPos bytes
+  bufferArr = bufferArr + bufferPos;
+
+  // Create the session
+  checkOrtStatus(jniEnv, api, api->CreateSessionFromArray(env, bufferArr, bufferSize, opts, &session));
 
   return (jlong)session;
 }
