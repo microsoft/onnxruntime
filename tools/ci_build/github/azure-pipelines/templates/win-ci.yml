@@ -187,6 +187,13 @@ stages:
 
       # For CPU job, tests are run in the same machine as buidling
       - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+        - task: PythonScript@0
+          displayName: 'test'
+          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
+            workingDirectory: '$(Build.BinariesDirectory)'
         - ${{ if eq(parameters.buildJava, 'true') }}:
           - task: CmdLine@2
             condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
@@ -231,14 +238,6 @@ stages:
             inputs:
               pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
               artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
-
-        - task: PythonScript@0
-          displayName: 'test'
-          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
-            workingDirectory: '$(Build.BinariesDirectory)'
       - ${{ else }}:
         - powershell: |
             New-Item $(Agent.TempDirectory)/RelWithDebInfo -Force -ItemType Directory
@@ -296,7 +295,6 @@ stages:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
           artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
 
-
       - task: CopyFiles@2
         displayName: 'Copy custom_op_library to: $(Build.ArtifactStagingDirectory)'
         condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
@@ -304,6 +302,52 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
+
+      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+        - ${{ if eq(parameters.buildJava, 'true') }}:
+          - task: CmdLine@2
+            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+            displayName: 'Add symbols and notices to Java'
+            inputs:
+              script: |
+                @echo on
+                cd $(Build.SourcesDirectory)\java
+                call $(Build.SourcesDirectory)\java\gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+                if %errorlevel% neq 0 exit /b %errorlevel%
+                cd $(Build.BinariesDirectory)\RelWithDebInfo
+                set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
+                mkdir %NATIVE_FOLDER%
+                echo "Directories created"
+                copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+                pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+                set artifact_id=${{ parameters.java_artifact_id }}
+                jar xf onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
+                move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-$(OnnxRuntimeVersion).pom
+                rd /s /q META-INF
+                popd
+                copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
+                copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
+                copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\Privacy.md
+                copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ThirdPartyNotices.txt
+                @echo $(OnnxRuntimeGitCommitHash) > $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\GIT_COMMIT_ID
+                pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
+                jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime.pdb
+                jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
+                jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
+                popd
+                pushd $(Build.SourcesDirectory)\java\build\resources\test
+                rd /s /q ai\onnxruntime\native
+                jar uvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
+                popd
+                rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
+                dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+
+          - task: PublishBuildArtifacts@1
+            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+            displayName: 'Publish Java temp binaries'
+            inputs:
+              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
         - task: CredScan@3
@@ -406,6 +450,19 @@ stages:
                 DownloadCUDA: true
                 DownloadTRT: true
 
+        - powershell: |
+            Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
+          displayName: 'Append dotnet x86  Directory to PATH'
+          condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
+
+        - task: PythonScript@0
+          displayName: 'test'
+          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+            workingDirectory: '$(Build.BinariesDirectory)'
+
         - ${{ if eq(parameters.buildJava, 'true') }}:
           - task: CmdLine@2
             condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
@@ -450,16 +507,3 @@ stages:
             inputs:
               pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
               artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
-
-        - powershell: |
-            Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
-          displayName: 'Append dotnet x86  Directory to PATH'
-          condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
-
-        - task: PythonScript@0
-          displayName: 'test'
-          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
-            workingDirectory: '$(Build.BinariesDirectory)'
