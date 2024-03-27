@@ -38,6 +38,8 @@ export interface ProgramUniform {
   data: number|readonly number[];
 }
 
+export type ProgramUniformVariableInfo = [type: DataType, length: number];
+
 /**
  * Represent the dependency of a program on a specific input tensor.
  *
@@ -125,6 +127,7 @@ export interface ProgramInfo {
 export interface Artifact {
   programInfo: ProgramInfo;
   computePipeline: GPUComputePipeline;
+  uniformVariablesInfo: readonly ProgramUniformVariableInfo[]|undefined;
 }
 
 export interface ComputeContextInputsOutputsMapping {
