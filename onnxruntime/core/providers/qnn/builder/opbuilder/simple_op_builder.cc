@@ -116,6 +116,8 @@ Status SimpleOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (!input0_info.is_initializer && !input1_info.is_initializer &&
         input0_info.qnn_data_type == input1_info.qnn_data_type &&
         input0_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+      ORT_RETURN_IF_NOT(utils::IsPerTensorQuantization(input1_info.quant_param),
+                        "MatMul's activation inputs only support per-tensor quantization");
       // insert Convert op after input1
       std::string convert_input_name = input_names.back();
       input_names.pop_back();
@@ -236,7 +238,7 @@ Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
     GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
     unpacked_data.resize(1);
     ParQuantizeLinearStd(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
-    utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor, scale, static_cast<int32_t>(zero_point));
+    utils::InitPerTensorQnnQuantParam(quantize_param, scale, static_cast<int32_t>(zero_point));
     qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
   } else {
     unpacked_data.assign(tensor_data.unpack, tensor_data.unpack + sizeof(float));

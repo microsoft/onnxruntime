@@ -276,76 +276,6 @@ bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t
   return true;
 }
 
-bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
-                                    int32_t& offset_value) const {
-  const auto& graph_initializers = GetInitializerTensors();
-  auto offset_it = graph_initializers.find(offset_name);
-  if (offset_it == graph_initializers.end()) {
-    LOGS(logger_, ERROR) << "Not able to find initializer: " << offset_name;
-    return false;
-  }
-  const auto offset_tensor = offset_it->second;
-  const int32_t onnx_data_type = offset_tensor->data_type();
-
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_THROW_IF_ERROR(UnpackInitializerData(*offset_tensor, unpacked_tensor));
-  switch (onnx_data_type) {
-    // QNN use -offset for some reason
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpacked_tensor));
-      offset_value = -(int8_span.data()[0]);
-      break;
-    }
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-      auto uint8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(unpacked_tensor));
-      offset_value = 0 - (uint8_span.data()[0]);
-      break;
-    }
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
-      auto uint16_span = ReinterpretAsSpan<const uint16_t>(gsl::make_span(unpacked_tensor));
-      offset_value = -static_cast<int32_t>(uint16_span.data()[0]);
-      break;
-    }
-    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
-      auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpacked_tensor));
-      offset_value = -static_cast<int32_t>(int16_span.data()[0]);
-      break;
-    }
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-      auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpacked_tensor));
-      offset_value = -(int32_span.data()[0]);
-      break;
-    }
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
-      auto uint32_span = ReinterpretAsSpan<const uint32_t>(gsl::make_span(unpacked_tensor));
-      offset_value = 0 - (uint32_span.data()[0]);
-      break;
-    }
-    default: {
-      LOGS(logger_, ERROR) << "Data type not supported!";
-      return false;
-    }
-  }
-  return true;
-}
-
-bool QnnModelWrapper::ProcessScale(const std::string& scale_name,
-                                   float& scale_value) const {
-  const auto& graph_initializers = GetInitializerTensors();
-  auto offset_it = graph_initializers.find(scale_name);
-  if (offset_it == graph_initializers.end()) {
-    LOGS(logger_, ERROR) << "Not able to find initializer: " << scale_name;
-    return false;
-  }
-  const auto scale_tensor = offset_it->second;
-  std::vector<uint8_t> unpacked_tensor;
-
-  ORT_THROW_IF_ERROR(UnpackInitializerData(*scale_tensor, unpacked_tensor));
-  const float* scale_data = reinterpret_cast<float*>(unpacked_tensor.data());
-  scale_value = scale_data[0];
-  return true;
-}
-
 Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
                                          std::vector<int32_t>& zero_points) const {
   const auto& graph_initializers = GetInitializerTensors();
@@ -436,25 +366,6 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
 
   scales.insert(scales.end(), src.begin(), src.end());
   return Status::OK();
-}
-
-bool QnnModelWrapper::ProcessQuantizationParameter(const std::optional<NodeUnitIODef::QuantParam>& quant_param,
-                                                   float& scale_value,
-                                                   int32_t& offset_value) const {
-  if (quant_param.has_value()) {
-    // Parse scale & zero_point
-    const auto& scale_name = quant_param->scale.Name();
-    bool rt = ProcessScale(scale_name, scale_value);
-    if (!rt) {
-      return rt;
-    }
-
-    if (quant_param->zero_point) {
-      const auto& zero_point_name = quant_param->zero_point->Name();
-      return ProcessOffset(zero_point_name, offset_value);
-    }
-  }
-  return true;
 }
 
 Status QnnModelWrapper::InitQnnQuantParams(const std::optional<onnxruntime::NodeUnitIODef::QuantParam>& ort_quant_params,

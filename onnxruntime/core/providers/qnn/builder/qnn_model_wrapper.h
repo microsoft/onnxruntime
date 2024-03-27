@@ -98,16 +98,6 @@ class QnnModelWrapper {
 
   static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
 
-  bool ProcessOffset(const std::string& offset_name,
-                     int32_t& offset_value) const;
-
-  bool ProcessScale(const std::string& scale_name,
-                    float& scale_value) const;
-
-  bool ProcessQuantizationParameter(const std::optional<NodeUnitIODef::QuantParam>& quant_param,
-                                    float& scale_value,
-                                    int32_t& offset_value) const;
-
   bool IsQnnTensorWrapperExist(const std::string& tensor_name) const;
 
   bool IsGraphOutput(const std::string& tensor_name) const {

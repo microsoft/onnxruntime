@@ -187,8 +187,10 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
     // Change shape to HWCN, it could be initializer or normal input
     if (conv_type == OnnxConvType::kConv) {
       ORT_RETURN_IF_ERROR(NchwShapeToHwcn(input_info.shape, actual_shape));
+      // TODO: Transpose qparam axis
     } else if (conv_type == OnnxConvType::kConvTranspose) {
       ORT_RETURN_IF_ERROR(CnhwShapeToHwcn(input_info.shape, actual_shape));
+      // TODO: Transpose qparam axis
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
     }
@@ -340,8 +342,10 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
     // Create the final shape after the weights are transposed to HWCN.
     if (conv_type == OnnxConvType::kConv) {
       ORT_RETURN_IF_ERROR(NchwShapeToHwcn(shape_2d, final_shape));
+      // TODO: Transpose qparam axis
     } else if (conv_type == OnnxConvType::kConvTranspose) {
       ORT_RETURN_IF_ERROR(CnhwShapeToHwcn(shape_2d, final_shape));
+      // TODO: Transpose qparam axis
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
     }
@@ -649,16 +653,12 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const std::string& output_node_type = is_depthwise_conv2d ? QNN_OP_DEPTH_WISE_CONV_2D : GetQnnOpType(node_unit.OpType());
 
   Qnn_QuantizeParams_t output_quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(outputs[0].quant_param, output_quantize_param));
   bool is_quantized_tensor = outputs[0].quant_param.has_value();
-  utils::InitializeQuantizeParam(output_quantize_param, is_quantized_tensor);
 
   const auto* type_proto = outputs[0].node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(outputs[0].quant_param,
-                                                                   output_quantize_param.scaleOffsetEncoding.scale,
-                                                                   output_quantize_param.scaleOffsetEncoding.offset),
-                    "Cannot get quantization parameter");
 
   if (is_1d_conv) {
     const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);

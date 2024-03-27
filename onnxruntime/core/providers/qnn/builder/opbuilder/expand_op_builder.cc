@@ -87,7 +87,7 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                               qnn_data_type,
                                               scale,
                                               zero_point));
-    utils::InitializeQuantizeParam(quantize_param, true, scale, zero_point);
+    utils::InitPerTensorQnnQuantParam(quantize_param, scale, zero_point);
     int quant_value_int = 0;
     double ini_value = 1.0;
     ORT_RETURN_IF_ERROR(utils::Quantize(ini_value, scale, zero_point, qnn_data_type, quant_value_int));
@@ -145,6 +145,10 @@ Status ExpandOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrap
                                                  size_t output_index,
                                                  Qnn_DataType_t qnn_data_type,
                                                  Qnn_QuantizeParams_t& quant_param) const {
+  if (!utils::IsPerTensorQuantization(quant_param)) {
+    return Status::OK();
+  }
+
   // Force Expand output to use the same quantization parameters as the input if they are nearly equal.
   // This enables the HTP backend to employ certain optimizations.
   return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,

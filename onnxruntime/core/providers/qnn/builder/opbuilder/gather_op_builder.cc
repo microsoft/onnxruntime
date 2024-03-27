@@ -158,16 +158,13 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const auto& output_name = gather_output.node_arg.Name();
 
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(gather_output.quant_param, quantize_param));
   bool is_quantized_tensor = gather_output.quant_param.has_value();
-  utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
 
   const auto* type_proto = gather_output.node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(gather_output.quant_param,
-                                                                   quantize_param.scaleOffsetEncoding.scale,
-                                                                   quantize_param.scaleOffsetEncoding.offset),
-                    "Cannot get quantization parameter");
+
   if (is_quantized_tensor) {
     // Make sure the output quantization parameters are equal to the input.
     ORT_RETURN_IF_ERROR(SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,

@@ -88,9 +88,9 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   const auto& inputs = node_unit.Inputs();
   for (size_t input_i = 0; input_i < inputs.size(); ++input_i) {
     Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-    bool is_quantized_tensor = inputs[input_i].quant_param.has_value();
-    utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(inputs[input_i].quant_param, quantize_param));
 
+    bool is_quantized_tensor = inputs[input_i].quant_param.has_value();
     const auto& input_name = inputs[input_i].node_arg.Name();
 
     // Only skip if the input tensor has already been added (by producer op) *and* we don't need
@@ -106,11 +106,6 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
-
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[input_i].quant_param,
-                                                                     quantize_param.scaleOffsetEncoding.scale,
-                                                                     quantize_param.scaleOffsetEncoding.offset),
-                      "Cannot get quantization parameter");
 
     std::vector<uint8_t> unpacked_tensor;
     bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);

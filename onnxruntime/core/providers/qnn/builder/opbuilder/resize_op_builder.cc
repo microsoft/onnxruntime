@@ -326,6 +326,10 @@ Status ResizeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrap
                                                  size_t output_index,
                                                  Qnn_DataType_t qnn_data_type,
                                                  Qnn_QuantizeParams_t& quant_param) const {
+  if (!utils::IsPerTensorQuantization(quant_param)) {
+    return Status::OK();
+  }
+
   // Force Resize op's output to use the same quantization parameters as the input if nearly equal.
   // This helps the HTP backend employ certain optimizations.
   return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,

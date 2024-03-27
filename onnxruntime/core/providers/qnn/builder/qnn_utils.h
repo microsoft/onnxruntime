@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#pragma once
 
 #include "QnnTypes.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -30,11 +31,21 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
 
 bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
 
-inline void InitializeQuantizeParam(Qnn_QuantizeParams_t& quantize_param, bool is_quantized_tensor, float scale = 0.0f, int32_t offset = 0) {
-  quantize_param.encodingDefinition = is_quantized_tensor ? QNN_DEFINITION_DEFINED : QNN_DEFINITION_UNDEFINED;
-  quantize_param.quantizationEncoding = is_quantized_tensor ? QNN_QUANTIZATION_ENCODING_SCALE_OFFSET : QNN_QUANTIZATION_ENCODING_UNDEFINED;
+inline void InitPerTensorQnnQuantParam(Qnn_QuantizeParams_t& quantize_param, float scale, int32_t offset = 0) {
+  quantize_param.encodingDefinition = QNN_DEFINITION_DEFINED;
+  quantize_param.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
   quantize_param.scaleOffsetEncoding.scale = scale;
   quantize_param.scaleOffsetEncoding.offset = offset;
+}
+
+inline bool IsPerTensorQuantization(const Qnn_QuantizeParams_t& quantize_param) {
+  return quantize_param.encodingDefinition != QNN_DEFINITION_UNDEFINED &&
+         quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+}
+
+inline bool IsPerAxisQuantization(const Qnn_QuantizeParams_t& quantize_param) {
+  return quantize_param.encodingDefinition != QNN_DEFINITION_UNDEFINED &&
+         quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET;
 }
 
 // Utility function that checks if an array of strings contains a specific string.
