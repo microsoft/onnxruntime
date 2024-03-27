@@ -48,7 +48,7 @@ into one LabelEncoder node.
  */
 bool LabelEncoderFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& /*logger*/) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(
-          node, "LabelEncoder", {4}, "ai.onnx.ml") ||
+          node, "LabelEncoder", {2, 4}, "ai.onnx.ml") ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }

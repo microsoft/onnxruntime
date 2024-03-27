@@ -1909,7 +1909,7 @@ TEST_F(GraphTransformationTests, LabelEncoderFusion) {
   RandomValueGenerator random{};
   NameMLValMap feeds;
 
-  const size_t ALPH = 26;
+  constexpr size_t ALPH = 26;
   OrtValue mlvalue_a;
   std::vector<int64_t> dims_a = {ALPH};
   std::vector<std::string> values_a = {};
