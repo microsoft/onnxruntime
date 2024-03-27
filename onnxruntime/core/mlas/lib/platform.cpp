@@ -421,6 +421,7 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
+                    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
                     this->NchwcBlockSize = 16;
