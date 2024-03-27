@@ -11,7 +11,6 @@
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/tensorprotoutils.h"
-
 #include "core/common/string_utils.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
@@ -77,10 +76,8 @@ void FindLayerBoundaryLayerNormNodes(
         // mid layernorm MUST appear before end layernorm, because it is a single in and out connector (despite of its weights)
         if (found_mid_layernorm) {
           found_end_layernorm = true;
-          // std::cout << "Found end LayerNormalization node 3333." << next_node->Name() << std::endl;
           break;  // exit the while loop since we found the end LayerNormalization node.
         } else {
-          // std::cout << "Found mid LayerNormalization node 4444." << next_node->Name() << std::endl;
           found_mid_layernorm = true;
         }
       }
@@ -95,12 +92,10 @@ void FindLayerBoundaryLayerNormNodes(
     }
 
     if (found_softmax && found_mid_layernorm && found_end_layernorm) {
-      // std::cout << "Found LayerNormalization node 1111." << std::endl;
       if (std::find(layer_boundary_ln_nodes.begin(), layer_boundary_ln_nodes.end(), &node) == layer_boundary_ln_nodes.end()) {
         layer_boundary_ln_nodes.push_back(&node);
       }
     } else if (!found_softmax && !found_mid_layernorm && !found_end_layernorm) {
-      // std::cout << "Found LayerNormalization node 2222." << found_mid_layernorm << found_mid_layernorm << found_end_layernorm << std::endl;
       // If no Softmax found, and no other LayerNormalization found, this should be the last LayerNormalization node,
       // we also consider it as boundary node.
       if (std::find(layer_boundary_ln_nodes.begin(), layer_boundary_ln_nodes.end(), &node) == layer_boundary_ln_nodes.end()) {
