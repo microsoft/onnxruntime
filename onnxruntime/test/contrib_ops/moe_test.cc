@@ -9,6 +9,7 @@
 namespace onnxruntime {
 namespace test {
 
+#ifndef ENABLE_TRAINING
 static void RunMoETest(const std::vector<float>& input, const std::vector<float>& router_probs,
                        const std::vector<float>& fc1_experts_weights, const std::vector<float>& fc2_experts_weights,
                        const std::vector<float>& fc3_experts_weights, const std::vector<float>& fc1_experts_bias,
@@ -127,7 +128,6 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
   }
 }
 
-#ifndef ENABLE_TRAINING
 TEST(MoETest, MoETest_Gelu) {
   int num_rows = 4;
   int num_experts = 4;
