@@ -4,9 +4,10 @@
 import * as path from 'node:path';
 import {Env} from 'onnxruntime-common';
 
-import {esmLoaderImport} from './binding/esm-loader/loader.js';
+//import {esmLoaderImport} from './binding/esm-loader/loader.js';
 import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
+import { umdLoaderImport } from './binding/umd-loader.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 let ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule>;
@@ -140,7 +141,8 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[wasmFileName] : undefined;
 
   if (BUILD_DEFS.CODE_SPLITTING) {
-    ortWasmFactory = await esmLoaderImport(useThreads);
+    //ortWasmFactory = await esmLoaderImport(useThreads);
+    ortWasmFactory = await umdLoaderImport(useThreads);
   } else {
     if (useThreads) {
       ortWasmFactory = ortWasmFactoryThreaded;

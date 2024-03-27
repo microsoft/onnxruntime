@@ -248,9 +248,11 @@ async function buildOrt({
   // - ort-wasm-threaded.worker.js
   const external = isNode ? ['onnxruntime-common'] : [];
   const plugins = isNode ? [] : [excludeNodejsImports];
-  if (format === 'esm') {
+  // if (format === 'esm') {
+  if (define['BUILD_DEFS.CODE_SPLITTING']) {
     define['BUILD_DEFS.CODE_SPLITTING'] = 'true';
     external.push('../ort-*.js');
+    external.push('./ort-*.js');
   } else {
     plugins.push(proxyWorkerHandler, wasmThreadedHandler, emscriptenThreadedJsHandler);
   }
@@ -368,22 +370,22 @@ async function main() {
     }));
   };
 
-  if (BUNDLE_MODE === 'node' || BUNDLE_MODE === 'prod') {
-    // ort.node.min.js
-    await addBuildTask(buildOrt({
-      isProduction: true,
-      isNode: true,
-      format: 'cjs',
-      outputBundleName: 'ort.node.min',
-      define: {
-        ...DEFAULT_DEFINE,
-        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
-        'BUILD_DEFS.DISABLE_WEBGL': 'true',
-        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
-      },
-    }));
-  }
+  // if (BUNDLE_MODE === 'node' || BUNDLE_MODE === 'prod') {
+  //   // ort.node.min.js
+  //   await addBuildTask(buildOrt({
+  //     isProduction: true,
+  //     isNode: true,
+  //     format: 'cjs',
+  //     outputBundleName: 'ort.node.min',
+  //     define: {
+  //       ...DEFAULT_DEFINE,
+  //       'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+  //       'BUILD_DEFS.DISABLE_WEBGL': 'true',
+  //       'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+  //       'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
+  //     },
+  //   }));
+  // }
 
   if (BUNDLE_MODE === 'dev') {
     // ort.all.js
@@ -401,7 +403,13 @@ async function main() {
 
   if (BUNDLE_MODE === 'prod') {
     // ort.all[.min].js
-    await addAllWebBuildTasks({outputBundleName: 'ort.all'});
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.all',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.CODE_SPLITTING': 'true',
+      }
+    });
 
     // // ort[.min].js
     // await addAllWebBuildTasks({
@@ -464,9 +472,9 @@ async function main() {
     await fs.writeFile(path.resolve(__dirname, '../dist/esm', 'package.json'), '{"type": "module"}');
   }
 
-  await fs.copyFile(
-      path.resolve(__dirname, '../lib/wasm/binding/ort-wasm-simd.jsep.js'),
-      path.resolve(__dirname, '../dist/ort-wasm-simd.jsep.js'));
+  // await fs.copyFile(
+  //     path.resolve(__dirname, '../lib/wasm/binding/ort-wasm-simd.jsep.js'),
+  //     path.resolve(__dirname, '../dist/ort-wasm-simd.jsep.js'));
 }
 
 void main();
