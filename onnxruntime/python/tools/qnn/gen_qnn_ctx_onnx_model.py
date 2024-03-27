@@ -19,12 +19,14 @@ class QnnTensorStruct:
         self.offset = 0
         self.dim = []
 
+
 def is_quantized_data_type(qnn_data_type):
     # QNN_DATATYPE_UFIXED_POINT_8 QNN_DATATYPE_UFIXED_POINT_16 QNN_DATATYPE_FIXED_POINT_8 QNN_DATATYPE_FIXED_POINT_16
     if qnn_data_type == 0x0408 or qnn_data_type == 0x0416 or qnn_data_type == 0x0308 or qnn_data_type == 0x0316:
         return True
     else:
         return False
+
 
 def qnn_data_type_to_onnx_data_type(qnn_data_type):
     # QNN_DATATYPE_UFIXED_POINT_8 QNN_DATATYPE_UINT_8
@@ -84,7 +86,10 @@ def parse_qnn_json_file(qnn_json_file_path, qnn_input_tensor_dic, qnn_output_ten
                 qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(qnn_tensor_attribute["data_type"])
                 qnn_tensor.is_quantized = is_quantized_data_type(qnn_tensor_attribute["data_type"])
                 qnn_tensor.dim = qnn_tensor_attribute["dims"]
-                if qnn_tensor_attribute["quant_params"]["definition"] == 1 and qnn_tensor_attribute["quant_params"]["encoding"] == 0:
+                if (
+                    qnn_tensor_attribute["quant_params"]["definition"] == 1
+                    and qnn_tensor_attribute["quant_params"]["encoding"] == 0
+                ):
                     qnn_tensor.scale = qnn_tensor_attribute["quant_params"]["scale_offset"]["scale"]
                     qnn_tensor.offset = 0 - qnn_tensor_attribute["quant_params"]["scale_offset"]["offset"]
                 qnn_input_tensor_dic[qnn_tensor_name] = qnn_tensor
@@ -96,7 +101,10 @@ def parse_qnn_json_file(qnn_json_file_path, qnn_input_tensor_dic, qnn_output_ten
                 qnn_tensor.onnx_data_type = qnn_data_type_to_onnx_data_type(qnn_tensor_attribute["data_type"])
                 qnn_tensor.is_quantized = is_quantized_data_type(qnn_tensor_attribute["data_type"])
                 qnn_tensor.dim = qnn_tensor_attribute["dims"]
-                if qnn_tensor_attribute["quant_params"]["definition"] == 1 and qnn_tensor_attribute["quant_params"]["encoding"] == 0:
+                if (
+                    qnn_tensor_attribute["quant_params"]["definition"] == 1
+                    and qnn_tensor_attribute["quant_params"]["encoding"] == 0
+                ):
                     qnn_tensor.scale = qnn_tensor_attribute["quant_params"]["scale_offset"]["scale"]
                     qnn_tensor.offset = 0 - qnn_tensor_attribute["quant_params"]["scale_offset"]["offset"]
                 qnn_output_tensor_dic[qnn_tensor_name] = qnn_tensor
@@ -140,15 +148,15 @@ def main():
     graph_nodes = []
     ini_list = []
     value_infos = []
-    
-    model_inputs = []    
+
+    model_inputs = []
     for qnn_input in qnn_input_tensor_dic.values():
         if qnn_input.is_quantized:
             q_scale_input_name = qnn_input.name + "_scale"
             q_offset_input_name = qnn_input.name + "_zp"
-            q_scale=helper.make_tensor(q_scale_input_name, TensorProto.FLOAT, [], [qnn_input.scale])
+            q_scale = helper.make_tensor(q_scale_input_name, TensorProto.FLOAT, [], [qnn_input.scale])
             ini_list.append(q_scale)
-            q_offset=helper.make_tensor(q_offset_input_name, qnn_input.onnx_data_type, [], [qnn_input.offset])
+            q_offset = helper.make_tensor(q_offset_input_name, qnn_input.onnx_data_type, [], [qnn_input.offset])
             ini_list.append(q_offset)
             input_name = qnn_input.name + "_dq"
 
@@ -156,8 +164,8 @@ def main():
                 "QuantizeLinear",
                 name=qnn_input.name,
                 inputs=[input_name, q_scale_input_name, q_offset_input_name],
-                outputs=[qnn_input.name]
-                )
+                outputs=[qnn_input.name],
+            )
 
             graph_nodes.append(q_node)
             model_inputs.append(helper.make_tensor_value_info(input_name, TensorProto.FLOAT, qnn_input.dim))
@@ -182,9 +190,9 @@ def main():
         if qnn_output.is_quantized:
             dq_scale_input_name = qnn_output.name + "_scale"
             dq_offset_input_name = qnn_output.name + "_zp"
-            dq_scale=helper.make_tensor(dq_scale_input_name, TensorProto.FLOAT, [], [qnn_output.scale])
+            dq_scale = helper.make_tensor(dq_scale_input_name, TensorProto.FLOAT, [], [qnn_output.scale])
             ini_list.append(dq_scale)
-            dq_offset=helper.make_tensor(dq_offset_input_name, qnn_output.onnx_data_type, [], [qnn_output.offset])
+            dq_offset = helper.make_tensor(dq_offset_input_name, qnn_output.onnx_data_type, [], [qnn_output.offset])
             ini_list.append(dq_offset)
             output_name = qnn_output.name + "_dq"
 
@@ -192,15 +200,18 @@ def main():
                 "DequantizeLinear",
                 name=output_name,
                 inputs=[qnn_output.name, dq_scale_input_name, dq_offset_input_name],
-                outputs=[output_name]
-                )
+                outputs=[output_name],
+            )
 
             graph_nodes.append(dq_node)
             model_outputs.append(helper.make_tensor_value_info(output_name, TensorProto.FLOAT, qnn_output.dim))
-            value_infos.append(helper.make_tensor_value_info(qnn_output.name, qnn_output.onnx_data_type, qnn_output.dim))
+            value_infos.append(
+                helper.make_tensor_value_info(qnn_output.name, qnn_output.onnx_data_type, qnn_output.dim)
+            )
         else:
-            model_outputs.append(helper.make_tensor_value_info(qnn_output.name, qnn_output.onnx_data_type, qnn_output.dim))
-
+            model_outputs.append(
+                helper.make_tensor_value_info(qnn_output.name, qnn_output.onnx_data_type, qnn_output.dim)
+            )
 
     graph_def = helper.make_graph(graph_nodes, "qnn-onnx-model", model_inputs, model_outputs, ini_list, "", value_infos)
 
