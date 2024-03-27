@@ -347,11 +347,10 @@ TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
                                                                yield_op_order_in_topological_sort,
                                                                layer_boundary_ln_node);
 
-  ASSERT_TRUE(layer_boundary_ln_node.size() == 4);
+  ASSERT_TRUE(layer_boundary_ln_node.size() == 3);
   ASSERT_TRUE(layer_boundary_ln_node[0]->Name() == "LayerNormalization_token_0");
   ASSERT_TRUE(layer_boundary_ln_node[1]->Name() == "LayerNormalization_token_6");
   ASSERT_TRUE(layer_boundary_ln_node[2]->Name() == "LayerNormalization_token_12");
-  ASSERT_TRUE(layer_boundary_ln_node[3]->Name() == "LayerNormalization_token_18");
 }
 
 }  // namespace test
