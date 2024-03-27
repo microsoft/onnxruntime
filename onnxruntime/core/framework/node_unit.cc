@@ -5,6 +5,7 @@
 
 #include "node_unit.h"
 #include "core/graph/graph_viewer.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 
@@ -109,8 +110,11 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
     // If we can find the node index in the dq or q nodes this is a quantized input/output
     if (std::find(dq_or_q_nodes.cbegin(), dq_or_q_nodes.cend(), node.Index()) != dq_or_q_nodes.cend()) {
       const auto node_inputs = node.InputDefs();
+      NodeAttrHelper attr_helper(node);
+      std::optional<int64_t> axis = attr_helper.GetInt64("axis");
+
       // quantization scale and zp are always the input[1, 2]
-      NodeUnitIODef::QuantParam quant_param{*node_inputs[1], node_inputs.size() == 3 ? node_inputs[2] : nullptr};
+      NodeUnitIODef::QuantParam quant_param{*node_inputs[1], node_inputs.size() == 3 ? node_inputs[2] : nullptr, axis};
 
       if (is_input) {
         // DQ is input to the target node, use the DstArgIndex
