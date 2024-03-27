@@ -127,7 +127,7 @@ class UnetOnnxModel(BertOnnxModel):
 
             with logging_redirect_tqdm():
                 steps = 18
-                progress_bar = tqdm.tqdm(range(0, steps), initial=0, desc="fusion")
+                progress_bar = tqdm.tqdm(range(steps), initial=0, desc="fusion")
                 self._optimize(options, progress_bar)
         else:
             logger.info("tqdm is not installed. Run optimization without progress bar")

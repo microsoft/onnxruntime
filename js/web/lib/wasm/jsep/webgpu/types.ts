@@ -15,6 +15,13 @@ export enum GpuDataType {
 }
 export type GpuDataId = number;
 
+export type GpuArchitecture = 'ampere';
+export type GpuVendor = 'amd'|'intel'|'nvidia';
+export interface AdapterInfo {
+  isArchitecture: (architecture: GpuArchitecture) => boolean;
+  isVendor: (vendor: GpuVendor) => boolean;
+}
+
 export interface GpuData {
   type: GpuDataType;
   id: GpuDataId;
@@ -30,6 +37,8 @@ export interface ProgramUniform {
   type: DataType;
   data: number|readonly number[];
 }
+
+export type ProgramUniformVariableInfo = [type: DataType, length: number];
 
 /**
  * Represent the dependency of a program on a specific input tensor.
@@ -118,6 +127,7 @@ export interface ProgramInfo {
 export interface Artifact {
   programInfo: ProgramInfo;
   computePipeline: GPUComputePipeline;
+  uniformVariablesInfo: readonly ProgramUniformVariableInfo[]|undefined;
 }
 
 export interface ComputeContextInputsOutputsMapping {
@@ -146,6 +156,11 @@ export interface ComputeContextInputsOutputsMapping {
  * A ComputeContext instance carries the states that representing the current running of a kernel.
  */
 export interface ComputeContext {
+  /**
+   * gpu adapter info
+   */
+  readonly adapterInfo: AdapterInfo;
+
   /**
    * stores the pointer to OpKernelContext
    */

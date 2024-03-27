@@ -7,12 +7,12 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/framework/node_unit.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime::nnapi::op_builder_helpers {
 

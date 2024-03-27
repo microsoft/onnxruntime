@@ -205,6 +205,7 @@ struct TensorProto final {
 
   bool has_data_location() const { return g_host->TensorProto__has_data_location(this); }
   TensorProto_DataLocation data_location() const { return TensorProto_DataLocation(g_host->TensorProto__data_location(this)); }
+  void set_data_location(TensorProto_DataLocation data_location) { return g_host->TensorProto__set_data_location(this, data_location); }
 
   bool has_raw_data() const { return g_host->TensorProto__has_raw_data(this); }
   const std::string& raw_data() const { return g_host->TensorProto__raw_data(this); }
@@ -391,14 +392,6 @@ struct ConfigOptions final {
   }
 
   PROVIDER_DISALLOW_ALL(ConfigOptions)
-};
-
-struct OrtRunOptions final {
-  const ConfigOptions& GetConfigOptions() const {
-    return g_host->RunOptions__GetConfigOptions(this);
-  }
-
-  PROVIDER_DISALLOW_ALL(OrtRunOptions)
 };
 
 struct ComputeCapability final {
@@ -778,8 +771,8 @@ struct NodeAttributes final {
 
 struct Model final {
   static std::unique_ptr<Model> Create(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
-                                       const logging::Logger& logger) {
-    return g_host->Model__construct(std::move(model_proto), model_path, logger);
+                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
+    return g_host->Model__construct(std::move(model_proto), model_path, local_registries, logger);
   }
   static void operator delete(void* p) { g_host->Model__operator_delete(reinterpret_cast<Model*>(p)); }
   static Status Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) { return g_host->Model__Load(file_path, model_proto); }
@@ -857,6 +850,7 @@ struct Graph final {
   const Node* GetNode(NodeIndex node_index) const noexcept { return g_host->Graph__GetNode(this, node_index); }
   Node* GetNode(NodeIndex node_index) noexcept { return g_host->Graph__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->Graph__GetNodeArg(this, name); }
+  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return g_host->Graph__GetSchemaRegistry(this); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };
@@ -1281,3 +1275,10 @@ template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }
 
 }  // namespace onnxruntime
+
+struct OrtRunOptions final {
+  const onnxruntime::ConfigOptions& GetConfigOptions() const {
+    return onnxruntime::g_host->RunOptions__GetConfigOptions(this);
+  }
+  PROVIDER_DISALLOW_ALL(OrtRunOptions)
+};

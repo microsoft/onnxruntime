@@ -39,13 +39,16 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
   const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
-  const Tensor* fc2_experts_weights = context->Input<Tensor>(3);
-  const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(4);
+  const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(3);
+  const Tensor* fc2_experts_weights = context->Input<Tensor>(4);
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(5);
+  const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
+  const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
   MoEParameters moe_params;
-  ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc2_experts_weights,
-                                  fc1_experts_bias_optional, fc2_experts_bias_optional));
+  ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
+                                  fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
+                                  fc3_experts_bias_optional));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   auto stream = context->GetComputeStream();
@@ -53,12 +56,14 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
   const int sm = device_prop.major * 10 + device_prop.minor;
 
-  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm);
+  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
+                                                                     fc3_experts_weights_optional != nullptr,
+                                                                     normalize_routing_weights_);
 
   size_t ws_size =
-      moe_runner.getWorkspaceSize(static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.hidden_size),
-                                  static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
-                                  static_cast<int>(k_));
+      moe_runner.getWorkspaceSize(static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
+                                  static_cast<size_t>(moe_params.inter_size),
+                                  static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_));
   size_t fc2_output_size = k_ * moe_params.num_rows * moe_params.hidden_size * sizeof(CudaT);
   size_t expert_scales_size = k_ * moe_params.num_rows * sizeof(CudaT);
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * moe_params.num_rows * sizeof(int);
@@ -77,26 +82,37 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> expert_for_source_row =
       IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
 
-  // fc1_scales and fc2_scales are used in quantized MoE
-  const CudaT* fc1_scales_ptr = nullptr;
-  const CudaT* fc2_scales_ptr = nullptr;
-
+  const CudaT* fc_scales_ptr = nullptr;
   moe_runner.run_moe_fc(reinterpret_cast<const CudaT*>(input->template Data<T>()),
                         reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
-                        reinterpret_cast<const CudaT*>(fc1_experts_weights->template Data<T>()),
-                        std::move(fc1_scales_ptr),
+                        reinterpret_cast<const CudaT*>(fc1_experts_weights->DataRaw()),
+                        fc_scales_ptr,
                         fc1_experts_bias_optional == nullptr
                             ? nullptr
                             : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
-                        activation_type_, reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
-                        std::move(fc2_scales_ptr), static_cast<int>(moe_params.num_rows),
-                        static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size),
-                        static_cast<int>(moe_params.num_experts), static_cast<int>(moe_params.local_num_experts),
-                        0 /*local_experts_start_index_ used in sharded MoE*/, static_cast<int>(k_),
-                        reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
+                        activation_type_,
+                        fc3_experts_weights_optional == nullptr
+                            ? nullptr
+                            : reinterpret_cast<const CudaT*>(fc3_experts_weights_optional->DataRaw()),
+                        fc_scales_ptr,
+                        fc3_experts_bias_optional == nullptr
+                            ? nullptr
+                            : reinterpret_cast<const CudaT*>(fc3_experts_bias_optional->template Data<T>()),
+                        reinterpret_cast<const CudaT*>(fc2_experts_weights->DataRaw()),
+                        fc_scales_ptr,
+                        static_cast<int>(moe_params.num_rows),
+                        static_cast<int>(moe_params.hidden_size),
+                        static_cast<int>(moe_params.inter_size),
+                        static_cast<int>(moe_params.num_experts),
+                        static_cast<int>(moe_params.local_num_experts),
+                        0 /*local_experts_start_index_ used in sharded MoE*/,
+                        static_cast<int>(k_),
+                        reinterpret_cast<char*>(work_space.get()),
+                        reinterpret_cast<CudaT*>(fc2_output.get()),
                         reinterpret_cast<CudaT*>(expert_scales.get()),
                         reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
-                        reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
+                        reinterpret_cast<int*>(expert_for_source_row.get()),
+                        Stream(context));
 
   Tensor* output = context->Output(0, input->Shape());
 

@@ -10,6 +10,8 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
@@ -298,6 +300,19 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  static const std::string QNN_HTP_FP16_MODE = "enable_htp_fp16_precision";
+  auto htp_fp16_mode_pos = provider_options_map.find(QNN_HTP_FP16_MODE);
+  if (htp_fp16_mode_pos != provider_options_map.end()) {
+    if ("1" == htp_fp16_mode_pos->second) {
+      enable_HTP_FP16_precision_ = true;
+    } else if ("0" == htp_fp16_mode_pos->second) {
+      enable_HTP_FP16_precision_ = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_fp16_precision: " << enable_HTP_FP16_precision_ << " only 0 or 1 allowed. Set to 0.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
+  }
+
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level,
@@ -494,7 +509,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
 
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
 
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(),
                                                  is_qnn_ctx_model, logger);
@@ -534,44 +549,39 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   size_t num_of_supported_nodes = 0;
 
   // Create partitions from supported nodes.
-  {
-    std::vector<std::unique_ptr<ComputeCapability>> partitions = utils::CreateSupportedPartitions(graph_viewer,
-                                                                                                  supported_nodes, {},
-                                                                                                  gen_metadef_name, QNN,
-                                                                                                  kQnnExecutionProvider,
-                                                                                                  true);
+  std::vector<std::unique_ptr<ComputeCapability>> partitions = utils::CreateSupportedPartitions(
+      graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, &node_unit_map, true);
 
-    // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
-    // We also count the number of supported nodes in all valid partitions.
-    for (auto& partition : partitions) {
-      bool is_valid_partition = true;
-      size_t nodes_in_partition = 0;
+  // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
+  // We also count the number of supported nodes in all valid partitions.
+  for (auto& partition : partitions) {
+    bool is_valid_partition = true;
+    size_t nodes_in_partition = 0;
 
-      if (partition && partition->sub_graph) {
-        nodes_in_partition = partition->sub_graph->nodes.size();
+    if (partition && partition->sub_graph) {
+      nodes_in_partition = partition->sub_graph->nodes.size();
 
-        if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
-          const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
+      if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
+        const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
 
-          if (!node) {
-            LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
-            is_valid_partition = false;
-          } else if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
-            LOGS(logger, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
-            is_valid_partition = false;
-          }
+        if (!node) {
+          LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
+          is_valid_partition = false;
+        } else if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
+          LOGS(logger, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
+          is_valid_partition = false;
         }
-      } else {
-        LOGS(logger, ERROR) << "QNN EP: Invalid partition.";
-        is_valid_partition = false;
       }
+    } else {
+      LOGS(logger, ERROR) << "QNN EP: Invalid partition.";
+      is_valid_partition = false;
+    }
 
-      if (is_valid_partition) {
-        result.push_back(std::move(partition));
-        num_of_supported_nodes += nodes_in_partition;
-      }
-    }  // for
-  }
+    if (is_valid_partition) {
+      result.push_back(std::move(partition));
+      num_of_supported_nodes += nodes_in_partition;
+    }
+  }  // for
 
   const size_t num_of_partitions = result.size();
   const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions,
@@ -639,6 +649,16 @@ void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_C
       QnnGraph_Config_t& graph_opt_config_vtcm = configs_builder.PushConfig();
       graph_opt_config_vtcm.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
       graph_opt_config_vtcm.customConfig = &htp_graph_opt_config_vtcm;
+    }
+
+    if (enable_HTP_FP16_precision_) {
+      QnnHtpGraph_CustomConfig_t& htp_graph_precision_config = configs_builder.PushCustomConfig();
+      htp_graph_precision_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_PRECISION;
+      htp_graph_precision_config.precision = QNN_PRECISION_FLOAT16;
+
+      QnnGraph_Config_t& graph_precision_config = configs_builder.PushConfig();
+      graph_precision_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_precision_config.customConfig = &htp_graph_precision_config;
     }
   }
 }

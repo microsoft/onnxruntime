@@ -31,7 +31,6 @@ constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort,
 // Reset seed attribute for the dropout node if the seed is not set.
 bool SetSeedForDropoutNode(Node& node) {
   // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
-  // TODO(pengwa): add the opset check in GetAllowedRecomputeOps.
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {12, 13}, kOnnxDomain) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "BitmaskDropout", {1}, kMSDomain) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasDropout", {1}, kMSDomain) ||
