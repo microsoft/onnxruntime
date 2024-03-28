@@ -56,12 +56,12 @@ ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, "cuda_version") else None
 ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, "rocm_version") else None
 
-# The first value is indicating whether code is in ONNX export context.
+# The first value indicates whether the code is in ONNX export context.
 # The second value is the memory optimization level to be used after ONNX export.
 ORTMODULE_ONNX_EXPORT_CONTEXT = [False, _MemoryOptimizationLevel.USER_SPECIFIED]
 
 
-# Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
+# Verify minimum PyTorch version is installed before proceeding to ONNX Runtime initialization
 try:
     import torch
 
@@ -77,22 +77,23 @@ try:
             ),
         )
 
-    # Best effort override the checkpoint function during ONNX model export.
+    # Try best effort to override the checkpoint function during ONNX model export.
     from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
 
     def _checkpoint(function, *args, **kwargs):
         if ORTMODULE_ONNX_EXPORT_CONTEXT[0] is True:
-            # Enable layer-wise memory optimization automatically if we found the checkpoint function is used.
-            # Note 1: Using checkpoint function is a strong indicator that the model is too large to fit in GPU
-            # memory.
-            # But still there is a chance user models use checkpoint function for non-layerwise gradient
-            # checkpointing, which we don't think is a common use case.
-            # Note 2: On the other hand, if we don't override the checkpoint function here, mostly ONNX export
-            # will be failed.
+            # Automatically activate layer-specific memory optimization if the checkpoint function
+            # is detected.
+            # > Observation 1: The employment of the checkpoint function typically suggests that the
+            #   model's size exceeds the GPU's memory capacity.
+            #   However, it's possible that some user models apply the checkpoint function for gradient
+            #   checkpointing that isn't layer-specific, though this is believed to be rare.
+            # > Observation 2: Conversely, failing to modify the checkpoint function here will likely
+            #   result in unsuccessful ONNX exports.
             ORTMODULE_ONNX_EXPORT_CONTEXT[1] = _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
             print(
-                "Layer-wise memory optimization is enabled automatically, "
-                "since we found torch.utils.checkpoint.checkpoint is used."
+                "Layer-wise memory optimization is enabled automatically upon detecting "
+                "torch.utils.checkpoint usage during model execution."
             )
             return function(*args, **kwargs)
         return original_torch_checkpoint(function, *args, **kwargs)
