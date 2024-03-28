@@ -41,18 +41,60 @@ struct PriorityNodeCompare {
 
 #ifdef ENABLE_TRAINING
 
-    // nodes of bigger impact pass will be output first
-    const auto& n1_attrs = n1->GetAttributes();
-    const auto& n2_attrs = n2->GetAttributes();
-    int64_t n1_impact = (n1_attrs.find(kRecomputeNodeCriticalPathImpact) != n1_attrs.cend())
-                            ? static_cast<int64_t>(n1_attrs.at(kRecomputeNodeCriticalPathImpact).i())
-                            : -1;
-    int64_t n2_impact = (n2_attrs.find(kRecomputeNodeCriticalPathImpact) != n2_attrs.cend())
-                            ? static_cast<int64_t>(n2_attrs.at(kRecomputeNodeCriticalPathImpact).i())
-                            : -1;
-    if (n1_impact != -1 && n2_impact != -1) {
-      return n2_impact > n1_impact;
+    // Sorting factors for training scenarios.
+    if (n1_priority == static_cast<int>(ExecutionPriority::DEFAULT)) {
+      // If both nodes are normal, prioritize outputting the forward pass node.
+      //
+      // Note 1: This preference arises from producer-consumer node pairs not separated by "YieldOp".
+      // The producer (forward pass, contributing to YieldOp inputs) and consumer (backward pass,
+      // used for gradient computation) should output in forward order to save memory.
+      //
+      // Note 2: MemoryOptimizer marks nodes as forward by backtracking from YieldOp's inputs.
+      // Nodes reached by this backtracking, identified through their inputs, are tagged as forward.
+      //
+      // The nodes of forward pass will be output first
+      auto n1_attrs = n1->GetAttributes();
+      auto n2_attrs = n2->GetAttributes();
+      int64_t n1_is_forward = static_cast<int64_t>(n1_attrs.find(kBackwardNodeAttributeName) == n1_attrs.cend()) ||
+                              (n1_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
+      int64_t n2_is_forward = static_cast<int64_t>(n2_attrs.find(kBackwardNodeAttributeName) == n2_attrs.cend()) ||
+                              (n2_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
+      if (n1_is_forward != n2_is_forward) {
+        return n2_is_forward > n1_is_forward;
+      }
+    } else if (n1_priority == static_cast<int>(ExecutionPriority::LOCAL_LOW)) {
+      // If both are low priority nodes, we prefer to output nodes with bigger impact first.
+      // Only recompute scenarios will set the critical path impact attribute.
+      //
+      // Note 1: Importance of Critical Path Impact in Topological Sorting
+      // In recompute scenarios, it's crucial to identify which node to execute to unblock the
+      // critical path. This ensures nodes in the critical path are executed without delay.
+      // For more details, refer to MemoryOptimizer's implementation.
+      //
+      // Note 2: Defining Critical Path Impact
+      // Critical path impact is a value set during MemoryOptimizer's operation to prioritize
+      // node execution. It's calculated based on the topological order of nodes and their
+      // dependencies, ensuring timely execution of critical nodes. For more details, refer
+      // to MemoryOptimizer's implementation.
+      //
+      // Note 3: This trick is not necessarily bound to LOCAL_LOW priority nodes, but we are using it for
+      // recompue in MemoryOptimizer, so we add the check there. Feel free to revisit the check if it is
+      // useful for other priorities.
+      //
+      // The nodes of bigger impact pass will be output first
+      const auto& n1_attrs = n1->GetAttributes();
+      const auto& n2_attrs = n2->GetAttributes();
+      int64_t n1_impact = (n1_attrs.find(kRecomputeNodeCriticalPathImpact) != n1_attrs.cend())
+                              ? static_cast<int64_t>(n1_attrs.at(kRecomputeNodeCriticalPathImpact).i())
+                              : -1;
+      int64_t n2_impact = (n2_attrs.find(kRecomputeNodeCriticalPathImpact) != n2_attrs.cend())
+                              ? static_cast<int64_t>(n2_attrs.at(kRecomputeNodeCriticalPathImpact).i())
+                              : -1;
+      if (n1_impact != -1 && n2_impact != -1) {
+        return n2_impact > n1_impact;
+      }
     }
+
 #endif
 
     // otherwise, nodes with lower index will be output first

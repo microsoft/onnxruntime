@@ -146,6 +146,9 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
 Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger)
     const {
+  // Reset the backward pass attribute for all nodes.
+  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ResetNodeBackwardPassAttribute(graph, modified));
+
   LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_ << ", probe level: "
                         << static_cast<int>(recompute_probe_config_.probe_level)
                         << ", enable_transformer_layer_as_boundary:"
@@ -215,6 +218,38 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   }
 
   if (recomputed_node_count > 0) {
+    // Note 1: Critical Path Impact in Priority-Based Topological Sort
+    //
+    // Setting and comparing critical path impact is essential in scenarios where all nodes in the priority queue
+    // are of low priority. This comparison helps determine which recompute node to select to unblock the backward
+    // critical path. Consider a scenario where:
+    //   - A recompute node subgraph, NodeSubgraph-L, exists within transformer layer N (e.g., NodeSubgraph-5 in
+    //     layer 5, NodeSubgraph-3 in layer 3).
+    //   - Node-A-IN-5 within NodeSubgraph-5 depends on Node-B-IN-0 within NodeSubgraph-0.
+    //   - The priority queue contains nodes from NodeSubgraph-0 to NodeSubgraph-5.
+    // In MemoryOptimizer recompute scenarios, we append nodes starting from NodeSubgraph-5 down to NodeSubgraph-0.
+    // Relying solely on node index for comparison could lead to:
+    // 1) Sequential output of nodes in NodeSubgraph-5 (sorted by ascending node index within the subgraph).
+    // 2) Blocking of Node-A-IN-5's execution until Node-B-IN-0 is executed.
+    // 3) Sequential output of nodes from NodeSubgraph-4 to NodeSubgraph-1.
+    // 4) Execution of NodeSubgraph-0 nodes, allowing Node-A-IN-5 and subsequent NodeSubgraph-5 nodes to execute.
+    // 5) Execution of remaining NodeSubgraph-0 nodes.
+    //
+    // This process can significantly delay the execution of Node-A-IN-5, blocking other NodeSubgraph-5 nodes.
+    // Since NodeSubgraph-5 nodes are on the critical path, triggering their dependencies timely is crucial to
+    // ensure their execution as early as possible, ahead of other layers. This necessity led to the introduction
+    // of critical path impact.
+    //
+    // Note 2: Defining Critical Path Impact
+    // Critical path impact is a metric representing a node's influence on the critical path. It is determined
+    // during MemoryOptimizer's operation as follows:
+    // 1) Sort graphs without recompute optimization to establish a baseline topological order.
+    // 2) Apply recompute optimization.
+    // 3) Identify recompute boundary nodes (recompute nodes not consumed by others).
+    // 4) For each boundary node, calculate the minimum topological order of all output nodes.
+    //    The minimum value indicates the earliest need for the recompute node's execution.
+    //    We assign std::numeric_limits<int64_t>::max() - min_topological_order as the critical path impact.
+    // 5) For other recompute nodes, assign the maximum critical path impact of their output nodes.
     ORT_ENFORCE(optimizer::memory_optimizer::SetCriticalPathImpact(
                     graph, node_index_to_its_order_in_topological_sort_map),
                 "Failed to set critical path impact attribute.");

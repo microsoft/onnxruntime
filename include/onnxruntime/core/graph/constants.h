@@ -55,8 +55,10 @@ constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
 constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";
-
-// For memory optimizer's priority based graph topology sorting.
+#ifdef ENABLE_TRAINING
+// For priority based graph topology sorting.
+constexpr const char* kBackwardNodeAttributeName = "__backwardpass";
 constexpr const char* kRecomputeNodeCriticalPathImpact = "__recompute_critical_path_impact";
+#endif
 
 }  // namespace onnxruntime
