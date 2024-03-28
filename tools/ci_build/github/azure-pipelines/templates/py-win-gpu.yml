@@ -281,14 +281,3 @@ stages:
             python onnx_backend_test_series.py
           workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Run Python Tests'
-
-        - task: TSAUpload@2
-          displayName: 'TSA upload'
-          condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-          inputs:
-            GdnPublishTsaOnboard: false
-            GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-
-        - template: component-governance-component-detection-steps.yml
-          parameters:
-            condition: 'succeeded'
