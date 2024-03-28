@@ -50,7 +50,8 @@ const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAt
 };
 
 export const createBlockwiseMatMulNBitsProgramInfo =
-    (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes): ProgramInfo => {
+    (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes,
+     maxComputeWorkgroupSizes: [number, number, number]): ProgramInfo => {
       const inputShape = inputs[0].dims;
       const aRank = inputShape.length;
       const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
@@ -62,7 +63,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
       const outputSize = ShapeUtil.size(outputShape);
-      const workgroupSize = [Math.min(1024, outputSize / dimAOuter), 1, 1];
+      const workgroupSize = [Math.min(maxComputeWorkgroupSizes[0], outputSize / dimAOuter), 1, 1];
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: outputSize / dimAOuter}, {type: DataType.uint32, data: attributes.k},
         {type: DataType.uint32, data: attributes.n}, {type: DataType.uint32, data: attributes.accuracyLevel},
@@ -205,13 +206,14 @@ export const createBlockwiseMatMulNBitsProgramInfo =
     };
 
 export const createMatMulNBitsReduceProgramInfo =
-    (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes) => {
+    (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes,
+     maxComputeWorkgroupSizes: [number, number, number]) => {
       const inputShape = inputs[0].dims;
       const outputShape = inputShape.slice(1, inputShape.length);
       const outputSize = ShapeUtil.size(outputShape);
       const lastDim = inputShape[inputShape.length - 1];
       const components = getMaxComponents(lastDim);
-      const workgroupSize = [Math.min(1024, outputSize), 1, 1];
+      const workgroupSize = [Math.min(maxComputeWorkgroupSizes[0], outputSize), 1, 1];
       const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: outputSize}];
       programUniforms.push(
           ...createTensorShapeVariables(inputShape.slice(0, inputShape.length - 1).concat([lastDim / components])));
@@ -251,9 +253,12 @@ export const createMatMulNBitsReduceProgramInfo =
 
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  const [partialResult] =
-      context.compute(createBlockwiseMatMulNBitsProgramInfo(context.inputs, attributes), {outputs: [-1]});
-  context.compute(createMatMulNBitsReduceProgramInfo([partialResult], attributes), {inputs: [partialResult]});
+  const maxComputeWorkgroupSizes = context.maxComputeWorkgroupSizes();
+  const [intermediateResult] = context.compute(
+      createBlockwiseMatMulNBitsProgramInfo(context.inputs, attributes, maxComputeWorkgroupSizes), {outputs: [-1]});
+  context.compute(
+      createMatMulNBitsReduceProgramInfo([intermediateResult], attributes, maxComputeWorkgroupSizes),
+      {inputs: [intermediateResult]});
 };
 
 export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes =>
