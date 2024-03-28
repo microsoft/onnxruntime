@@ -85,6 +85,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateDequantizeLinearOpBuilder("DequantizeLinear", op_registrations);
   }
 
+  {  // Einsum
+    CreateEinsumOpBuilder("Einsum", op_registrations);
+  }
+
   {  // Expand
     CreateExpandOpBuilder("Expand", op_registrations);
   }
