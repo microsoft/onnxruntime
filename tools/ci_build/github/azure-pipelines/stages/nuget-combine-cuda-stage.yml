@@ -17,8 +17,8 @@ stages:
 - stage: NuGet_Packaging_GPU
   dependsOn:
     - Set_ReleaseVersionSuffix
-    - Windows_Packaging_gpu
-    - Windows_Packaging_tensorrt
+    - Windows_Packaging_gpu_Testing
+    - Windows_Packaging_tensorrt_Testing
     - Linux_C_API_Packaging_CPU_x64
     - Linux_C_API_Packaging_GPU_x64
     - Linux_C_API_Packaging_GPU_TensorRT_x64
