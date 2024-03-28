@@ -533,10 +533,18 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   ORT_RETURN_IF_NOT(AddParamWrapper(std::move(transpose_param)), "Failed to add tensor.");
   Qnn_TensorType_t tensor_type = (false == is_for_output) ? QNN_TENSOR_TYPE_NATIVE : QNN_TENSOR_TYPE_APP_READ;
   std::vector<uint32_t> output_shape_copy = output_shape;
+  Qnn_QuantizeParams_t output_qparam = quantize_param;
+
+  if (utils::IsPerAxisQuantization(output_qparam)) {
+    std::vector<uint32_t> perm_inv(transpose_perm.size());
+    ORT_RETURN_IF_ERROR(utils::InvertPerm<uint32_t>(transpose_perm, perm_inv));
+    ORT_RETURN_IF_ERROR(utils::TryTransposeQnnQuantParams<uint32_t>(output_qparam, perm_inv));
+  }
+
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         tensor_data_type,
-                                        quantize_param,
+                                        output_qparam,
                                         std::move(output_shape_copy));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   const static std::string qnn_node_type = "Transpose";

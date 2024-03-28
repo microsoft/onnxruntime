@@ -320,6 +320,8 @@ class BaseOpBuilder : public IOpBuilder {
 
  private:
   std::string op_builder_type_;
+
+ protected:
   const std::vector<size_t> nchw2nhwc_perm{0, 2, 3, 1};
   const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
   const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};

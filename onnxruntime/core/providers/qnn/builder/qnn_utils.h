@@ -9,6 +9,7 @@
 #include <numeric>
 #include <vector>
 #include <string>
+#include <type_traits>
 
 #include "core/util/qmath.h"
 
@@ -47,6 +48,44 @@ inline bool IsPerAxisQuantization(const Qnn_QuantizeParams_t& quantize_param) {
   return quantize_param.encodingDefinition != QNN_DEFINITION_UNDEFINED &&
          quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET;
 }
+
+template <typename IntType>
+static Status InvertPerm(gsl::span<const IntType> perm, /*out*/ gsl::span<IntType> perm_inv) {
+  static_assert(std::is_integral<IntType>::value, "permutation arrays must contain integer elements");
+
+  size_t rank = perm.size();
+  ORT_RETURN_IF_NOT(perm_inv.size() == rank, "perm.size() != perm_inv.size()");
+
+  for (size_t i = 0; i < rank; ++i) {
+    size_t j = static_cast<size_t>(perm[i]);
+    ORT_RETURN_IF_NOT(j < rank, "perm element out of range [0, rank - 1]");
+    perm_inv[j] = static_cast<IntType>(i);
+  }
+
+  return Status::OK();
+}
+
+template <typename IntType>
+static Status TryTransposeQnnQuantParams(Qnn_QuantizeParams_t& quantize_param, gsl::span<const IntType> perm) {
+  if (quantize_param.encodingDefinition == QNN_DEFINITION_UNDEFINED) {
+    return Status::OK();
+  }
+
+  if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+    ORT_RETURN_IF_NOT(static_cast<size_t>(quantize_param.axisScaleOffsetEncoding.axis) < perm.size(),
+                      "Axis value is out of range of the provided permutation");
+    const int32_t axis_t = static_cast<int32_t>(perm[quantize_param.axisScaleOffsetEncoding.axis]);
+    quantize_param.axisScaleOffsetEncoding.axis = axis_t;
+  } else if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
+    ORT_RETURN_IF_NOT(static_cast<size_t>(quantize_param.bwAxisScaleOffsetEncoding.axis) < perm.size(),
+                      "Axis value is out of range of the provided permutation");
+    const int32_t axis_t = static_cast<int32_t>(perm[quantize_param.bwAxisScaleOffsetEncoding.axis]);
+    quantize_param.bwAxisScaleOffsetEncoding.axis = axis_t;
+  }
+
+  return Status::OK();
+}
+
 
 // Utility function that checks if an array of strings contains a specific string.
 // Used to validate ONNX operator attributes.

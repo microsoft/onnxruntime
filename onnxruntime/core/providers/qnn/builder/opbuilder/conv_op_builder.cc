@@ -171,7 +171,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   //
-  // Input 1: weight
+  // Input 1: weight. This input must be transposed manually by QNN EP.
   //
   {
     const std::string& input1_name = inputs[1].node_arg.Name();
@@ -187,10 +187,8 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
     // Change shape to HWCN, it could be initializer or normal input
     if (conv_type == OnnxConvType::kConv) {
       ORT_RETURN_IF_ERROR(NchwShapeToHwcn(input_info.shape, actual_shape));
-      // TODO: Transpose qparam axis
     } else if (conv_type == OnnxConvType::kConvTranspose) {
       ORT_RETURN_IF_ERROR(CnhwShapeToHwcn(input_info.shape, actual_shape));
-      // TODO: Transpose qparam axis
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
     }
@@ -233,6 +231,14 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
       }
+    }
+
+    // Transpose quantization parameter's axis if this is using per-channel quantization.
+    if (utils::IsPerAxisQuantization(input_info.quant_param)) {
+      const std::vector<size_t>& perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm : cnhw2hwcn_perm;
+      std::vector<size_t> perm_inv(perm.size());
+      ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(nchw2hwcn_perm, perm_inv));
+      ORT_RETURN_IF_ERROR(utils::TryTransposeQnnQuantParams<size_t>(input_info.quant_param, perm_inv));
     }
 
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, actual_name);
@@ -419,6 +425,14 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
       }
+    }
+
+    // Transpose quantization parameter's axis if this is using per-channel quantization.
+    if (utils::IsPerAxisQuantization(input_info.quant_param)) {
+      const std::vector<size_t>& perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm : cnhw2hwcn_perm;
+      std::vector<size_t> perm_inv(perm.size());
+      ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(nchw2hwcn_perm, perm_inv));
+      ORT_RETURN_IF_ERROR(utils::TryTransposeQnnQuantParams<size_t>(input_info.quant_param, perm_inv));
     }
 
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, conv_weight_input_name);
