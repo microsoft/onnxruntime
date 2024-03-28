@@ -171,10 +171,10 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
   auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
   auto keys = tensors_range_entries.Keys();
   auto values = tensors_range_entries.Values();
-  for (size_t i = 0, end = keys.size(); i < end; ++i) {
+  for (size_t i = 0, i_end = keys.size(); i < i_end; ++i) {
     auto dim_range_vectors = values[i].AsTypedVector();
     std::unordered_map<size_t, std::pair<int64_t, int64_t>> inner_map;
-    for (size_t j = 0, end = dim_range_vectors.size() / 3; j < end; ++j) {
+    for (size_t j = 0, j_end = dim_range_vectors.size() / 3; j < j_end; ++j) {
       size_t idx = 3 * j;
       inner_map[dim_range_vectors[idx].AsInt64()] = std::make_pair(dim_range_vectors[idx + 1].AsInt64(), dim_range_vectors[idx + 2].AsInt64());
     }
