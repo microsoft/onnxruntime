@@ -326,7 +326,7 @@ Status ScatterData(
   // and so on
   std::vector<int64_t> dim_block_size(num_dims);
 
-  dim_block_size.back() = 1;
+  dim_block_size[num_dims-1] = 1;
   if (num_dims > 1) {
     // We start at num_dims - 2 because we already pre-populated
     // the last element above
