@@ -52,6 +52,12 @@ jobs:
     inputs:
       versionSpec: '18.x'
 
+  - task: JavaToolInstaller@0
+    inputs:
+      versionSpec: "11"
+      jdkArchitectureOption: "x64"
+      jdkSourceOption: 'PreInstalled'
+
   - template: set-version-number-variables-step.yml
 
   - template: use-xcode-version.yml
