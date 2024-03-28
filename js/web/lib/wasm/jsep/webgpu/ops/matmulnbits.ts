@@ -144,21 +144,20 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           // Two zero points are packed into one byte when uniforms.bits is 4.
           ${
             zeroPoints ? `
-          var zero_point_byte_count: u32 = col * ${zeroPointsBytesPerCol}  + block >> 1;
-          var zero_point_word_index: u32 = zero_point_byte_count / 4;
-          var zero_point_byte_offset: u32 = zero_point_byte_count % 4;
-          var zero_point_nibble_offset: u32 = block % 2;
-          var zero_point_bits_offset: u32 = 8 * zero_point_byte_offset + 4 * zero_point_nibble_offset;
-          var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_word_index')};` :
+          var zero_point_byte_count: u32 = col * ${zeroPointsBytesPerCol}  + (block >> 0x1u);
+          var zero_point_word_index: u32 = zero_point_byte_count >> 0x2u;
+          var zero_point_byte_offset: u32 = zero_point_byte_count & 0x3u;
+          var zero_point_nibble_offset: u32 = block & 0x1u;
+          var zero_point_bits_offset: u32 = (zero_point_byte_offset << 3) + (zero_point_nibble_offset << 2);
+          var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_word_index')} >> zero_point_bits_offset;` :
                          ''}
           var b_indices: ${b.type.indices};
           ${b.indicesSet('b_indices', '0', 'col')};
-          var block_offset: u32 = block * ${attributes.blockSize} / ${aComponents};
+          var block_offset: u32 = block * ${attributes.blockSize / aComponents};
           // The scale and zero points are computed per block.
           let scale = ${scales.getByOffset('global_idx')};
           // The default zero point is 8 for unsigned 4-bit quantization.
-          let zero_point = ${dataType}(${
-            zeroPoints ? 'extractBits(zero_point_word, zero_point_bits_offset, 4)' : 8.0});
+          let zero_point = ${dataType}(${zeroPoints ? '(zero_point_word) & 0xFu' : 8.0});
           ${b.indicesSet('b_indices', '1', 'block')};
           var word_offset: u32 = block_offset;
           for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
