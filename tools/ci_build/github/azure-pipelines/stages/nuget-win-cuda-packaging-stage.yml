@@ -23,6 +23,16 @@ parameters:
 - name: win_trt_home
   type: string
 
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
 stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
@@ -40,6 +50,8 @@ stages:
     buildJava: false
     java_artifact_id: onnxruntime_gpu
     PublishProtoc: true
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
@@ -56,12 +68,14 @@ stages:
     buildJava: false
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 # Windows CUDA Combined Testing and Publishing
 - stage: Windows_Packaging_combined_GPU
   dependsOn:
-    - Windows_Packaging_gpu
-    - Windows_Packaging_tensorrt
+    - Windows_Packaging_gpu_Testing
+    - Windows_Packaging_tensorrt_Testing
   condition: succeeded()
 
   jobs:
