@@ -148,8 +148,7 @@ const computeMean =
   ${shaderHelper.mainStart(WG)}
     let currentImageNumber = global_idx / ${WG} / uniforms.C;
     let currentChannelNumber = (global_idx / ${WG}) % uniforms.C;
-    let wgId = global_idx % ${WG};
-    let wgOffset = wgId * uniforms.wg_size;
+    let wgOffset = local_id.x * uniforms.wg_size;
     if (wgOffset >= uniforms.H) {
         return;
     }
