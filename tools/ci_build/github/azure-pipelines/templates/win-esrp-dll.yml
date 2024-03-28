@@ -16,7 +16,7 @@ parameters:
   default: '*.dll'
 
 steps:
-- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@2
+- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@3
   displayName: ${{ parameters.DisplayName }}
   condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
   inputs:
@@ -51,7 +51,14 @@ steps:
               "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
             }
           ],
-          "toolName": "signtool.exe",
-          "toolVersion": "6.2.9304.0"
+          "ToolName": "sign",
+          "ToolVersion": "1.0",
+        },
+        {
+          "KeyCode": "CP-230012",
+          "OperationCode": "SigntoolVerify",
+          "ToolName": "sign",
+          "ToolVersion": "1.0",
+          "Parameters": {}
         }
       ]
