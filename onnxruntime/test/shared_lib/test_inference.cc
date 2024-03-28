@@ -4021,6 +4021,10 @@ struct MockGQA : public OrtCustomOp {
       (*output_index)[1] = 2;
       return ret;
     };
+    OrtCustomOp::ReleaseMayInplace = [](int* input_index, int* output_index) {
+      free(input_index);
+      free(output_index);
+    };
   }
 };
 
@@ -4036,6 +4040,5 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(output_index[0], 1);
   ASSERT_EQ(output_index[1], 2);
   ASSERT_EQ(len, static_cast<size_t>(2));
-  free(input_index);
-  free(output_index);
+  mock_gqa.ReleaseMayInplace(input_index, output_index);
 }
