@@ -49,7 +49,7 @@ nav_order: 2
       Extract the nuget package.
   
       ```bash
-      tar tar xvf Microsoft.ML.OnnxRuntime.1.18.0-dev-20240322-0323-ca825cb6e6.nupkg
+      tar xvf Microsoft.ML.OnnxRuntime.1.18.0-dev-20240322-0323-ca825cb6e6.nupkg
       ```
   
       Copy the include and lib files into $ORT_HOME.
