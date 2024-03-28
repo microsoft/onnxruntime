@@ -9,6 +9,7 @@ import io
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
+from contextlib import contextmanager
 from hashlib import md5 as hash_fn
 from typing import Dict, List, Optional, Tuple
 
@@ -21,7 +22,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.training.utils import ORTModelInputOutputSchemaType, PTable, onnx_dtype_to_pytorch_dtype
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
+from . import ORTMODULE_ONNX_EXPORT_CONTEXT, _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._fallback import (
     ORTModuleDeviceException,
     ORTModuleONNXModelException,
@@ -278,6 +279,22 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return session_options, providers, provider_options
 
+    @contextmanager
+    def export_context(self):
+        """Context manager for model export."""
+        try:
+            ORTMODULE_ONNX_EXPORT_CONTEXT[0] = True
+            ORTMODULE_ONNX_EXPORT_CONTEXT[1] = self._runtime_options.memory_optimization_level
+            yield
+        finally:
+            ORTMODULE_ONNX_EXPORT_CONTEXT[0] = False
+
+            # If ORTMODULE_ONNX_EXPORT_CONTEXT[1] is changed during model export, use it to
+            # update the memory optimizer level.
+            if self._runtime_options.memory_optimization_level != ORTMODULE_ONNX_EXPORT_CONTEXT[1]:
+                self._runtime_options.memory_optimization_level = ORTMODULE_ONNX_EXPORT_CONTEXT[1]
+                self._runtime_options.layerwise_recompute_auto_enabled = True
+
     @_logger.TrackTime(_logger.ORTModuleInitPhase.EXPORT)
     @_logger.SuppressLogs(_logger.ORTModuleInitPhase.EXPORT, is_ort_filter=False)
     def _export_model(self, *inputs, **kwargs) -> bool:
@@ -308,7 +325,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
 
-        with no_increase_global_step():
+        with self.export_context(), no_increase_global_step():
             self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(
@@ -792,6 +809,11 @@ class GraphExecutionManager(GraphExecutionInterface):
                 self._runtime_options.memory_optimizer_config,
                 details=True,
             )
+            if self._runtime_options.layerwise_recompute_auto_enabled:
+                mem_notes.append(
+                    "Layer-wise memory optimization is enabled automatically upon detecting "
+                    "torch.utils.checkpoint usage during model execution."
+                )
             if mem_tbl is not None:
                 mem_row.append_annotation_table(mem_tbl)
                 notes.extend(mem_notes)

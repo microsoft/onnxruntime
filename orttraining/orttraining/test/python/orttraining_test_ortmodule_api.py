@@ -32,7 +32,7 @@ import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
 from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
-from onnxruntime.training.ortmodule.options import _SkipCheck
+from onnxruntime.training.ortmodule.options import _MemoryOptimizationLevel, _SkipCheck
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 DEFAULT_OPSET = 17
@@ -6599,3 +6599,79 @@ def test_overridden_softmax_export(softmax_compute_type):
     assert to_attr.name == "to"
     to_value = to_attr.i
     assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
+
+
+def test_auto_enable_layerwise_recompute_local_import(caplog):
+    from torch.utils.checkpoint import checkpoint
+
+    class SampleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layer1 = nn.Linear(10, 10)
+            self.layer2 = nn.Linear(10, 10)
+
+        def forward(self, x):
+            # Checkpointing the first layer
+            x = checkpoint(self.layer1, x)
+            x = nn.ReLU()(x)
+            # The second layer is not checkpointed
+            x = self.layer2(x)
+            return x
+
+    model = SampleModel().cuda()
+    input = torch.randn(1, 10).cuda()
+    model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
+    assert model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level == 0
+
+    # Forward pass
+    _ = model(input)
+
+    info_records = [
+        record.message
+        for record in caplog.records
+        if "Layer-wise memory optimization is enabled automatically" in record.message
+    ]
+
+    assert len(info_records) > 0
+
+    assert (
+        model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level
+        == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+    )
+
+
+def test_auto_enable_layerwise_recompute_global_import(caplog):
+    class SampleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layer1 = nn.Linear(10, 10)
+            self.layer2 = nn.Linear(10, 10)
+
+        def forward(self, x):
+            # Checkpointing the first layer
+            x = torch.utils.checkpoint.checkpoint(self.layer1, x)
+            x = nn.ReLU()(x)
+            # The second layer is not checkpointed
+            x = self.layer2(x)
+            return x
+
+    model = SampleModel().cuda()
+    input = torch.randn(1, 10).cuda()
+    model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
+    assert model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level == 0
+
+    # Forward pass
+    _ = model(input)
+
+    info_records = [
+        record.message
+        for record in caplog.records
+        if "Layer-wise memory optimization is enabled automatically" in record.message
+    ]
+
+    assert len(info_records) > 0
+
+    assert (
+        model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level
+        == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+    )
