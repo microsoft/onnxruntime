@@ -21,7 +21,6 @@
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
 
 namespace onnxruntime::nnapi::op_builder_helpers {
@@ -965,6 +964,18 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
   return Status::OK();
 }
 
+// NOTE: Skipping Reshape results in invalid output on some SnapDragon chipsets. Whilst the NNAPI spec says the input
+// to FullyConnnected can be > 2D, those chipsets don't handle this correctly.
+//
+// CanSkipReshape could potentially be re-enabled in the future if we no longer want to support those old chipsets.
+// However, the Reshape of newer chipsets may not run on CPU so there may not be a performance issue to try and avoid,
+// so CanSkipReshape could be redundant anyway.
+//
+// Known bad chipsets: Qualcomm Snapdragon 850, 855, 865, 870.
+//
+// See https://github.com/microsoft/onnxruntime/issues/19518
+
+/*
 // We can skip the Reshape if all the output edges satisfies both the following conditions
 // 1. The output of the reshape/flatten is not an output of the graph
 // 2. The output of the reshape/flatten is the input 0 of one or more GEMM/Matmul operators,
@@ -977,7 +988,7 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
 // between NNAPI CPU impl and Hardware Accelerator impl and will speed up the execution
 // If we are going to skip the reshape, we will still add correct shape and operand type for the output in
 // onnxruntime::nnapi::Model.
-bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
+static bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                     size_t input_rank, size_t output_rank) {
   // Since we know this is a Reshape NodeUnit, so we can safely assume there is only 1 output
   // and the node_unit has only one output node.
@@ -1039,33 +1050,37 @@ bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit
                         << node_unit.Name() << "] with output, " << output_name;
   return true;
 }
+*/
 
 Status AddReshapeOperator(ModelBuilder& model_builder,
                           const NodeUnit& node_unit,
                           const std::string& input,
                           const std::vector<int32_t>& shape) {
   auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   const auto input_shape = shaper[input];
   const auto output_shape = shaper[output];
-  const auto input_rank = input_shape.size();
-  const auto output_rank = output_shape.size();
 
   // For reshape, the output type should be the same as the input type except the shape is different
   auto output_operand_type = operand_types.at(input);
   output_operand_type.SetDimensions(output_shape);
 
+  /* See CanSkipReshape definition above for explanation of why this is disabled.
   // Since Reshape is not running using hardware in NNAPI for some CPU (e.g. Qualcomm SD for now)
   // We will try to see if we the skip the Reshape to prevent context switching between
   // NNAPI CPU impl and NNAPI hardware accelerator impl
   if (CanSkipReshape(model_builder, node_unit, input_rank, output_rank)) {
-    // Since reshape can be skipped, only register the dimension and type, with same index and new name
+    const auto& operand_indices(model_builder.GetOperandIndices());
+    const auto input_rank = input_shape.size();
+    const auto output_rank = output_shape.size();
+    // Since reshape can be skipped, only register the dimension and type, with same index and new name.
+    // This essentially redirects the downstream operator builders to the input of the skipped Reshape node,
+    // but with the output shape of the Reshape node.
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
-  } else {
-    // We still need to perform a reshape here
+  } else */
+  {
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
     ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output));
   }

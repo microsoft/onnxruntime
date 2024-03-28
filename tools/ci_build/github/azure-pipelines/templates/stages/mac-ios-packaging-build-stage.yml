@@ -16,10 +16,10 @@ stages:
     displayName: "Build iOS package for variant: ${{ parameters.packageVariant}}"
 
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-latest"
 
     variables:
-      xcodeVersion: "14.3"
+      xcodeVersion: "14.2"
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
 
       ${{ if eq(parameters.packageVariant, 'Mobile') }}:

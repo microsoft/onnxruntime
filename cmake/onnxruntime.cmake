@@ -281,7 +281,13 @@ endif()
 
 # Assemble the Apple static framework (iOS and macOS)
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
-  set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
+  # when building for mac catalyst, the CMAKE_OSX_SYSROOT is set to MacOSX as well, to avoid duplication,
+  # we specify as `-macabi` in the name of the output static apple framework directory.
+  if (PLATFORM_NAME STREQUAL "macabi")
+    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-macabi)
+  else()
+    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
+  endif()
 
   # Setup the various directories required. Remove any existing ones so we start with a clean directory.
   set(STATIC_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/static_libraries)
@@ -299,18 +305,34 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # to enforce symbol visibility. doing it this way limits the symbols included from the .a files to symbols used
   # by the ORT .o files.
 
-  # If it's an onnxruntime library, extract .o files to a separate directory for each library to avoid any clashes
-  # with filenames (e.g. utils.o)
+  # If it's an onnxruntime library, extract .o files from the original cmake build path to a separate directory for
+  # each library to avoid any clashes with filenames (e.g. utils.o)
   foreach(_LIB ${onnxruntime_INTERNAL_LIBRARIES} )
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
       set(CUR_STATIC_LIB_OBJ_DIR ${STATIC_LIB_TEMP_DIR}/$<TARGET_LINKER_FILE_BASE_NAME:${_LIB}>)
       add_custom_command(TARGET onnxruntime POST_BUILD
                          COMMAND ${CMAKE_COMMAND} -E make_directory ${CUR_STATIC_LIB_OBJ_DIR})
-
-      add_custom_command(TARGET onnxruntime POST_BUILD
-                         COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
-                         WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+      if (PLATFORM_NAME STREQUAL "macabi")
+        # There exists several duplicate names for source files under different subdirectories within
+        # each onnxruntime library. (e.g. onnxruntime/contrib_ops/cpu/element_wise_ops.o
+        # vs. onnxruntime/providers/core/cpu/math/element_wise_ops.o)
+        # In that case, using 'ar ARGS -x' to extract the .o files from .a lib would possibly cause duplicate naming files being overwritten
+        # and lead to missing undefined symbol error in the generated binary.
+        # So we use the below python script as a sanity check to do a recursive find of all .o files in ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR}
+        # and verifies that matches the content of the .a, and then copy from the source dir.
+        # TODO: The copying action here isn't really necessary. For future fix, consider using the script extracts from the ar with the rename to potentially
+        # make both maccatalyst and other builds do the same thing.
+        set(CUR_TARGET_CMAKE_SOURCE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
+        add_custom_command(TARGET onnxruntime POST_BUILD
+                          COMMAND ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > ${_LIB}.object_file_list.txt
+                          COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/maccatalyst_prepare_objects_for_prelink.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/${_LIB}.object_file_list.txt
+                          WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+      else()
+        add_custom_command(TARGET onnxruntime POST_BUILD
+        COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
+        WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+      endif()
     endif()
   endforeach()
 

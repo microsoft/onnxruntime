@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#include "core/framework/node_unit.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
 namespace onnxruntime {
@@ -12,13 +13,6 @@ class Graph;
 class Node;
 
 namespace QDQ {
-
-// Struct to represent a DQ->Op->Q node group
-struct NodeGroup {
-  std::vector<NodeIndex> dq_nodes;
-  std::vector<NodeIndex> q_nodes;
-  NodeIndex target_node;
-};
 
 class NodeGroupSelector {
  public:

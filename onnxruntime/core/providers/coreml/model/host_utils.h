@@ -67,6 +67,12 @@ int CoreMLVersion();
 // Get a temporary macOS/iOS temp file path
 std::string GetTemporaryFilePath();
 
+#if !defined(NDEBUG) && defined(__APPLE__)
+// Override location the model is written to so that a) it's easily found and b) it is not automatically deleted
+// when the EP exits. Use to debug the model that is generated.
+// See onnxruntime/core/providers/coreml/dump_mlprogram_model.py for a script to dump the ML Program.
+constexpr const char* kOverrideModelOutputDirectoryEnvVar = "ORT_COREML_EP_MODEL_DIR";
+#endif
 }  // namespace util
 }  // namespace coreml
 }  // namespace onnxruntime

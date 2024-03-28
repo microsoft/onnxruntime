@@ -38,9 +38,7 @@ class TrainingManager(GraphExecutionManager):
         fallback_manager: _FallbackManager,
         logger: Logger,
     ):
-        super().__init__(model, debug_options, fallback_manager, logger)
-
-        self._export_mode = torch.onnx.TrainingMode.TRAINING
+        super().__init__(model, debug_options, torch.onnx.TrainingMode.TRAINING, fallback_manager, logger)
         self._forward_class = self._create_autofunction_class()
 
     @staticmethod
@@ -171,10 +169,10 @@ class TrainingManager(GraphExecutionManager):
                 for idx, grad_output in enumerate(grad_outputs):
                     if idx in self._graph_info.output_grad_indices_non_differentiable:
                         assert grad_output is None, (
-                            "ORT found the {}-th module output '{}' is "
+                            f"ORT found the {idx}-th module output '{self._graph_info.user_output_names[idx]}' is "
                             "non-differentiable according to the onnx graph. "
                             "However, the gradient value is still provided by "
-                            "PyTorch's autograd engine.".format(idx, self._graph_info.user_output_names[idx])
+                            "PyTorch's autograd engine."
                         )
                         continue
 
