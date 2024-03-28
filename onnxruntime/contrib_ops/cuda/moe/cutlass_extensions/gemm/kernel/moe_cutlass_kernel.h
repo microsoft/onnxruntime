@@ -454,7 +454,7 @@ struct MoeFCGemm {
 #else
     // static_assert(false,
     //               "Invalid architecture being compiled. Only Volta+ supported in weight-only quantization kernels.");
-    {};
+    ;
 #endif
 #else
     CUTLASS_NOT_IMPLEMENTED();
