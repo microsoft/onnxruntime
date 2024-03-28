@@ -288,8 +288,15 @@ class GraphExecutionManager(GraphExecutionInterface):
             yield
         finally:
             ORTMODULE_ONNX_EXPORT_CONTEXT[0] = False
-            # Reset the memory optimizer level (which could be changed during model export).
-            self._runtime_options.memory_optimization_level = ORTMODULE_ONNX_EXPORT_CONTEXT[1]
+
+            # If ORTMODULE_ONNX_EXPORT_CONTEXT[1] is changed during model export, use it to
+            # update the memory optimizer level.
+            if self._runtime_options.memory_optimization_level != ORTMODULE_ONNX_EXPORT_CONTEXT[1]:
+                self._runtime_options.memory_optimization_level = ORTMODULE_ONNX_EXPORT_CONTEXT[1]
+                self._logger.warning(
+                    "Enable layerwise recompute automatically, as we find"
+                    " torch.utils.checkpoint usage in model execution."
+                )
 
     @_logger.TrackTime(_logger.ORTModuleInitPhase.EXPORT)
     @_logger.SuppressLogs(_logger.ORTModuleInitPhase.EXPORT, is_ort_filter=False)
