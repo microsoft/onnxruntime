@@ -39,14 +39,20 @@ inline void InitPerTensorQnnQuantParam(Qnn_QuantizeParams_t& quantize_param, flo
   quantize_param.scaleOffsetEncoding.offset = offset;
 }
 
+inline bool IsNotQuantized(const Qnn_QuantizeParams_t& quantize_param) {
+  return quantize_param.encodingDefinition == QNN_DEFINITION_UNDEFINED;
+}
+
 inline bool IsPerTensorQuantization(const Qnn_QuantizeParams_t& quantize_param) {
-  return quantize_param.encodingDefinition != QNN_DEFINITION_UNDEFINED &&
-         quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+  return quantize_param.encodingDefinition == QNN_DEFINITION_DEFINED &&
+         (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET ||
+          quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET);
 }
 
 inline bool IsPerAxisQuantization(const Qnn_QuantizeParams_t& quantize_param) {
-  return quantize_param.encodingDefinition != QNN_DEFINITION_UNDEFINED &&
-         quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET;
+  return quantize_param.encodingDefinition == QNN_DEFINITION_DEFINED &&
+         (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET ||
+          quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET);
 }
 
 template <typename IntType>
@@ -67,7 +73,7 @@ static Status InvertPerm(gsl::span<const IntType> perm, /*out*/ gsl::span<IntTyp
 
 template <typename IntType>
 static Status TryTransposeQnnQuantParams(Qnn_QuantizeParams_t& quantize_param, gsl::span<const IntType> perm) {
-  if (quantize_param.encodingDefinition == QNN_DEFINITION_UNDEFINED) {
+  if (!IsPerAxisQuantization(quantize_param)) {
     return Status::OK();
   }
 
@@ -86,6 +92,62 @@ static Status TryTransposeQnnQuantParams(Qnn_QuantizeParams_t& quantize_param, g
   return Status::OK();
 }
 
+template <typename IntType>
+static Status HandleUnsqueezeOnQnnQuantParams(Qnn_QuantizeParams_t& quantize_param,
+                                              gsl::span<const IntType> orig_shape,
+                                              gsl::span<const IntType> new_shape) {
+  if (!IsPerAxisQuantization(quantize_param)) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_NOT(orig_shape.size() < new_shape.size(), "Expected unsqueezed shape to have a greater rank.");
+
+  // Get the axis value.
+  int32_t axis = 0;
+  if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+    axis = quantize_param.axisScaleOffsetEncoding.axis;
+  } else if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
+    axis = quantize_param.bwAxisScaleOffsetEncoding.axis;
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Unhandled quantization encoding: ", quantize_param.quantizationEncoding);
+  }
+
+  // Find where the axis was moved to after unsqueeze.
+  size_t num_found = 0;
+  size_t j = 0;
+  for (size_t i = 0; i < orig_shape.size() && j < new_shape.size(); i++) {
+    while (orig_shape[i] != new_shape[j] && j < new_shape.size()) {
+      assert(new_shape[j] == 1);
+      j++;
+    }
+    assert(orig_shape[i] == new_shape[j]);
+    if (num_found == static_cast<size_t>(axis)) {
+      break;
+    }
+    num_found += 1;
+    j++;
+  }
+
+  if (j == static_cast<size_t>(axis)) {
+    return Status::OK();
+  }
+
+  // TODO: Remove
+  assert(false);  // We shouldn't run into this case yet.
+
+  // Set new axis.
+  if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+    quantize_param.axisScaleOffsetEncoding.axis = static_cast<int32_t>(j);
+  } else if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
+    quantize_param.bwAxisScaleOffsetEncoding.axis = static_cast<int32_t>(j);
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Unhandled quantization encoding: ", quantize_param.quantizationEncoding);
+  }
+
+  return Status::OK();
+}
 
 // Utility function that checks if an array of strings contains a specific string.
 // Used to validate ONNX operator attributes.

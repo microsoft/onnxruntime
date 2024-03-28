@@ -112,6 +112,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (is_initializer_input) {
       const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       if (1 == input_trans_flag.at(input_i)) {
+        ORT_RETURN_IF_ERROR(utils::TryTransposeQnnQuantParams<size_t>(quantize_param, std::vector<size_t>({1, 0})));
         ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
                                                   input_shape,
                                                   *input_tensor,
@@ -123,6 +124,8 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     std::string input_tensor_name = input_name;
     if (1 == input_trans_flag.at(input_i) && !is_initializer_input) {
+      ORT_RETURN_IF(utils::IsPerAxisQuantization(quantize_param),
+                    "Non-constant Gemm inputs only support per-tensor quantization");
       // Add Transpose node
       std::vector<uint32_t> old_input_shape(input_shape);
       input_shape[0] = old_input_shape[1];
