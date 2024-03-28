@@ -11,7 +11,7 @@
 #include "core/providers/providers.h"
 #include "core/providers/dml/dml_provider_factory.h"
 
-#include <dxcore.h>
+#include <directx/dxcore.h>
 #include <vector>
 
 namespace onnxruntime {
