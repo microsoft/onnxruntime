@@ -8,6 +8,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
   const Float16Array: any;
 }
+export type Float16ArrayType = InstanceType<typeof Float16Array>;
 
 // This file includes common definitions. They do NOT have dependency on the WebAssembly instance.
 
