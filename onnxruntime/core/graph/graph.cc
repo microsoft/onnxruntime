@@ -2352,6 +2352,34 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   }
 
   const auto& onnx_inferred_types(context.InferredOutputTypes());
+  std::vector<int> output_overwritten_types;
+
+  if (!node_name.empty() && node_name[node_name.length() - 1] == ']') {
+    // Fallback mechanism. We use the node name to change the node type.
+    // The converter knows the type at inference type and the converting
+    // function needs to adapt the node name.
+    // example: attention_backward[1|1|1|1]
+    // The node produces 4 outputs and each of them is a tensor of float32.
+    int begin = -1;
+    int end = -1;
+    for(size_t i = 0; i < node_name.length(); ++i) {
+      if (node_name[i] == '[') {
+        begin = i+1;
+      } else if (node_name[i] == ']') {
+        end = i;
+      }
+    }    
+    if (begin >= 0 && end > begin) {
+      int pos;
+      while(begin < end) {
+        std::string subStr = node_name.substr(begin);
+        auto value = std::stoi(subStr);
+        output_overwritten_types.push_back(value);
+        for(pos = begin; node_name[pos] != ',' && node_name[pos] != ']'; ++pos);
+        begin = pos + 1;
+      }
+    }
+  }
 
   // Infer and verify node output arg type information.
   int i = -1;
@@ -2386,6 +2414,10 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       inferred_type = DataTypeUtils::ToType(onnx_inferred_type);
     } else if (existing_type != nullptr) {
       inferred_type = existing_type;
+    } else if (i < static_cast<int>(output_overwritten_types.size())) {
+      auto type_name = DataTypeUtils::ToDataTypeString(output_overwritten_types[i]);
+      auto data_type = DataTypeUtils::ToType(type_name);
+      inferred_type = data_type;
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
       std::stringstream ss;
