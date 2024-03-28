@@ -293,10 +293,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             # update the memory optimizer level.
             if self._runtime_options.memory_optimization_level != ORTMODULE_ONNX_EXPORT_CONTEXT[1]:
                 self._runtime_options.memory_optimization_level = ORTMODULE_ONNX_EXPORT_CONTEXT[1]
-                self._logger.warning(
-                    "Enable layerwise recompute automatically, as we find"
-                    " torch.utils.checkpoint usage in model execution."
-                )
+                self._runtime_options.layerwise_recompute_auto_enabled = True
 
     @_logger.TrackTime(_logger.ORTModuleInitPhase.EXPORT)
     @_logger.SuppressLogs(_logger.ORTModuleInitPhase.EXPORT, is_ort_filter=False)
@@ -812,6 +809,11 @@ class GraphExecutionManager(GraphExecutionInterface):
                 self._runtime_options.memory_optimizer_config,
                 details=True,
             )
+            if self._runtime_options.layerwise_recompute_auto_enabled:
+                mem_notes.append(
+                    "Layer-wise memory optimization is enabled automatically upon detecting "
+                    "torch.utils.checkpoint usage during model execution."
+                )
             if mem_tbl is not None:
                 mem_row.append_annotation_table(mem_tbl)
                 notes.extend(mem_notes)

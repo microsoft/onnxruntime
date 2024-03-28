@@ -288,6 +288,9 @@ class _RuntimeOptions:
         # detecting recompute subgraphs.
         self.recompute_probe_config = "1:0"
 
+        # Set to be True only when layerwise recompute is automatically enabled by ORTModule.
+        self.layerwise_recompute_auto_enabled = False
+
         # Configuration for dev tools.
         self.print_input_density = False
         self.print_memory_stat_by_step = False
