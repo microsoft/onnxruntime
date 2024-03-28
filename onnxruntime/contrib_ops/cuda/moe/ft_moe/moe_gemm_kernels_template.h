@@ -341,8 +341,7 @@ void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weig
       break;
     case CutlassTileConfig::ChooseWithHeuristic:
       ORT_THROW(
-          "[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] gemm config should have already been set by "
-          "heuristic.");
+          "[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] gemm config should have already been set by heuristic.");
       break;
     default:
       ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] Unsupported config for float MoE gemm.");

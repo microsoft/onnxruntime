@@ -24,7 +24,7 @@ using namespace onnxruntime;
 
 namespace ort_fastertransformer {
 
-template <typename GemmKernel, bool enable_cutlass_3x = false>
+template <typename GemmKernel>
 inline int compute_occupancy_for_kernel() {
   int smem_size = static_cast<int>(sizeof(typename GemmKernel::SharedStorage));
 
@@ -34,11 +34,7 @@ inline int compute_occupancy_for_kernel() {
     int max_smem_per_block = 0;
     CUDA_CALL_THROW(cudaGetDevice(&device));
     CUDA_CALL_THROW(cudaDeviceGetAttribute(&max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
-    if constexpr (enable_cutlass_3x) {
-      CUDA_CALL_THROW(cudaFuncGetAttributes(&attr, cutlass::device_kernel<GemmKernel>));
-    } else {
-      CUDA_CALL_THROW(cudaFuncGetAttributes(&attr, cutlass::Kernel<GemmKernel>));
-    }
+    CUDA_CALL_THROW(cudaFuncGetAttributes(&attr, cutlass::device_kernel<GemmKernel>));
     if (smem_size + attr.sharedSizeBytes >= static_cast<size_t>(max_smem_per_block)) {
       // This should mean that
       // cudaFuncSetAttribute(cutlass::Kernel<GemmKernel>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size)
@@ -49,14 +45,9 @@ inline int compute_occupancy_for_kernel() {
   }
 
   int max_active_blocks = -1;
-  if constexpr (enable_cutlass_3x) {
-    CUDA_CALL_THROW(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-        &max_active_blocks, cutlass::device_kernel<GemmKernel>,
-        128 * (GemmKernel::NumLoadWarpGroups + GemmKernel::NumMmaWarpGroups), smem_size));
-  } else {
-    CUDA_CALL_THROW(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&max_active_blocks, cutlass::Kernel<GemmKernel>,
-                                                                  GemmKernel::kThreadCount, smem_size));
-  }
+  CUDA_CALL_THROW(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+      &max_active_blocks, cutlass::device_kernel<GemmKernel>,
+      128 * (GemmKernel::NumLoadWarpGroups + GemmKernel::NumMmaWarpGroups), smem_size));
 
   return max_active_blocks;
 }
