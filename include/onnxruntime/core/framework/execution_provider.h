@@ -53,7 +53,7 @@ struct NodeComputeInfo {
   DestroyFunctionStateFunc release_state_func;
 };
 
-using RunOptions = OrtRunOptions;
+using RunOptions = ::OrtRunOptions;
 
 enum class DataLayout {
   NCHW,

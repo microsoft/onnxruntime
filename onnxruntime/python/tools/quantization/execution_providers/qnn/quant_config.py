@@ -39,7 +39,7 @@ def warn_unable_to_override(
 
 
 def get_qnn_qdq_config(
-    model_input: Path,
+    model_input: str | Path | onnx.ModelProto,
     calibration_data_reader: CalibrationDataReader,
     calibrate_method=CalibrationMethod.MinMax,
     activation_type=QuantType.QUInt8,
@@ -56,7 +56,11 @@ def get_qnn_qdq_config(
     if weight_symmetric is None:
         weight_symmetric = weight_type in {QuantType.QInt8, QuantType.QInt16}
 
-    model = onnx.load_model(model_input, load_external_data=False)
+    model = (
+        model_input
+        if isinstance(model_input, onnx.ModelProto)
+        else onnx.load_model(model_input, load_external_data=False)
+    )
 
     op_types = set()
     model_has_external_data = False
