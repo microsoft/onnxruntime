@@ -98,12 +98,27 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
   return true;
 }
 
+/*
+ * Get number of profile setting.
+ *
+ * profile_min_shapes/profile_max_shapes/profile_opt_shapes may contain multiple profile settings.
+ * Note: TRT EP currently only supports one profile setting.
+ *
+ * {
+ *   tensor_a: [[dim_0_value_0, dim_1_value_1, dim_2_value_2]],
+ *   tensor_b: [[dim_0_value_3, dim_1_value_4, dim_2_value_5]]
+ * }
+ *
+ */
 int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
-  for (it = profile_shapes.begin(); it != profile_shapes.end(); it++) {
-    return static_cast<int>(it->second.size());
+  int num_profile = 0;
+  for (auto it = profile_shapes.begin(); it != profile_shapes.end(); it++) {
+    num_profile = static_cast<int>(it->second.size());
+    if (num_profile > 0) {
+      break;
+    }
   }
-  return 0;
+  return num_profile;
 }
 
 /*
