@@ -115,7 +115,9 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
   options.emplace(ge::ir_option::INPUT_SHAPE, input_shape.c_str());
   CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphBuildModel(graph, options, model));
 
-  CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
+  if (info.dump_om_model) {
+    CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
+  }
 
   return Status::OK();
 }
