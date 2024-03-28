@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
-import datasets
 import numpy as np
 import torch
 from float16 import float_to_float16_max_diff
@@ -316,13 +315,24 @@ class WhisperHelper:
 
     @staticmethod
     def pt_transcription_for_verify_onnx(
-        ds: Union[datasets.DatasetDict, datasets.Dataset, datasets.IterableDatasetDict, datasets.IterableDataset],
         processor: WhisperProcessor,
         pt_model: torch.nn.Module,
         device: torch.device,
         batch_size: int = 1,
         prompt_mode: bool = False,
     ):
+        # Try to import `datasets` pip package
+        try:
+            from datasets import load_dataset
+        except Exception as e:
+            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)
+            install_cmd = "pip install datasets"
+            logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
+            os.system(install_cmd)
+
+        from datasets import load_dataset
+
+        ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features_ = []
         if batch_size == 1:
             input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
@@ -332,7 +342,7 @@ class WhisperHelper:
                 processor([ds[3]["audio"]["array"]], return_tensors="pt").input_features,
             ]
             assert len(input_features_) == batch_size
-            input_features = torch.cat((input_features_[0], input_features_[1])).to(device)
+            input_features = torch.cat((input_features_[0], input_features_[1]))
 
         max_length, min_length, num_beams, num_return_sequences = 30, 0, 1, 1
         length_penalty, repetition_penalty = 1.0, 1.0
@@ -422,20 +432,7 @@ class WhisperHelper:
         processor = WhisperProcessor.from_pretrained(model_name_or_path)
         config = WhisperConfig.from_pretrained(model_name_or_path)
 
-        # Try to import `datasets` pip package
-        try:
-            from datasets import load_dataset
-        except Exception as e:
-            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)
-            install_cmd = "pip install datasets"
-            logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
-            os.system(install_cmd)
-
-        from datasets import load_dataset
-
-        ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         inputs, pt_transcription, pt_outputs, decoder_prompt_ids = WhisperHelper.pt_transcription_for_verify_onnx(
-            ds,
             processor,
             pt_model,
             device,
@@ -517,7 +514,7 @@ class WhisperHelper:
                 else:
                     diff = pt_outputs[i] - ort_outputs[i]
                 max_diff_i = max(diff.min(), diff.max(), key=abs)
-            max_diff = max(max_diff, max_diff_i)
+                max_diff = max(max_diff, max_diff_i)
 
         if max_diff != 0:
             logger.warning(f"PyTorch outputs: {pt_transcription}")
