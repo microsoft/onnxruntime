@@ -36,6 +36,24 @@ using TuningContextT = onnxruntime::rocm::tunable::RocmTuningContext;
 
 namespace onnxruntime {
 
+struct TuningInfo {
+  static void EnableCollect(bool b) {
+    collect_enabled_ = b;
+  }
+
+  static std::vector<TuningResults> GetCollectedTuningResults() {
+    return collected_tuning_results_;
+  }
+
+  static void SetMaxTuningDurationMs(int milliseconds) {
+    max_tuning_duration_ms_ = milliseconds;
+  }
+
+  static bool collect_enabled_;
+  static std::vector<TuningResults> collected_tuning_results_;
+  static std::optional<int> max_tuning_duration_ms_;
+};
+
 /// Wrapping around Op and TunableOp
 class IKernelExplorer {
  public:
@@ -59,7 +77,11 @@ class IKernelExplorer {
     return timer.Duration() / repeats_;
   }
 
-  virtual ~IKernelExplorer() = default;
+  virtual ~IKernelExplorer() {
+    if (TuningInfo::collect_enabled_) {
+      TuningInfo::collected_tuning_results_.emplace_back(this->ep_->GetTuningContext()->GetTuningResults());
+    }
+  }
 
  protected:
   ExecutionProvider* GetEp() {
@@ -73,6 +95,15 @@ class IKernelExplorer {
       auto tuning_ctx = this->ep_->GetTuningContext();
       if (nullptr != tuning_ctx) {
         tuning_ctx->RegisterAllocatorsView(&this->allocators_);
+        for (const auto& tr : TuningInfo::collected_tuning_results_) {
+          auto status = tuning_ctx->LoadTuningResults(tr);
+          if (!status.IsOK()) {
+            LOGS_DEFAULT(ERROR) << status;
+          }
+        }
+        if (TuningInfo::max_tuning_duration_ms_.has_value()) {
+          tuning_ctx->SetMaxTuningDurationMs(*TuningInfo::max_tuning_duration_ms_);
+        }
       }
       stream_ = std::make_unique<onnxruntime::Stream>(nullptr, this->ep_->GetOrtDeviceByMemType(OrtMemTypeDefault));
     });
