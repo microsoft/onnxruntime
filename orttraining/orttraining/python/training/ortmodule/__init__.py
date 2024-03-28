@@ -15,6 +15,7 @@ from onnxruntime.capi import build_and_package_info as ort_info
 from onnxruntime.capi._pybind_state import is_ortmodule_available
 
 from ._fallback import ORTModuleFallbackException, ORTModuleInitException, _FallbackPolicy, wrap_exception
+from .options import _MemoryOptimizationLevel
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
 if not is_ortmodule_available():
@@ -55,6 +56,11 @@ ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, "cuda_version") else None
 ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, "rocm_version") else None
 
+# The first value is indicating whether code is in ONNX export context.
+# The second value is the memory optimization level to be used after ONNX export.
+ORTMODULE_ONNX_EXPORT_CONTEXT = [False, _MemoryOptimizationLevel.USER_SPECIFIED]
+
+
 # Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
     import torch
@@ -70,6 +76,30 @@ try:
                 f" but version {torch.__version__} was found instead."
             ),
         )
+
+    # Best effort override the checkpoint function during ONNX model export.
+    from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
+
+    def _checkpoint(function, *args, **kwargs):
+        if ORTMODULE_ONNX_EXPORT_CONTEXT[0] is True:
+            # Enable layer-wise memory optimization automatically if we found the checkpoint function is used.
+            # Note 1: Using checkpoint function is a strong indicator that the model is too large to fit in GPU
+            # memory.
+            # But still there is a chance user models use checkpoint function for non-layerwise gradient
+            # checkpointing, which we don't think is a common use case.
+            # Note 2: On the other hand, if we don't override the checkpoint function here, mostly ONNX export
+            # will be failed.
+            ORTMODULE_ONNX_EXPORT_CONTEXT[1] = _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+            print(
+                "Layer-wise memory optimization is enabled automatically, "
+                "since we found torch.utils.checkpoint.checkpoint is used."
+            )
+            return function(*args, **kwargs)
+        return original_torch_checkpoint(function, *args, **kwargs)
+
+    torch.utils.checkpoint.checkpoint = _checkpoint
+
+
 except ORTModuleFallbackException as e:
     # Initialization fallback is handled at ORTModule.__init__
     _FALLBACK_INIT_EXCEPTION = e
