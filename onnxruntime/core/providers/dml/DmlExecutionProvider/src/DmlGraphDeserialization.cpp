@@ -464,20 +464,6 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
     std::vector<DmlOutputSerializedGraphEdge> outputEdges;
     std::vector<DmlIntermediateSerializedGraphEdge> intermediateEdges;
 
-    // Iterate the output edges first because nodes are not topologically sorted.
-    for (uint32_t nodeIndex = 0; nodeIndex < flatbufferGraphDesc->nodes()->size(); nodeIndex++)
-    {
-        const dml::ir::DmlGraphNode* flatbufferNode = flatbufferGraphDesc->nodes()->Get(nodeIndex);
-
-        PopulateEdges<DmlOutputSerializedGraphEdge>(
-            nodeIndex,
-            flatbufferNode->outputNames(),
-            graphOutputEdgeToIndexMap,
-            outputEdges,
-            intermediateEdges,
-            edgeToOutgoingNodeIndexMap);
-    }
-
     for (uint32_t nodeIndex = 0; nodeIndex < flatbufferGraphDesc->nodes()->size(); nodeIndex++)
     {
         const dml::ir::DmlGraphNode* flatbufferNode = flatbufferGraphDesc->nodes()->Get(nodeIndex);
@@ -487,6 +473,14 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
             flatbufferNode->inputNames(),
             graphInputEdgeToIndexMap,
             inputEdges,
+            intermediateEdges,
+            edgeToOutgoingNodeIndexMap);
+
+        PopulateEdges<DmlOutputSerializedGraphEdge>(
+            nodeIndex,
+            flatbufferNode->outputNames(),
+            graphOutputEdgeToIndexMap,
+            outputEdges,
             intermediateEdges,
             edgeToOutgoingNodeIndexMap);
         
@@ -510,7 +504,7 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
 
                 ConstantName constantNode = {flatbufferConstantNode->data_as_ConstantName()->name()->c_str()};
                 node.Desc = constantNode;
-                // output of this node will part of constantInputs list
+                // Output of this node will be part of constantInputs list.
                 for (uint32_t outputIndex = 0; outputIndex < flatbufferNode->outputNames()->size(); outputIndex++)
                 {
                     constantInputs.insert(flatbufferNode->outputNames()->Get(outputIndex)->c_str());
