@@ -63,6 +63,12 @@ class ORTModule(torch.nn.Module):
             logger=self._logger,
         )
 
+        # Check if module is dispatched to multiple devices
+        if _utils.is_model_dispatched(module):
+            raise ValueError(
+                "Model is dispatched to multiple devices, use prepare_model_for_parallel_pipeline to wrap your model."
+            )
+
         try:
             # Read ORTModule module initialization status
             if ortmodule._FALLBACK_INIT_EXCEPTION:
