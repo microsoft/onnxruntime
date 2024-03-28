@@ -257,9 +257,14 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                                      is_forward_nodes,
                                                      logger));
 
-  InlinedHashSet<const Node*> layer_boundary_ln_nodes;
+  InlinedVector<const Node*> layer_boundary_ln_nodes;
   FindLayerBoundaryLayerNormNodes(graph_viewer, logger, node_index_to_its_order_in_topological_sort_map,
                                   yield_op_order_in_topological_sort, layer_boundary_ln_nodes);
+
+  if (probe_config.enable_transformer_layer_as_boundary && layer_boundary_ln_nodes.size() == 0) {
+    LOGS(logger, WARNING) << "No transformer layer boundary nodes found, this might cause memory optimization "
+                             "not working as expected. Please check the model and the configuration.";
+  }
 
   // The first pass - find the candidate subgraphs.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {

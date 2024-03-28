@@ -164,7 +164,7 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
                                                              node_index_to_its_order_in_topological_sort_map,
                                                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                                              candidate_output_args_map,
-                                                         const InlinedHashSet<const Node*>& layer_boundary_ln_nodes,
+                                                         const InlinedVector<const Node*>& layer_boundary_ln_nodes,
                                                          const logging::Logger& logger,
                                                          bool compromise_stashed_activation,
                                                          bool& can_compromise_stashed_activation);
