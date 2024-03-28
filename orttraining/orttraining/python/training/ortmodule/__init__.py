@@ -80,7 +80,15 @@ try:
     # Try best effort to override the checkpoint function during ONNX model export.
     from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
 
-    def _checkpoint(function, *args, **kwargs):
+    def _checkpoint(
+        function,
+        *args,
+        use_reentrant=None,
+        context_fn=torch.utils.checkpoint.noop_context_fn,
+        determinism_check=torch.utils.checkpoint._DEFAULT_DETERMINISM_MODE,
+        debug=False,
+        **kwargs,
+    ):
         if ORTMODULE_ONNX_EXPORT_CONTEXT[0] is True:
             # Automatically activate layer-specific memory optimization if the checkpoint function
             # is detected.
@@ -96,7 +104,15 @@ try:
                 "torch.utils.checkpoint usage during model execution."
             )
             return function(*args, **kwargs)
-        return original_torch_checkpoint(function, *args, **kwargs)
+        return original_torch_checkpoint(
+            function,
+            *args,
+            use_reentrant=use_reentrant,
+            context_fn=context_fn,
+            determinism_check=determinism_check,
+            debug=debug,
+            **kwargs,
+        )
 
     torch.utils.checkpoint.checkpoint = _checkpoint
 
