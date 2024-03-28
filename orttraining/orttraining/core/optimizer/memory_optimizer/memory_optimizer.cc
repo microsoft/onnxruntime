@@ -146,9 +146,6 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
 Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger)
     const {
-  // Reset the backward pass attribute for all nodes.
-  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ResetNodeBackwardPassAttribute(graph, modified));
-
   LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_ << ", probe level: "
                         << static_cast<int>(recompute_probe_config_.probe_level)
                         << ", enable_transformer_layer_as_boundary:"
@@ -255,6 +252,122 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   }
 
   PrintSummary(memory_opt_planner, node_to_apply_context_map, logger);
+
+  if (modified) {
+    ORT_ENFORCE(graph.Resolve().IsOK());
+  }
+
+  auto is_recompute_node = [](const Node* n) {
+    std::string_view name1 = n->Name();
+    constexpr std::string_view recompute_suffix = "_recompute";
+    if (name1.size() < recompute_suffix.size()) {
+      return false;
+    }
+
+    return name1.compare(name1.size() - recompute_suffix.size(), recompute_suffix.size(), recompute_suffix) == 0;
+  };
+
+  // Loop through all the nodes in the graph and find the recompute nodes, categorize them into two groups:
+  // group 1: recompute nodes that are used only by other non-recompute nodes.
+  // group 2: recompute nodes that are used by some(>=0) non-recompute nodes and some(>=1) recompute nodes
+  InlinedHashMap<const Node*, InlinedVector<const Node*>> group1_recompute_nodes;
+  InlinedHashMap<const Node*, std::pair<InlinedVector<const Node*>, InlinedVector<const Node*>>> group2_recompute_nodes;
+  InlinedHashMap<const Node*, int64_t> recompute_node_to_its_critical_path_node_order_map;
+  for (const auto& n1 : graph.Nodes()) {
+    if (is_recompute_node(&n1)) {
+      InlinedVector<const Node*> non_recompute_consumers;
+      InlinedVector<const Node*> recompute_consumers;
+      for (auto o_iter = n1.OutputEdgesBegin(); o_iter != n1.OutputEdgesEnd(); ++o_iter) {
+        const auto& output = *o_iter;
+        const Node* consumer = graph.GetNode(output.GetNode().Index());
+        if (is_recompute_node(consumer)) {
+          recompute_consumers.push_back(consumer);
+        } else {
+          non_recompute_consumers.push_back(consumer);
+        }
+      }
+
+      if (recompute_consumers.empty()) {
+        group1_recompute_nodes.insert({&n1, non_recompute_consumers});
+      } else {
+        group2_recompute_nodes.insert({&n1, {non_recompute_consumers, recompute_consumers}});
+      }
+    }
+  }
+
+  // Loop group1_recompute_nodes, get the minimal value of execution order from node_index_to_its_order_in_topological_sort_map for its output nodes.
+  for (const auto& [non_recompute_node, non_recompute_consumers] : group1_recompute_nodes) {
+    int64_t max_impact = 0;
+    for (const auto& consumer : non_recompute_consumers) {
+      auto it = node_index_to_its_order_in_topological_sort_map.find(consumer->Index());
+      if (it != node_index_to_its_order_in_topological_sort_map.end()) {
+        // The smaller the order, then the bigger impact it has.
+        max_impact = std::max(max_impact, std::numeric_limits<int64_t>::max() - static_cast<int64_t>(it->second));
+      }
+    }
+
+    std::cout << ">>>Recompute node: " << non_recompute_node->Name() << " max_impact: " << max_impact << std::endl;
+
+    recompute_node_to_its_critical_path_node_order_map.insert({non_recompute_node, max_impact});
+  }
+
+  // Then at this point, all "boudary" recompute nodes are marked for its critical path node order.
+  // Next, loop group2_recompute_nodes, 1). for each recompute node's non-recompute consumers, find the minimal value of
+  // execution order from node_index_to_its_order_in_topological_sort_map; 2). for each recompute node's recompute consumers,
+  // find the minimal value of execution order from recompute_node_to_its_critical_path_node_order_map.
+  // Loop the node in reversed topological order.
+  GraphViewer updated_graph_viewer(graph);
+  const auto& updated_node_ids = updated_graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  for (int i = static_cast<int>(updated_node_ids.size()) - 1; i >= 0; --i) {
+    Node* p_node = graph.GetNode(updated_node_ids[i]);
+
+    if (p_node == nullptr) {
+      continue;
+    }
+
+    if (group2_recompute_nodes.find(p_node) != group2_recompute_nodes.end()) {
+      const auto& [non_recompute_consumers, recompute_consumers] = group2_recompute_nodes.at(p_node);
+      int64_t max_impact = 0;
+      for (const auto& consumer : non_recompute_consumers) {
+        auto it = node_index_to_its_order_in_topological_sort_map.find(consumer->Index());
+        ORT_ENFORCE(it != node_index_to_its_order_in_topological_sort_map.end(), "Cannot find the order for non-recompute consumer node: ", consumer->Name());
+        // The smaller the order, then the bigger impact it has.
+        max_impact = std::max(max_impact, std::numeric_limits<int64_t>::max() - static_cast<int64_t>(it->second));
+      }
+
+      for (const auto& consumer : recompute_consumers) {
+        auto it = recompute_node_to_its_critical_path_node_order_map.find(consumer);
+        ORT_ENFORCE(it != recompute_node_to_its_critical_path_node_order_map.end(), "Cannot find the critical path order for recompute node: ", consumer->Name());
+        max_impact = std::max(max_impact, it->second);
+      }
+
+      std::cout << ">>>!!!Recompute node: " << p_node->Name() << " max_impact: " << max_impact << std::endl;
+
+      recompute_node_to_its_critical_path_node_order_map.insert({p_node, max_impact});
+    }
+  }
+
+  // Finally, loop through recompute_node_to_its_critical_path_node_order_map, add attribute "__critical_execution_order"
+  // for each recompute node, which will be used for priority based graph ordering.
+  for (const auto& [recompute_node, order] : recompute_node_to_its_critical_path_node_order_map) {
+    Node* mutable_node = graph.GetNode(recompute_node->Index());
+    mutable_node->AddAttribute(kRecomputeNodeCriticalPathImpact, static_cast<int64_t>(order));
+    modified = true;
+  }
+
+  // sort the recompute nodes based on the critical path order and print to stdout
+  //     std::vector<std::pair<std::string, ptrdiff_t>>
+  //         recompute_nodes_sorted_by_critical_path_order;
+  // for (const auto& [recompute_node, order] : recompute_node_to_its_critical_path_node_order_map) {
+  //   recompute_nodes_sorted_by_critical_path_order.push_back({recompute_node->Name(), order});
+  // }
+  // std::sort(recompute_nodes_sorted_by_critical_path_order.begin(), recompute_nodes_sorted_by_critical_path_order.end(),
+  //           [](const std::pair<std::string, ptrdiff_t>& a, const std::pair<std::string, ptrdiff_t>& b) {
+  //             return a.second < b.second;
+  //           });
+  // for (const auto& [recompute_node_name, order] : recompute_nodes_sorted_by_critical_path_order) {
+  //   std::cout << ">>>" << order << "Recompute node: " << recompute_node_name << std::endl;
+  // }
 
   return Status::OK();
 }

@@ -145,6 +145,20 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             },
         },
         {
+            utils::GetFullQualifiedOpName("Cos", kOnnxDomain),
+            {
+                {7, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("CumSum", kOnnxDomain),
+            {
+                // The axis input is trivial
+                {11, {1}},
+                {14, {1}},
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("Dropout", kOnnxDomain),
             {
                 // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
@@ -163,27 +177,6 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             },
         },
         {
-            utils::GetFullQualifiedOpName("Expand", kOnnxDomain),
-            {
-                {8, {1}},  // Ignore the shape.
-                {13, {1}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Cos", kOnnxDomain),
-            {
-                {7, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("CumSum", kOnnxDomain),
-            {
-                // The axis input is trivial
-                {11, {1}},
-                {14, {1}},
-            },
-        },
-        {
             utils::GetFullQualifiedOpName("Einsum", kOnnxDomain),
             {
                 {12, {}},
@@ -197,6 +190,13 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
                 {11, {}},
                 {13, {}},
                 {19, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("Expand", kOnnxDomain),
+            {
+                {8, {1}},  // Ignore the shape.
+                {13, {1}},
             },
         },
         {
@@ -242,6 +242,14 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
                 {7, {}},
                 {13, {}},
                 {14, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("Neg", kOnnxDomain),
+            {
+                {1, {}},
+                {6, {}},
+                {13, {}},
             },
         },
         {
@@ -733,10 +741,11 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
             layer_boundary_ln_nodes.end()) {
           int dest_in_index = optimizer_utils::IndexOfNodeInput(*consumer, *node.OutputDefs()[output_index]);
           if (dest_in_index == 0) {
-            MO_LOG_DEBUG_INFO(logger, "Node " + node.Name() + "(" + node.OpType() +
-                                          ") is a Attention+MLP layer boundary node, " +
-                                          "its stashed activation outputs are used by LayerNormalization's inputs, " +
-                                          "we don't need to recompute it.");
+            std::cout << "Node " + node.Name() + "(" + node.OpType() +
+                             ") is a Attention+MLP layer boundary node, " +
+                             "its stashed activation outputs are used by LayerNormalization's inputs, " +
+                             "we don't need to recompute it."
+                      << std::endl;
             return nullptr;
           }
         }
