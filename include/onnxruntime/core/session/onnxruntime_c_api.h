@@ -319,6 +319,12 @@ typedef struct OrtAllocator {
   void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
   const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  /**
+   * @brief Optional allocation function to use for memory allocations made during session initialization.
+   * Use this function if you want to separate allocations made by ORT during Run() calls from
+   * those made during session initialization. This allows for separate memory management strategies for these allocations.
+   */
+  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
