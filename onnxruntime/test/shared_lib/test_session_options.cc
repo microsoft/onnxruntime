@@ -4,7 +4,7 @@
 #include "core/common/common.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/optimizer/graph_transformer_level.h"
+#include "core/session/abi_session_options_impl.h"
 #include "gmock/gmock.h"
 
 using namespace onnxruntime;
@@ -32,6 +32,35 @@ TEST(CApiTest, session_options_oversized_affinity_string) {
   } catch (const std::exception& ex) {
     ASSERT_THAT(ex.what(), testing::HasSubstr("Config value is longer than maximum length: "));
   }
+}
+
+#define TRANSFORMER_NAMES                                         \
+  {                                                               \
+    "ConstantFolding", "FuseConvBN", "FuseMatMulAdd",             \
+        "FuseMatMulAddFusion", "FuseTransposes", "NopTransformer" \
+  }
+
+TEST(CApiTest, session_options_disable_transformers) {
+  Ort::SessionOptions options;
+
+  constexpr const char* disable_transformers[] = TRANSFORMER_NAMES;
+  options.DisableRulesAndOptimizers(std::begin(disable_transformers), std::end(disable_transformers));
+
+  const std::string disable_transformers_str[] = TRANSFORMER_NAMES;
+  options.DisableRulesAndOptimizers(std::begin(disable_transformers_str), std::end(disable_transformers_str));
+
+  constexpr std::string_view disable_transformers_sv[] = TRANSFORMER_NAMES;
+  options.DisableRulesAndOptimizers(std::begin(disable_transformers_sv), std::end(disable_transformers_sv));
+
+  const std::vector<std::string> disable_transformers_vec = {TRANSFORMER_NAMES};
+  options.DisableRulesAndOptimizers(std::begin(disable_transformers_vec), std::end(disable_transformers_vec));
+
+  constexpr std::array<std::string_view, std::size(disable_transformers)>
+      disable_transformers_array = TRANSFORMER_NAMES;
+  options.DisableRulesAndOptimizers(std::begin(disable_transformers_array), std::end(disable_transformers_array));
+
+  const OrtSessionOptions* raw_options = options;
+  ASSERT_EQ(std::size(disable_transformers), raw_options->value.disabled_rules_and_transformers.size());
 }
 
 #endif

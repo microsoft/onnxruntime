@@ -869,6 +869,10 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
+  // Iter may produces const char*, std::string or std::string_view (compiler dependent)
+  template <typename Iter>
+  SessionOptionsImpl& DisableRulesAndOptimizers(Iter begin, Iter end);  ///< Wraps OrtApi::DisableRulesAndOptimizers
+
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer

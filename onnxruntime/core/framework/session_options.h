@@ -176,6 +176,10 @@ struct SessionOptions {
   // User specified logging func and param
   OrtLoggingFunction user_logging_function = nullptr;
   void* user_logging_param = nullptr;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  InlinedHashSet<std::string> disabled_rules_and_transformers;
+#endif
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

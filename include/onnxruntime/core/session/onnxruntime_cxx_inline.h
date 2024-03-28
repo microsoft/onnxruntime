@@ -7,16 +7,26 @@
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
-#include <cstring>
+#include <algorithm>
 #include <functional>
+#include <iterator>
+#include <type_traits>
 
-#define RETURN_ON_API_FAIL(expression) \
-  {                                    \
-    auto err = (expression);           \
-    if (err) {                         \
-      return Status(err);              \
-    }                                  \
+// Convert OrtStatus to Ort::Status and return
+// instead of throwing
+#define ORT_CXX_RETURN_ON_API_FAIL(expression) \
+  {                                            \
+    auto ort_status = (expression);            \
+    if (ort_status) {                          \
+      return Ort::Status(ort_status);          \
+    }                                          \
   }
+
+#ifdef __cpp_if_constexpr
+#define ORT_CXX_IF_CONSTEXPR if constexpr
+#else
+#define ORT_CXX_IF_CONSTEXPR if
+#endif
 
 namespace Ort {
 
@@ -749,6 +759,36 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddInitializer(const char* 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::DisablePerSessionThreads() {
   ThrowOnError(GetApi().DisablePerSessionThreads(this->p_));
+  return *this;
+}
+
+template <typename T>
+template <typename Iter>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::DisableRulesAndOptimizers(Iter begin, Iter end) {
+  using value_type = typename std::iterator_traits<Iter>::value_type;
+
+  auto dist = std::distance(begin, end);
+  if (dist == 0) return *this;
+  std::vector<const char*> rule_names;
+  rule_names.reserve(dist);
+
+  ORT_CXX_IF_CONSTEXPR(std::is_same<value_type, std::string>::value) {
+    std::transform(begin, end, std::back_inserter(rule_names), [](const std::string& rule) {
+      return rule.c_str();
+    });
+  }
+#ifdef __cpp_lib_string_view
+  else ORT_CXX_IF_CONSTEXPR(std::is_same<value_type, std::string_view>::value) {
+    std::transform(begin, end, std::back_inserter(rule_names), [](const std::string_view& rule) {
+      return rule.data();
+    });
+  }
+#endif
+  else {
+    std::copy(begin, end, std::back_inserter(rule_names));
+  }
+
+  ThrowOnError(GetApi().DisableRulesAndOptimizers(this->p_, rule_names.data(), rule_names.size()));
   return *this;
 }
 
@@ -1967,7 +2007,7 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
 
 inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape) {
   OrtTensorTypeAndShapeInfo* info = {};
-  RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
 
   using InfoPtr = std::unique_ptr<OrtTensorTypeAndShapeInfo, std::function<void(OrtTensorTypeAndShapeInfo*)>>;
 
@@ -1991,9 +2031,9 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
     }
   }
 
-  RETURN_ON_API_FAIL(ort_api_->SetDimensions(info, integer_dims.data(), integer_dims.size()));
-  RETURN_ON_API_FAIL(ort_api_->SetSymbolicDimensions(info, symbolic_dims.data(), symbolic_dims.size()));
-  RETURN_ON_API_FAIL(ort_api_->ShapeInferContext_SetOutputTypeShape(ctx_, indice, info));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetDimensions(info, integer_dims.data(), integer_dims.size()));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetSymbolicDimensions(info, symbolic_dims.data(), symbolic_dims.size()));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->ShapeInferContext_SetOutputTypeShape(ctx_, indice, info));
   return Status{nullptr};
 }
 

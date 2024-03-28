@@ -70,6 +70,9 @@ ORT_API_STATUS_IMPL(SetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* op
 ORT_API_STATUS_IMPL(SetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads);
 ORT_API_STATUS_IMPL(SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
+ORT_API_STATUS_IMPL(DisableRulesAndOptimizers, _Inout_ OrtSessionOptions* sess,
+                    _In_reads_(input_len) const char* const* disabled_rules_and_transformers_names, size_t names_num);
+
 ORT_API_STATUS_IMPL(CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
 ORT_API_STATUS_IMPL(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ const OrtCustomOp* op);
 ORT_API_STATUS_IMPL(AddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);

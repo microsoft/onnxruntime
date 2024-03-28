@@ -401,7 +401,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
-  ORT_ENFORCE(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
+  ORT_THROW_IF_ERROR(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps));
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  ORT_THROW_IF_ERROR(FilterEnabledOptimizers(std::move(session_options_.disabled_rules_and_transformers)));
 #endif
 
   bool set_denormal_as_zero =

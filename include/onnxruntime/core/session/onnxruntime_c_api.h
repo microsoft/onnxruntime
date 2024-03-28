@@ -4630,6 +4630,22 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
+
+  /** \brief This function allows to specify which rules and transformers can be disabled for your model
+   *  to save on model loading time. Pre-optimizing the model is still the recommended approach.
+   *  When loading a pre-optimized model one can tune or disable optimization level using
+   *  SetSessionGraphOptimizationLevel. This function replaces the content of any previously specified
+   *  names within the SessionOptions instance.
+   *
+   * \param[in, out] sess_options instance of OrtSessionOptions
+   * \param[in] disabled_rules_and_transformers_names array of utf-8 encoded zero terminated strings with the
+                names of the rules and transformers to be disabled.
+   * \param[in] numes_num length of disabled_rules_and_transformers_names array
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(DisableRulesAndOptimizers, _Inout_ OrtSessionOptions* sess_options,
+                  _In_reads_(input_len) const char* const* disabled_rules_and_transformers_names, size_t names_num);
 };
 
 /*
