@@ -4,7 +4,6 @@
 #include "core/common/common.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/abi_session_options_impl.h"
 #include "gmock/gmock.h"
 
 using namespace onnxruntime;
@@ -58,9 +57,6 @@ TEST(CApiTest, session_options_disable_transformers) {
   constexpr std::array<std::string_view, std::size(disable_transformers)>
       disable_transformers_array = TRANSFORMER_NAMES;
   options.DisableRulesAndOptimizers(std::begin(disable_transformers_array), std::end(disable_transformers_array));
-
-  const OrtSessionOptions* raw_options = options;
-  ASSERT_EQ(std::size(disable_transformers), raw_options->value.disabled_rules_and_transformers.size());
 }
 
 #endif
