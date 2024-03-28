@@ -52,18 +52,11 @@ jobs:
     inputs:
       versionSpec: '18.x'
 
-  - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-    - task: JavaToolInstaller@0
-      inputs:
-        versionSpec: "11"
-        jdkArchitectureOption: "x64"
-        jdkSourceOption: 'PreInstalled'
-  - ${{ if eq(parameters.MacosArch, 'arm64') }}:
-    - task: JavaToolInstaller@0
-      inputs:
-        versionSpec: "11"
-        jdkArchitectureOption: "arm64"
-        jdkSourceOption: 'PreInstalled'
+  - task: JavaToolInstaller@0
+    inputs:
+      versionSpec: "11"
+      jdkArchitectureOption: "x64"
+      jdkSourceOption: 'PreInstalled'
 
   - template: set-version-number-variables-step.yml
 
