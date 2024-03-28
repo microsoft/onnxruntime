@@ -94,6 +94,12 @@ class TorchProxy {
       std::vector<int64_t>& fw_output_to_input_alias_map,
       std::vector<int64_t>& bw_output_to_input_alias_map);
 
+  void RunInputTensorOnCpuFunction(
+      void* input_on_cpu_function,
+      const std::string& node_proto_str,
+      std::vector<int64_t>& fw_input_tensor_on_cpu_map,
+      std::vector<int64_t>& bw_output_to_input_alias_map);
+
  private:
   TorchProxy(){};
   ~TorchProxy(){};

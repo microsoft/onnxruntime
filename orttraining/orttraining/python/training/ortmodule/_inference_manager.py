@@ -10,6 +10,8 @@ import onnx
 import torch
 
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
+from onnxruntime.training.utils import nvtx_function_decorator, torch_nvtx_range_pop, torch_nvtx_range_push
 
 from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
@@ -31,11 +33,16 @@ class InferenceManager(GraphExecutionManager):
         super().__init__(model, debug_options, fallback_manager, logger)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
+        self._io_binding = None
+
     @staticmethod
+    @nvtx_function_decorator
     def execution_session_run_forward(
         execution_session,
+        io_binding,
         onnx_model: onnx.ModelProto,
         device: torch.device,
+        user_input_names,
         *inputs,
     ) -> Tuple[Tuple[torch.Tensor, ...], _RunStateInfo]:
         """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
@@ -55,11 +62,33 @@ class InferenceManager(GraphExecutionManager):
         #   especially the backward graph outputs.
         # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
         # have the need for passing IOBinding.
-        io_binding = execution_session.io_binding()
+        # io_binding = execution_session.io_binding()
         run_options = C.RunOptions()
 
-        # Use IO binding
-        _utils._create_iobinding(io_binding, inputs, onnx_model, device)
+        # Update IO binding for user input names.
+        torch_nvtx_range_push("create_iobinding_for_input")
+        for idx, user_input_name in enumerate(user_input_names):
+            # print(f"bind ortvalue input for user_input_name: {user_input_name}, shape: {inputs[idx].size()}")
+            # print(f"bind ortvalue input for user_input_name: {user_input_name}, shape: {inputs[idx].size()}")
+            io_binding.bind_ortvalue_input(
+                user_input_name,
+                OrtValue(
+                    _utils._ortvalue_from_torch_tensor(
+                        inputs[idx] if inputs[idx].is_contiguous() else inputs[idx].contiguous()
+                    )
+                ),
+            )
+            # print(f"bind ortvalue input completed")
+        torch_nvtx_range_pop()
+        torch_nvtx_range_push("create_iobinding_for_output")
+        device_id = _utils.get_device_index(device)
+        for value_info in onnx_model.graph.output:
+            io_binding.bind_output(value_info.name, device.type, device_id=device_id)
+        torch_nvtx_range_pop()
+
+        # print("io_binding:", io_binding)
+
+        # _utils._create_iobinding(io_binding, inputs, onnx_model, device)
 
         # Run and return module outputs.
         ort_output = execution_session.run_forward(io_binding, run_options)
@@ -152,6 +181,39 @@ class InferenceManager(GraphExecutionManager):
                 # Create execution session creates the inference_session
                 self._create_execution_agent()
 
+                # Parameter io binding is done only once during initialization
+                # Clear unused input from the io binding???
+                self._io_binding = self._execution_agent.io_binding()
+                for param_name_in_onn_graph_input, param in self._flattened_module.named_parameters():
+                    if param_name_in_onn_graph_input not in self._graph_initializer_names:
+                        continue
+
+                    # print(f"bind ortvalue input for param: {param_name_in_onn_graph_input}, shape: {param.size()}")
+                    self._io_binding.bind_ortvalue_input(
+                        param_name_in_onn_graph_input,
+                        OrtValue(
+                            _utils._ortvalue_from_torch_tensor(param if param.is_contiguous() else param.contiguous())
+                        ),
+                    )
+
+                for buffer_name, buffer in self._buffer_names_dict.items():
+                    if buffer_name not in self._graph_initializer_names:
+                        continue
+
+                    # print(f"bind ortvalue input for buffer: {buffer_name}, shape: {buffer.size()}")
+                    self._io_binding.bind_ortvalue_input(
+                        buffer_name,
+                        OrtValue(
+                            _utils._ortvalue_from_torch_tensor(
+                                buffer if buffer.is_contiguous() else buffer.contiguous()
+                            )
+                        ),
+                    )
+
+                self._model_user_input_names = [
+                    n for n in self._graph_info.user_input_names if n not in self._buffer_names_dict
+                ]
+
                 self.time_tracker.end(ORTModuleInitPhase.EndToEnd)
                 self._log_feature_stats()
 
@@ -162,7 +224,7 @@ class InferenceManager(GraphExecutionManager):
             if self._runtime_options.enable_zero_stage3_support:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+            prepared_input_list, _, _ = _io.combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
                 self._input_info,
@@ -176,8 +238,10 @@ class InferenceManager(GraphExecutionManager):
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(
                 self._execution_agent,
+                self._io_binding,
                 self._onnx_models.optimized_model,
                 self._device,
+                self._model_user_input_names,
                 *prepared_input_list,
             )
 

@@ -9,6 +9,7 @@ import io
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
+from collections import OrderedDict
 from hashlib import md5 as hash_fn
 from typing import Dict, List, Optional, Tuple
 
@@ -84,6 +85,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._graph_initializer_names = set()
         self._graph_initializer_names_to_train = set()
         self._graph_initializers: List[torch.nn.parameter.Parameter] = []
+        self._buffer_names_dict: Dict[str, torch.Tensor] = OrderedDict()
 
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
@@ -545,6 +547,8 @@ class GraphExecutionManager(GraphExecutionInterface):
             param for name, param in self._flattened_module.named_parameters() if name in self._graph_initializer_names
         ]
 
+        self._buffer_names_dict = {buffer_name: i for buffer_name, i in self._flattened_module.named_buffers()}
+
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""
         self._original_model_has_changed = True
@@ -599,7 +603,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 if self._runtime_options.enable_zero_stage3_support:
                     self._append_pull_weight_trigger_as_input(kwargs, detected_device)
 
-                _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
+                _, embed_sparsity_results, label_sparsity_results = _io.combine_input_buffers_initializers(
                     self._graph_initializers,
                     self._graph_builder.get_graph_info().user_input_names,
                     self._input_info,

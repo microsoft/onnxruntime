@@ -23,6 +23,7 @@ from torch.utils.dlpack import to_dlpack
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
+from onnxruntime.training.utils import nvtx_function_decorator, torch_nvtx_range_pop, torch_nvtx_range_push
 
 from . import _onnx_models
 from ._fallback_exceptions import ORTModuleDeviceException, ORTModuleIOError, wrap_exception
@@ -62,6 +63,7 @@ def _ortvalue_from_torch_tensor(torch_tensor: torch.Tensor) -> C.OrtValue:
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
+@nvtx_function_decorator
 def _ortvalues_to_torch_tensor(
     ortvalues: C.OrtValueVector, device: Optional[torch.device] = None
 ) -> Tuple[torch.Tensor, ...]:
@@ -198,8 +200,10 @@ def get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
     return device
 
 
+@nvtx_function_decorator
 def _create_iobinding(io_binding, inputs, model, device: torch.device):
     """Creates IO binding for a `model` inputs and output"""
+    torch_nvtx_range_push("create_iobinding_for_input")
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_ortvalue_input(
             value_info.name,
@@ -207,10 +211,12 @@ def _create_iobinding(io_binding, inputs, model, device: torch.device):
                 _ortvalue_from_torch_tensor(inputs[idx] if inputs[idx].is_contiguous() else inputs[idx].contiguous())
             ),
         )
-
+    torch_nvtx_range_pop()
+    torch_nvtx_range_push("create_iobinding_for_output")
     device_id = get_device_index(device)
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=device_id)
+    torch_nvtx_range_pop()
 
 
 def check_for_name_collisions_and_bind_methods_to_ortmodule(

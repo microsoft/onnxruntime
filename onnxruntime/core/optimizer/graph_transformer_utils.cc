@@ -83,6 +83,10 @@
 #include "orttraining/core/framework/triton/triton_op_executor.h"
 #endif  // ENABLE_TRITON
 
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "orttraining/core/optimizer/pythonop_rewriter.h"
+#endif
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime::optimizer_utils {
@@ -132,6 +136,9 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<MatmulBNFusion>());
       rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+      rules.push_back(std::make_unique<PythonOpRewriter>());
+#endif
       break;
 
     case TransformerLevel::Level2:

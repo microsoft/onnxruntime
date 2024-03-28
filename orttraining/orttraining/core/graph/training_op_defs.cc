@@ -3930,6 +3930,16 @@ Return true if all elements are true and false otherwise.
           AttributeProto::INTS,
           false)
       .Attr(
+          "input_tensor_on_cpu",
+          "A int array indicating whether input tensor at each index is on CPU or not, when the node is running a non-CPU execution provider."
+          "If the given index is 1, it means the input is on CPU."
+          "For example, there are 2 tensor inputs and 3 tensor outputs (including ctx), "
+          "input_tensor_on_cpu = [0, 1] means"
+          "- the input 0 tensor is not on CPU."
+          "- the input 1 tensor is on CPU.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
           "training_mode",
           "Indicate if the model is exported in training_mode, by default, False.",
           AttributeProto::INT,

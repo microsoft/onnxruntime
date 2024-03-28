@@ -373,6 +373,16 @@ void addObjectMethodsForTraining(py::module& m) {
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
+  m.def("register_input_tensor_on_cpu_function", [](std::string function_full_qual_name, py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterInputTensorOnCpuFunction(function_full_qual_name, obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(function_full_qual_name);
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+
   m.def("register_miscellaneous_const_input", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();

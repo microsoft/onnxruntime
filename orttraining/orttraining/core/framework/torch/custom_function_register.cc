@@ -108,6 +108,11 @@ void OrtTorchFunctionPool::RegisterInputAliasFunction(const std::string& key,
   RegisterEntry(mutex_, key, obj, input_alias_function_pool_);
 }
 
+void OrtTorchFunctionPool::RegisterInputTensorOnCpuFunction(const std::string& key,
+                                                            PyObject* obj) {
+  RegisterEntry(mutex_, key, obj, input_tensor_on_cpu_function_pool_);
+}
+
 void OrtTorchFunctionPool::RegisterForwardRunner(size_t function_address) {
   void* p_forward_runner_func = reinterpret_cast<void*>(function_address);
   forward_runner_ = reinterpret_cast<CustomFunctionRunnerType>(p_forward_runner_func);
@@ -175,6 +180,16 @@ std::optional<PyObject*> OrtTorchFunctionPool::TryGettingInputAliasFunction(cons
   return std::nullopt;
 }
 
+std::optional<PyObject*> OrtTorchFunctionPool::TryGettingInputTensorOnCpuFunction(const std::string& key) {
+  ORT_ENFORCE(!key.empty(), "Cannot be empty string.");
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto iter = input_tensor_on_cpu_function_pool_.find(key);
+  if (iter != input_tensor_on_cpu_function_pool_.end()) {
+    return iter->second.get();
+  }
+  return std::nullopt;
+}
+
 void OrtTorchFunctionPool::RegisterMiscellaneousConstInput(PyObject* obj) {
   ORT_ENFORCE(obj, "Cannot register NULL reference input.");
   const void* address = static_cast<const void*>(obj);
@@ -227,6 +242,7 @@ void OrtTorchFunctionPool::UnRegisterModelSpecificFunctions() {
   unsafe_forward_core_pool_.clear();
   shape_inference_function_pool_.clear();
   input_alias_function_pool_.clear();
+  input_tensor_on_cpu_function_pool_.clear();
   miscellaneous_const_input_pool_.clear();
 }
 

@@ -688,6 +688,7 @@ class PlannerImpl {
                               &set_node_arg_has_explicit_consumer,
                               &map_implicitly_consumed_node_arg_to_ep,
                               &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
+                              &pnode,
                               this](const NodeArg& input, size_t arg_idx) {
           const auto& name = input.Name();
 
@@ -704,10 +705,39 @@ class PlannerImpl {
 
           if (is_graph_input || is_outer_scope_arg) {
             OrtValueIndex index = Index(name);
-
             if (!is_implicit_input) {
-              OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(mem_type));
+              bool is_cpu = false;
+              auto& node = *pnode;
+              if ((node.OpType().compare("PythonOp") == 0 || node.OpType().compare("PythonOpGrad") == 0) &&
+                  node.Domain() == kMSDomain) {
+                const auto& attrs = node.GetAttributes();
+                auto attr_it = attrs.find("input_tensor_on_cpu");
+                if (attr_it != attrs.end()) {
+                  // std::cout << "find input_tensor_on_cpu for node " << node.Name() << std::endl;
+                  const auto& input_tensor_on_cpu = attr_it->second.ints();
+                  ORT_ENFORCE(static_cast<size_t>(input_tensor_on_cpu.size()) > arg_idx,
+                              "input_tensor_on_cpu attribute size is smaller than index, input_tensor_on_cpu.size(): ",
+                              input_tensor_on_cpu.size(), ", index: ", arg_idx);
+                  // std::cout << "[" << node.Name() << "]"
+                  //           << "input_tensor_on_cpu[" << arg_idx << "]: " << input_tensor_on_cpu[arg_idx] << std::endl;
+                  is_cpu = input_tensor_on_cpu[arg_idx] == 1;
+                } else {
+                  // std::cout << "NOT find input_tensor_on_cpu for node " << node.Name() << std::endl;
+                }
+              }
+
+              if (!is_cpu) {
+                OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
+                plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(mem_type));
+              } else {
+                // std::cout << "111111111111, index: " << static_cast<size_t>(index) << std::endl;
+                auto* cpu_execution_provider = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
+                ORT_ENFORCE(cpu_execution_provider != nullptr, "CPU execution provider is not found.");
+                // execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetOrtDeviceByMemType(OrtMemTypeDefault)
+                plan_.SetLocation(static_cast<size_t>(index),
+                                  cpu_execution_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                // std::cout << "222222222222" << std::endl;
+              }
               set_node_arg_has_explicit_consumer.insert(index);
             } else {  // implicit input
               // Only process an implicit input if there are explicit consumers at this graph level

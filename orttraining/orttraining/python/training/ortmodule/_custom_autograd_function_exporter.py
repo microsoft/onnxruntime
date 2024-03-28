@@ -16,6 +16,7 @@ from torch.onnx import symbolic_helper
 
 from onnxruntime.capi._pybind_state import (
     register_input_alias_function,
+    register_input_tensor_on_cpu_function,
     register_miscellaneous_const_input,
     register_shape_inference_function,
     register_torch_autograd_function,
@@ -110,6 +111,9 @@ def register_custom_function_schema_supplementary(kclass: torch.autograd.Functio
 
     if hasattr(kclass, "alias_input"):
         register_input_alias_function(kclass_name, kclass.alias_input)
+
+    if hasattr(kclass, "input_tensor_on_cpu"):
+        register_input_tensor_on_cpu_function(kclass_name, kclass.input_tensor_on_cpu)
 
 
 """
@@ -392,6 +396,28 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
 
             node.name = f"{op_name_prefix}_id_{index}"
         index += 1
+
+
+    from onnx import helper
+    for node in exported_model.graph.node:
+        if node.op_type == "PythonOp":
+            func_name = None
+            safe_run_mode_attr = None
+            for attr in node.attribute:
+                if attr.name == "func_name":
+                    func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                if attr.name == "safe_run_mode":
+                    safe_run_mode_attr = attr
+
+            if func_name in ['vllm.model_executor.layers.attention.PagedAttentionFunc',
+                             'vllm.model_executor.layers.layernorm.AddRMSNormFunc',
+                             'vllm.model_executor.layers.layernorm.RMSNormFunc',
+                             'vllm.model_executor.layers.rotary_embedding.RotaryEmbeddingFunc',
+                             'vllm.model_executor.layers.attention.MemoryEfficientAttention',
+                             'vllm.model_executor.layers.activation.SiluAndMulFunc'] or func_name.startswith('vllm.model_executor.layers.'):
+                if safe_run_mode_attr:
+                    node.attribute.remove(safe_run_mode_attr)
+                node.attribute.append(helper.make_attribute("safe_run_mode", 0))
 
     return exported_model
 

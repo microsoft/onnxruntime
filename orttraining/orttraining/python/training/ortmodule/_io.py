@@ -18,6 +18,7 @@ from onnxruntime.training.utils import (
     ORTModelInputOutputType,
     PrimitiveType,
     extract_data_and_schema,
+    nvtx_function_decorator,
     unflatten_data_using_schema,
 )
 
@@ -159,7 +160,8 @@ class _InputInfo:
         return args, kwargs
 
 
-def _combine_input_buffers_initializers(
+@nvtx_function_decorator
+def combine_input_buffers_initializers(
     params: List[torch.nn.parameter.Parameter],
     onnx_input_names: List[str],
     input_info: Optional[_InputInfo],
@@ -277,6 +279,8 @@ def _combine_input_buffers_initializers(
 def deepcopy_model_input(
     *args, **kwargs
 ) -> Tuple[Sequence[ORTModelInputOutputType], Mapping[str, ORTModelInputOutputType]]:
+    return args, kwargs
+
     def extract_tensor(value):
         if isinstance(value, torch.Tensor):
             if value.requires_grad:
@@ -297,6 +301,7 @@ def deepcopy_model_input(
     return sample_args_copy, sample_kwargs_copy
 
 
+@nvtx_function_decorator
 def unflatten_user_output(output_schema: Optional[ORTModelInputOutputSchemaType], outputs: List[torch.Tensor]):
     try:
         return unflatten_data_using_schema(outputs, output_schema)
@@ -356,6 +361,7 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output) -> Tuple[Li
     return output_names, output_dynamic_axes
 
 
+@nvtx_function_decorator
 def _transform_output_to_flat_tuple(data):
     """Converts the data to a flat tuple by iterating over the entire data structure"""
 

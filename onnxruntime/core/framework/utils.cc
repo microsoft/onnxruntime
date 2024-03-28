@@ -158,6 +158,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
 {
   // same device so direct copy
   if (copy_info.source_device == copy_info.target_device) {
+    // std::cout << "no copy needed  " << std::endl;
     target_mlvalue = source_mlvalue;
     return Status::OK();
   }
@@ -173,9 +174,12 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
     if (copy_tensor_pairs != nullptr) {
+      std::cout << "plan to copy the tensor" << std::endl;
       copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, stream});
     } else {
-      ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, *stream) : session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+      std::cout << "copy the tensor src device: " << copy_info.source_device.ToString() << ", dest device: " << copy_info.target_device.ToString() << std::endl;
+      ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, *stream)
+                                 : session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
   } else if (source_mlvalue.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -258,7 +262,7 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
                                                      MLValueCopyInfo& copy_info) {
   InlinedVector<SessionState::NodeInfo> node_info_vec;
 #ifdef ENABLE_TRAINING
-  if (session_state.GetInputNodeInfo(input_name, node_info_vec) == Status::OK()) {
+  if (session_state.GetInputNodeInfo(input_name, node_info_vec) == Status::OK() && false) {
 #else
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
 #endif
@@ -279,6 +283,7 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
     int index;
     ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_name, index));
     const auto& device = exec_plan->GetLocation(index);
+    // std::cout << "CalculateStaticCopyInfoForFeed>>>input_name: " << input_name << ", index: " << index << ", device: " << device.ToString() << std::endl;
     copy_info.target_device = device;
   }
 #endif
@@ -454,6 +459,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
 #endif
 
   for (size_t idx = 0; idx < num_feeds; ++idx) {
+    // std::cout << ">>>>CopyInputsAcrossDevices feed idx: " << idx << std::endl;
 #if !defined(DISABLE_SPARSE_TENSORS)
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
                                            feed_streams[idx],
@@ -463,6 +469,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
                                            feed_streams[idx],
                                            &batched_data_transfers));
 #endif
+    // std::cout << "<<<<<CopyInputsAcrossDevices feed idx: " << idx << std::endl;
   }
 
   if (!batched_data_transfers.empty()) {
@@ -1029,6 +1036,26 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
   }
 #else
   ORT_UNUSED_PARAMETER(node);
+#endif
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+  if ((node.OpType().compare("PythonOp") == 0 || node.OpType().compare("PythonOpGrad") == 0) &&
+      node.Domain() == kMSDomain) {
+    const auto& attrs = node.GetAttributes();
+    auto attr_it = attrs.find("input_tensor_on_cpu");
+    if (attr_it != attrs.end()) {
+      // std::cout << "find input_tensor_on_cpu for node " << node.Name() << std::endl;
+      const auto& input_tensor_on_cpu = attr_it->second.ints();
+      ORT_ENFORCE(static_cast<size_t>(input_tensor_on_cpu.size()) > index,
+                  "input_tensor_on_cpu attribute size is smaller than index, input_tensor_on_cpu.size(): ",
+                  input_tensor_on_cpu.size(), ", index: ", index);
+      // std::cout << "[" << node.Name() << "]"
+      //           << "input_tensor_on_cpu[" << index << "]: " << input_tensor_on_cpu[index] << std::endl;
+      return input_tensor_on_cpu[index] == 1;
+    } else {
+      // std::cout << "NOT find input_tensor_on_cpu for node " << node.Name() << std::endl;
+    }
+  }
 #endif
 
   return false;
