@@ -44,19 +44,26 @@ reportMissingImports = false
 [tool.ruff]
 # NOTE: Do not create an exclude list. Edit .lintrunner.toml instead
 target-version = "py38"
+
+[tool.ruff.lint]
 select = [
     "B", # flake8-bugbear
     "E", # pycodestyle
     "F", # Pyflakes
+    "FURB", # refurb
+    "G", # flake8-logging-format
     "ISC", # flake8-implicit-str-concat
     "N", # pep8-naming
     "NPY", # numpy
     "PERF", # Perflint
+    "PIE", # flake8-pie
     "PLC", # pylint conventions
     "PLE", # pylint errors
     "PLW", # pylint warnings
+    "PYI", # flake8-pyi
     "RUF", # Ruff-specific rules
     "SIM", # flake8-simplify
+    "SLOT", # flake8-slots
     "T10", # flake8-debugger
     "UP", # pyupgrade
     "W", # pycodestyle
@@ -67,12 +74,15 @@ select = [
 ignore = [
     "B028", # FIXME: Add stacklevel to warnings
     "E501", # Line length controlled by black
+    "G004", # FIXME: Enable when the rule can be autofixed
     "N803", # Argument casing
     "N812", # Allow import torch.nn.functional as F
     "N999", # Module names
     "NPY002", # np.random.Generator may not always fit our use cases
     "PERF203", # "try-except-in-loop" only affects Python <3.11, and the improvement is minor; can have false positives
     "PERF401", # List comprehensions are not always readable
+    "PYI041", # May create confusion
+    "PYI024", # May create confusion
     "SIM102", # We don't perfer always combining if branches
     "SIM108", # We don't encourage ternary operators
     "SIM114", # Don't combine if branches for debugability
@@ -84,7 +94,7 @@ unfixable = [
     "SIM112", # Use upper case for env vars
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Prefer inline ignores with `noqa: xxx`.
 # Eventually this list should become empty.

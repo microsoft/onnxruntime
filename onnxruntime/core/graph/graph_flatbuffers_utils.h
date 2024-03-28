@@ -5,7 +5,7 @@
 
 #include <memory>
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/status.h"
 #include "core/graph/ort_format_load_options.h"

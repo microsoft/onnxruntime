@@ -437,7 +437,7 @@ public:
 
   CUTLASS_HOST_DEVICE
   static void dequant(FragmentScale const &scales,
-                      FragmentOffset const &offsets,
+                      FragmentOffset const &fragment_offsets,
                       Array<uint8_t,kExpandedSize/2> const &weights,
                       Array<ElementScale, kExpandedSize>& dest){
     static_assert(kNumBsPerCoreTileFragement == 2, "Only for 16b gemm.");
@@ -453,19 +453,18 @@ public:
 
       uint32_t* dest_pair = reinterpret_cast<uint32_t*>(dest.data());
       const b64* scales_ptr = reinterpret_cast<const b64*>(scales.data());
-      const ElementOffset* offsets_ptr = nullptr;
-      if constexpr(kHasOffset) { offsets_ptr = offsets.data(); }
+      [[maybe_unused]] const ElementOffset* fragment_offsets_ptr = nullptr;
+      if constexpr(kHasOffset) { fragment_offsets_ptr = fragment_offsets.data(); }
 
       CUTLASS_PRAGMA_UNROLL
       for (int n_idx = 0; n_idx < kMmaIterations; n_idx++){
         // dequantize: d = scale * (weight - offset)
         // to use FMA, d = scale * weight + (scale * (-offset))
 
-        b64 offsets;
-        if constexpr(kHasOffset){
-          const uint32_t* p = reinterpret_cast<const uint32_t*>(offsets_ptr);
-
+        [[maybe_unused]] b64 offsets{0};
+        if constexpr(kHasOffset) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+          const uint32_t* p = reinterpret_cast<const uint32_t*>(fragment_offsets_ptr);
           asm volatile(
               "{\n\t"
               "  .reg  .b32    rb0, rb1;\n"      // b32 regs for fp16x2 mul operands
@@ -486,7 +485,7 @@ public:
           assert(0);
 #endif
 
-          offsets_ptr += 4;
+          fragment_offsets_ptr += 4;
         } else {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
           asm volatile(
@@ -541,7 +540,7 @@ public:
             int idx = elem_idx + mma_tile_idx * kCoreTileFragementSize + n_idx * kCoreTileFragementSize * kTilesPerMma;
             ElementScale s = scales[idx];
             if constexpr(kHasOffset){
-              offset = s * static_cast<ElementScale>(-16 - int(offsets[idx]));
+              offset = s * static_cast<ElementScale>(-16 - static_cast<int>(fragment_offsets[idx]));
             } else {
               offset = s * static_cast<ElementScale>(-16-8);
             }
@@ -795,13 +794,13 @@ public:
         }
       }
     } else if constexpr (kMmaIterationsB % 2 == 0) {
-      const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(scales.data());
-      uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
-
       if constexpr (kHasOffset){
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+        const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(scales.data());
+        uint32_t* addon_ptr = reinterpret_cast<uint32_t*>(addon);
         // possible buffer over read 2 bytes here.
         const uint32_t* p = reinterpret_cast<const uint32_t*>(offsets.data());
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+
         asm volatile(
           "{\n\t"
           "  .reg  .b32    rb0, rb1, rb2;\n"

@@ -247,7 +247,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (key == "device_type") {
         std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
                                                            "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16"};
+                                                           "GPU.0_FP16", "GPU.1_FP16", "NPU"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           ov_options[key] = value;
         } else if (value.find("HETERO:") == 0) {
@@ -260,7 +260,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW(
               "[ERROR] [OpenVINO] You have selected a wrong configuration value for the key 'device_type'. "
               "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-              "'GPU.0_FP16', 'GPU.1_FP16' or from"
+              "'GPU.0_FP16', 'GPU.1_FP16', 'NPU' or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
@@ -382,11 +382,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Wrong value for htp_arch. select from: " + str);
         }
+      } else if (key == "enable_htp_fp16_precision") {
+        std::unordered_set<std::string> supported_options = {"0", "1"};
+        if (supported_options.find(value) == supported_options.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_options.begin(), supported_options.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
-'htp_arch', 'device_id'])");
+'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
       }
 
       qnn_options[key] = value;

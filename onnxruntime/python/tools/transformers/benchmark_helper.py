@@ -142,7 +142,7 @@ def create_onnxruntime_session(
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
     except Exception:
-        logger.error("Exception", exc_info=True)
+        logger.error("Exception", exc_info=True)  # noqa: G201
 
     return session
 

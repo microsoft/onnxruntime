@@ -3,7 +3,7 @@
 
 import {DataType} from '../../../wasm-common';
 import {ShapeUtil} from '../../util';
-import {ProgramUniform} from '../types';
+import {ProgramUniform, ProgramUniformVariableInfo} from '../types';
 
 /**
  * constant value for a workgroup size.
@@ -902,6 +902,20 @@ class ShaderHelperImpl implements ShaderHelper {
   get additionalImplementations(): string {
     return this.uniformDeclaration() + this.variables.map(i => i.impl()).join('\n') +
         this.internalVariables.map(i => i.impl()).join('\n');
+  }
+
+  /**
+   * Get the variable info of the shader program.
+   */
+  get variablesInfo(): ProgramUniformVariableInfo[]|undefined {
+    if (this.uniforms.length === 0) {
+      return undefined;
+    }
+
+    const uniformWgslTypeToDataType = (type: UniformDataElementType) =>
+        ([DataType.uint32, DataType.float16, DataType.float,
+          DataType.int32][['u32', 'f16', 'f32', 'i32'].indexOf(type)]);
+    return this.uniforms.map(u => ([uniformWgslTypeToDataType(u.type), u.length ?? 1]));
   }
 }
 

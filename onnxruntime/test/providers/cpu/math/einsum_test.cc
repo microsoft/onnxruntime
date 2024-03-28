@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/trt_op_test_utils.h"
 #include "core/framework/data_types.h"
 #include "core/util/math.h"
 
@@ -50,7 +51,7 @@ TEST(Einsum, ExplicitEinsumAsTransposeOp_2D_input_With_Broadcasting) {
   test.AddAttribute<std::string>("equation", "...i->i...");
   test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("y", {2, 2}, {1.f, 3.f, 2.f, 4.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsBatchedTransposeOp_3D_input) {
@@ -58,7 +59,7 @@ TEST(Einsum, ExplicitEinsumAsBatchedTransposeOp_3D_input) {
   test.AddAttribute<std::string>("equation", "...ji->...ij");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("y", {2, 2, 2}, {1.f, 3.f, 2.f, 4.f, 1.f, 3.f, 2.f, 4.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Implicit
@@ -75,7 +76,7 @@ TEST(Einsum, ImplicitEinsumAsBatchedTransposeOp_3D_input) {
   test.AddAttribute<std::string>("equation", "...ji");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("y", {2, 2, 2}, {1.f, 3.f, 2.f, 4.f, 1.f, 3.f, 2.f, 4.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Theme: Axis/Axes reduction
@@ -102,7 +103,7 @@ TEST(Einsum, ExplicitEinsumAsBatchedReduceOp_3D_input_0) {
   test.AddAttribute<std::string>("equation", "...ji->...j");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("y", {2, 2}, {3.f, 7.f, 3.f, 7.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsBatchedReduceOp_3D_input_1) {
@@ -110,7 +111,7 @@ TEST(Einsum, ExplicitEinsumAsBatchedReduceOp_3D_input_1) {
   test.AddAttribute<std::string>("equation", "...ji->...");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("y", {2}, {10.f, 10.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Implicit
@@ -144,7 +145,7 @@ TEST(Einsum, ExplicitEinsumAsOuterProductWithTransposeOp_Multi_Input) {
   test.AddInput<float>("y", {2}, {3.f, 4.f});
   test.AddInput<float>("z", {2}, {5.f, 6.f});
   test.AddOutput<float>("o", {2, 2, 2}, {15.f, 18.f, 30.f, 36.f, 20.f, 24.f, 40.f, 48.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Implicit
@@ -155,7 +156,7 @@ TEST(Einsum, ImplicitEinsumAsOuterProductOp_2D_input) {
   test.AddInput<float>("y", {2}, {3.f, 4.f});
   test.AddInput<float>("z", {2}, {5.f, 6.f});
   test.AddOutput<float>("o", {2, 2, 2}, {15.f, 18.f, 20.f, 24.f, 30.f, 36.f, 40.f, 48.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ImplicitEinsumAsOuterProductOp_Multi_Input) {
@@ -165,7 +166,7 @@ TEST(Einsum, ImplicitEinsumAsOuterProductOp_Multi_Input) {
   test.AddInput<float>("y", {2}, {3.f, 4.f});
   test.AddInput<float>("z", {2}, {5.f, 6.f});
   test.AddOutput<float>("o", {2, 2, 2}, {15.f, 18.f, 20.f, 24.f, 30.f, 36.f, 40.f, 48.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 // Theme: MatMul
 
@@ -233,7 +234,7 @@ TEST(Einsum, ExplicitEinsumAsMatmul_Multi_Input) {
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddInput<float>("z", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {37.f, 81.f, 54.f, 118.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsBatchedMatmul) {
@@ -251,7 +252,7 @@ TEST(Einsum, ExplicitEinsumAsBatchedMatmulWithBroadcasting_0) {
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddInput<float>("y", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2, 2}, {7.f, 10.f, 15.f, 22.f, 7.f, 10.f, 15.f, 22.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsBatchedMatmulWithBroadcasting_1) {
@@ -260,7 +261,7 @@ TEST(Einsum, ExplicitEinsumAsBatchedMatmulWithBroadcasting_1) {
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddInput<float>("y", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2, 2}, {14.f, 20.f, 30.f, 44.f, 14.f, 20.f, 30.f, 44.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsMatmul_OutputTransposed) {
@@ -303,7 +304,7 @@ TEST(Einsum, ImplicitEinsumAsMatmul_Multi_Input) {
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddInput<float>("z", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {37.f, 54.f, 81.f, 118.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 TEST(Einsum, ImplicitEinsumAsBatchedMatmul) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -320,7 +321,7 @@ TEST(Einsum, ImplicitEinsumAsBatchedMatmulWithBroadcasting_0) {
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddInput<float>("y", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2, 2}, {7.f, 10.f, 15.f, 22.f, 7.f, 10.f, 15.f, 22.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ImplicitEinsumAsMatmul_2) {
@@ -343,7 +344,7 @@ TEST(Einsum, DiagonalWithMatmul) {
   test.AddInput<float>("x", {2, 2, 3}, {1.f, 2.f, 3.f, 1.f, 2.f, 3.f, 1.f, 2.f, 3.f, 1.f, 2.f, 3.f});
   test.AddInput<float>("y", {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f});
   test.AddOutput<float>("o", {3}, {60.f, 72.f, 84.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Theme: Diagonal parsing
@@ -354,7 +355,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOp) {
   test.AddAttribute<std::string>("equation", "ii->i");
   test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2}, {1.f, 4.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsDiagonalOp_1) {
@@ -362,7 +363,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOp_1) {
   test.AddAttribute<std::string>("equation", "iii->i");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2}, {1.f, 4.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsDiagonalOpWithAxisReduced) {
@@ -370,7 +371,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithAxisReduced) {
   test.AddAttribute<std::string>("equation", "iji->j");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2}, {3.f, 7.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsDiagonalOpWithAxisPreserved) {
@@ -378,7 +379,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithAxisPreserved) {
   test.AddAttribute<std::string>("equation", "iji->ij");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {1.f, 3.f, 2.f, 4.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose) {
@@ -386,7 +387,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose) {
   test.AddAttribute<std::string>("equation", "iji->ji");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {1.f, 2.f, 3.f, 4.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // ROCm doesn't support double
@@ -396,7 +397,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose_double) {
   test.AddAttribute<std::string>("equation", "iji->ji");
   test.AddInput<double>("x", {2, 2, 2}, {1., 2., 3., 4., 1., 2., 3., 4.});
   test.AddOutput<double>("o", {2, 2}, {1., 2., 3., 4.});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 #endif
 
@@ -405,7 +406,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose_int32) {
   test.AddAttribute<std::string>("equation", "iji->ji");
   test.AddInput<int32_t>("x", {2, 2, 2}, {1, 2, 3, 4, 1, 2, 3, 4});
   test.AddOutput<int32_t>("o", {2, 2}, {1, 2, 3, 4});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose_int64) {
@@ -413,14 +414,14 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose_int64) {
   test.AddAttribute<std::string>("equation", "iji->ji");
   test.AddInput<int64_t>("x", {2, 2, 2}, {1, 2, 3, 4, 1, 2, 3, 4});
   test.AddOutput<int64_t>("o", {2, 2}, {1, 2, 3, 4});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "...ii->...i");
   test.AddInput<float>("x", {3, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {3, 2}, {1.f, 4.f, 1.f, 4.f, 1.f, 4.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp_1) {
@@ -428,7 +429,7 @@ TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp_1) {
   test.AddAttribute<std::string>("equation", "...iij->...j");
   test.AddInput<float>("x", {2, 2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {4.f, 6.f, 4.f, 6.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Implicit (Implicit diagonal ops will sum up diagonal values)
@@ -442,7 +443,7 @@ TEST(Einsum, ImplicitEinsumAsDiagonalOp) {
   test.AddAttribute<std::string>("equation", "ii");
   test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {}, {5.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ImplicitEinsumAsDiagonalOp_1) {
@@ -455,7 +456,7 @@ TEST(Einsum, ImplicitEinsumAsDiagonalOp_1) {
   test.AddAttribute<std::string>("equation", "iii");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {}, {5.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ImplicitEinsumAsDiagonalOpWithAxisReduced) {
@@ -463,7 +464,7 @@ TEST(Einsum, ImplicitEinsumAsDiagonalOpWithAxisReduced) {
   test.AddAttribute<std::string>("equation", "iji");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2}, {3.f, 7.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ImplicitEinsumAsBatchedDiagonalOp) {
@@ -471,7 +472,7 @@ TEST(Einsum, ImplicitEinsumAsBatchedDiagonalOp) {
   test.AddAttribute<std::string>("equation", "...ii");
   test.AddInput<float>("x", {2, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 1}, {5.f, 5.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ImplicitEinsumAsBatchedDiagonalOp_1) {
@@ -479,7 +480,7 @@ TEST(Einsum, ImplicitEinsumAsBatchedDiagonalOp_1) {
   test.AddAttribute<std::string>("equation", "...iij");
   test.AddInput<float>("x", {2, 2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {4.f, 6.f, 4.f, 6.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Theme: Scalar inputs and outputs
@@ -491,7 +492,7 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar) {
   test.AddInput<float>("x", {}, {10.f});
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {10.f, 20.f, 30.f, 40.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input) {
@@ -501,7 +502,7 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input) {
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddInput<float>("z", {}, {10.f});
   test.AddOutput<float>("o", {2, 2}, {100.f, 200.f, 300.f, 400.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -527,7 +528,7 @@ TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
   test.AddInput<float>("x", {}, {10.f});
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {10.f, 20.f, 30.f, 40.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
@@ -538,7 +539,7 @@ TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
   test.AddInput<float>("c", {}, {10.f});
   test.AddInput<float>("d", {}, {10.f});
   test.AddOutput<float>("o", {2, 2}, {1000.f, 2000.f, 3000.f, 4000.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -568,7 +569,7 @@ TEST(Einsum, ExplicitEinsumAsTensorContractionReshapeFinal) {
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, -6.f, 2.f});
   test.AddInput<float>("z", {2, 2}, {3.f, 4.f, 5.f, 6.f});
   test.AddOutput<float>("o", {2, 2, 2}, {63.f, -132.f, 63.f, -132.f, 63.f, -132.f, 63.f, -132.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsTensorContractionReshapeLeft) {
@@ -720,7 +721,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOp_Half) {
   ConvertFloatToMLFloat16(output_f.data(), output.data(), 2);
   test.AddInput<MLFloat16>("x", {2, 2}, input_x);
   test.AddOutput<MLFloat16>("o", {2}, output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar_Half) {
@@ -741,7 +742,7 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar_Half) {
   test.AddInput<MLFloat16>("x", {}, input_x);
   test.AddInput<MLFloat16>("y", {2, 2}, input_y);
   test.AddOutput<MLFloat16>("o", {2, 2}, output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {
@@ -2093,7 +2094,7 @@ TEST_P(EinsumTransposeMatMulThreeInputsTest, EinsumTransposeMatMulThreeInputsTes
   std::vector<int64_t> v1(tst.shape.begin(), tst.shape.end());
   std::vector<float> v2(tst.expected.begin(), tst.expected.end());
   test.AddOutput<float>("o", v1, v2);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 INSTANTIATE_TEST_SUITE_P(EinsumTransposeMatMulThreeInputsTests, EinsumTransposeMatMulThreeInputsTest, testing::ValuesIn(case1));

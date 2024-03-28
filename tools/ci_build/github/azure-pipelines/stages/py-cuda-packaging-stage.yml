@@ -34,72 +34,40 @@ parameters:
    - 11.8
    - 12.2
 
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
+- name: PythonVersions
+  type: object
+  displayName: 'Python versions to build'
+  default:
+    - '3.8'
+    - '3.9'
+    - '3.10'
+    - '3.11'
+    - '3.12'
+
 stages:
-- stage: Python_Packaging
-  dependsOn: []
-  variables:
-  - name: docker_base_image
-    ${{ if eq(parameters.cuda_version, '11.8') }}:
-      value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-    ${{ if eq(parameters.cuda_version, '12.2') }}:
-      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
-  - name: linux_trt_version
-    ${{ if eq(parameters.cuda_version, '11.8') }}:
-      value: 8.6.1.6-1.cuda11.8
-    ${{ if eq(parameters.cuda_version, '12.2') }}:
-      value: 8.6.1.6-1.cuda12.0
-  - name: win_trt_home
-    ${{ if eq(parameters.cuda_version, '11.8') }}:
-      value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
-    ${{ if eq(parameters.cuda_version, '12.2') }}:
-      value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
-  - name: win_cuda_home
-    ${{ if eq(parameters.cuda_version, '11.8') }}:
-      value: $(Agent.TempDirectory)\v11.8
-    ${{ if eq(parameters.cuda_version, '12.2') }}:
-      value: $(Agent.TempDirectory)\v12.2
-  jobs:
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
+    - ${{ each python_version in parameters.PythonVersions }}:
       - template: ../templates/py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
-          PYTHON_VERSION: '3.8'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          PYTHON_VERSION: ${{ python_version }}
           EP_NAME: gpu
           CudaVersion: ${{ parameters.cuda_version }}
-
-      - template: ../templates/py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
-          PYTHON_VERSION: '3.9'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          EP_NAME: gpu
-          CudaVersion: ${{ parameters.cuda_version }}
-
-      - template: ../templates/py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
-          PYTHON_VERSION: '3.10'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          EP_NAME: gpu
-          CudaVersion: ${{ parameters.cuda_version }}
-
-      - template: ../templates/py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
-          PYTHON_VERSION: '3.11'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          EP_NAME: gpu
-          CudaVersion: ${{ parameters.cuda_version }}
-
-      - template: ../templates/py-win-gpu.yml
-        parameters:
-          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
-          PYTHON_VERSION: '3.12'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          EP_NAME: gpu
-          CudaVersion: ${{ parameters.cuda_version }}
-
+          SpecificArtifact: ${{ parameters.SpecificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
+          ${{ if eq(parameters.cuda_version, '11.8') }}:
+            EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8 --cuda_home=$(Agent.TempDirectory)\v11.8  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          ${{ if eq(parameters.cuda_version, '12.2') }}:
+            EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0 --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
       - template: ../templates/py-linux-gpu.yml
@@ -108,6 +76,10 @@ stages:
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          docker_base_image: ${{ variables.docker_base_image }}
-          trt_version: ${{ variables.linux_trt_version }}
           cuda_version: ${{ parameters.cuda_version }}
+          ${{ if eq(parameters.cuda_version, '11.8') }}:
+            docker_base_image: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+            trt_version: 8.6.1.6-1.cuda11.8
+          ${{ if eq(parameters.cuda_version, '12.2') }}:
+            docker_base_image: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+            trt_version: 8.6.1.6-1.cuda12.0
