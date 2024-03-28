@@ -62,6 +62,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
       const outputSize = ShapeUtil.size(outputShape);
+      const workgroupSize = [Math.min(1024, outputSize / dimAOuter), 1, 1];
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: outputSize / dimAOuter}, {type: DataType.uint32, data: attributes.k},
         {type: DataType.uint32, data: attributes.n}, {type: DataType.uint32, data: attributes.accuracyLevel},
@@ -131,7 +132,9 @@ export const createBlockwiseMatMulNBitsProgramInfo =
         ${dequantizeImpl};
         ${ortUnpack8x4snormImpl};
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
-        ${shaderHelper.mainStart()}
+        ${shaderHelper.mainStart([
+          workgroupSize[0], workgroupSize[1], workgroupSize[2]
+        ])}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
           var output_values = array<${output.type.value}, ${dimAOuter}>(${
             Array.from({length: dimAOuter}, () => `${output.type.value}(0)`).join(', ')});
@@ -141,7 +144,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           // Two zero points are packed into one byte when uniforms.bits is 4.
           ${
             zeroPoints ? `
-          var zero_point_byte_count: u32 = col * ${zeroPointsBytesPerCol}  + block / 2;
+          var zero_point_byte_count: u32 = col * ${zeroPointsBytesPerCol}  + block >> 1;
           var zero_point_word_index: u32 = zero_point_byte_count / 4;
           var zero_point_byte_offset: u32 = zero_point_byte_count % 4;
           var zero_point_nibble_offset: u32 = block % 2;
@@ -154,7 +157,8 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           // The scale and zero points are computed per block.
           let scale = ${scales.getByOffset('global_idx')};
           // The default zero point is 8 for unsigned 4-bit quantization.
-          let zero_point = ${dataType}(${zeroPoints ? 'extractBits(zero_point_word, zero_point_bits_offset, 4)' : 8.0});
+          let zero_point = ${dataType}(${
+            zeroPoints ? 'extractBits(zero_point_word, zero_point_bits_offset, 4)' : 8.0});
           ${b.indicesSet('b_indices', '1', 'block')};
           var word_offset: u32 = block_offset;
           for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
@@ -194,7 +198,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
             {hint: `${attributes.cacheKey};${inputs.length}`, inputDependencies: Array(inputs.length).fill('rank')},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / dimAOuter / 64 /* workgroup size */)},
+          dispatchGroup: {x: Math.ceil(outputSize / dimAOuter / workgroupSize[0] /* workgroup size */)},
           programUniforms
         }),
         getShaderSource
@@ -208,6 +212,7 @@ export const createMatMulNBitsReduceProgramInfo =
       const outputSize = ShapeUtil.size(outputShape);
       const lastDim = inputShape[inputShape.length - 1];
       const components = getMaxComponents(lastDim);
+      const workgroupSize = [Math.min(1024, outputSize), 1, 1];
       const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: outputSize}];
       programUniforms.push(
           ...createTensorShapeVariables(inputShape.slice(0, inputShape.length - 1).concat([lastDim / components])));
@@ -219,7 +224,9 @@ export const createMatMulNBitsReduceProgramInfo =
         const output = outputVariable('output', inputs[0].dataType, outputShape.length, components);
         return `
           ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
-          ${shaderHelper.mainStart()}
+          ${shaderHelper.mainStart([
+          workgroupSize[0], workgroupSize[1], workgroupSize[2]
+        ])}
             ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
             var output_indices = ${output.offsetToIndices('global_idx')};
             var input_indices = ${input.type.indices}(0, output_indices);
@@ -236,7 +243,7 @@ export const createMatMulNBitsReduceProgramInfo =
         shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank' as const]},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / components / 64 /* workgroup size */)},
+          dispatchGroup: {x: Math.ceil(outputSize / components / workgroupSize[0] /* workgroup size */)},
           programUniforms
         }),
         getShaderSource
