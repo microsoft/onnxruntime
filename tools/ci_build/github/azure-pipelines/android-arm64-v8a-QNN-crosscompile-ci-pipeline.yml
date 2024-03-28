@@ -83,6 +83,11 @@ jobs:
         --skip_tests --path_to_protoc_exe $(Build.BinariesDirectory)/installed/bin/protoc
     displayName: Build QNN EP
 
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: build_qnn/Release
+      artifactName: Qnn_android_build_output
+      
   - script: |
       mkdir -p build_qnn/Release/testdata/QNN/node_tests
       cp -r cmake/external/onnx/onnx/backend/test/data/node/test_basic_conv_with_padding build_qnn/Release/testdata/QNN/node_tests
