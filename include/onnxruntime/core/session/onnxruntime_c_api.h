@@ -4624,6 +4624,16 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
+
+  /** \brief Set external data folder path if the model loaded from memory
+   *
+   * \param[in] options
+   * \param[in] external_data_path
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(SetExternalDataPath, _Inout_ OrtSessionOptions* options,
+                  _In_ const ORTCHAR_T* external_data_path);
 };
 
 /*

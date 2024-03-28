@@ -683,7 +683,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
-
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
@@ -731,6 +730,11 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     } else {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
     }
+  }
+
+  // External data path only works for loading model from memory
+  if (options != nullptr && !options->value.external_data_path.empty() && model_data != nullptr) {
+    sess->SetExternalDataPath(options->value.external_data_path);
   }
 
   return nullptr;
@@ -2727,6 +2731,7 @@ static constexpr OrtApi ort_api_1_to_18 = {
     &OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
     &OrtApis::KernelContext_GetScratchBuffer,
     &OrtApis::KernelInfoGetAllocator,
+    &OrtApis::SetExternalDataPath,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
