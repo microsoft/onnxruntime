@@ -35,7 +35,7 @@
 #include <d3d12_x.h>
 #include <d3dx12_x.h>
 #else // Desktop
-#include <d3d12.h>
+#include "directx/d3d12.h"
 #include <d3d12sdklayers.h>
 #include "External/D3DX12/d3dx12.h"
 #endif

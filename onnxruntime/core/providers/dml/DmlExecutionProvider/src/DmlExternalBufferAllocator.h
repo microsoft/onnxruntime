@@ -4,7 +4,7 @@
 #pragma once
 
 #include <wrl/client.h>
-#include <d3d12.h>
+#include "directx/d3d12.h"
 #include <wil/wrl.h>
 #include <wil/result_macros.h>
 #include "External/D3DX12/d3dx12.h"
