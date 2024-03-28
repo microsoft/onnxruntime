@@ -27,7 +27,8 @@ static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
-// As a timing cache can be used across multiple ONNX files it makes sense to have a seperate cache path
+static const std::string kWeightlessEngineEnable = "ORT_TENSORRT_WEIGHTLESS_ENGINE_ENABLE";
+// As a timing cache can be used across multiple ONNX files it makes sense to have a separate cache path
 static const std::string kTimingCachePath = "ORT_TENSORRT_GLOBAL_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
@@ -160,6 +161,8 @@ struct TensorrtFuncState {
   std::string trt_node_name_with_precision;
   bool engine_cache_enable = false;
   std::string engine_cache_path;
+  // TODO: check if the definition in this file is needed
+  // bool weightless_engine_enable = false;
   nvinfer1::IRuntime* runtime = nullptr;
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
   bool context_memory_sharing_enable = false;
@@ -270,12 +273,23 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
+  bool weightless_engine_enable_ = false;
   bool build_heuristics_enable_ = false;
   bool sparsity_enable_ = false;
   int builder_optimization_level_ = 3;
   int auxiliary_streams_ = -1;
   std::string tactic_sources_;
-  std::string global_cache_path_, cache_path_, engine_decryption_lib_path_;
+  std::string global_cache_path_;
+  std::string cache_path_;
+  std::string engine_decryption_lib_path_;
+  mutable bool profile_file_exists_ = false;
+  mutable bool explicit_dynamic_shape_range_exists_ = false;
+  mutable bool single_serialized_engine_exists_ = false;
+  mutable std::string serialized_engine_cache_path_;
+  mutable bool single_serialized_encrypted_engine_exists_ = false;
+  mutable std::string serialized_encrypted_engine_cache_path_;
+  mutable bool single_serialized_weightless_engine_exists_ = false;
+  mutable std::string serialized_weightless_engine_cache_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
@@ -323,9 +337,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
+  // Mutable specifier for *shapes_ data members is only to allow passing them by non-const reference
+  // in order to utilize the faster operator[] (in contrast to at())
+  mutable std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
+  mutable std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
+  mutable std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
@@ -521,14 +537,17 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsLocalValue(const Graph& graph, const std::string& name) const;
 
   /**
-   * Create a vector of NodeComputeInfo instances directly from "TRT engine" wrapped onnx model without
+   * Create a vector of NodeComputeInfo instances directly from a precompiled engine without
    * going through the time-consuming processes of model parsing and engine building.
+   * If the flag |engine_within_onnx_model| is on, use the "TRT engine" wrapped within the ONNX model,
+   * otherwise use the weightless engine and refit it.
    */
   Status CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                     const Node& fused_node,
                                                     std::unordered_map<std::string, size_t>& input_map,
                                                     std::unordered_map<std::string, size_t>& output_map,
-                                                    std::vector<NodeComputeInfo>& node_compute_funcs);
+                                                    std::vector<NodeComputeInfo>& node_compute_funcs,
+                                                    bool engine_within_onnx_model);
 
   /**
    * Create a vector of NodeComputeInfo instances from graph.
@@ -549,5 +568,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder() const;
+
+  /**
+   * Check if a cached engine is present on disk, to avoid creating a TRT Builder instance.
+   * The cached engine must correspond to the entire graph being TRT eligible.
+   * Currently, TRT eligibility is determined by taking into account the cached engine filename's suffix only.
+   */
+  bool IsSingleCachedEnginePresent(const std::string& sub_graph_metadef_name) const;
 };
 }  // namespace onnxruntime
