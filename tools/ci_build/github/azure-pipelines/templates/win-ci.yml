@@ -185,7 +185,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           createLogFile: true
 
-      # For CPU job, tests are run in the same machine as buidling
+      # For CPU job, tests are run in the same machine as building
       - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
         - ${{ if eq(parameters.buildJava, 'true') }}:
           - template: make_java_win_binaries.yml
