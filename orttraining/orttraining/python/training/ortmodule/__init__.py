@@ -130,3 +130,6 @@ from .options import DebugOptions, LogLevel  # noqa: E402, F401
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule  # noqa: E402, F401
+
+# Parallel Piepeline support
+from .parallel_ortmodule import prepare_model_for_parallel_pipeline  # noqa: E402, F401

@@ -117,8 +117,9 @@ class DebugOptions:
         self.log_level = log_level
         self.save_onnx = save_onnx
         self.onnx_prefix = onnx_prefix
+        self.save_path = save_path
 
-        self._save_onnx_models = _SaveOnnxOptions(self.save_onnx, self.onnx_prefix, save_path)
+        self._save_onnx_models = _SaveOnnxOptions(self.save_onnx, self.onnx_prefix, self.save_path)
         self._logging = _LoggingOptions(self.log_level)
 
     @property

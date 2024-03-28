@@ -359,7 +359,15 @@ def patch_torch_module_ort_forward_method(torch_module_ort):
     # Bind the forward method.
     torch_module_ort.forward = _forward.__get__(torch_module_ort)
     # Copy the forward signature from the PyTorch module.
-    functools.update_wrapper(torch_module_ort.forward.__func__, torch_module_ort._original_module.forward.__func__)
+
+    # If the model was dispatched, it might have a hook attached, we need to copy the signature from the _old_forward method
+    # TODO(adamlouly): Generalize this code to fit all the PyTorch Pipeline (PP) implementations and not only hf accelerate.
+    if hasattr(torch_module_ort._original_module, "_old_forward"):
+        functools.update_wrapper(
+            torch_module_ort.forward.__func__, torch_module_ort._original_module._old_forward.__func__
+        )
+    else:
+        functools.update_wrapper(torch_module_ort.forward.__func__, torch_module_ort._original_module.forward.__func__)
 
 
 def patch_ortmodule_forward_method(ortmodule):
@@ -461,3 +469,39 @@ def get_world_size() -> int:
         return torch.distributed.get_world_size()
 
     return 1
+
+
+def is_model_dispatched(model: torch.nn.Module) -> bool:
+    """
+    This function checks if at least two modules of a model or its submodules live on different GPUs.
+    It iterates over all modules and submodules of the given model recursively,
+    and for each module, it tries to get its device.
+    If the module has parameters, its device is the device of its first parameter.
+    If the module does not have parameters (like a ReLU layer), it is ignored.
+    Once it finds at least two modules that live on different devices, it returns True.
+    Args:
+        model (nn.Module): The model to check.
+    Returns:
+        bool: True if at least two modules or submodules live on different devices, False otherwise.
+    """
+    devices = set()
+
+    def check_module(module):
+        nonlocal devices
+        for sub_module in module.children():
+            if isinstance(sub_module, torch.nn.Module):
+                try:
+                    device = next(sub_module.parameters()).device
+                except StopIteration:
+                    # Module doesn't have a device set to any of the module parameters
+                    continue
+
+                devices.add(str(device))
+
+                if len(devices) > 1:
+                    return True
+
+                if check_module(sub_module):
+                    return True
+
+    return check_module(model)
