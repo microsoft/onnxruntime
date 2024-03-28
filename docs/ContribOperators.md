@@ -78,6 +78,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QLinearSigmoid">com.microsoft.QLinearSigmoid</a>
   * <a href="#com.microsoft.QLinearSoftmax">com.microsoft.QLinearSoftmax</a>
   * <a href="#com.microsoft.QLinearWhere">com.microsoft.QLinearWhere</a>
+  * <a href="#com.microsoft.QMoE">com.microsoft.QMoE</a>
   * <a href="#com.microsoft.QOrderedAttention">com.microsoft.QOrderedAttention</a>
   * <a href="#com.microsoft.QOrderedGelu">com.microsoft.QOrderedGelu</a>
   * <a href="#com.microsoft.QOrderedLayerNormalization">com.microsoft.QOrderedLayerNormalization</a>
@@ -4258,6 +4259,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain scale types to any float tensor type.</dd>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
 <dd>Constrain input and output types to 8 bit signed and unsigned tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QMoE"></a><a name="com.microsoft.qmoe">**com.microsoft.QMoE**</a>
+
+  Int4 MoE
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_type</tt> : string</dt>
+<dd>Activation function to use. Choose from relu, gelu, silu and identity. Default is relu</dd>
+<dt><tt>k</tt> : int</dt>
+<dd>Number of top experts to select from expert pool</dd>
+<dt><tt>normalize_routing_weights</tt> : int</dt>
+<dd>Whether to normalize routing weights</dd>
+</dl>
+
+#### Inputs (7 - 11)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>router_probs</tt> : T</dt>
+<dd>2D input tensor with shape (num_rows, num_experts)</dd>
+<dt><tt>fc1_experts_weights</tt> : T1</dt>
+<dd>3D input tensor with shape (num_experts, hidden_size, inter_size / 2)</dd>
+<dt><tt>fc1_scales</tt> : T</dt>
+<dd>2D input tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc2_experts_weights</tt> : T1</dt>
+<dd>3D input tensor with shape (num_experts, inter_size, hidden_size / 2)</dd>
+<dt><tt>fc2_scales</tt> : T</dt>
+<dd>2D input tensor with shape (num_experts, hidden_size)</dd>
+<dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, hidden_size)</dd>
+<dt><tt>fc3_experts_weights</tt> (optional) : T1</dt>
+<dd>3D optional input tensor with shape (num_experts, hidden_size, inter_size / 2)</dd>
+<dt><tt>fc3_scales</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>Constrain input and output types to float or float16 tensors.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain weights type to uint8 tensors.</dd>
 </dl>
 
 
