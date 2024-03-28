@@ -428,12 +428,11 @@ namespace OperatorHelper
         static const int sc_sinceVer_Size = 19;
     }
 
-        namespace OnnxOperatorSet20
+    namespace OnnxOperatorSet20
     {
         static const int sc_sinceVer_IsNaN = 20;
         static const int sc_sinceVer_IsInf = 20;
         static const int sc_sinceVer_ReduceMax = 20;
-        static const int sc_sinceVer_ReduceMin = 20;
     }
 
     namespace MsftOperatorSet1
