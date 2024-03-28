@@ -169,4 +169,17 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
                                                          bool compromise_stashed_activation,
                                                          bool& can_compromise_stashed_activation);
 
+/**
+ * @brief Set the critical path impact for recompute nodes as an attribute.
+ * The impact is a int64_t value, which will be respected during Priority-Based topology sort.
+ * The bigger it is, the earlier the node will be executed.
+ *
+ * @param graph The graph to iterate and update.
+ * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
+ * @return true if the graph is modified, false otherwise.
+ */
+bool SetCriticalPathImpact(Graph& graph,
+                           const InlinedHashMap<NodeIndex, ptrdiff_t>&
+                               node_index_to_its_order_in_topological_sort_map);
+
 }  // namespace onnxruntime::optimizer::memory_optimizer

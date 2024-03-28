@@ -171,52 +171,6 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified) {
-  // Find the YieldOp node.
-  Node* yield_op_node = nullptr;
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "YieldOp") {
-      yield_op_node = &node;
-      break;
-    }
-  }
-
-  if (yield_op_node == nullptr) {
-    return Status::OK();
-  }
-
-  // Reverse BFS from YieldOp to find all "forward" nodes.
-  std::vector<const Node*> fw_nodes;
-  std::vector<const Node*> end_nodes{yield_op_node};
-  graph.ReverseDFSFrom(
-      end_nodes,
-      nullptr,
-      [&fw_nodes](const Node* n) {
-        fw_nodes.push_back(n);
-      },
-      nullptr);
-
-  // Set the attribute to true for all backward nodes.
-  for (auto& node : graph.Nodes()) {
-    if (std::find(fw_nodes.begin(), fw_nodes.end(), &node) == fw_nodes.end()) {
-      auto& attrs = node.GetAttributes();
-      if (attrs.count(kBackwardNodeAttributeName)) {
-        continue;
-      }
-      node.AddAttribute(kBackwardNodeAttributeName, static_cast<int64_t>(1));
-      modified = true;
-    } else {
-      auto& attrs = node.GetAttributes();
-      if (attrs.count(kBackwardNodeAttributeName)) {
-        node.ClearAttribute(kBackwardNodeAttributeName);
-        modified = true;
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
 Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       const ProbeConfig& probe_config,
                                       const logging::Logger& logger,

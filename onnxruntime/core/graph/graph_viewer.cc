@@ -40,15 +40,18 @@ struct PriorityNodeCompare {
     }
 
 #ifdef ENABLE_TRAINING
-    // nodes of forward pass will be output first
-    auto n1_attrs = n1->GetAttributes();
-    auto n2_attrs = n2->GetAttributes();
-    int64_t n1_is_forward = static_cast<int64_t>(n1_attrs.find(kBackwardNodeAttributeName) == n1_attrs.cend()) ||
-                            (n1_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
-    int64_t n2_is_forward = static_cast<int64_t>(n2_attrs.find(kBackwardNodeAttributeName) == n2_attrs.cend()) ||
-                            (n2_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
-    if (n1_is_forward != n2_is_forward) {
-      return n2_is_forward > n1_is_forward;
+
+    // nodes of bigger impact pass will be output first
+    const auto& n1_attrs = n1->GetAttributes();
+    const auto& n2_attrs = n2->GetAttributes();
+    int64_t n1_impact = (n1_attrs.find(kRecomputeNodeCriticalPathImpact) != n1_attrs.cend())
+                            ? static_cast<int64_t>(n1_attrs.at(kRecomputeNodeCriticalPathImpact).i())
+                            : -1;
+    int64_t n2_impact = (n2_attrs.find(kRecomputeNodeCriticalPathImpact) != n2_attrs.cend())
+                            ? static_cast<int64_t>(n2_attrs.at(kRecomputeNodeCriticalPathImpact).i())
+                            : -1;
+    if (n1_impact != -1 && n2_impact != -1) {
+      return n2_impact > n1_impact;
     }
 #endif
 
