@@ -34,7 +34,7 @@ inline int compute_occupancy_for_kernel() {
     int max_smem_per_block = 0;
     CUDA_CALL_THROW(cudaGetDevice(&device));
     CUDA_CALL_THROW(cudaDeviceGetAttribute(&max_smem_per_block, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
-    CUDA_CALL_THROW(cudaFuncGetAttributes(&attr, cutlass::device_kernel<GemmKernel>));
+    CUDA_CALL_THROW(cudaFuncGetAttributes(&attr, cutlass::Kernel<GemmKernel>));
     if (smem_size + attr.sharedSizeBytes >= static_cast<size_t>(max_smem_per_block)) {
       // This should mean that
       // cudaFuncSetAttribute(cutlass::Kernel<GemmKernel>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size)
@@ -45,9 +45,8 @@ inline int compute_occupancy_for_kernel() {
   }
 
   int max_active_blocks = -1;
-  CUDA_CALL_THROW(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-      &max_active_blocks, cutlass::device_kernel<GemmKernel>,
-      128 * (GemmKernel::NumLoadWarpGroups + GemmKernel::NumMmaWarpGroups), smem_size));
+  CUDA_CALL_THROW(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&max_active_blocks, cutlass::Kernel<GemmKernel>,
+                                                                GemmKernel::kThreadCount, smem_size));
 
   return max_active_blocks;
 }
