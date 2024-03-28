@@ -5,11 +5,14 @@
 // extra code in the core of CUDA EP and that code may
 //  1. slow down performance critical applications and
 //  2. increase binary size of ORT.
-#include <iostream>
-#include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_stream_handle.h"
+
 #include "gtest/gtest.h"
+#include <iostream>
+
+#include "core/framework/run_options.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_stream_handle.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -22,7 +25,7 @@ TEST(TestDeferredRelease, WithArena) {
   CUDAExecutionProvider ep(info);
   AllocatorPtr gpu_alloctor = ep.CreatePreferredAllocators()[0];
 
-  RunOptions run_opts;
+  onnxruntime::RunOptions run_opts;
   run_opts.run_tag = "log1";
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
@@ -54,7 +57,7 @@ TEST(TestDeferredRelease, WithoutArena) {
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
 
-  RunOptions run_opts;
+  onnxruntime::RunOptions run_opts;
   run_opts.run_tag = "log1";
 
   OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
