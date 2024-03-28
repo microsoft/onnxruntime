@@ -18,6 +18,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -26,6 +27,7 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "orttraining/core/graph/recompute_graph_utils.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
@@ -223,20 +225,20 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
 
       for (auto& consumer : consumers) {
         if (consumer->OpType().compare("LayerNormalization") == 0) {
-          if (consumer->Name().find("_recompute") != std::string::npos) {
+          if (consumer->Name().find(graph_utils::kRecomputeFlag) != std::string::npos) {
             recompute_ln_node = consumer;
             ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             recompute_ln_node_parent_add_or_ln_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node != nullptr);
             ASSERT_EQ(recompute_ln_node_parent_add_or_ln_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
-            ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node->Name().find("_recompute") == std::string::npos);
+            ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node->Name().find(graph_utils::kRecomputeFlag) == std::string::npos);
           } else {
             original_ln_node = consumer;
             ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             original_ln_node_parent_add_or_ln_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(original_ln_node_parent_add_or_ln_node);
             ASSERT_EQ(original_ln_node_parent_add_or_ln_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
-            ASSERT_TRUE(original_ln_node_parent_add_or_ln_node->Name().find("_recompute") == std::string::npos);
+            ASSERT_TRUE(original_ln_node_parent_add_or_ln_node->Name().find(graph_utils::kRecomputeFlag) == std::string::npos);
           }
         } else if (consumer->OpType().compare("LayerNormalizationGrad") == 0) {
           input_layer_norm_grad_node = consumer;
@@ -262,14 +264,14 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
 
       for (auto& consumer : consumers) {
         if (consumer->OpType().compare("LayerNormalization") == 0) {
-          if (consumer->Name().find("_recompute") != std::string::npos) {
+          if (consumer->Name().find(graph_utils::kRecomputeFlag) != std::string::npos) {
             recompute_ln_node = consumer;
             ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             recompute_ln_node_parent_add_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(recompute_ln_node_parent_add_node);
             ASSERT_EQ(recompute_ln_node_parent_add_node->OpType(), "Add");
             ASSERT_EQ(recompute_ln_node_parent_add_node->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
-            ASSERT_TRUE(recompute_ln_node_parent_add_node->Name().find("_recompute") != std::string::npos);
+            ASSERT_TRUE(recompute_ln_node_parent_add_node->Name().find(graph_utils::kRecomputeFlag) != std::string::npos);
           } else {
             original_ln_node = consumer;
             ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));

@@ -6,8 +6,10 @@
 namespace onnxruntime {
 namespace graph_utils {
 
+constexpr const char* kRecomputeFlag = "_recompute";
+
 inline std::string RecomputeName(const std::string& name) {
-  return name + "_recompute";
+  return name + kRecomputeFlag;
 }
 
 }  // namespace graph_utils
