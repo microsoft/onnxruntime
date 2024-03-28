@@ -10,7 +10,22 @@ import sys
 import typing
 
 
-def get_pipeline_names():
+def get_pipeline_names(sanity_check: bool = False):
+    # A few pipeline for sanity check. Only after these pipelines are green, we will check other pipelines.
+    if sanity_check:
+        return [
+            "Windows CPU CI Pipeline",
+            "Windows GPU TensorRT CI Pipeline",
+            "ONNX Runtime Web CI Pipeline",
+            "Linux CPU CI Pipeline",
+            "Linux GPU CI Pipeline",
+            "Linux OpenVINO CI Pipeline",
+            "MacOS CI Pipeline",
+            "orttraining-amd-gpu-ci-pipeline",
+            "orttraining-ortmodule-distributed",
+            "Big Models",
+        ]
+
     # Current pipelines. These change semi-frequently and may need updating.
     # There is no easy way to get the list of "required" pipelines using `azp` before they are run,
     # so we need to maintain this list manually.
@@ -62,6 +77,7 @@ def _parse_args():
         """,
     )
     parser.add_argument("pr", help="Specify the pull request ID.")
+    parser.add_argument("-s", "--sanity", help="Run only a few pipelines to sanity check.", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -104,7 +120,7 @@ def main():
         if len(columns) == 4 and columns[1] == "pass"
     ]
 
-    pipelines = get_pipeline_names()
+    pipelines = get_pipeline_names(sanity_check=args.sanity)
 
     # remove pipelines that have already run successfully
     pipelines = [p for p in pipelines if p not in checked_pipelines]
