@@ -201,7 +201,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
       ortSession = ortEnvironment.createSession(modelData, sessionOptions);
     } else if (uri.startsWith("file://") || uri.startsWith("/")) {
       // load model from local
-      if (uri.startsWith("file://")) uri = uri.substring(7);
+      if (uri.startsWith("file://")) {
+        uri = uri.substring(7);
+      }
       ortSession = ortEnvironment.createSession(uri, sessionOptions);
     } else {
       // load model via model path string uri
