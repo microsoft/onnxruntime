@@ -2301,6 +2301,9 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetEndVersion = [](const OrtCustomOp* this_) {
       return static_cast<const TOp*>(this_)->end_ver_;
     };
+
+    OrtCustomOp::GetMayInplace = nullptr;
+    OrtCustomOp::ReleaseMayInplace = nullptr;
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider

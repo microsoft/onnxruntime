@@ -2862,6 +2862,17 @@ TEST(CApiTest, TestSharedAllocators) {
                         expected_dims_y,
                         expected_values_y,
                         nullptr);
+
+      // create session 3 to test separate allocation for initializers
+      session_options.AddConfigEntry("session.use_device_allocator_for_initializers", "1");
+      Ort::Session session3(*ort_env, MODEL_URI, session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session3,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
     }
 
     // Remove the registered shared allocator from the global environment
@@ -2872,7 +2883,10 @@ TEST(CApiTest, TestSharedAllocators) {
     // We should have seen 2 allocations per session (one for the sole initializer
     // and one for the output). So, for two sessions, we should have seen 4 allocations.
     size_t num_allocations = custom_allocator.NumAllocations();
-    ASSERT_TRUE(num_allocations == 4);
+    ASSERT_TRUE(num_allocations == 6);
+
+    size_t num_reserve_allocations = custom_allocator.NumReserveAllocations();
+    ASSERT_TRUE(num_reserve_allocations == 1);
 
     // Ensure that there was no leak
     custom_allocator.LeakCheck();
@@ -4021,6 +4035,10 @@ struct MockGQA : public OrtCustomOp {
       (*output_index)[1] = 2;
       return ret;
     };
+    OrtCustomOp::ReleaseMayInplace = [](int* input_index, int* output_index) {
+      free(input_index);
+      free(output_index);
+    };
   }
 };
 
@@ -4036,6 +4054,5 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(output_index[0], 1);
   ASSERT_EQ(output_index[1], 2);
   ASSERT_EQ(len, static_cast<size_t>(2));
-  free(input_index);
-  free(output_index);
+  mock_gqa.ReleaseMayInplace(input_index, output_index);
 }

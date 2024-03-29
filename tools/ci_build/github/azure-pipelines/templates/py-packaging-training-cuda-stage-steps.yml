@@ -36,6 +36,7 @@ stages:
     jobs:
     - job: Build
       pool: onnxruntime-Ubuntu2204-AMD-CPU
+      timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'

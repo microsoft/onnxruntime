@@ -54,10 +54,20 @@ class GraphExecutionManager(GraphExecutionInterface):
         self,
         module: _FlattenedModule,
         debug_options: DebugOptions,
+        export_mode: int,
         fallback_manager: _FallbackManager,
         logger: logging.Logger,
     ):
-        """Manages construction and execution of ONNX graphs"""
+        """Manages construction and execution of ONNX graphs.
+
+        Args:
+            module: The flatten PyTorch module to be executed.
+            debug_options: Debug options for ORTModule.
+            export_mode: export mode, should be torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL.
+            fallback_manager: Fallback manager to handle exceptions.
+            logger: Logger for ORTModule.
+
+        """
 
         super().__init__(module._original_module)
 
@@ -88,16 +98,12 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._first_skip_check_warning = True
 
-        # Inspector for runtime information, for example input data, memory usage, etc.
-        self._runtime_inspector = RuntimeInspector(self._logger, self._original_module)
-        self._runtime_inspector.memory_ob.enable_memory_stats_by_step(self._runtime_options.print_memory_stat_by_step)
-
         # Tracker for ORTModule model export, session creation overhead.
         self.time_tracker = _logger.TimeTracker()
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
-        self._export_mode = None
+        self._export_mode = export_mode
 
         # Exporter can take extra arguments for ORTModule extensions
         # It cannot overlap with required/immutable arguments (validated in runtime)
@@ -128,6 +134,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Flag to re-export the model due to attribute change on the original module.
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
+
+        # Inspector for runtime information, for example input data, memory usage, etc.
+        self._runtime_inspector = RuntimeInspector(
+            self._logger, self._original_module, self._export_mode == torch.onnx.TrainingMode.TRAINING
+        )
+        self._runtime_inspector.memory_ob.enable_memory_stats_by_step(self._runtime_options.print_memory_stat_by_step)
 
         # Load ATen operator executor extension.
         load_aten_op_executor_cpp_extension()

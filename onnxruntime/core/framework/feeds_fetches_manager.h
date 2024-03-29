@@ -25,7 +25,7 @@ enum class DeviceCopyCheck {
 };
 
 struct DeviceCopyChecks {
-  DeviceCopyCheck status = DeviceCopyCheck::Unknown;  ///< Overall status. If NoCopy no input or output copies are needed
+  DeviceCopyCheck status = DeviceCopyCheck::Unknown;  ///< Overall status. NoCopy means input_copy_needed and output_copy_needed are both NoCopy
   DeviceCopyCheck input_copy_needed = DeviceCopyCheck::Unknown;
   DeviceCopyCheck output_copy_needed = DeviceCopyCheck::Unknown;
 };
@@ -73,6 +73,9 @@ struct FeedsFetchesInfo {
 struct MLValueCopyInfo {
   OrtDevice source_device{};
   OrtDevice target_device{};  // default is CPU
+
+  // if all the consume ops are from the same stream, this variable is the stream index; otherwise -1
+  int unique_stream_index_consumes_it = -1;
 };
 
 class FeedsFetchesManager {
