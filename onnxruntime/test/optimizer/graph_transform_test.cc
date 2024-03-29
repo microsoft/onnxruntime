@@ -5965,7 +5965,7 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizersViaSessionOptions) {
 
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.FilterEnabledOptimizersViaSessionOptions";
-  so.disabled_rules_and_transformers.insert("ConstantFolding");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, "ConstantFolding"));
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 

@@ -763,36 +763,6 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::DisablePerSessionThreads() 
 }
 
 template <typename T>
-template <typename Iter>
-inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::DisableRulesAndOptimizers(Iter begin, Iter end) {
-  using value_type = typename std::iterator_traits<Iter>::value_type;
-
-  auto dist = std::distance(begin, end);
-  if (dist == 0) return *this;
-  std::vector<const char*> rule_names;
-  rule_names.reserve(dist);
-
-  ORT_CXX_IF_CONSTEXPR(std::is_same<value_type, std::string>::value) {
-    std::transform(begin, end, std::back_inserter(rule_names), [](const std::string& rule) {
-      return rule.c_str();
-    });
-  }
-#ifdef __cpp_lib_string_view
-  else ORT_CXX_IF_CONSTEXPR(std::is_same<value_type, std::string_view>::value) {
-    std::transform(begin, end, std::back_inserter(rule_names), [](const std::string_view& rule) {
-      return rule.data();
-    });
-  }
-#endif
-  else {
-    std::copy(begin, end, std::back_inserter(rule_names));
-  }
-
-  ThrowOnError(GetApi().DisableRulesAndOptimizers(this->p_, rule_names.data(), rule_names.size()));
-  return *this;
-}
-
-template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializers(const std::vector<std::string>& names,
                                                                              const std::vector<Value>& ort_values) {
   const size_t inputs_num = names.size();

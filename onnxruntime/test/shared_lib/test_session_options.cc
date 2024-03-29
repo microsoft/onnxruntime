@@ -33,30 +33,4 @@ TEST(CApiTest, session_options_oversized_affinity_string) {
   }
 }
 
-#define TRANSFORMER_NAMES                                         \
-  {                                                               \
-    "ConstantFolding", "FuseConvBN", "FuseMatMulAdd",             \
-        "FuseMatMulAddFusion", "FuseTransposes", "NopTransformer" \
-  }
-
-TEST(CApiTest, session_options_disable_transformers) {
-  Ort::SessionOptions options;
-
-  constexpr const char* disable_transformers[] = TRANSFORMER_NAMES;
-  options.DisableRulesAndOptimizers(std::begin(disable_transformers), std::end(disable_transformers));
-
-  const std::string disable_transformers_str[] = TRANSFORMER_NAMES;
-  options.DisableRulesAndOptimizers(std::begin(disable_transformers_str), std::end(disable_transformers_str));
-
-  constexpr std::string_view disable_transformers_sv[] = TRANSFORMER_NAMES;
-  options.DisableRulesAndOptimizers(std::begin(disable_transformers_sv), std::end(disable_transformers_sv));
-
-  const std::vector<std::string> disable_transformers_vec = {TRANSFORMER_NAMES};
-  options.DisableRulesAndOptimizers(std::begin(disable_transformers_vec), std::end(disable_transformers_vec));
-
-  constexpr std::array<std::string_view, std::size(disable_transformers)>
-      disable_transformers_array = TRANSFORMER_NAMES;
-  options.DisableRulesAndOptimizers(std::begin(disable_transformers_array), std::end(disable_transformers_array));
-}
-
 #endif

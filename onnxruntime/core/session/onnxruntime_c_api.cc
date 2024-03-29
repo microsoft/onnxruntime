@@ -846,24 +846,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::DisableRulesAndOptimizers, _Inout_ OrtSessionOptions* sess_options,
-                    _In_reads_(input_len) const char* const* disabled_rules_and_transformers_names, size_t names_num) {
-  API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  ::onnxruntime::SessionOptions& options = sess_options->value;
-  gsl::span<const char* const> names_span(disabled_rules_and_transformers_names, names_num);
-
-  InlinedHashSet<std::string> disabled_names;
-  disabled_names.reserve(names_num);
-  disabled_names.insert(names_span.begin(), names_span.end());
-  options.disabled_rules_and_transformers.swap(disabled_names);
-  return nullptr;
-#else
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "DisableRulesAndOptimizers not supported in this build");
-#endif
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
@@ -2744,8 +2726,7 @@ static constexpr OrtApi ort_api_1_to_18 = {
     &OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
     &OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
     &OrtApis::KernelContext_GetScratchBuffer,
-    &OrtApis::KernelInfoGetAllocator,
-    &OrtApis::DisableRulesAndOptimizers};
+    &OrtApis::KernelInfoGetAllocator};
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
 static_assert(sizeof(OrtApiBase) == sizeof(void*) * 2, "New methods can't be added to OrtApiBase as it is not versioned");
