@@ -9,7 +9,7 @@
   },
   "author": "fs-eire",
   "scripts": {
-    "build:cjs": "tsc --module commonjs --outDir ./dist/cjs",
+    "build:cjs": "tsc --module commonjs --moduleResolution node10 --outDir ./dist/cjs",
     "build:esm": "tsc",
     "build:bundles": "webpack",
     "build": "node ./build.js",
@@ -18,7 +18,7 @@
     "test": "mocha ./test/**/*.js --timeout 30000"
   },
   "devDependencies": {
-    "typedoc": "^0.23.22"
+    "typedoc": "^0.25.7"
   },
   "main": "dist/cjs/index.js",
   "exports": {

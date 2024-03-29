@@ -21,10 +21,6 @@ interface BuildDefinitions {
   /**
    * defines whether to disable the whole WebNN backend in the build.
    */
-  readonly DISABLE_WEBNN: boolean;
-  /**
-   * defines whether to disable the whole WebAssembly backend in the build.
-   */
   readonly DISABLE_WASM: boolean;
   /**
    * defines whether to disable proxy feature in WebAssembly backend in the build.

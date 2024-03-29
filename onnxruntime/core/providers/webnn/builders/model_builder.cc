@@ -386,7 +386,8 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   for (auto& name : output_names_) {
     named_operands.set(name, wnn_operands_.at(name));
   }
-  emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("buildSync", named_operands);
+
+  emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("build", named_operands).await();
   if (!wnn_graph.as<bool>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to build WebNN graph.");
   }
@@ -395,13 +396,10 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   model->SetOutputs(std::move(output_names_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // Pre-allocate the input and output tensors for the WebNN graph
-  // when WebAssembly multi-threads is enabled since WebNN API only
-  // accepts non-shared ArrayBufferView.
-  // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
+  // Wasm heap is not transferrable, we have to pre-allocate the MLNamedArrayBufferViews
+  // for inputs and outputs because they will be transferred after compute() done.
+  // https://webmachinelearning.github.io/webnn/#api-mlcontext-async-execution
   model->AllocateInputOutputBuffers();
-#endif
   return Status::OK();
 }
 

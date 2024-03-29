@@ -58,7 +58,7 @@ export interface TrainingSessionHandler extends SessionHandler {
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
 
   getParametersSize(trainableOnly: boolean): Promise<number>;
-  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
+  loadParametersBuffer(buffer: Uint8Array, trainableOnly: boolean): Promise<void>;
   getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue>;
 }
 
@@ -77,8 +77,8 @@ export interface Backend {
       Promise<InferenceSessionHandler>;
 
   createTrainingSessionHandler?
-      (checkpointStateUriOrBuffer: TrainingSession.URIorBuffer, trainModelUriOrBuffer: TrainingSession.URIorBuffer,
-       evalModelUriOrBuffer: TrainingSession.URIorBuffer, optimizerModelUriOrBuffer: TrainingSession.URIorBuffer,
+      (checkpointStateUriOrBuffer: TrainingSession.UriOrBuffer, trainModelUriOrBuffer: TrainingSession.UriOrBuffer,
+       evalModelUriOrBuffer: TrainingSession.UriOrBuffer, optimizerModelUriOrBuffer: TrainingSession.UriOrBuffer,
        options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler>;
 }
 

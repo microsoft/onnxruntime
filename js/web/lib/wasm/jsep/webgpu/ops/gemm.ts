@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {GemmUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -45,8 +46,9 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
   }
   const outputSize = ShapeUtil.size(outputShape);
   const programUniforms: ProgramUniform[] = [
-    {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N}, {type: 'uint32', data: K},
-    {type: 'float32', data: attributes.alpha}, {type: 'float32', data: attributes.beta}
+    {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: M}, {type: DataType.uint32, data: N},
+    {type: DataType.uint32, data: K}, {type: DataType.float, data: attributes.alpha},
+    {type: DataType.float, data: attributes.beta}
   ];
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
   if (inputs.length === 3) {
