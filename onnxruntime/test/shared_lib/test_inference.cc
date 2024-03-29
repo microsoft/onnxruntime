@@ -4039,6 +4039,20 @@ struct MockGQA : public OrtCustomOp {
       free(input_index);
       free(output_index);
     };
+    OrtCustomOp::GetAliasMap = [](int** input_index, int** output_index) {
+      size_t ret = 2;
+      *input_index = static_cast<int*>(malloc(ret * sizeof(int)));
+      (*input_index)[0] = 5;
+      (*input_index)[1] = 6;
+      *output_index = static_cast<int*>(malloc(ret * sizeof(int)));
+      (*output_index)[0] = 7;
+      (*output_index)[1] = 8;
+      return ret;
+    };
+    OrtCustomOp::ReleaseAliasMap = [](int* input_index, int* output_index) {
+      free(input_index);
+      free(output_index);
+    };
   }
 };
 
@@ -4055,4 +4069,15 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(output_index[1], 2);
   ASSERT_EQ(len, static_cast<size_t>(2));
   mock_gqa.ReleaseMayInplace(input_index, output_index);
+
+  input_index = output_index = nullptr;
+  len = mock_gqa.GetAliasMap(&input_index, &output_index);
+  ASSERT_NE(input_index, nullptr);
+  ASSERT_NE(output_index, nullptr);
+  ASSERT_EQ(input_index[0], 5);
+  ASSERT_EQ(input_index[1], 6);
+  ASSERT_EQ(output_index[0], 7);
+  ASSERT_EQ(output_index[1], 8);
+  ASSERT_EQ(len, static_cast<size_t>(2));
+  mock_gqa.ReleaseAliasMap(input_index, output_index);
 }
