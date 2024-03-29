@@ -336,7 +336,7 @@ TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
 
     if (p_node->OpType() == "YieldOp") {
       // There are multiple YieldOps in the graph。
-      ASSERT_TRUE(yield_op_order_in_topological_sort == -1);
+      ASSERT_EQ(yield_op_order_in_topological_sort, -1);
       yield_op_order_in_topological_sort = static_cast<ptrdiff_t>(i);
     }
 
@@ -349,10 +349,10 @@ TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
                                                                yield_op_order_in_topological_sort,
                                                                layer_boundary_ln_node);
 
-  ASSERT_TRUE(layer_boundary_ln_node.size() == 3);
-  ASSERT_TRUE(layer_boundary_ln_node[0]->Name() == "LayerNormalization_token_0");
-  ASSERT_TRUE(layer_boundary_ln_node[1]->Name() == "LayerNormalization_token_6");
-  ASSERT_TRUE(layer_boundary_ln_node[2]->Name() == "LayerNormalization_token_12");
+  ASSERT_EQ(layer_boundary_ln_node.size(), 3);
+  ASSERT_EQ(layer_boundary_ln_node[0]->Name(), "LayerNormalization_token_0");
+  ASSERT_EQ(layer_boundary_ln_node[1]->Name(), "LayerNormalization_token_6");
+  ASSERT_EQ(layer_boundary_ln_node[2]->Name(), "LayerNormalization_token_12");
 }
 
 }  // namespace test

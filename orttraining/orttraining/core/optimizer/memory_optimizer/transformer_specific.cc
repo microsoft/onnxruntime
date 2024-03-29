@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <charconv>
+#include <tuple>
 #include <vector>
 #include <utility>
 
@@ -19,7 +20,7 @@ namespace onnxruntime::optimizer::memory_optimizer {
 namespace {
 
 bool IsLayerNormNode(const Node& node) {
-  const static std::set<std::string> layer_norm_ops = {
+  static const std::set<std::string> layer_norm_ops = {
       "LayerNormalization",
       "SkipLayerNormalization",
       "SimplifiedLayerNormalization",
@@ -29,7 +30,7 @@ bool IsLayerNormNode(const Node& node) {
 }
 
 bool IsSoftmaxNode(const Node& node) {
-  const static std::set<std::string> softmax_ops = {
+  static const std::set<std::string> softmax_ops = {
       "Softmax",
       "BiasSoftmax",
   };
@@ -66,7 +67,6 @@ std::tuple<bool, const Node*, const Node*> IsResidualNodeArg(const GraphViewer& 
                             |
                         Embedding
                             |
-                            |
       ----------------------|
       |                     |
       |                     |
@@ -92,10 +92,8 @@ std::tuple<bool, const Node*, const Node*> IsResidualNodeArg(const GraphViewer& 
                         (new layer)
       ----------------------|
       |                     |
-      |                     |
       |         SimplifiedLayerNormalization
                            ....
-
 */
 void FindLayerBoundaryLayerNormNodes(
     const GraphViewer& graph_viewer,
@@ -130,15 +128,18 @@ void FindLayerBoundaryLayerNormNodes(
 
     // At this point, there should not be any recompute node, so we don't need check the node existence in
     //  node_index_to_its_order_in_topological_sort_map.
-    ptrdiff_t attention_residual_add_node_order = node_index_to_its_order_in_topological_sort_map.at(add_node->Index());
-    ptrdiff_t attention_residual_ln_node_order = node_index_to_its_order_in_topological_sort_map.at(other_node->Index());
+    ptrdiff_t attention_residual_add_node_order =
+        node_index_to_its_order_in_topological_sort_map.at(add_node->Index());
+    ptrdiff_t attention_residual_ln_node_order =
+        node_index_to_its_order_in_topological_sort_map.at(other_node->Index());
     if (attention_residual_add_node_order >= yield_op_order_in_topological_sort ||
         attention_residual_ln_node_order >= yield_op_order_in_topological_sort) {
       MO_LOG_DEBUG_INFO(logger, "Not a valid residual node arg " + input_arg->Name());
       continue;
     }
 
-    // Search all forward nodes that is before `add_node` in topo order, unless we find a softmax or nodes_to_check is empty.
+    // Search all forward nodes that is before `add_node` in topo order, unless we find a softmax or
+    // nodes_to_check is empty.
     std::deque<const Node*> nodes_to_check;
     std::set<const Node*> visited_nodes;
     for (auto node_it = node.OutputNodesBegin(); node_it != node.OutputNodesEnd(); ++node_it) {
