@@ -790,17 +790,23 @@ class GraphExecutionManager(GraphExecutionInterface):
         else:
             opt_config_to_display = self._runtime_options.memory_optimizer_config
 
+        mem_infos = ""
+        if self._runtime_options.memory_optimizer_is_enabled():
+            if self._runtime_options.layerwise_recompute_auto_enabled:
+                mem_infos = "[AUTO ENABLED] "
+            mem_infos += (
+                f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
+                f"Optimization Config: [{opt_config_to_display}]"
+            )
+        else:
+            mem_infos = "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+
         mem_row = _add_record(
             tbl,
             [
                 "Memory Optimizer",
-                len(self._runtime_options.memory_optimizer_config) > 0,
-                (
-                    f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
-                    f"Optimization Config: [{opt_config_to_display}]"
-                    if len(self._runtime_options.memory_optimizer_config) > 0
-                    else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
-                ),
+                self._runtime_options.memory_optimizer_is_enabled(),
+                mem_infos,
             ],
         )
 
@@ -809,14 +815,17 @@ class GraphExecutionManager(GraphExecutionInterface):
                 self._runtime_options.memory_optimizer_config,
                 details=True,
             )
-            if self._runtime_options.layerwise_recompute_auto_enabled:
-                mem_notes.append(
-                    "Layer-wise memory optimization is enabled automatically upon detecting "
-                    "torch.utils.checkpoint usage during model execution."
-                )
             if mem_tbl is not None:
                 mem_row.append_annotation_table(mem_tbl)
-                notes.extend(mem_notes)
+                notes.extend([f"[{mem_row._columns[0]}] {n}" for n in mem_notes])
+
+        if self._runtime_options.layerwise_recompute_auto_enabled:
+            notes.append(
+                f"[{mem_row._columns[0]}] Layer-wise memory optimization is enabled automatically upon detecting "
+                "torch.utils.checkpoint usage during model execution. \n  If this is not what you want,"
+                "using export ORTMODULE_MEMORY_OPT_LEVEL=0 can disable the auto enabling, but "
+                "in that case, it's mostly likely that the model export would be failed."
+            )
 
         compute_opt_row = _add_record(
             tbl,
@@ -841,13 +850,21 @@ class GraphExecutionManager(GraphExecutionInterface):
             if len(self._runtime_options.label_sparsity_ratio) > 0:
                 _add_record(
                     compute_opt_annotation_tbl,
-                    [" - Label Sparsity Opt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}"],
+                    [
+                        " - Label Sparsity",
+                        True,
+                        f"[AUTO ENABLED] Input density: {self._runtime_options.label_sparsity_ratio}",
+                    ],
                 )
 
             if len(self._runtime_options.embed_sparsity_ratio) > 0:
                 _add_record(
                     compute_opt_annotation_tbl,
-                    [" - Embed Sparsity Opt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}"],
+                    [
+                        " - Embed Sparsity",
+                        True,
+                        f"[AUTO ENABLED] Input density: {self._runtime_options.embed_sparsity_ratio}",
+                    ],
                 )
 
         compute_opt_row.append_annotation_table(compute_opt_annotation_tbl)

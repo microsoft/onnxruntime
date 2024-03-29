@@ -52,6 +52,7 @@ There are two modes to enable the memory optimizations:
 	```
 3. As shown above, `Config` is a string representative for a re-computable subgraph. All are enabled for recompute in this case.
 4. By `export ORTMODULE_MEMORY_OPT_LEVEL=2`, all plans including compromised recomptable subgraphs will also be enabled.
+5. A side effect specifying `export ORTMODULE_MEMORY_OPT_LEVEL=1/2`, automatically layerwise recompute will be skipped. This is to make sure, user's setting is fully respected.
 
 
 ### Mode 2 -  Advanced Usage (User Selected Subgraph Recompute)

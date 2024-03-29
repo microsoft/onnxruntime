@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import inspect
 import os
 import sys
 import warnings
@@ -22,7 +23,10 @@ if not is_ortmodule_available():
     raise ImportError("ORTModule is not supported on this platform.")
 
 
-def _defined_from_envvar(name, default_value, warn=True):
+def _defined_from_envvar(name: str, default_value: any, warn: bool = True):
+    """Check given name exists in the environment variable and return the value using the default_value's
+    type if it exists.
+    """
     new_value = os.getenv(name, None)
     if new_value is None:
         return default_value
@@ -33,6 +37,83 @@ def _defined_from_envvar(name, default_value, warn=True):
             warnings.warn(f"Unable to overwrite constant {name!r} due to {e!r}.")
         return default_value
     return new_value
+
+
+def _override_gradient_checkpoint():
+    """
+    Best effort to override `torch.utils.checkpoint` during ONNX export.
+
+    Despite importing `torch.utils.checkpoint` in `__init__.py`, users might import it first,
+    causing our override to not take effect. We still attempt to override it to work in most cases.
+
+    We replace `torch.utils.checkpoint.checkpoint` with our implementation, without condition checks.
+    The actual check is in the overridden function, verifying if:
+    1) `checkpoint` is called during ORTModule model export,
+    2) Gradient checkpoint autograd function is disallowed (ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT).
+    If true, we reset memory optimization to layer-wise recompute.
+    """
+    from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
+
+    # Note: The original checkpoint function signature looks like below:
+    #   `checkpoint(function, *args,
+    #               use_reentrant = None,
+    #               context_fn = noop_context_fn,
+    #               determinism_check = _DEFAULT_DETERMINISM_MODE,
+    #               debug = False,
+    #               **kwargs).`
+    # The few keyword arguments are not used in the recompute module forward function, but by the
+    # checkpoint function itself, so we need to filter them out otherwise module forward function
+    # would complain about unexpected keyword arguments.
+    all_input_parameters = inspect.signature(original_torch_checkpoint).parameters.values()
+    outside_kwarg_params = []
+    for input_parameter in all_input_parameters:
+        if (
+            input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+            or input_parameter.kind == inspect.Parameter.KEYWORD_ONLY
+            or input_parameter.kind == inspect.Parameter.VAR_KEYWORD
+        ):
+            outside_kwarg_params.append(input_parameter.name)
+
+    def _checkpoint(
+        function,
+        *args,
+        **kwargs,
+    ):
+        # Conditions to activate layer-wise memory optimization automatically:
+        # 1) checkpoint is called during ORTModule model export context.
+        # 2) Gradient checkpoint autograd function is disallowed.
+        # 3) Memory optimization level is not specified by the user, e.g. if user defines it, we respect it.
+        if (
+            ORTMODULE_ONNX_EXPORT_CONTEXT[0] is True
+            and _defined_from_envvar("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", 0) != 1
+            and "ORTMODULE_MEMORY_OPT_LEVEL" not in os.environ
+        ):
+            # Automatically activate layer-specific memory optimization if the checkpoint function
+            # is detected.
+            # > Observation 1: The employment of the checkpoint function typically suggests that the
+            #   model's size exceeds the GPU's memory capacity.
+            #   However, it's possible that some user models apply the checkpoint function for gradient
+            #   checkpointing that isn't layer-specific, though this is believed to be rare.
+            # > Observation 2: Conversely, failing to modify the checkpoint function here will likely
+            #   result in unsuccessful ONNX exports.
+            ORTMODULE_ONNX_EXPORT_CONTEXT[1] = _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+            print(
+                "Layer-wise memory optimization is enabled automatically upon detecting "
+                "torch.utils.checkpoint usage during model execution."
+            )
+            for name in outside_kwarg_params:
+                if name in kwargs:
+                    # Pop out the keyword argument to avoid passing it to the module run function
+                    kwargs.pop(name)
+
+            return function(*args, **kwargs)
+        return original_torch_checkpoint(
+            function,
+            *args,
+            **kwargs,
+        )
+
+    torch.utils.checkpoint.checkpoint = _checkpoint
 
 
 ################################################################################
@@ -77,45 +158,7 @@ try:
             ),
         )
 
-    # Try best effort to override the checkpoint function during ONNX model export.
-    from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
-
-    def _checkpoint(
-        function,
-        *args,
-        use_reentrant=None,
-        context_fn=torch.utils.checkpoint.noop_context_fn,
-        determinism_check=torch.utils.checkpoint._DEFAULT_DETERMINISM_MODE,
-        debug=False,
-        **kwargs,
-    ):
-        if ORTMODULE_ONNX_EXPORT_CONTEXT[0] is True:
-            # Automatically activate layer-specific memory optimization if the checkpoint function
-            # is detected.
-            # > Observation 1: The employment of the checkpoint function typically suggests that the
-            #   model's size exceeds the GPU's memory capacity.
-            #   However, it's possible that some user models apply the checkpoint function for gradient
-            #   checkpointing that isn't layer-specific, though this is believed to be rare.
-            # > Observation 2: Conversely, failing to modify the checkpoint function here will likely
-            #   result in unsuccessful ONNX exports.
-            ORTMODULE_ONNX_EXPORT_CONTEXT[1] = _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
-            print(
-                "Layer-wise memory optimization is enabled automatically upon detecting "
-                "torch.utils.checkpoint usage during model execution."
-            )
-            return function(*args, **kwargs)
-        return original_torch_checkpoint(
-            function,
-            *args,
-            use_reentrant=use_reentrant,
-            context_fn=context_fn,
-            determinism_check=determinism_check,
-            debug=debug,
-            **kwargs,
-        )
-
-    torch.utils.checkpoint.checkpoint = _checkpoint
-
+    _override_gradient_checkpoint()
 
 except ORTModuleFallbackException as e:
     # Initialization fallback is handled at ORTModule.__init__
