@@ -4071,7 +4071,7 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   mock_gqa.ReleaseMayInplace(input_index, output_index);
 
   input_index = output_index = nullptr;
-  size_t len = mock_gqa.GetAliasMap(&input_index, &output_index);
+  len = mock_gqa.GetAliasMap(&input_index, &output_index);
   ASSERT_NE(input_index, nullptr);
   ASSERT_NE(output_index, nullptr);
   ASSERT_EQ(input_index[0], 5);
