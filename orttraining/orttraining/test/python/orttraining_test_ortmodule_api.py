@@ -32,7 +32,7 @@ import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
 from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
-from onnxruntime.training.ortmodule.options import _MemoryOptimizationLevel, _SkipCheck
+from onnxruntime.training.ortmodule.options import _SkipCheck
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 DEFAULT_OPSET = 17
@@ -6546,6 +6546,9 @@ def test_bert_memory_inspection(caplog):
     torch.cuda.synchronize()
     if original_val is not None:
         os.environ["ORTMODULE_PRINT_MEMORY_STATS"] = original_val
+    else:
+        if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
+            del os.environ["ORTMODULE_PRINT_MEMORY_STATS"]
 
 
 @pytest.mark.parametrize("softmax_compute_type", [torch.float16, torch.float32])
@@ -6601,8 +6604,17 @@ def test_overridden_softmax_export(softmax_compute_type):
     assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
 
 
-def test_auto_enable_layerwise_recompute_local_import(caplog):
+@pytest.mark.parametrize("memory_optimization_level", [None, 0, 1, 2])
+def test_auto_enable_layerwise_recompute_local_import(memory_optimization_level, caplog):
     from torch.utils.checkpoint import checkpoint
+
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
+
+    if memory_optimization_level is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = str(memory_optimization_level)
+    else:
+        if original_val is not None:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
 
     class SampleModel(nn.Module):
         def __init__(self):
@@ -6621,26 +6633,60 @@ def test_auto_enable_layerwise_recompute_local_import(caplog):
     model = SampleModel().cuda()
     input = torch.randn(1, 10).cuda()
     model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
-    assert model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level == 0
+
+    expected_level_before_run = 0 if memory_optimization_level is None else memory_optimization_level
+
+    assert (
+        model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level
+        == expected_level_before_run
+    )
 
     # Forward pass
-    _ = model(input)
+    is_export_failed = False
+    try:
+        _ = model(input)
+    except Exception as e:
+        is_export_failed = "torch.utils.checkpoint.CheckpointFunction should not be exported to ONNX" in str(e)
 
-    info_records = [
+    layerwise_recompute_info_records = [
         record.message
         for record in caplog.records
         if "Layer-wise memory optimization is enabled automatically" in record.message
     ]
 
-    assert len(info_records) > 0
+    expected_level_after_run = 1 if memory_optimization_level is None else memory_optimization_level
+    if memory_optimization_level is not None:
+        assert len(layerwise_recompute_info_records) == 0
+        assert is_export_failed
+    else:
+        assert len(layerwise_recompute_info_records) > 0
+        assert not is_export_failed
 
     assert (
         model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level
-        == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+        == expected_level_after_run
     )
 
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+    else:
+        if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
 
-def test_auto_enable_layerwise_recompute_global_import(caplog):
+
+@pytest.mark.parametrize("memory_optimization_level", [None, 0, 1, 2])
+def test_auto_enable_layerwise_recompute_global_import(memory_optimization_level, caplog):
+
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
+
+    if memory_optimization_level is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = str(memory_optimization_level)
+    else:
+        if original_val is not None:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
     class SampleModel(nn.Module):
         def __init__(self):
             super().__init__()
@@ -6658,20 +6704,44 @@ def test_auto_enable_layerwise_recompute_global_import(caplog):
     model = SampleModel().cuda()
     input = torch.randn(1, 10).cuda()
     model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
-    assert model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level == 0
+
+    expected_level_before_run = 0 if memory_optimization_level is None else memory_optimization_level
+
+    assert (
+        model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level
+        == expected_level_before_run
+    )
 
     # Forward pass
-    _ = model(input)
+    is_export_failed = False
+    try:
+        _ = model(input)
+    except Exception as e:
+        is_export_failed = "torch.utils.checkpoint.CheckpointFunction should not be exported to ONNX" in str(e)
 
-    info_records = [
+    layerwise_recompute_info_records = [
         record.message
         for record in caplog.records
         if "Layer-wise memory optimization is enabled automatically" in record.message
     ]
 
-    assert len(info_records) > 0
+    expected_level_after_run = 1 if memory_optimization_level is None else memory_optimization_level
+    if memory_optimization_level is not None:
+        assert len(layerwise_recompute_info_records) == 0
+        assert is_export_failed
+    else:
+        assert len(layerwise_recompute_info_records) > 0
+        assert not is_export_failed
 
     assert (
         model._torch_module._execution_manager._training_manager._runtime_options.memory_optimization_level
-        == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+        == expected_level_after_run
     )
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+    else:
+        if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
