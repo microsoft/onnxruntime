@@ -20,6 +20,10 @@
 # 4) Install the latest ONNX Runtime version
 #
 # $ pip install onnxruntime-gpu
+#
+# 5) Install flash attention v2
+#
+# $ pip install flash-attn --no-build-isolation
 
 from __future__ import annotations
 
