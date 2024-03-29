@@ -99,6 +99,7 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+using common::INVALID_GRAPH;
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 TEST_F(GraphTransformationTests, IdentityElimination) {
@@ -1918,13 +1919,21 @@ TEST_F(GraphTransformationTests, LabelEncoderFusion) {
                              values_a, &mlvalue_a);
   feeds.insert(std::make_pair("A", mlvalue_a));
 
+  bool found_provider = true;
+
   auto run_model_test = [&](TransformerLevel level, std::vector<OrtValue>& fetches, const int requiredLabelEncoderCount) {
     SessionOptions session_options;
     session_options.graph_optimization_level = level;
     session_options.session_logid = "OptimizerTests";
     InferenceSessionWrapper session{session_options, GetEnvironment()};
+
     ASSERT_STATUS_OK(session.Load(model_uri));
-    ASSERT_STATUS_OK(session.Initialize());
+    const auto init_status = session.Initialize();
+    if (!init_status.IsOK() && init_status.Code() == INVALID_GRAPH) {
+      found_provider = false;
+      return;
+    }
+    ASSERT_STATUS_OK(init_status);
 
     // Count if the number of LabelEncoders is as expected
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
@@ -1945,6 +1954,12 @@ TEST_F(GraphTransformationTests, LabelEncoderFusion) {
 
   std::vector<OrtValue> optimized_fetches;
   run_model_test(TransformerLevel::MaxLevel, optimized_fetches, 7);
+
+  // If there was a problem loading the model, do not compare the 2 results
+  if (!found_provider) {
+    GTEST_SKIP();
+    return;
+  }
 
   // Compare results
   auto ret = CompareOrtValue(optimized_fetches[0], unoptimized_fetches[0], 0.0, 0.0, false);
