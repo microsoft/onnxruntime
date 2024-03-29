@@ -5,7 +5,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/rocm/bert/group_query_attention.h"
 #include "contrib_ops/rocm/bert/group_query_attention_helper.h"
-#include "contrib_ops/rocm/bert/grouped_query_attention_impl.cuh"
+#include "contrib_ops/rocm/bert/group_query_attention_impl.cuh"
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
 
 using namespace onnxruntime::rocm;
