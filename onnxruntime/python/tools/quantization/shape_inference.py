@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 def quant_pre_process(
-    input_model_path: Union[str, Path, onnx.ModelProto],
-    output_model_path: Union[str, Path],
+    input_model_path: Union[str, Path, onnx.ModelProto] = None,
+    output_model_path: Optional[Union[str, Path]] = None,
     skip_optimization: bool = False,
     skip_onnx_shape: bool = False,
     skip_symbolic_shape: bool = False,
@@ -70,6 +70,8 @@ def quant_pre_process(
     # when input_model is provided, we will ignore input_model_path.
     if input_model is None:
         input_model = input_model_path
+
+    assert output_model_path is not None, "output_model_path is required."
 
     with tempfile.TemporaryDirectory(prefix="pre.quant.") as quant_tmp_dir:
         temp_path = Path(quant_tmp_dir)

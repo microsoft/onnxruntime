@@ -68,7 +68,7 @@ MODEL_TYPES = {
 
 
 def optimize_by_onnxruntime(
-    onnx_model_path: Union[str, ModelProto],
+    onnx_model_path: Union[str, ModelProto] = None,
     use_gpu: bool = False,
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
@@ -77,9 +77,9 @@ def optimize_by_onnxruntime(
     save_as_external_data: bool = False,
     external_data_filename: str = "",
     external_data_file_threshold: int = 1024,
-    onnx_model: Union[str, ModelProto] = None,
     *,
     provider: Optional[str] = None,
+    onnx_model: Union[str, ModelProto] = None,
 ) -> str:
     """
     Use onnxruntime to optimize model.
