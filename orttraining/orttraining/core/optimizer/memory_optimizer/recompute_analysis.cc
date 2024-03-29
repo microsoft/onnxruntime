@@ -271,6 +271,13 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             },
         },
         {
+            utils::GetFullQualifiedOpName("NonZero", kOnnxDomain),
+            {
+                {9, {}},
+                {13, {}},
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("PadAndUnflatten", kMSDomain),
             {
                 {1, {1, 2}},  // ignore the indices and unflatten_dims
