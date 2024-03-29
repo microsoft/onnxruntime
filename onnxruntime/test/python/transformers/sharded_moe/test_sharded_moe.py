@@ -277,15 +277,27 @@ def test_moe_with_tensor_parallelism(
         inter_size,
     )
 
-    fc1_experts_weights = fc1_experts_weights_all[
-        :, :, local_rank * inter_size // get_size() : (local_rank + 1) * inter_size // get_size()
-    ]
-    fc2_experts_weights = fc2_experts_weights_all[
-        :, local_rank * inter_size // get_size() : (local_rank + 1) * inter_size // get_size(), :
-    ]
-    fc3_experts_weights = fc3_experts_weights_all[
-        :, :, local_rank * inter_size // get_size() : (local_rank + 1) * inter_size // get_size()
-    ]
+    def get_fc1_tensor_shards(expert_weights):
+        return (
+            expert_weights.reshape(-1, inter_size, hidden_size)
+            .transpose(0, 2, 1)[
+                :, :, local_rank * inter_size // get_size() : (local_rank + 1) * inter_size // get_size()
+            ]
+            .transpose(0, 2, 1)
+        )
+
+    def get_fc2_tensor_shards(expert_weights):
+        return (
+            expert_weights.reshape(-1, hidden_size, inter_size)
+            .transpose(0, 2, 1)[
+                :, local_rank * inter_size // get_size() : (local_rank + 1) * inter_size // get_size(), :
+            ]
+            .transpose(0, 2, 1)
+        )
+
+    fc1_experts_weights = get_fc1_tensor_shards(fc1_experts_weights_all)
+    fc2_experts_weights = get_fc2_tensor_shards(fc2_experts_weights_all)
+    fc3_experts_weights = get_fc1_tensor_shards(fc3_experts_weights_all)
     fc1_experts_bias = fc1_experts_bias_all[
         :, local_rank * inter_size // get_size() : (local_rank + 1) * inter_size // get_size()
     ]
