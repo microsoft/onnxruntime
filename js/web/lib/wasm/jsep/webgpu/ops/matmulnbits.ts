@@ -67,7 +67,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const bComponents = getMaxComponents(blobSizeInWords);
       const outputSize = ShapeUtil.size(outputShape);
       const workgroupSize = Math.min(maxComputeWorkgroupSizes[0], nBlocksPerCol);
-      const dispatch = [nBlocksPerCol / workgroupSize, dimBOuter, batchSize];
+      const dispatch = [Math.ceil(nBlocksPerCol / workgroupSize), dimBOuter, batchSize];
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: outputSize / dimAOuter}, {type: DataType.uint32, data: attributes.k},
         {type: DataType.uint32, data: attributes.n}, {type: DataType.uint32, data: attributes.accuracyLevel},
@@ -184,7 +184,8 @@ export const createBlockwiseMatMulNBitsProgramInfo =
                   ${a.indicesSet('a_indices', inputRank - 2, 'k')};
                   let a_data = ${a.getByIndices('a_indices')};
                   workgroupShared[block][k] += ${
-            aComponents === 1 ? 'a_data * b_dequantized_values[j]' : 'dot(a_data, b_dequantized_values[j])'};
+            aComponents === 1 ? 'a_data * b_dequantized_values[j]' :
+                                `dot(a_data, b_dequantized_values[j / ${aComponents}])`};
                 }
                 offset++;
               }
