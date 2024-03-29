@@ -865,6 +865,8 @@ struct OrtLiteCustomOp : public OrtCustomOp {
 
     OrtCustomOp::GetMayInplace = {};
     OrtCustomOp::ReleaseMayInplace = {};
+    OrtCustomOp::GetAliasMap = {};
+    OrtCustomOp::ReleaseAliasMap = {};
   }
 
   const std::string op_name_;
