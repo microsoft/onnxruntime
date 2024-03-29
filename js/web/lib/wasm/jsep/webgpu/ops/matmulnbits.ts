@@ -134,6 +134,9 @@ export const createBlockwiseMatMulNBitsProgramInfo =
             Array.from({length: 8}, (_, i) => `${dataType}((value >> ${(i * 4).toString()}) & 0xFu)`).join(', ')});
         }`;
         const zeroPointsBytesPerCol = Math.floor((nBlocksPerCol + 1) / 2);
+        // outputSizePerBatch is the number of elements computed in the output tensor per batch.
+        // outputSizePerBatch is computed in number of colums of output tensor produced.
+        const outputSizePerBatch = nBlocksPerCol * dimBOuter;
         return `
         ${dequantizeImpl};
         ${ortUnpack8x4snormImpl};
@@ -146,9 +149,9 @@ export const createBlockwiseMatMulNBitsProgramInfo =
             Array.from({length: dimAOuter}, () => `${output.type.value}(0)`).join(', ')});
           var output_indices: ${output.type.indices};
           var a_indices: ${a.type.indices};
-          var col = global_idx / ${nBlocksPerCol};
-          var block = global_idx % ${nBlocksPerCol};
-          var batch = global_id.z;
+          var batch: u32 = global_idx / ${outputSizePerBatch};
+          var col: u32 = (global_idx % ${outputSizePerBatch}) / ${nBlocksPerCol};
+          var block = (global_idx % ${outputSizePerBatch}) % ${nBlocksPerCol};
           ${output.indicesSet('output_indices', '0', 'batch')};
           ${a.indicesSet('a_indices', '0', 'batch')};
           // Two zero points are packed into one byte when uniforms.bits is 4.
@@ -165,7 +168,8 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           ${b.indicesSet('b_indices', '0', 'col')};
           var block_offset: u32 = block * ${attributes.blockSize / aComponents};
           // The scale and zero points are computed per block.
-          let scale = ${scales.getByOffset('global_idx')};
+          var scales_index = col * ${nBlocksPerCol} + block;
+          let scale = ${scales.getByOffset('scales_index')};
           // The default zero point is 8 for unsigned 4-bit quantization.
           let zero_point = ${dataType}(${zeroPoints ? '(zero_point_word) & 0xFu' : 8.0});
           ${b.indicesSet('b_indices', '1', 'block')};
