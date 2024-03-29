@@ -62,11 +62,12 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const batchSize = ShapeUtil.size(batchDims);
       const blobSize = attributes.blockSize / 8 * attributes.bits;
       const blobSizeInWords = blobSize / 4;
-      const outputShape = batchDims.concat([dimAOuter, nBlocksPerCol, dimBOuter]);
+      const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
       const outputSize = ShapeUtil.size(outputShape);
-      const workgroupSize = [Math.min(maxComputeWorkgroupSizes[0], outputSize / dimAOuter), 1, 1];
+      const workgroupSize = Math.min(maxComputeWorkgroupSizes[0], nBlocksPerCol);
+      const dispatch = [nBlocksPerCol / workgroupSize, dimBOuter, batchSize];
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: outputSize / dimAOuter}, {type: DataType.uint32, data: attributes.k},
         {type: DataType.uint32, data: attributes.n}, {type: DataType.uint32, data: attributes.accuracyLevel},
@@ -81,7 +82,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       if (inputs.length === 4) {
         programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(inputs[3].dims)));
       }
-      const outputShapeTemp = [batchSize, nBlocksPerCol, dimAOuter, dimBOuter];
+      const outputShapeTemp = [batchSize, dimAOuter, dimBOuter];
       programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const inputRank = inputShapeTemp.length;
@@ -134,24 +135,18 @@ export const createBlockwiseMatMulNBitsProgramInfo =
             Array.from({length: 8}, (_, i) => `${dataType}((value >> ${(i * 4).toString()}) & 0xFu)`).join(', ')});
         }`;
         const zeroPointsBytesPerCol = Math.floor((nBlocksPerCol + 1) / 2);
-        // outputSizePerBatch is the number of elements computed in the output tensor per batch.
-        // outputSizePerBatch is computed in number of colums of output tensor produced.
-        const outputSizePerBatch = nBlocksPerCol * dimBOuter;
         return `
+        var<workgroup> workgroupShared: array<array<${dataType}, ${dimAOuter}>, ${workgroupSize}>;
         ${dequantizeImpl};
         ${ortUnpack8x4snormImpl};
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
-        ${shaderHelper.mainStart([
-          workgroupSize[0], workgroupSize[1], workgroupSize[2]
-        ])}
-          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
-          var output_values = array<${output.type.value}, ${dimAOuter}>(${
-            Array.from({length: dimAOuter}, () => `${output.type.value}(0)`).join(', ')});
+        ${shaderHelper.mainStart(workgroupSize)}
           var output_indices: ${output.type.indices};
           var a_indices: ${a.type.indices};
-          var batch: u32 = global_idx / ${outputSizePerBatch};
-          var col: u32 = (global_idx % ${outputSizePerBatch}) / ${nBlocksPerCol};
-          var block = (global_idx % ${outputSizePerBatch}) % ${nBlocksPerCol};
+          var block = local_id.x;
+          var col = workgroup_id.y;
+          var batch = workgroup_id.z;
+
           ${output.indicesSet('output_indices', '0', 'batch')};
           ${a.indicesSet('a_indices', '0', 'batch')};
           // Two zero points are packed into one byte when uniforms.bits is 4.
@@ -188,19 +183,25 @@ export const createBlockwiseMatMulNBitsProgramInfo =
                 for (var k: u32 = 0; k < ${dimAOuter}u; k++) {
                   ${a.indicesSet('a_indices', inputRank - 2, 'k')};
                   let a_data = ${a.getByIndices('a_indices')};
-                  output_values[k] += ${
+                  workgroupShared[block][k] += ${
             aComponents === 1 ? 'a_data * b_dequantized_values[j]' : 'dot(a_data, b_dequantized_values[j])'};
-                                  }
+                }
                 offset++;
               }
               word_offset += ${8 / aComponents};
             }
           }
-          ${output.indicesSet('output_indices', outputRank - 3, 'block')}
+
+          workgroupBarrier();
+
           ${output.indicesSet('output_indices', outputRank - 1, 'col')}
           for (var k: u32 = 0u; k < ${dimAOuter}u; k++) {
+            var output_value: ${output.type.value} = ${output.type.value}(0);
+            for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
+              output_value += workgroupShared[b][k];
+            }
             ${output.indicesSet('output_indices', outputRank - 2, 'k')};
-            ${output.setByIndices('output_indices', 'output_values[k]')}
+            ${output.setByIndices('output_indices', 'output_value')}
           }
         }`;
       };
@@ -210,56 +211,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
             {hint: `${attributes.cacheKey};${inputs.length}`, inputDependencies: Array(inputs.length).fill('rank')},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / dimAOuter / workgroupSize[0] /* workgroup size */)},
-          programUniforms
-        }),
-        getShaderSource
-      };
-    };
-
-export const createMatMulNBitsReduceProgramInfo =
-    (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes,
-     maxComputeWorkgroupSizes: [number, number, number]) => {
-      const inputShape = inputs[0].dims;
-      const batchDims = inputShape.slice(0, inputShape.length - 3);
-      const nBlocksPerCol = inputShape[inputShape.length - 2];
-      const dimAOuter = inputShape[inputShape.length - 3];
-      const dimBOuter = inputShape[inputShape.length - 1];
-      const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
-      const outputSize = ShapeUtil.size(outputShape);
-      const batchSize = ShapeUtil.size(batchDims);
-      const lastDim = inputShape[inputShape.length - 1];
-      const components = getMaxComponents(lastDim);
-      const inputShapeTmp = [batchSize, nBlocksPerCol, dimAOuter, dimBOuter / components];
-      const outputShapeTmp = [batchSize, dimAOuter, dimBOuter / components];
-      const workgroupSize = [Math.min(maxComputeWorkgroupSizes[0], outputSize), 1, 1];
-      const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: outputSize}];
-      programUniforms.push(...createTensorShapeVariables(inputShapeTmp, outputShapeTmp));
-      const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const input = inputVariable('input', inputs[0].dataType, inputShapeTmp.length, components);
-        const output = outputVariable('output', inputs[0].dataType, outputShapeTmp.length, components);
-        return `
-          ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
-          ${shaderHelper.mainStart([
-          workgroupSize[0], workgroupSize[1], workgroupSize[2]
-        ])}
-            ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
-            var output_indices = ${output.offsetToIndices('global_idx')};
-            var input_indices = ${input.type.indices}(output_indices[0], 0, output_indices[1], output_indices[2]);
-            var output_value: ${output.type.value} = ${output.type.value}(0);
-            for (var i: u32 = 0u; i < ${nBlocksPerCol}u; i++) {
-              ${input.indicesSet('input_indices', '1', 'i')};
-              output_value += ${input.getByIndices('input_indices')};
-            }
-            ${output.setByIndices('output_indices', 'output_value')}
-          }`;
-      };
-      return {
-        name: 'MatMulNBitsReduce',
-        shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank' as const]},
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / components / workgroupSize[0] /* workgroup size */)},
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
           programUniforms
         }),
         getShaderSource
@@ -269,11 +221,7 @@ export const createMatMulNBitsReduceProgramInfo =
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
   const maxComputeWorkgroupSizes = context.maxComputeWorkgroupSizes();
-  const [intermediateResult] = context.compute(
-      createBlockwiseMatMulNBitsProgramInfo(context.inputs, attributes, maxComputeWorkgroupSizes), {outputs: [-1]});
-  context.compute(
-      createMatMulNBitsReduceProgramInfo([intermediateResult], attributes, maxComputeWorkgroupSizes),
-      {inputs: [intermediateResult]});
+  context.compute(createBlockwiseMatMulNBitsProgramInfo(context.inputs, attributes, maxComputeWorkgroupSizes));
 };
 
 export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes =>
