@@ -53,6 +53,7 @@ def get_model(args):
             torch_dtype=args.torch_dtype,
             use_auth_token=args.auth,
             use_cache=True,
+            attn_implementation="flash_attention_2",
         ).to(args.target_device)
         model.eval()
 
