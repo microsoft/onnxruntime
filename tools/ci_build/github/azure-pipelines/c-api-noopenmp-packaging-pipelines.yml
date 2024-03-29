@@ -394,12 +394,11 @@ stages:
     steps:
     - template: templates/set-version-number-variables-step.yml
 
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda.bat'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+    - template: templates/jobs/download_win_gpu_library.yml
+      parameters:
+        CudaVersion: ${{ parameters.CudaVersion }}
+        DownloadCUDA: true
+        DownloadTRT: true
 
     - template: templates\flex-downloadPipelineArtifact.yml
       parameters:
@@ -507,12 +506,11 @@ stages:
       condition: always()
 
     - script: dir $(Build.SourcesDirectory)
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\setup_env_gpu.bat'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+    - template: templates/jobs/download_win_gpu_library.yml
+      parameters:
+        CudaVersion: ${{ parameters.CudaVersion }}
+        DownloadCUDA: true
+        DownloadTRT: true
     - template: templates/set-version-number-variables-step.yml
       parameters:
         versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
