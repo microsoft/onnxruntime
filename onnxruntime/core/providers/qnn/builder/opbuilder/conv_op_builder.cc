@@ -360,10 +360,8 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
     // Create the final shape after the weights are transposed to HWCN.
     if (conv_type == OnnxConvType::kConv) {
       ORT_RETURN_IF_ERROR(NchwShapeToHwcn(shape_2d, final_shape));
-      // TODO: Transpose qparam axis
     } else if (conv_type == OnnxConvType::kConvTranspose) {
       ORT_RETURN_IF_ERROR(CnhwShapeToHwcn(shape_2d, final_shape));
-      // TODO: Transpose qparam axis
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
     }

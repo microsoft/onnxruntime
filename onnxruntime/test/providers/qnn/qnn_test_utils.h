@@ -8,6 +8,7 @@
 #include <cmath>
 #include <unordered_map>
 #include "core/framework/provider_options.h"
+#include "core/framework/tensor_shape.h"
 #include "core/util/qmath.h"
 
 #include "test/optimizer/qdq_test_utils.h"
@@ -199,6 +200,42 @@ struct TestInputDef {
     }
 
     return range;
+  }
+
+  std::vector<std::pair<T, T>> GetRangePerAxis(size_t axis) {
+    auto which_type = data_info_.index();
+    const size_t num_ranges = static_cast<size_t>(shape_.at(axis));
+
+    // Random. All axis dims get the same ranges (rand_min -> rand_max)
+    if (which_type == 1) {
+      RandomData rand_info = std::get<RandomData>(data_info_);
+      return std::vector<std::pair<T, T>>(num_ranges, std::pair<T, T>(rand_info.min, rand_info.max));
+    }
+
+    // Raw data. Get min/max per axis dim val
+    assert(which_type == 0);
+
+    const std::vector<T>& raw_data = std::get<RawData>(data_info_).data;
+    std::pair<T, T> init_range(std::numeric_limits<T>::max(), std::numeric_limits<T>::min());
+    std::vector<std::pair<T, T>> per_axis_ranges(num_ranges, init_range);
+    TensorShape shape(shape_);
+    size_t num_blocks = shape.SizeToDimension(axis);
+    size_t block_size = shape.SizeFromDimension(axis + 1);
+
+    size_t i = 0;
+    for (size_t n = 0; n < num_blocks; n++) {
+      for (size_t r = 0; r < num_ranges; r++) {
+        for (size_t j = 0; j < block_size; j++) {
+          std::pair<T, T>& range = per_axis_ranges[r];
+          range.first = std::min(range.first, raw_data[i]);
+          range.second = std::max(range.second, raw_data[i]);
+          i++;
+        }
+      }
+    }
+    assert(i == raw_data.size());
+
+    return per_axis_ranges;
   }
 
  private:

@@ -80,13 +80,13 @@ static Status TryTransposeQnnQuantParams(Qnn_QuantizeParams_t& quantize_param, g
   if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
     ORT_RETURN_IF_NOT(static_cast<size_t>(quantize_param.axisScaleOffsetEncoding.axis) < perm.size(),
                       "Axis value is out of range of the provided permutation");
-    const int32_t axis_t = static_cast<int32_t>(perm[quantize_param.axisScaleOffsetEncoding.axis]);
-    quantize_param.axisScaleOffsetEncoding.axis = axis_t;
+    const int32_t new_axis = static_cast<int32_t>(perm[quantize_param.axisScaleOffsetEncoding.axis]);
+    quantize_param.axisScaleOffsetEncoding.axis = new_axis;
   } else if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
     ORT_RETURN_IF_NOT(static_cast<size_t>(quantize_param.bwAxisScaleOffsetEncoding.axis) < perm.size(),
                       "Axis value is out of range of the provided permutation");
-    const int32_t axis_t = static_cast<int32_t>(perm[quantize_param.bwAxisScaleOffsetEncoding.axis]);
-    quantize_param.bwAxisScaleOffsetEncoding.axis = axis_t;
+    const int32_t new_axis = static_cast<int32_t>(perm[quantize_param.bwAxisScaleOffsetEncoding.axis]);
+    quantize_param.bwAxisScaleOffsetEncoding.axis = new_axis;
   }
 
   return Status::OK();
