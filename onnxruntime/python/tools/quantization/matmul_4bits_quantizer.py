@@ -440,7 +440,7 @@ class DefaultWeightOnlyQuantizer:
         kwargs["bits"] = 4
         kwargs["block_size"] = self.config.block_size
         if self.config.accuracy_level is not None:
-            kwargs["accuracy_level"] = self.accuracy_level
+            kwargs["accuracy_level"] = self.config.accuracy_level
 
         matmul_q4_node = onnx.helper.make_node(
             "MatMulNBits",
