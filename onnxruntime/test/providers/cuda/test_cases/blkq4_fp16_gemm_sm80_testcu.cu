@@ -11,9 +11,11 @@
  *   well with gtest headers.
  */
 
+#include "blkq4_fp16_gemm_sm80.h"
+
 #include <random>
-#include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
 
 #include "core/mickey/blk_q4/f16_gemm_sm80.h"
 
@@ -26,13 +28,11 @@
 
 #include "core/common/common.h"
 
-#include "blkq4_fp16_gemm_sm80.h"
-
 namespace onnxruntime {
-namespace cuda{
-namespace test{
+namespace cuda {
+namespace test {
 
-Status sm80_supported(){
+Status sm80_supported() {
   cudaDeviceProp props;
 
   cudaError_t error = cudaGetDeviceProperties(&props, 0);
@@ -55,27 +55,25 @@ Status sm80_supported(){
  *        Copied directly from cutlass util/reference/device/gemm.h
  *        for the strange reason that compiler insists on asking
  *        for explicit stream argument in kernel launch.
-*/
+ */
 template <
-  typename ElementA,
-  typename LayoutA,
-  typename ElementB,
-  typename LayoutB,
-  typename ElementC,
-  typename LayoutC,
-  typename ScalarType,
-  typename AccumulatorType
->
+    typename ElementA,
+    typename LayoutA,
+    typename ElementB,
+    typename LayoutB,
+    typename ElementC,
+    typename LayoutC,
+    typename ScalarType,
+    typename AccumulatorType>
 void compute_gemm_ref(
-  cutlass::gemm::GemmCoord problem_size,
-  ScalarType alpha,
-  cutlass::TensorRef<ElementA, LayoutA> tensor_a,
-  cutlass::TensorRef<ElementB, LayoutB> tensor_b,
-  ScalarType beta,
-  cutlass::TensorRef<ElementC, LayoutC> tensor_c,
-  cutlass::TensorRef<ElementC, LayoutC> tensor_d,
-  AccumulatorType initial_accum = AccumulatorType(0)) {
-
+    cutlass::gemm::GemmCoord problem_size,
+    ScalarType alpha,
+    cutlass::TensorRef<ElementA, LayoutA> tensor_a,
+    cutlass::TensorRef<ElementB, LayoutB> tensor_b,
+    ScalarType beta,
+    cutlass::TensorRef<ElementC, LayoutC> tensor_c,
+    cutlass::TensorRef<ElementC, LayoutC> tensor_d,
+    AccumulatorType initial_accum = AccumulatorType(0)) {
   // Blocking structure potentially improves performance of reference implementation
   // with a minor increase in complexity.
   //
@@ -85,30 +83,27 @@ void compute_gemm_ref(
   dim3 block(16, 8);
 
   dim3 grid(
-    (problem_size.m() + block.x * OutputTile::kRow - 1) / (block.x * OutputTile::kRow),
-    (problem_size.n() + block.y * OutputTile::kColumn - 1) / (block.y * OutputTile::kColumn)
-  );
+      (problem_size.m() + block.x * OutputTile::kRow - 1) / (block.x * OutputTile::kRow),
+      (problem_size.n() + block.y * OutputTile::kColumn - 1) / (block.y * OutputTile::kColumn));
 
   // Launch a GEMM kernel
   cutlass::reference::device::kernel::Gemm<
-    cutlass::TensorRef<ElementA, LayoutA>,
-    cutlass::TensorRef<ElementB, LayoutB>,
-    cutlass::TensorRef<ElementC, LayoutC>,
-    ScalarType,
-    AccumulatorType,
-    OutputTile,
-    cutlass::multiply_add<AccumulatorType>,
-    cutlass::NumericConverter<ElementC, ScalarType>
-  ><<<grid, block, 0, 0>>>(
-    problem_size,
-    alpha,
-    tensor_a,
-    tensor_b,
-    beta,
-    tensor_c,
-    tensor_d,
-    initial_accum
-  );
+      cutlass::TensorRef<ElementA, LayoutA>,
+      cutlass::TensorRef<ElementB, LayoutB>,
+      cutlass::TensorRef<ElementC, LayoutC>,
+      ScalarType,
+      AccumulatorType,
+      OutputTile,
+      cutlass::multiply_add<AccumulatorType>,
+      cutlass::NumericConverter<ElementC, ScalarType>><<<grid, block, 0, 0>>>(
+      problem_size,
+      alpha,
+      tensor_a,
+      tensor_b,
+      beta,
+      tensor_c,
+      tensor_d,
+      initial_accum);
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -117,28 +112,31 @@ void compute_gemm_ref(
 //
 
 template <
-  typename Element,
-  typename LayoutCutlass,
-  typename Layout = std::conditional_t<std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value, ColumnMajorLayout, RowMajorLayout>
-  >
+    typename Element,
+    typename LayoutCutlass,
+    typename Layout = std::conditional_t<std::is_same<LayoutCutlass,
+                                                      cutlass::layout::ColumnMajor>::value,
+                                         ColumnMajorLayout, RowMajorLayout>>
 __forceinline__
-MatrixRef<Element, Layout, true> make_MatrixRef(cutlass::HostTensor<Element, LayoutCutlass> const& tensor) {
-  static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value
-                || std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
+    MatrixRef<Element, Layout, true>
+    make_MatrixRef(cutlass::HostTensor<Element, LayoutCutlass> const& tensor) {
+  static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value ||
+                std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
   auto shape = make_Position(tensor.extent().row(), tensor.extent().column());
-  auto* ptr = const_cast<typename std::remove_const<Element>::type *>(tensor.host_data());
+  auto* ptr = const_cast<typename std::remove_const<Element>::type*>(tensor.host_data());
   return MatrixRef<Element, Layout, true>(ptr, tensor.capacity(), shape);
 }
 
 template <
-  typename Element,
-  typename LayoutCutlass,
-  typename Layout = std::conditional_t<std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value, ColumnMajorLayout, RowMajorLayout>
-  >
+    typename Element,
+    typename LayoutCutlass,
+    typename Layout = std::conditional_t<std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value,
+                                         ColumnMajorLayout, RowMajorLayout>>
 __forceinline__
-MatrixRef<Element const, Layout, true> make_ConstMatrixRef(cutlass::HostTensor<Element, LayoutCutlass> const& tensor) {
-  static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value
-                || std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
+    MatrixRef<Element const, Layout, true>
+    make_ConstMatrixRef(cutlass::HostTensor<Element, LayoutCutlass> const& tensor) {
+  static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value ||
+                std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
   auto shape = make_Position(tensor.extent().row(), tensor.extent().column());
   return MatrixRef<Element const, Layout, true>(tensor.host_data(), tensor.capacity(), shape);
 }
@@ -147,7 +145,7 @@ MatrixRef<Element const, Layout, true> make_ConstMatrixRef(cutlass::HostTensor<E
 // Invoking the kernel
 //
 
-template<
+template <
     int block_size,
     bool column_wise_blocking,
     bool small_m,
@@ -160,9 +158,9 @@ void run_blkq4_gemm(int m, int n, int k) {
 
   using ElementDequant = cutlass::half_t;
   using QuantBlocking =
-    typename std::conditional<column_wise_blocking,
-                     cutlass::MatrixShape<block_size, 1>,
-                     cutlass::MatrixShape<1, block_size>>::type;
+      typename std::conditional<column_wise_blocking,
+                                cutlass::MatrixShape<block_size, 1>,
+                                cutlass::MatrixShape<1, block_size>>::type;
 
   using GemmRunner = BlkQ4F16GemmImpl<ElementDequant, QuantBlocking, small_m, has_offsets>;
 
@@ -181,17 +179,18 @@ void run_blkq4_gemm(int m, int n, int k) {
   using LayoutInputQScale = typename GemmRunner::LayoutInputQScale;
 
   const cutlass::gemm::GemmCoord problem_size = {m, n, k};
-  const auto q_weight_shape = cutlass::make_Coord(problem_size.k()/2, problem_size.n());
-  const auto meta_shape = cutlass::make_Coord(problem_size.k()/QuantBlocking::kRow, problem_size.n()/QuantBlocking::kColumn);
+  const auto q_weight_shape = cutlass::make_Coord(problem_size.k() / 2, problem_size.n());
+  const auto meta_shape = cutlass::make_Coord(problem_size.k() / QuantBlocking::kRow, problem_size.n() /
+                                                                                          QuantBlocking::kColumn);
 
   //
   // Generate quantized and dequantizeed input matrix B [K, N]
   //
   static_assert(std::is_same<LayoutInputWPack, cutlass::layout::ColumnMajor>::value);
-  std::vector<ElementW> q_weights;
-  std::vector<ElementQScale> q_scales;
-  std::vector<ElementQOffset> q_zp;
-  std::vector<ElementDequant> dequants;
+  thrust::host_vector<ElementW> q_weights;
+  thrust::host_vector<ElementQScale> q_scales;
+  thrust::host_vector<ElementQOffset> q_zp;
+  thrust::host_vector<ElementDequant> dequants;
   onnxruntime::cuda::test::blkq4_weights_gen<ElementDequant, block_size, column_wise_blocking, has_offsets>(
       problem_size.k(), problem_size.n(), dequants, q_weights, q_scales, q_zp);
 
@@ -201,11 +200,11 @@ void run_blkq4_gemm(int m, int n, int k) {
       4,
       column_wise_blocking>;
 
-  std::vector<ElementW> packed_w(q_weight_shape.product());
+  thrust::host_vector<ElementW> packed_w(q_weight_shape.product());
   PrepackT::prepack_weights(problem_size.k(), problem_size.n(), q_weights, packed_w);
-  std::vector<ElementQScale> packed_scales(meta_shape.product());
+  thrust::host_vector<ElementQScale> packed_scales(meta_shape.product());
   PrepackT::prepack_quant_scales(problem_size.k(), problem_size.n(), q_scales, packed_scales);
-  std::vector<ElementQOffset> packed_zp;
+  thrust::host_vector<ElementQOffset> packed_zp;
   if constexpr (has_offsets) {
     packed_zp.resize(meta_shape.product());
     PrepackT::prepack_quant_offsets(problem_size.k(), problem_size.n(), q_zp, packed_zp);
@@ -240,16 +239,16 @@ void run_blkq4_gemm(int m, int n, int k) {
   //
   thrust::device_vector<ElementW> d_packed_w(packed_w);
   cutlass::TensorRef<ElementWPack const, LayoutInputWPack> ref_W(
-    reinterpret_cast<ElementWPack const *>(d_packed_w.data().get()),
-    LayoutInputWPack::packed({problem_size.k()/2, problem_size.n()/2}));
+      reinterpret_cast<ElementWPack const*>(d_packed_w.data().get()),
+      LayoutInputWPack::packed({problem_size.k() / 2, problem_size.n() / 2}));
 
   thrust::device_vector<ElementQScale> d_packed_scales(packed_scales);
   cutlass::TensorRef<ElementQScale const, LayoutInputQScale> ref_scales(
-    d_packed_scales.data().get(), LayoutInputQScale::packed(meta_shape));
+      d_packed_scales.data().get(), LayoutInputQScale::packed(meta_shape));
 
   thrust::device_vector<ElementQOffset> d_packed_zp(packed_zp);
   cutlass::TensorRef<ElementQOffset const, LayoutInputQScale> ref_zp(
-    d_packed_zp.data().get(), LayoutInputQScale::packed(meta_shape));
+      d_packed_zp.data().get(), LayoutInputQScale::packed(meta_shape));
 
   tensor_a.sync_device();
   tensor_c.sync_device();
@@ -257,16 +256,16 @@ void run_blkq4_gemm(int m, int n, int k) {
 
   // run GEMM
   cutlass::Status status;
-  if constexpr (has_offsets){
+  if constexpr (has_offsets) {
     status = GemmRunner::run(
-      nullptr, problem_size, tensor_a.device_ref(), ref_W,
-      ref_scales, ref_zp,
-      tensor_c.device_ref(), tensor_d.device_ref());
+        nullptr, problem_size, tensor_a.device_ref(), ref_W,
+        ref_scales, ref_zp,
+        tensor_c.device_ref(), tensor_d.device_ref());
   } else {
     status = GemmRunner::run(
-      nullptr, problem_size, tensor_a.device_ref(), ref_W,
-      ref_scales,
-      tensor_c.device_ref(), tensor_d.device_ref());
+        nullptr, problem_size, tensor_a.device_ref(), ref_W,
+        ref_scales,
+        tensor_c.device_ref(), tensor_d.device_ref());
   }
   ORT_ENFORCE(status == cutlass::Status::kSuccess, "Kernel execution failed: ", cutlassGetStatusString(status));
 
@@ -275,7 +274,7 @@ void run_blkq4_gemm(int m, int n, int k) {
   using LayoutInputB = cutlass::layout::ColumnMajor;
   thrust::device_vector<ElementInputB> d_dequants(dequants);
   cutlass::TensorRef<ElementInputB, LayoutInputB> ref_B(
-    d_dequants.data().get(), LayoutInputB::packed(problem_size.kn()));
+      d_dequants.data().get(), LayoutInputB::packed(problem_size.kn()));
   cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_ref_d(
       problem_size.mn());  // <- Create matrix D with dimensions M x N used to store output from
                            // reference kernel
@@ -289,9 +288,9 @@ void run_blkq4_gemm(int m, int n, int k) {
   ElementComputeEpilogue beta = ElementComputeEpilogue(0);
 
   compute_gemm_ref<ElementInputA, LayoutInputA,
-               ElementInputB, LayoutInputB,
-               ElementOutput, LayoutOutput,
-               ElementComputeEpilogue, ElementAccumulator>(
+                   ElementInputB, LayoutInputB,
+                   ElementOutput, LayoutOutput,
+                   ElementComputeEpilogue, ElementAccumulator>(
       problem_size,
       alpha,
       tensor_a.device_ref(),
@@ -300,17 +299,17 @@ void run_blkq4_gemm(int m, int n, int k) {
       tensor_c.device_ref(),
       tensor_ref_d.device_ref());
 
-  // Wait for kernels to finish
+  //// Wait for kernels to finish
   cudaDeviceSynchronize();
 
-  // Copy output data from CUTLASS and reference kernel to host for comparison
+  //// Copy output data from CUTLASS and reference kernel to host for comparison
   tensor_d.sync_host();
   tensor_ref_d.sync_host();
 
-  // Check if output from CUTLASS kernel and reference kernel are equal or not
+  //// Check if output from CUTLASS kernel and reference kernel are equal or not
   bool passed = cutlass::reference::host::TensorEquals(
-    tensor_d.host_view(),
-    tensor_ref_d.host_view());
+      tensor_d.host_view(),
+      tensor_ref_d.host_view());
   ORT_ENFORCE(passed, "Gemm kernel result wrong!");
 }
 

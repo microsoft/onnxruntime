@@ -779,6 +779,13 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
   target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
   target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
+  if (MSVC)
+    # Cutlass code has an issue with the following:
+    # warning C4100: 'magic': unreferenced formal parameter
+    target_compile_options(onnxruntime_providers_cuda_ut PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4100>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
+  endif()
+
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 

@@ -1701,12 +1701,12 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
                 # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
                 # not maxing out CL_MPCount
                 # Start by having one less than num_parallel_jobs (default is num logical cores),
-                # limited to a range of 1..3
-                # that gives maxcpucount projects building using up to 3 cl.exe instances each
+                # limited to a range of 1..15
+                # that gives maxcpucount projects building using up to 15 cl.exe instances each
                 build_tool_args += [
                     f"/maxcpucount:{num_parallel_jobs}",
-                    # one less than num_parallel_jobs, at least 1, up to 3
-                    f"/p:CL_MPCount={min(max(num_parallel_jobs - 1, 1), 3)}",
+                    # one less than num_parallel_jobs, at least 1, up to 15
+                    f"/p:CL_MPCount={min(max(num_parallel_jobs - 1, 1), 15)}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
                 ]
@@ -2083,11 +2083,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             # For CUDA or DML enabled builds test IOBinding feature
             if args.use_cuda or args.use_dml:
                 log.info("Testing IOBinding feature")
-                if args.use_dml:
-                    run_subprocess(
-                        [sys.executable, "-m", "pip", "uninstall", "--yes", "onnx"], cwd=cwd, dll_path=dll_path
-                    )
-                    run_subprocess([sys.executable, "-m", "pip", "install", "-q", "onnx"], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:

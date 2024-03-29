@@ -2724,7 +2724,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTranspose) {
   auto gemm_node =
       std::find_if(
           graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm_transformed"; });
+          [](const Node& node) { return node.Name() == "Gemm/GemmTransposeFusion/"; });
 
   auto& node = *gemm_node;
   ASSERT_TRUE(node.OpType() == "Gemm");
@@ -2760,7 +2760,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemm
   auto gemm1_node =
       std::find_if(
           graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm1_transformed"; });
+          [](const Node& node) { return node.Name() == "Gemm1/GemmTransposeFusion/"; });
 
   auto& node1 = *gemm1_node;
   ASSERT_TRUE(node1.OpType() == "Gemm");
@@ -2773,7 +2773,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemm
   auto gemm2_node =
       std::find_if(
           graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm2_transformed"; });
+          [](const Node& node) { return node.Name() == "Gemm2/GemmTransposeFusion/"; });
 
   auto& node2 = *gemm2_node;
   ASSERT_TRUE(node2.OpType() == "Gemm");
