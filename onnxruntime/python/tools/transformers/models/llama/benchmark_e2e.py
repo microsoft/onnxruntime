@@ -81,7 +81,7 @@ def get_model(args: argparse.Namespace):
                 torch_dtype=args.torch_dtype,
                 use_auth_token=args.auth,
                 use_cache=True,
-                attn_implementation="flash_attention_2",
+                attn_implementation=("flash_attention_2" if args.device == "cuda" else "sdpa"),
             ).to(args.target_device)
 
         model.eval()
