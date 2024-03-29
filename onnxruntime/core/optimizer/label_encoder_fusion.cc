@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <map>
+#include <unordered_map>
 #include <vector>
 #include <string>
 
@@ -22,7 +22,7 @@ template <typename>
 [[maybe_unused]] constexpr bool false_for_T = false;
 
 template <typename T>
-constexpr std::string GetTypename() {
+std::string GetTypename() {
   if constexpr (std::is_same<T, int64_t>()) {
     return "int64";
   } else if constexpr (std::is_same<T, std::string>()) {
@@ -110,7 +110,7 @@ Status LabelEncoderFusion::ApplyHelper(
   };
 
   // Perform value propagation through the second label encoder
-  std::map<T2, T3> mapping = {};
+  std::unordered_map<T2, T3> mapping = {};
   for (size_t i = 0; i < next_node_keys.size(); i++) {
     mapping[next_node_keys[i]] = next_node_values[i];
   }

@@ -1905,8 +1905,6 @@ TEST_F(GraphTransformationTests, DivMulFusion) {
 TEST_F(GraphTransformationTests, LabelEncoderFusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/label_encoder.onnx";
 
-  // create inputs and outputs
-  RandomValueGenerator random{};
   NameMLValMap feeds;
 
   constexpr size_t ALPH = 26;
