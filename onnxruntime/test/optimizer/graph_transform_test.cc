@@ -99,7 +99,6 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
-using common::INVALID_GRAPH;
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 TEST_F(GraphTransformationTests, IdentityElimination) {
@@ -1904,6 +1903,7 @@ TEST_F(GraphTransformationTests, DivMulFusion) {
 }
 
 TEST_F(GraphTransformationTests, LabelEncoderFusion) {
+  using common::INVALID_GRAPH;
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/label_encoder.onnx";
 
   NameMLValMap feeds;
