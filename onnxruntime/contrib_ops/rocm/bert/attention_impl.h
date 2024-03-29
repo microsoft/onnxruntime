@@ -136,6 +136,7 @@ enum AttentionType {
   kAttention,
   kMultiHeadAttention,
   kDecoderMaskedMultiHeadAttention,
+  kGroupQueryAttention,
 };
 
 enum AttentionMode {
@@ -161,6 +162,7 @@ enum AttentionMode {
 
 struct RocmAttentionParameters : AttentionParameters {
   AttentionMode mode;
+  int kv_num_heads;
 };
 
 Status ClassifyAttentionMode(AttentionType type,

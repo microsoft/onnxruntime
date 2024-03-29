@@ -114,7 +114,9 @@ Status ClassifyAttentionMode(
         return Status::OK();
       }
     }
-  } else if (attn_type == kMultiHeadAttention || attn_type == kDecoderMaskedMultiHeadAttention) {
+  } else if (attn_type == kMultiHeadAttention
+            || attn_type == kDecoderMaskedMultiHeadAttention
+            || attn_type == kGroupQueryAttention) {
     if (num_qkv == 3 && num_past == 0 && num_present == 0) {
       if (attn->qkv_format == Q_K_V_BSNH) {
         attn->mode = BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE;

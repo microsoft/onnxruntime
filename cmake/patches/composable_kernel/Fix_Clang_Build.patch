@@ -1,17 +1,17 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 04674124c..12e8b8b00 100644
+index bdeba33e..87829bbb 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -19,7 +19,7 @@ endif()
+@@ -23,7 +23,7 @@ endif()
  
  set(version 1.1.0)
  # Check support for CUDA/HIP in Cmake
--project(composable_kernel VERSION ${version})
+-project(composable_kernel VERSION ${version} LANGUAGES CXX)
 +project(composable_kernel VERSION ${version} LANGUAGES CXX HIP)
+ include(CTest)
  
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
- 
-@@ -173,27 +173,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -206,27 +206,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
  
@@ -39,31 +39,18 @@ index 04674124c..12e8b8b00 100644
  ## HIP
  find_package(HIP REQUIRED)
  # Override HIP version in config.h, if necessary.
-@@ -215,8 +194,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
+@@ -248,7 +227,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
      message(STATUS "CK_HIP_VERSION_PATCH overriden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
  endif()
  message(STATUS "Build with HIP ${HIP_VERSION}")
 -link_libraries(hip::device)
--add_compile_definitions(__HIP_PLATFORM_HCC__=1)
- 
- ## tidy
- include(EnableCompilerWarnings)
-@@ -376,7 +353,9 @@ if(BUILD_DEV)
-     add_compile_options(-Werror -Weverything)
- endif()
- #add flags to reduce the size of binaries
--add_compile_options(-Oz -flto=thin)
-+# -flto requires ORT to use a linker that support LTO and -flto flag shoud be passed to linker together.
-+# add_compile_options(-Oz -flto=thin)
-+add_compile_options(-Oz)
- message("CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
- 
- add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C ${CMAKE_CFG_INTDIR})
-@@ -482,11 +461,3 @@ rocm_install(FILES
- 
+ if(CK_hip_VERSION VERSION_GREATER_EQUAL 6.0.23494)
+     add_compile_definitions(__HIP_PLATFORM_AMD__=1)
+ else()
+@@ -521,10 +499,3 @@ rocm_install(FILES
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
--
+ 
 -rocm_create_package(
 -    NAME composablekernel
 -    DESCRIPTION "High Performance Composable Kernel for AMD GPUs"
@@ -71,8 +58,20 @@ index 04674124c..12e8b8b00 100644
 -    LDCONFIG
 -    HEADER_ONLY
 -)
+diff --git a/include/ck/tensor_operation/gpu/device/impl/device_grouped_query_attention_forward_wmma.hpp b/include/ck/tensor_operation/gpu/device/impl/device_grouped_query_attention_forward_wmma.hpp
+index 84ad48d4..5a5023a8 100644
+--- a/include/ck/tensor_operation/gpu/device/impl/device_grouped_query_attention_forward_wmma.hpp
++++ b/include/ck/tensor_operation/gpu/device/impl/device_grouped_query_attention_forward_wmma.hpp
+@@ -166,6 +166,7 @@ __global__ void
+     ignore = O;
+     ignore = G0;
+     ignore = G1;
++    ignore = alpha;
+     ignore = input_permute;
+     ignore = output_permute;
+ #endif // end of if (defined(__gfx11__))
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index 9cb5d0e9a..141a46f3d 100644
+index 0a12e1c4..227aace1 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 @@ -44,8 +44,14 @@ function(add_instance_library INSTANCE_NAME)

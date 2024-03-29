@@ -14,6 +14,7 @@
 #include "ck/tensor_operation/gpu/device/gemm_specialization.hpp"
 #include "ck/tensor_operation/gpu/device/impl/device_batched_gemm_softmax_gemm_permute_xdl_cshuffle.hpp"
 #include "ck/tensor_operation/gpu/element/unary_element_wise_operation.hpp"
+#include "ck/tensor_operation/gpu/device/impl/device_grouped_query_attention_forward_wmma.hpp"
 #include "ck/utility/data_type.hpp"
 
 namespace onnxruntime {
@@ -30,9 +31,11 @@ using S = ck::Sequence<Is...>;
 using MaskingSpecialization = ck::tensor_operation::device::MaskingSpecialization;
 
 using PassThrough = ck::tensor_operation::element_wise::PassThrough;
+using ScaleOp = ck::tensor_operation::element_wise::Scale;
 
 using ck::tensor_operation::device::DeviceBatchedGemmSoftmaxGemmPermute;               // the interface
 using ck::tensor_operation::device::DeviceBatchedGemmSoftmaxGemmPermute_Xdl_CShuffle;  // the implementation
+using ck::tensor_operation::device::DeviceGroupedQueryAttentionForward_Wmma;  // the implementation
 
 static constexpr auto GemmDefault = ck::tensor_operation::device::GemmSpecialization::Default;
 static constexpr auto GemmPadded = ck::tensor_operation::device::GemmSpecialization::MNKOPadding;
@@ -78,6 +81,207 @@ using device_batched_gemm_softmax_gemm_permute_instances =
         // clang-format on
         >;
 
+template <ck::index_t NumDimG,
+          ck::index_t NumDimM,
+          ck::index_t NumDimN,
+          ck::index_t NumDimK,
+          ck::index_t NumDimO,
+          typename DT,     // A, B0, B1, C, CShuffle Datatype
+          typename AccDT,  // Accumulator Datatype
+          int QueryGroupNumber    // num of groups
+          >
+using device_grouped_query_attention_instances =
+    std::tuple<
+        // clang-format off
+        // WAVE 1
+        DeviceGroupedQueryAttentionForward_Wmma<
+            NumDimG, NumDimM, NumDimN, NumDimK, NumDimO,
+            DT, DT, DT, DT, ck::Tuple<>, AccDT, ck::Tuple<>, AccDT, DT,
+            PassThrough, PassThrough, ScaleOp, PassThrough, PassThrough,
+            GemmPadded, TensorDefault, TensorDefault, TensorDefault, TensorDefault, 1,
+            QueryGroupNumber,
+            32,
+            //      Gemm 0
+            16, 128, 64, 8,  8,
+            //      Gemm 1
+            64, 64, 8,
+            16, 16, 16,
+            // Per repeat = wave_m = wave_num, wave_n = 1
+            1, 8, 4,
+            // ABlockTransfer MK -> K0 M K1
+            S<2, 16, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B0BlockTransfer LK -> K0 L K1
+            S<2, 16, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B1BlockTransfer NL -> L0 N L1
+            S<2, 2, 8>, S<0, 2, 1>, S<0, 2, 1>, 1, 8, 1, false,
+            // CShuffleBlockTransfer MN
+            1, 1, S<1, 16, 1, 2>, 8,
+            MaskingSpecialization::MaskDisabled>,
+        DeviceGroupedQueryAttentionForward_Wmma<
+            NumDimG, NumDimM, NumDimN, NumDimK, NumDimO,
+            DT, DT, DT, DT, ck::Tuple<>, AccDT, ck::Tuple<>, AccDT, DT,
+            PassThrough, PassThrough, ScaleOp, PassThrough, PassThrough,
+            GemmPadded, TensorDefault, TensorDefault, TensorDefault, TensorDefault, 1,
+            QueryGroupNumber,
+            32,
+            //      Gemm 0
+            16, 64, 64, 8,  8,
+            //      Gemm 1
+            64, 64, 8,
+            16, 16, 16,
+            // Per repeat = wave_m = wave_num, wave_n = 1
+            1, 4, 4,
+            // ABlockTransfer MK -> K0 M K1
+            S<2, 16, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B0BlockTransfer LK -> K0 L K1
+            S<2, 16, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B1BlockTransfer NL -> L0 N L1
+            S<2, 2, 8>, S<0, 2, 1>, S<0, 2, 1>, 1, 8, 1, false,
+            // CShuffleBlockTransfer MN
+            1, 1, S<1, 16, 1, 2>, 8,
+            MaskingSpecialization::MaskDisabled>,
+          // WAVE 2
+          DeviceGroupedQueryAttentionForward_Wmma<
+            NumDimG, NumDimM, NumDimN, NumDimK, NumDimO,
+            DT, DT, DT, DT, ck::Tuple<>, AccDT, ck::Tuple<>, AccDT, DT,
+            PassThrough, PassThrough, ScaleOp, PassThrough, PassThrough,
+            GemmPadded, TensorDefault, TensorDefault, TensorDefault, TensorDefault, 1,
+            QueryGroupNumber,
+            64,
+            //      Gemm 0
+            32, 128, 64, 8, 8,
+            //      Gemm 1
+                 64, 64, 8,
+            16, 16, 16,
+            // Per repeat = wave_m = wave_num, wave_n = 1
+            1, 8, 4,
+            // ABlockTransfer MK -> K0 M K1
+            S<2, 32, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B0BlockTransfer LK -> K0 L K1
+            S<4, 16, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B1BlockTransfer NL -> L0 N L1
+            S<2, 4, 8>, S<0, 2, 1>, S<0, 2, 1>, 1, 4, 1, false,
+            // CShuffleBlockTransfer MN
+            1, 1, S<1, 32, 1, 2>, 8,
+            MaskingSpecialization::MaskDisabled>,
+        DeviceGroupedQueryAttentionForward_Wmma<
+            NumDimG, NumDimM, NumDimN, NumDimK, NumDimO,
+            DT, DT, DT, DT, ck::Tuple<>, AccDT, ck::Tuple<>, AccDT, DT,
+            PassThrough, PassThrough, ScaleOp, PassThrough, PassThrough,
+            GemmPadded, TensorDefault, TensorDefault, TensorDefault, TensorDefault, 1,
+            QueryGroupNumber,
+            64,
+            //      Gemm 0
+            32, 64, 64, 8, 8,
+            //      Gemm 1
+                64, 64, 8,
+            16, 16, 16,
+            // Per repeat = wave_m = wave_num, wave_n = 1
+            1, 4, 4,
+            // ABlockTransfer MK -> K0 M K1
+            S<2, 32, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B0BlockTransfer LK -> K0 L K1
+            S<4, 16, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B1BlockTransfer NL -> L0 N L1
+            S<2, 4, 8>, S<0, 2, 1>, S<0, 2, 1>, 1, 4, 1, false,
+            // CShuffleBlockTransfer MN
+            1, 1, S<1, 32, 1, 2>, 8,
+            MaskingSpecialization::MaskDisabled>,
+          // WAVE 4
+          DeviceGroupedQueryAttentionForward_Wmma<
+            NumDimG, NumDimM, NumDimN, NumDimK, NumDimO,
+            DT, DT, DT, DT, ck::Tuple<>, AccDT, ck::Tuple<>, AccDT, DT,
+            PassThrough, PassThrough, ScaleOp, PassThrough, PassThrough,
+            GemmPadded, TensorDefault, TensorDefault, TensorDefault, TensorDefault, 1,
+            QueryGroupNumber,
+            128,
+            //      Gemm 0
+            64, 128, 64, 8, 8,
+            //      Gemm 1
+            64, 64, 8,
+            16, 16, 16,
+            // Per repeat = wave_m = wave_num, wave_n = 1
+            1, 8, 4,
+            // ABlockTransfer MK -> K0 M K1
+            S<2, 64, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B0BlockTransfer LK -> K0 L K1
+            S<8, 16, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B1BlockTransfer NL -> L0 N L1
+            S<2, 8, 8>, S<0, 2, 1>, S<0, 2, 1>, 1, 2, 1, false,
+            // CShuffleBlockTransfer MN
+            1, 1, S<1, 64, 1, 2>, 8,
+            MaskingSpecialization::MaskDisabled>,
+        DeviceGroupedQueryAttentionForward_Wmma<
+            NumDimG, NumDimM, NumDimN, NumDimK, NumDimO,
+            DT, DT, DT, DT, ck::Tuple<>, AccDT, ck::Tuple<>, AccDT, DT,
+            PassThrough, PassThrough, ScaleOp, PassThrough, PassThrough,
+            GemmPadded, TensorDefault, TensorDefault, TensorDefault, TensorDefault, 1,
+            QueryGroupNumber,
+            128,
+            //      Gemm 0
+            64, 64, 64, 8, 8,
+            //      Gemm 1
+            64, 64, 8,
+            16, 16, 16,
+            // Per repeat = wave_m = wave_num, wave_n = 1
+            1, 4, 4,
+            // ABlockTransfer MK -> K0 M K1
+            S<2, 64, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B0BlockTransfer LK -> K0 L K1
+            S<8, 16, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B1BlockTransfer NL -> L0 N L1
+            S<2, 8, 8>, S<0, 2, 1>, S<0, 2, 1>, 1, 2, 1, false,
+            // CShuffleBlockTransfer MN
+            1, 1, S<1, 64, 1, 2>, 8,
+            MaskingSpecialization::MaskDisabled>,
+          // WAVE 8
+          DeviceGroupedQueryAttentionForward_Wmma<
+            NumDimG, NumDimM, NumDimN, NumDimK, NumDimO,
+            DT, DT, DT, DT, ck::Tuple<>, AccDT, ck::Tuple<>, AccDT, DT,
+            PassThrough, PassThrough, ScaleOp, PassThrough, PassThrough,
+            GemmPadded, TensorDefault, TensorDefault, TensorDefault, TensorDefault, 1,
+            QueryGroupNumber,
+            256,
+            //      Gemm 0
+            128, 128, 64, 8, 8,
+            //      Gemm 1
+            64, 64, 8,
+            16, 16, 16,
+            // Per repeat = wave_m = wave_num, wave_n = 1
+            1, 8, 4,
+            // ABlockTransfer MK -> K0 M K1
+            S<2, 128, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B0BlockTransfer LK -> K0 L K1
+            S<8,  32, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B1BlockTransfer NL -> L0 N L1
+            S<2,  16, 8>, S<0, 2, 1>, S<0, 2, 1>, 1, 1, 1, false,
+            // CShuffleBlockTransfer MN
+            1, 1, S<1, 128, 1, 2>, 8,
+            MaskingSpecialization::MaskDisabled>,
+        DeviceGroupedQueryAttentionForward_Wmma<
+            NumDimG, NumDimM, NumDimN, NumDimK, NumDimO,
+            DT, DT, DT, DT, ck::Tuple<>, AccDT, ck::Tuple<>, AccDT, DT,
+            PassThrough, PassThrough, ScaleOp, PassThrough, PassThrough,
+            GemmPadded, TensorDefault, TensorDefault, TensorDefault, TensorDefault, 1,
+            QueryGroupNumber,
+            256,
+            //      Gemm 0
+            128, 128, 64, 8, 8,
+            //      Gemm 1
+            64, 64, 8,
+            16, 16, 16,
+            // Per repeat = wave_m = wave_num, wave_n = 1
+            1, 8, 4,
+            // ABlockTransfer MK -> K0 M K1
+            S<2, 128, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B0BlockTransfer LK -> K0 L K1
+            S<8,  32, 1>, S<1, 0, 2>, S<1, 0, 2>, 2, 8, 8, true,
+            // B1BlockTransfer NL -> L0 N L1
+            S<2,  16, 8>, S<0, 2, 1>, S<0, 2, 1>, 1, 1, 1, false,
+            // CShuffleBlockTransfer MN
+            1, 1, S<1, 128, 1, 2>, 8,
+            MaskingSpecialization::MaskDisabled>
+        >;
 struct PreSoftmaxAttentionScoreOp {
   PreSoftmaxAttentionScoreOp(float scale) : scale_(scale) {}
 
