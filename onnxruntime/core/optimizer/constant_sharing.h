@@ -15,12 +15,12 @@ namespace onnxruntime {
 
 Transformer that traverses the graph top-down and performs constant sharing, i.e.,
 constant initializers having same dtype, value and shape, will be replaced by one single (newly created) initializer.
-Currently, only scalar valued initializers are handled.
+Currently, only scalar-valued initializers are handled.
 */
 class ConstantSharing : public GraphTransformer {
  public:
   /**
-   * @param compatible_execution_providers comptatible execution provider list for considered nodes.
+   * @param compatible_execution_providers compatible execution provider list for considered nodes.
    * @param excluded_initializers explicitly excluded initializer names that should not changed.
    */
   ConstantSharing(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},

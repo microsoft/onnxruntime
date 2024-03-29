@@ -237,20 +237,13 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
     // If there is no such existing scalar pattern, add a new one.
     if (pattern_key_to_shared_arg_map.find(pattern_key) == pattern_key_to_shared_arg_map.end()) {
-      // Do a copy and rename the TensorProto.
-      ONNX_NAMESPACE::TensorProto constant_tensor_proto_as_replacement(*tensor_proto);
-      constant_tensor_proto_as_replacement.set_name(graph.GenerateNodeArgName(pattern_key));
-      NodeArg& shared_scalar_initializer_node_arg = graph_utils::AddInitializer(graph,
-                                                                                constant_tensor_proto_as_replacement);
-      pattern_key_to_shared_arg_map[pattern_key] = &shared_scalar_initializer_node_arg;
+      pattern_key_to_shared_arg_map[pattern_key] = origin_initializer_node_arg;
     } else {
       shared_count += 1;
+      ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_ports_map, origin_initializer_node_arg,
+                                          pattern_key_to_shared_arg_map[pattern_key]);
+      modified = true;
     }
-
-    ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_ports_map, origin_initializer_node_arg,
-                                        pattern_key_to_shared_arg_map[pattern_key]);
-
-    modified = true;
   }
   if (shared_count > 0) {
     LOGS(logger, INFO) << "Total shared scalar initializer count: " << shared_count;
