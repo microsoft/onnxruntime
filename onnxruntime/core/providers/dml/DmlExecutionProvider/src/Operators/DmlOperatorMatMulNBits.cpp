@@ -24,30 +24,37 @@ public:
         const DML_TENSOR_DATA_TYPE quantizedDataType = bitCount == 4 ? DML_TENSOR_DATA_TYPE_UINT4 : DML_TENSOR_DATA_TYPE_UINT8;
 
         std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
-        std::vector<DimensionType> inputShape1 = inputShape0;
+        std::vector<DimensionType> broadcastedInputShape1 = inputShape0;
 
         // The quantized input to MatMulNBits always comes as uint8, but the real shape is provided through the N and K attributes
+        broadcastedInputShape1[broadcastedInputShape1.size() - 2] = bRowCount;
+        broadcastedInputShape1[broadcastedInputShape1.size() - 1] = bColCount;
+
+        // The B tensor always has a batch size and channel of 1 since it's a weight, but DML requires it to have the same channels
+        // and channel count as the A tensor so we need to broadcast it
+        std::vector<DimensionType> inputShape1(inputShape0.size(), 1);
         inputShape1[inputShape1.size() - 2] = bRowCount;
         inputShape1[inputShape1.size() - 1] = bColCount;
 
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
 
-        OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape);
-
         std::vector<DimensionType> inputShape2 = inputShape1;
         inputShape2[inputShape2.size() - 1] = m_inputTensorDescs[2].GetSizes().back();
 
+        std::vector<DimensionType> broadcastedInputShape2 = inputShape2;
+        broadcastedInputShape2[broadcastedInputShape2.size() - 1] = m_inputTensorDescs[2].GetSizes().back();
+
         // The quantized input and zero point to MatMulNBits always comes as uint8, but DML will expect the real data type (int4 or int8)
         m_inputTensorDescs[0] = TensorDesc::ConstructDefaultTensorDesc(mlDataType, inputShape0);
-        m_inputTensorDescs[1] = TensorDesc::ConstructDefaultTensorDesc(GetMlDataTypeFromDmlDataType(quantizedDataType), inputShape1);
-        m_inputTensorDescs[2] = TensorDesc::ConstructDefaultTensorDesc(mlDataType, inputShape2);
+        m_inputTensorDescs[1] = TensorDesc::ConstructBroadcastedTensorDesc(GetMlDataTypeFromDmlDataType(quantizedDataType), broadcastedInputShape1, inputShape1);
+        m_inputTensorDescs[2] = TensorDesc::ConstructBroadcastedTensorDesc(mlDataType, broadcastedInputShape2, inputShape2);
 
         if (hasZeroPoint)
         {
-            m_inputTensorDescs[3] = TensorDesc::ConstructDefaultTensorDesc(GetMlDataTypeFromDmlDataType(quantizedDataType), inputShape2);
+            m_inputTensorDescs[3] = TensorDesc::ConstructBroadcastedTensorDesc(GetMlDataTypeFromDmlDataType(quantizedDataType), broadcastedInputShape2, inputShape2);
         }
 
-        auto dequantizedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(mlDataType, inputShape1);
+        auto dequantizedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(mlDataType, broadcastedInputShape1);
         auto dequantizedInputDmlTensorDesc = dequantizedInputTensorDesc.GetDmlDesc();
 
         // Initialize the output description while overriding the shape
