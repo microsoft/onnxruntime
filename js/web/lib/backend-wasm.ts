@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {cpus} from 'node:os';
 import {Backend, env, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
 
 import {initializeOrtEp, initializeWebAssemblyAndOrtRuntime} from './wasm/proxy-wrapper';
@@ -37,7 +36,8 @@ export const initializeFlags = (): void => {
         (typeof process !== 'undefined' && process.versions && process.versions.node)) {
       env.wasm.numThreads = 1;
     }
-    const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
+    const numCpuLogicalCores =
+        typeof navigator === 'undefined' ? require('node:os').cpus().length : navigator.hardwareConcurrency;
     env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
   }
 };

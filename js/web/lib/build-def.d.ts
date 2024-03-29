@@ -15,9 +15,9 @@ interface BuildDefinitions {
    */
   readonly DISABLE_WEBGL: boolean;
   /**
-   * defines whether to disable the whole WebGpu backend in the build.
+   * defines whether to disable the whole WebGpu/WebNN backend in the build.
    */
-  readonly DISABLE_WEBGPU: boolean;
+  readonly DISABLE_JSEP: boolean;
   /**
    * defines whether to disable the whole WebNN backend in the build.
    */
@@ -34,16 +34,6 @@ interface BuildDefinitions {
    * defines whether to disable training APIs in WebAssembly backend.
    */
   readonly DISABLE_TRAINING: boolean;
-
-  /**
-   * defines whether to enable code splitting in the build.
-   */
-  readonly CODE_SPLITTING: boolean;
-
-  /**
-   * a placeholder for import.meta.url in ESM.
-   */
-  readonly IMPORT_META_URL: string;
 }
 
 declare const BUILD_DEFS: BuildDefinitions;

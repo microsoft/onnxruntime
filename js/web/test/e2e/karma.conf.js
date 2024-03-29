@@ -15,21 +15,31 @@ if (typeof USER_DATA !== 'string') {
   throw new Error('flag --user-data=<CHROME_USER_DATA_FOLDER> is required');
 }
 
+const files = [
+  {pattern: './model.onnx', included: false},
+  {pattern: './model_with_orig_ext_data.onnx', included: false},
+  {pattern: './model_with_orig_ext_data.bin', included: false},
+];
+if (ORT_MAIN) {
+  files.push({pattern: distPrefix + ORT_MAIN});
+}
+if (TEST_MAIN.endsWith('.mjs')) {
+  files.push({pattern: TEST_MAIN, type: 'module'});
+} else {
+  files.push({pattern: './common.js'}, {pattern: TEST_MAIN});
+}
+files.push(
+    {pattern: './dist/**/*', included: false, nocache: true, watched: false},
+    {pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true},
+);
+
 const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de'];
 
 module.exports = function(config) {
   const distPrefix = SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/';
   config.set({
     frameworks: ['mocha'],
-    files: [
-      {pattern: distPrefix + ORT_MAIN},
-      {pattern: './common.js'},
-      {pattern: TEST_MAIN},
-      {pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true},
-      {pattern: './model.onnx', included: false},
-      {pattern: './model_with_orig_ext_data.onnx', included: false},
-      {pattern: './model_with_orig_ext_data.bin', included: false},
-    ],
+    files,
     plugins: [require('@chiragrupani/karma-chromium-edge-launcher'), ...config.plugins],
     proxies: {
       '/model.onnx': '/base/model.onnx',

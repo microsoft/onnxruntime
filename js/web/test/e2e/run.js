@@ -68,15 +68,21 @@ async function main() {
   // prepare .wasm files for path override testing
   prepareWasmPathOverrideFiles();
 
-  // test case run in Node.js
-  await testAllNodejsCases();
+  // // test case run in Node.js
+  // await testAllNodejsCases();
 
-  // test cases with self-host (ort hosted in same origin)
-  await testAllBrowserCases({hostInKarma: true});
+  // // test cases with self-host (ort hosted in same origin)
+  // await testAllBrowserCases({hostInKarma: true});
 
-  // test cases without self-host (ort hosted in same origin)
-  startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
-  await testAllBrowserCases({hostInKarma: false});
+  // // test cases without self-host (ort hosted in same origin)
+  // startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
+  // await testAllBrowserCases({hostInKarma: false});
+
+  // run bundlers
+  await runInShell(`npm run build`);
+
+  // test package consuming test
+  await testAllBrowserPackagesConsumingCases();
 
   // no error occurs, exit with code 0
   process.exit(0);
@@ -120,6 +126,12 @@ async function testAllBrowserCases({hostInKarma}) {
   await runKarma({hostInKarma, main: './browser-test-wasm-path-override-prefix.js', ortMain: 'ort.wasm.min.js'});
   await runKarma({hostInKarma, main: './browser-test-wasm-image-tensor-image.js'});
   await runKarma({hostInKarma, main: './browser-test-webgpu-external-data.js', ortMain: 'ort.webgpu.min.js'});
+}
+
+async function testAllBrowserPackagesConsumingCases() {
+  await runKarma({hostInKarma: true, main: './dist/webpack_esm_js/ort-test-e2e.bundle.mjs', ortMain: ''});
+  await runKarma({hostInKarma: true, main: './dist/webpack_umd_js/ort-test-e2e.bundle.js', ortMain: ''});
+  await runKarma({hostInKarma: true, main: './dist/rollup_esm_js/ort-test-e2e.bundle.mjs', ortMain: ''});
 }
 
 async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js'}) {

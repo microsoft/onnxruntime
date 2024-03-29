@@ -5,6 +5,9 @@ import * as esbuild from 'esbuild';
 import minimist from 'minimist';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import {SourceMapConsumer, SourceMapGenerator} from 'source-map';
+
+console.time('BUILD');
 
 /**
  * @summary Build script for ort-web using esbuild.
@@ -40,23 +43,51 @@ const BUNDLE_MODE: 'prod'|'dev'|'perf'|'node' = args['bundle-mode'] || 'prod';
  */
 const DEBUG = args.debug;  // boolean|'verbose'|'save'
 
-const SOURCE_ROOT_FOLDER = path.join(__dirname, '../..');  // <ORT_ROOT>/js/
+/**
+ * Root folder of the source code: `<ORT_ROOT>/js/`
+ */
+const SOURCE_ROOT_FOLDER = path.join(__dirname, '../..');
+
+/**
+ * Default define values for the build.
+ */
 const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WEBGL': 'false',
-  'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+  'BUILD_DEFS.DISABLE_JSEP': 'false',
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
   'BUILD_DEFS.DISABLE_TRAINING': 'true',
-  'BUILD_DEFS.CODE_SPLITTING': 'false',
-  'BUILD_DEFS.IMPORT_META_URL': 'import.meta.url',
+
+  // 'process': 'undefined',
+  // 'typeof navigator': '"object"',
 };
+
+// const WEB_DEFINE = {
+//   'process': 'undefined',
+// };
 
 const COPYRIGHT_HEADER = `/*!
  * ONNX Runtime Web v${require('../package.json').version}
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */`;
+
+/**
+ * A custom footer used to append to the end of IIFE bundle to make it compatible with CommonJS module system.
+ *
+ * ESBuild does not support UMD format (which is a combination of IIFE and CommonJS). We don't want to generate 2 build
+ * targets (IIFE and CommonJS) because it will increase the package size. Instead, we generate IIFE and append this
+ * footer to make it compatible with CommonJS module system.
+ *
+ * see also: https://github.com/evanw/esbuild/issues/507
+ */
+const COMMONJS_FOOTER = `
+if (typeof exports === "object" && typeof module === "object") {
+  module.exports = ort;
+}
+`;
+const COMMONJS_FOOTER_MIN = 'typeof exports=="object"&&typeof module=="object"&&(module.exports=ort);';
 
 interface OrtBuildOptions {
   isProduction?: boolean;
@@ -73,6 +104,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
     absWorkingDir: SOURCE_ROOT_FOLDER,
     bundle: true,
     banner: {js: COPYRIGHT_HEADER},
+    footer: options.format === 'iife' ? {js: options.minify ? COMMONJS_FOOTER_MIN : COMMONJS_FOOTER} : undefined,
     ...options
   });
   if (DEBUG) {
@@ -86,13 +118,13 @@ async function buildBundle(options: esbuild.BuildOptions) {
   return result;
 }
 
-async function minifyCode(sourceCode: string): Promise<string> {
-  const result = await esbuild.transform(sourceCode, {
-    minify: true,
-    legalComments: 'none',
-  });
-  return result.code;
-}
+// async function minifyCode(sourceCode: string): Promise<string> {
+//   const result = await esbuild.transform(sourceCode, {
+//     minify: true,
+//     legalComments: 'none',
+//   });
+//   return result.code;
+// }
 
 async function buildOrt({
   isProduction = false,
@@ -142,72 +174,6 @@ async function buildOrt({
   };
   // #endregion
 
-  // #region Plugin: web assembly multi-thread worker loader
-
-  /**
-   * This plugin is used to load web assembly multi-thread worker code as string.
-   *
-   * This allows to create the worker from a Blob, so we don't need to create a separate file for the worker.
-   */
-  const wasmThreadedHandler = {
-    name: 'wasm-threaded-handler',
-    setup(build: esbuild.PluginBuild) {
-      build.onLoad({filter: /[\\/]ort-wasm-threaded\.worker\.js$/}, async args => {
-        let contents = await fs.readFile(args.path, {encoding: 'utf-8'});
-        if (isProduction) {
-          contents = await minifyCode(contents);
-        }
-        return {loader: 'text', contents};
-      });
-    },
-  };
-  // #endregion
-
-  // #region Plugin: generated emscripten .js loader
-
-  /**
-   * This plugin is used to patch the generated emscripten .js file for multi-thread build.
-   *
-   * Since we use inline worker for multi-thread, we make an optimization to use function.toString() to get the
-   * implementation of the exported `ortWasmThreaded` function to reduce the size of the bundle. However, the generated
-   * function uses a variable `_scriptDir` which is defined inside an IIFE closure. When we use function.toString(), the
-   * worker code will throw "_scriptDir is not defined" error.
-   *
-   * To fix this error, we need to patch the generated code to replace access to `_scriptDir` with `typeof _scriptDir
-   * !== "undefined" && _scriptDir`.
-   */
-  const emscriptenThreadedJsHandler = {
-    name: 'emscripten-threaded-js-handler',
-    setup(build: esbuild.PluginBuild) {
-      build.onLoad({filter: /ort-wasm.*-threaded.*\.js$/}, async args => {
-        let contents = await fs.readFile(args.path, {encoding: 'utf-8'});
-        // For debug build, Emscripten generates the following code:
-        //
-        // if (_scriptDir) {
-        //   scriptDirectory = _scriptDir;
-        // }
-        //
-        // We replace it with:
-        //
-        // if (typeof _scriptDir !== "undefined" && _scriptDir) {
-        //   scriptDirectory = _scriptDir;
-        // }
-        contents = contents.replace('if (_scriptDir) {', 'if (typeof _scriptDir !== "undefined" && _scriptDir) {');
-
-        // For release build, Emscripten generates the following code:
-        //
-        // ...,_scriptDir&&(H=_scriptDir),...
-        // We replace it with:
-        // ...,(typeof _scriptDir !== "undefined" && _scriptDir)&&(H=_scriptDir),...
-        contents =
-            contents.replace(/_scriptDir(&&\(.+=_scriptDir\))/, '(typeof _scriptDir !== "undefined" && _scriptDir)$1');
-
-        return {contents};
-      });
-    }
-  };
-  // #endregion
-
   // #region Plugin: proxy worker loader
 
   /**
@@ -225,7 +191,7 @@ async function buildOrt({
           entryPoints: [path.resolve(args.pluginData, args.path)],
           outfile: `web/dist/${outputBundleName}.proxy.js`,
           platform: 'browser',
-          plugins: [excludeNodejsImports, wasmThreadedHandler, emscriptenThreadedJsHandler],
+          plugins: [excludeNodejsImports],
           define: {
             ...build.initialOptions.define,
             'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
@@ -241,25 +207,26 @@ async function buildOrt({
   };
   // #endregion
 
-  // When output format is esm, we use code splitting to split the output into multiple files:
-  // - [bundle-name].js
-  // - [bundle-name].proxy.worker.js
+  // distribution code is split into multiple files:
+  // - [bundle-name][.min].[m]js
+  // - [bundle-name].proxy[.min].[m]js
   // - ort[-training]-wasm[-simd][-threaded][.jsep].js
-  // - ort-wasm-threaded.worker.js
-  const external = isNode ? ['onnxruntime-common'] : [];
-  const plugins = isNode ? [] : [excludeNodejsImports];
-  // if (format === 'esm') {
-  if (define['BUILD_DEFS.CODE_SPLITTING']) {
-    define['BUILD_DEFS.CODE_SPLITTING'] = 'true';
-    external.push('../ort-*.js');
-    external.push('./ort-*.js');
-  } else {
-    plugins.push(proxyWorkerHandler, wasmThreadedHandler, emscriptenThreadedJsHandler);
+  // - ort-wasm[-simd]-threaded[.jsep].worker.js
+  const external = isNode ? ['onnxruntime-common'] : [
+    'node:fs/promises',
+    'node:fs',
+    'node:os',
+  ];
+  const plugins: esbuild.Plugin[] = isNode ? [] : [/*excludeNodejsImports, */];
+  //
+  // TODO:
+  if (process.env.YouDontKnow) {
+    plugins.push(proxyWorkerHandler);
   }
 
   await buildBundle({
     entryPoints: ['web/lib/index.ts'],
-    outfile: `web/dist/${outputBundleName}.js`,
+    outfile: `web/dist/${outputBundleName}.${format === 'esm' ? 'mjs' : 'js'}`,
     platform: isNode ? 'node' : 'browser',
     format,
     globalName: 'ort',
@@ -305,176 +272,249 @@ async function buildTest() {
   });
 }
 
+
+/**
+ * Perform the post-process step after ESBuild finishes the build.
+ *
+ * This is a custom post process step to insert magic comments to a specific import call:
+ * ```
+ * ... await import(` ...
+ * ```
+ * to:
+ * ```
+ * ... await import(/* webpackIgnore: true *\/` ...
+ * ```
+ *
+ * Why we need this?
+ *
+ * If a project uses Webpack to bundle the code, Webpack will try to resolve the dynamic import calls. However, we don't
+ * want Webpack to resolve the dynamic import calls inside the ort-web bundle because:
+ *
+ * - We want to keep the ort-*.js and ort-*.wasm as-is. This makes it able to replace the ort-*.js and ort-*.wasm with a
+ * custom build if needed.
+ * - The Emscripten generated code uses `require()` to load Node.js modules. Those code is guarded by a feature check to
+ * make sure only run in Node.js. Webpack does not recognize the feature check and will try to resolve the `require()`
+ * in browser environment. This will cause the Webpack build to fail.
+ * - There are multiple entry points that use dynamic import to load the ort-*.js and ort-*.wasm. If the content of the
+ * dynamic import is resolved by Webpack, it will be duplicated in the final bundle. This will increase the bundle size.
+ *
+ * What about other bundlers?
+ *
+ * TBD
+ *
+ */
+async function postProcess() {
+  const IMPORT_MAGIC_COMMENT = '/* webpackIgnore: true */';
+  const IMPORT_ORIGINAL = 'await import(`';
+  const IMPORT_NEW = `await import(${IMPORT_MAGIC_COMMENT}\``;
+
+  const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
+  for (const file of files) {
+    // only process on "ort.*.min.js" and "ort.*.min.mjs" files.
+    if ((file.endsWith('.min.js') || file.endsWith('.min.mjs')) && file.startsWith('ort.')) {
+      const jsFilePath = path.join(SOURCE_ROOT_FOLDER, 'web/dist', file);
+      const sourcemapFilePath = jsFilePath + '.map';
+
+      const originalJsFileSize = (await fs.stat(jsFilePath)).size;
+
+      if (!(await fs.stat(sourcemapFilePath)).isFile()) {
+        continue;
+      }
+
+      const jsFileLines = (await fs.readFile(jsFilePath, 'utf-8')).split('\n');
+
+      let line = -1, column = -1, found = false;
+      for (let i = 0; i < jsFileLines.length; i++) {
+        column = jsFileLines[i].indexOf(IMPORT_ORIGINAL);
+        if (column !== -1) {
+          if (found || column !== jsFileLines[i].lastIndexOf(IMPORT_ORIGINAL)) {
+            throw new Error('Multiple dynamic import calls found. Should not happen.');
+          }
+          line = i + 1;
+          jsFileLines[i] = jsFileLines[i].replace(IMPORT_ORIGINAL, IMPORT_NEW);
+          found = true;
+        }
+      }
+      if (!found) {
+        if (file.includes('webgl')) {
+          // skip webgl
+          continue;
+        }
+        throw new Error('Dynamic import call not found. Should not happen.');
+      }
+
+      await SourceMapConsumer.with(await fs.readFile(sourcemapFilePath, 'utf-8'), null, async (consumer) => {
+        consumer.eachMapping((mapping) => {
+          if (mapping.generatedLine === line && mapping.generatedColumn >= column) {
+            mapping.generatedColumn += IMPORT_MAGIC_COMMENT.length;
+          }
+        });
+
+        await fs.writeFile(sourcemapFilePath, SourceMapGenerator.fromSourceMap(consumer).toString());
+      });
+
+      await fs.writeFile(jsFilePath, jsFileLines.join('\n'));
+      const newJsFileSize = (await fs.stat(jsFilePath)).size;
+      if (newJsFileSize - originalJsFileSize !== IMPORT_MAGIC_COMMENT.length) {
+        console.log(`File: ${file}, Original size: ${originalJsFileSize}, New size: ${newJsFileSize}`);
+        throw new Error(`Failed to insert magic comment to file "${file}".`);
+      }
+    }
+  }
+}
+
+async function validate() {
+  const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
+  for (const file of files) {
+    // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
+    if ((file.endsWith('.min.js') || file.endsWith('.min.mjs')) && file.startsWith('ort.')) {
+      const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
+
+      // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
+      //
+      // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In this
+      // case, we should fix the build script (this file).
+      //
+      if (content.includes('BUILD_DEFS')) {
+        throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
+      }
+    }
+  }
+}
+
 async function main() {
-  // tasks for each esbuild bundle
-  const buildTasks: Array<Promise<void>> = [];
+  console.timeLog('BUILD', 'Start building ort-web bundles...');
+
   /**
-   * add one build task
-   */
-  const addBuildTask = async (task: Promise<void>) => {
-    await task;
-    // if (DEBUG) {
-    //   // in DEBUG mode, build sequentially
-    //   await task;
-    // } else {
-    //   buildTasks.push(task);
-    // }
-  };
-  /**
-   * add all 6 build tasks for web bundles. Includes:
-   * - IIFE, debug:                [name].js
-   * - IIFE, production:           [name].min.js
-   * - CJS, debug:                 cjs/[name].js
-   * - CJS, production:            cjs/[name].min.js
-   * - ESM, debug:                 esm/[name].js
-   * - ESM, production:            esm/[name].min.js
+   * add all 4 build tasks for web bundles. Includes:
+   * - IIFE/CJS, debug:                [name].js
+   * - IIFE/CJS, production:           [name].min.js
+   * - ESM, debug:                     [name].mjs
+   * - ESM, production:                [name].min.mjs
    */
   const addAllWebBuildTasks = async (options: Omit<OrtBuildOptions, 'format'>) => {
     // [name].js
-    await addBuildTask(buildOrt({
+    await buildOrt({
       ...options,
       format: 'iife',
-    }));
+    });
     // [name].min.js
-    await addBuildTask(buildOrt({
+    await buildOrt({
       ...options,
       outputBundleName: options.outputBundleName + '.min',
       format: 'iife',
       isProduction: true,
-    }));
-    // cjs/[name].js
-    await addBuildTask(buildOrt({
+    });
+    // [name].mjs
+    await buildOrt({
       ...options,
-      outputBundleName: 'cjs/' + options.outputBundleName,
-      format: 'cjs',
-    }));
-    // cjs/[name].min.js
-    await addBuildTask(buildOrt({
-      ...options,
-      outputBundleName: 'cjs/' + options.outputBundleName + '.min',
-      format: 'cjs',
-      isProduction: true,
-    }));
-    // esm/[name].js
-    await addBuildTask(buildOrt({
-      ...options,
-      outputBundleName: 'esm/' + options.outputBundleName,
+      outputBundleName: options.outputBundleName,
       format: 'esm',
-    }));
-    // esm/[name].min.js
-    await addBuildTask(buildOrt({
+    });
+    // [name].min.mjs
+    await buildOrt({
       ...options,
-      outputBundleName: 'esm/' + options.outputBundleName + '.min',
+      outputBundleName: options.outputBundleName + '.min',
       format: 'esm',
       isProduction: true,
-    }));
+    });
   };
 
-  // if (BUNDLE_MODE === 'node' || BUNDLE_MODE === 'prod') {
-  //   // ort.node.min.js
-  //   await addBuildTask(buildOrt({
-  //     isProduction: true,
-  //     isNode: true,
-  //     format: 'cjs',
-  //     outputBundleName: 'ort.node.min',
-  //     define: {
-  //       ...DEFAULT_DEFINE,
-  //       'BUILD_DEFS.DISABLE_WEBGPU': 'true',
-  //       'BUILD_DEFS.DISABLE_WEBGL': 'true',
-  //       'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-  //       'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
-  //     },
-  //   }));
-  // }
+  if (BUNDLE_MODE === 'node' || BUNDLE_MODE === 'prod') {
+    // ort.node.min.js
+    await buildOrt({
+      isProduction: true,
+      isNode: true,
+      format: 'cjs',
+      outputBundleName: 'ort.node.min',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
+      },
+    });
+  }
 
   if (BUNDLE_MODE === 'dev') {
     // ort.all.js
-    await addBuildTask(buildOrt({outputBundleName: 'ort.all', format: 'iife', define: {...DEFAULT_DEFINE}}));
+    await buildOrt({outputBundleName: 'ort.all', format: 'iife', define: {...DEFAULT_DEFINE}});
   }
 
   if (BUNDLE_MODE === 'perf') {
     // ort.all.min.js
-    await addBuildTask(buildOrt({
+    await buildOrt({
       isProduction: true,
       outputBundleName: 'ort.all.min',
       format: 'iife',
-    }));
+    });
   }
 
   if (BUNDLE_MODE === 'prod') {
-    // ort.all[.min].js
+    // ort.all[.min].[m]js
+    await addAllWebBuildTasks({outputBundleName: 'ort.all'});
+
+    // ort[.min].[m]js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort.all',
+      outputBundleName: 'ort',
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true'},
+    });
+    // ort.webgpu[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.webgpu',
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
+    });
+    // ort.wasm[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.wasm',
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
+    });
+    // ort.webgl[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.webgl',
       define: {
         ...DEFAULT_DEFINE,
-        'BUILD_DEFS.CODE_SPLITTING': 'true',
-      }
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WASM': 'true',
+      },
     });
-
-    // // ort[.min].js
-    // await addAllWebBuildTasks({
-    //   outputBundleName: 'ort',
-    //   define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true'},
-    // });
-    // // ort.webgpu[.min].js
-    // await addAllWebBuildTasks({
-    //   outputBundleName: 'ort.webgpu',
-    //   define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
-    // });
-    // // ort.wasm[.min].js
-    // await addAllWebBuildTasks({
-    //   outputBundleName: 'ort.wasm',
-    //   define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
-    // });
-    // // ort.webgl[.min].js
-    // await addAllWebBuildTasks({
-    //   outputBundleName: 'ort.webgl',
-    //   define: {
-    //     ...DEFAULT_DEFINE,
-    //     'BUILD_DEFS.DISABLE_WEBGPU': 'true',
-    //     'BUILD_DEFS.DISABLE_WASM': 'true',
-    //   },
-    // });
-    // // ort.wasm-core[.min].js
-    // await addAllWebBuildTasks({
-    //   outputBundleName: 'ort.wasm-core',
-    //   define: {
-    //     ...DEFAULT_DEFINE,
-    //     'BUILD_DEFS.DISABLE_WEBGPU': 'true',
-    //     'BUILD_DEFS.DISABLE_WEBGL': 'true',
-    //     'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-    //     'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
-    //   },
-    // });
-    // // ort.training.wasm[.min].js
-    // await addAllWebBuildTasks({
-    //   outputBundleName: 'ort.training.wasm',
-    //   define: {
-    //     ...DEFAULT_DEFINE,
-    //     'BUILD_DEFS.DISABLE_TRAINING': 'false',
-    //     'BUILD_DEFS.DISABLE_WEBGPU': 'true',
-    //     'BUILD_DEFS.DISABLE_WEBGL': 'true',
-    //   },
-    // });
+    // ort.wasm-core[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.wasm-core',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
+      },
+    });
+    // ort.training.wasm[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.training.wasm',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_TRAINING': 'false',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+      },
+    });
   }
 
   if (BUNDLE_MODE === 'dev' || BUNDLE_MODE === 'perf') {
-    await addBuildTask(buildTest());
+    await buildTest();
   }
-
-  await Promise.all(buildTasks);
 
   if (BUNDLE_MODE === 'prod') {
-    // generate package.json files under each of the dist folders for commonJS and ESModule
-    // this trick allows typescript to import this package as different module type
-    // see also: https://evertpot.com/universal-commonjs-esm-typescript-packages/
-    await fs.writeFile(path.resolve(__dirname, '../dist/cjs', 'package.json'), '{"type": "commonjs"}');
-    await fs.writeFile(path.resolve(__dirname, '../dist/esm', 'package.json'), '{"type": "module"}');
+    console.timeLog('BUILD', 'Start post-processing...');
+    await postProcess();
+
+    console.timeLog('BUILD', 'Start validating...');
+    await validate();
   }
 
-  // await fs.copyFile(
-  //     path.resolve(__dirname, '../lib/wasm/binding/ort-wasm-simd.jsep.js'),
-  //     path.resolve(__dirname, '../dist/ort-wasm-simd.jsep.js'));
+  console.timeEnd('BUILD');
 }
 
 void main();
