@@ -100,7 +100,7 @@ static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimiz
 // A list of optimizes is available in onnxruntime/core/optimizer/graph_transformer_utils.cc
 //
 // Default is an empty string which means no optimizers are disabled.
-static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specifed_optimizers";
+static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
 
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
