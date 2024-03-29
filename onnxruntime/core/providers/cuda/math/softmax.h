@@ -22,6 +22,16 @@ Status dispatch_warpwise_softmax_forward(Stream* stream, output_t* dst, const in
                                          int softmax_elements, int softmax_elements_stride, int batch_count);
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
+Status dispatch_warpwise_softmax_varlength_forward(Stream* ort_stream,
+                                                   output_t* dst,
+                                                   const input_t* src,  // [[Head, Seq1, Seq1], [Head, Seq2, Seq2], ..., [Head, SeqB, SeqB]]
+                                                   int max_seq_legnth,
+                                                   int batch_count,  // token_count * head_count
+                                                   const int64_t* cu_seqlens,
+                                                   const int seqlen_count,
+                                                   const int head_count);
+
+template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
 Status dispatch_blockwise_softmax_forward(Stream* stream, output_t* output, const input_t* input,
                                           int softmax_elements, int input_stride, int output_stride, int batch_count);
 

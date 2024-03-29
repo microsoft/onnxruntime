@@ -4142,6 +4142,231 @@ Return true if all elements are true and false otherwise.
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif  // ENABLE_TRITON
 
+  // ONNX_CONTRIB_OPERATOR_SCHEMA(GroupGemm)
+  //     .SetDomain(kMSDomain)
+  //     .SinceVersion(1)
+  //     .SetDoc("")
+  //     .Input(0, "A1", "N-dimensional matrix A", "T")
+  //     .Input(1, "B1", "N-dimensional matrix B", "T")
+  //     .Input(2, "A2", "", "T", OpSchema::Optional)
+  //     .Input(3, "B2", "", "T", OpSchema::Optional)
+  //     .Input(4, "A3", "", "T", OpSchema::Optional)
+  //     .Input(5, "B3", "", "T", OpSchema::Optional)
+  //     .Output(0, "Y", "Matrix multiply results", "T")
+  //     .TypeConstraint(
+  //         "T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+  //         "Constrain input and output types to float tensors.")
+
+  //     .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+  //       propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  //       int input1Idx = 0;
+  //       int input2Idx = 1;
+  //       if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
+  //         return;
+  //       }
+
+  //       const auto shapeL = getInputShape(ctx, input1Idx);
+  //       const auto shapeR = getInputShape(ctx, input2Idx);
+
+  //       if (shapeL.dim_size() <= 2 || shapeR.dim_size() <= 2) {
+  //         fail_shape_inference("Input tensors of wrong rank. Expected rank > 2, got rank " +
+  //                              std::to_string(shapeL.dim_size()) + " and " +
+  //                              std::to_string(shapeR.dim_size()));
+  //       }
+
+  //       if (shapeL.dim_size() != shapeR.dim_size()) {
+  //         fail_shape_inference("Input tensor rank did not match, got rank " +
+  //                              std::to_string(shapeL.dim_size()) + " and " +
+  //                              std::to_string(shapeR.dim_size()));
+  //       }
+
+  //       // Check for compatible matrix multiply dimensions
+  //       for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+  //         if (shapeL.dim(i).has_dim_value() && shapeR.dim(i).has_dim_value() &&
+  //             shapeL.dim(i).dim_value() != shapeR.dim(i).dim_value()) {
+  //           fail_shape_inference("Incompatible batch dimensions for matrix multiplication");
+  //         }
+  //       }
+
+  //       auto dimL = shapeL.dim(shapeL.dim_size() - 1);
+  //       auto dimR = shapeR.dim(shapeR.dim_size() - 2);
+  //       if (dimL.has_dim_value() && dimR.has_dim_value() &&
+  //           dimL.dim_value() != dimR.dim_value()) {
+  //         fail_shape_inference("Incompatible last two dimensions for matrix multiplication");
+  //       }
+
+  //       ONNX_NAMESPACE::TensorShapeProto resultShape;
+
+  //       // Now call out to generic multidimensional broadcasting for
+  //       // the broadcastable prefixes.
+  //       {
+  //         ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
+  //         for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+  //           *prefixShapeL.add_dim() = shapeL.dim(i);
+  //         }
+  //         for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
+  //           *prefixShapeR.add_dim() = shapeR.dim(i);
+  //         }
+  //         bidirectionalBroadcastShapeInference(
+  //             prefixShapeL, prefixShapeR, resultShape);
+
+  //         // Back to matmul-specific. Add the trailing dimensions back in.
+  //         *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
+  //         *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
+  //       }
+
+  //       updateOutputShape(ctx, 0, resultShape);
+  //     });
+
+  // ONNX_CONTRIB_OPERATOR_SCHEMA(MultiHeadAttentionFixedLength)
+  //     .SetDomain(kMSDomain)
+  //     .SinceVersion(1)
+  //     .SetDoc(R"DOC(
+  //       Compute Multi-Head Attention with fixed length sequences.
+  //       The computation is performed as follows:
+  //       1. layout update for query, key and value:
+  //         query = query.transpose(0, 2, 1, 3)
+  //         key = key.transpose(0, 2, 3, 1)
+  //         value = value.transpose(0, 2, 1, 3)
+  //       2. apply pre-processing function to query, key:
+  //         query = pre_q(query)
+  //         key = pre_k(key)
+  //       3. compute query-key attention score:
+  //         attention_score = query * key
+  //       4. scaling and masking attention score:
+  //         attention_score = mid(attention_score)
+  //       5. compute attention probability:
+  //         attention_prob = Softmax(attention_score)
+  //       6. apply post-processing function to attention_prob:
+  //         attention_prob = post(attention_prob)
+  //       7. compute attention output:
+  //         attention_output = attention_prob * value
+  //       )DOC")
+  //     .Attr(
+  //         "pre_q",
+  //         "Subgraph take query as input and return preprocessed query. For example 'query = @pre_q(@query)'",
+  //         AttributeProto::GRAPH, false)
+  //     .Attr(
+  //         "pre_k",
+  //         "Subgraph take key as input and return preprocessed key. For example 'key = @pre_k(@key)'",
+  //         AttributeProto::GRAPH, false)
+  //     .Attr(
+  //         "mid",
+  //         "Subgraph take query-key attention score as input and return scaled/masked attention score."
+  //         "For example 'query_key_attention_score = @mid(@query_key_attention_score)'",
+  //         AttributeProto::GRAPH, false)
+  //     .Attr(
+  //         "post",
+  //         "Subgraph takes softmax attention score as input and return output."
+  //         "For example 'output = @post(Softmax(@query_key_attention_score))'",
+  //         AttributeProto::GRAPH, false)
+  //     .Input(0,
+  //            "query", "Query with shape (batch_size, sequence_length, head, hidden_size_per_head)", "T")
+  //     .Input(1,
+  //            "key", "Key with shape (batch_size, sequence_length, head, hidden_size_per_head)", "T")
+  //     .Input(2,
+  //            "value", "Value with shape (batch_size, sequence_length, head, hidden_size_per_head)", "T")
+  //     .Output(0,
+  //             "attention_output",
+  //             "Attention output tensor with shape (batch_size, sequence_length, head, hidden_size_per_head)", "T")
+  //     .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
+  //     .TypeConstraint("TI", {"tensor(int32)", "tensor(int64)"}, "Constrain full_shape to integer types")
+  //     .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+  //       // Type inference
+  //       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  //       // Shape inference
+  //       if (hasInputShape(ctx, 0)) {
+  //         ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+  //       }
+  //     });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MultiHeadAttentionVarLength)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+        Compute Multi-Head Attention with variant length sequences.
+        The computation is performed as follows:
+        1. layout update for query, key and value:
+          query = query.transpose(0, 2, 1, 3)
+          key = key.transpose(0, 2, 3, 1)
+          value = value.transpose(0, 2, 1, 3)
+        2. apply pre-processing function to query, key:
+          query = pre_q(query)
+          key = pre_k(key)
+        3. compute query-key attention score:
+          attention_score = query * key
+        4. scaling and masking attention score:
+          attention_score = mid(attention_score)
+        5. compute attention probability:
+          attention_prob = Softmax(attention_score)
+        6. apply post-processing function to attention_prob:
+          attention_prob = post(attention_prob)
+        7. compute attention output:
+          attention_output = attention_prob * value
+        )DOC")
+      .Attr(
+          "pre_q",
+          "Subgraph take query as input and return preprocessed query. For example 'query = @pre_q(@query)'",
+          AttributeProto::GRAPH, false)
+      .Attr(
+          "pre_k",
+          "Subgraph take key as input and return preprocessed key. For example 'key = @pre_k(@key)'",
+          AttributeProto::GRAPH, false)
+      .Attr(
+          "mid",
+          "Subgraph take query-key attention score as input and return scaled/masked attention score."
+          "For example 'query_key_attention_score = @mid(@query_key_attention_score)'",
+          AttributeProto::GRAPH, false)
+      .Attr(
+          "post",
+          "Subgraph takes softmax attention score as input and return output."
+          "For example 'output = @post(Softmax(@query_key_attention_score))'",
+          AttributeProto::GRAPH, false)
+      .Input(0,
+             "query",
+             "Query with shape (token_count, head, hidden_size_per_head)",
+             "T")
+      .Input(1,
+             "key",
+             "Key with shape (token_count, head, hidden_size_per_head)",
+             "T")
+      .Input(2,
+             "value",
+             "Value with shape (token_count, head, hidden_size_per_head)",
+             "T")
+      .Input(3,
+             "q_cum_seq_len",
+             "Cumulated sequence lengths. Its shape is (batch_size + 1)",
+             "TI")
+      .Input(4,
+             "k_cum_seq_len",
+             "Cumulated sequence lengths. Its shape is (batch_size + 1)",
+             "TI")
+      .Input(5,
+             "v_cum_seq_len",
+             "Cumulated sequence lengths. Its shape is (batch_size + 1)",
+             "TI")
+      .Input(6,
+             "batch_size_and_sequence_length",
+             "1-D tensor containing (batch_size, sequence_length)",
+             "TI")
+      .Output(0,
+              "output",
+              "2-D output tensor with shape (token_count, head, hidden_size_per_head)",
+              "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
+      .TypeConstraint("TI", {"tensor(int32)", "tensor(int64)"}, "Constrain full_shape to integer types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        // Shape inference
+        if (hasInputShape(ctx, 0)) {
+          ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternal)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
