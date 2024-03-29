@@ -18,6 +18,8 @@
 
 #include "core/common/logging/macros.h"
 
+#include "date/date.h"
+
 /*
 
   Logging overview and expected usage:
@@ -55,6 +57,12 @@ namespace onnxruntime {
 namespace logging {
 
 using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
+
+#if __cplusplus >= 202002L
+namespace timestamp_ns = std::chrono;
+#else
+namespace timestamp_ns = ::date;
+#endif
 
 #ifndef NDEBUG
 ORT_ATTRIBUTE_UNUSED static bool vlog_enabled = true;  // Set directly based on your needs.
