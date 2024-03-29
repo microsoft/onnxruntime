@@ -24,6 +24,10 @@
 # 5) Install flash attention v2
 #
 # $ pip install flash-attn --no-build-isolation
+#
+# 6) Install bitsandbytes
+#
+# $ pip install bitsandbytes
 
 from __future__ import annotations
 
