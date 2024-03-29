@@ -49,7 +49,8 @@ def _override_gradient_checkpoint():
     We replace `torch.utils.checkpoint.checkpoint` with our implementation, without condition checks.
     The actual check is in the overridden function, verifying if:
     1) `checkpoint` is called during ORTModule model export,
-    2) Gradient checkpoint autograd function is disallowed (ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT).
+    2) Gradient checkpoint autograd function is disallowed (ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT),
+    3) Memory optimization level is not specified by the user (ORTMODULE_MEMORY_OPT_LEVEL).
     If true, we reset memory optimization to layer-wise recompute.
     """
     from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
