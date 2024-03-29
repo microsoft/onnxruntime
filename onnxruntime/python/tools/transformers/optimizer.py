@@ -68,7 +68,7 @@ MODEL_TYPES = {
 
 
 def optimize_by_onnxruntime(
-    onnx_model: Union[str, ModelProto],
+    onnx_model_path: Union[str, ModelProto],
     use_gpu: bool = False,
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
@@ -77,6 +77,7 @@ def optimize_by_onnxruntime(
     save_as_external_data: bool = False,
     external_data_filename: str = "",
     external_data_file_threshold: int = 1024,
+    onnx_model: Union[str, ModelProto] = None,
     *,
     provider: Optional[str] = None,
 ) -> str:
@@ -84,6 +85,7 @@ def optimize_by_onnxruntime(
     Use onnxruntime to optimize model.
 
     Args:
+        onnx_model_path: (Deprecated) the path of input model file or ModelProto. Use `onnx_model` instead.
         onnx_model (str | ModelProto): the path of input onnx model or ModelProto.
         use_gpu (bool): whether the optimized model is targeted to run in GPU.
         optimized_model_path (str or None): the path of optimized model.
@@ -98,6 +100,11 @@ def optimize_by_onnxruntime(
     """
     assert opt_level in [1, 2, 99]
     from torch import version as torch_version
+
+    # onnx_model_path is deprecated, this is for backward compatibility.
+    # when onnx_model is provided, we will ignore onnx_model_path.
+    if onnx_model is None:
+        onnx_model = onnx_model_path
 
     if (
         use_gpu

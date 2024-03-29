@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def quant_pre_process(
-    input_model: Union[str, Path, onnx.ModelProto],
+    input_model_path: Union[str, Path, onnx.ModelProto],
     output_model_path: Union[str, Path],
     skip_optimization: bool = False,
     skip_onnx_shape: bool = False,
@@ -36,10 +36,12 @@ def quant_pre_process(
     all_tensors_to_one_file: bool = False,
     external_data_location: Optional[str] = None,
     external_data_size_threshold: int = 1024,
+    input_model: Union[str, Path, onnx.ModelProto] = None,
 ) -> None:
     """Shape inference and model optimization, in preparation for quantization.
 
     Args:
+        input_model_path: (Deprecated) Path to the input model file or ModelProto. Use `input_model` instead.
         input_model: Path to the input model file or ModelProto
         output_model_path: Path to the output model file
         skip_optimization: Skip model optimization step if true. This may result in ONNX shape
@@ -63,6 +65,12 @@ def quant_pre_process(
         external_data_location: The file location to save the external file
         external_data_size_threshold: The size threshold for external data
     """
+
+    # input_model_path is deprecated, this is for backward compatibility
+    # when input_model is provided, we will ignore input_model_path.
+    if input_model is None:
+        input_model = input_model_path
+
     with tempfile.TemporaryDirectory(prefix="pre.quant.") as quant_tmp_dir:
         temp_path = Path(quant_tmp_dir)
         model = None
