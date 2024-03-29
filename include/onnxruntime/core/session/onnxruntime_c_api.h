@@ -4738,6 +4738,10 @@ struct OrtCustomOp {
   // Release the pointer input_index and output_index allocated from GetMayInplace() function.
   // If GetMayInplace() is defined, this function MUST be defined as well.
   void(ORT_API_CALL* ReleaseMayInplace)(_Frees_ptr_opt_ int* input_index, _Frees_ptr_opt_ int* output_index);
+
+  // Same as GetMayInplace() and ReleaseMayInplace()
+  size_t(ORT_API_CALL* GetAliasMap)(_Out_ int** input_index, _Out_ int** output_index);
+  void(ORT_API_CALL* ReleaseAliasMap)(_Frees_ptr_opt_ int* input_index, _Frees_ptr_opt_ int* output_index);
 };
 
 /*

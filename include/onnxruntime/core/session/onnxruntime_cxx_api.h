@@ -2304,6 +2304,8 @@ struct CustomOpBase : OrtCustomOp {
 
     OrtCustomOp::GetMayInplace = nullptr;
     OrtCustomOp::ReleaseMayInplace = nullptr;
+    OrtCustomOp::GetAliasMap = nullptr;
+    OrtCustomOp::ReleaseAliasMap = nullptr;
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
