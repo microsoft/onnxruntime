@@ -4,11 +4,11 @@
 # for other cuda version and TRT version
 ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
-ARG BASEIMAGE=nvidia/cuda:12.4.0-cudnn9-devel-ubi8
+ARG BASEIMAGE=nvidia/cuda:12.3.2-cudnn9-devel-ubi8
 ARG DEVTOOLSET_ROOTPATH=/usr
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64
 ARG PREPEND_PATH=/usr/local/cuda/bin
-ARG TRT_VERSION=10.0.0.4-1.cuda12.4
+ARG TRT_VERSION=10.0.0.6-1.cuda12.4
 
 #Build manylinux docker image begin
 FROM $BASEIMAGE AS runtime_base
@@ -164,18 +164,23 @@ CMD ["/bin/bash"]
 RUN if [ -n "$TRT_VERSION" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
     dnf -y install  \
-    libnvinfer10-${TRT_VERSION}  \
-    libnvparsers10-${TRT_VERSION}  \
-    libnvonnxparsers10-${TRT_VERSION}  \
-    libnvinfer-plugin10-${TRT_VERSION}  \
-    libnvinfer-vc-plugin10-${TRT_VERSION}  \
     libnvinfer-devel-${TRT_VERSION}  \
-    libnvparsers-devel-${TRT_VERSION}  \
-    libnvonnxparsers-devel-${TRT_VERSION}  \
-    libnvinfer-plugin-devel-${TRT_VERSION}  \
-    libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-dispatch-devel-${TRT_VERSION}  \
+    libnvinfer-dispatch10-${TRT_VERSION}  \
     libnvinfer-headers-devel-${TRT_VERSION}  \
-    libnvinfer-headers-plugin-devel-${TRT_VERSION};  \
+    libnvinfer-headers-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-lean-devel-${TRT_VERSION}  \
+    libnvinfer-lean10-${TRT_VERSION}  \
+    libnvinfer-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-plugin10-${TRT_VERSION}  \
+    libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-vc-plugin10-${TRT_VERSION}  \
+    libnvinfer10-${TRT_VERSION}  \
+    libnvonnxparsers-devel-${TRT_VERSION}  \
+    libnvonnxparsers10-${TRT_VERSION}  \
+    libnvparsers-devel-${TRT_VERSION}  \
+    libnvparsers10-${TRT_VERSION}  \
+    tensorrt-devel-${TRT_VERSION};  \
 else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
