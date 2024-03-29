@@ -363,6 +363,9 @@ class WhisperHelper:
             prompt_ids = [processor.get_prompt_ids(p) for p in prompts]
             pt_transcription = []
             pt_outputs = []
+            # The looping for model.generate is necessary here due to the limitation as per
+            # https://huggingface.co/docs/transformers/model_doc/whisper#transformers.WhisperForConditionalGeneration.generate.prompt_ids
+            # prompt_ids input requires a tensor of rank 1
             for i in range(batch_size):
                 inputs["prompt_ids"] = torch.from_numpy(prompt_ids[i])
                 inputs["input_features"] = input_features_[i].to(device)
@@ -493,10 +496,8 @@ class WhisperHelper:
                 inputs[name] = np.array([1.0], dtype=ort_to_np[dtype])
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
-        ort_outputs = ort_session.run(None, inputs)[0]
-        ort_transcription = []
-        for o in ort_outputs:
-            ort_transcription.append(processor.batch_decode(o, skip_special_tokens=True)[0])
+        ort_outputs = ort_session.run(None, inputs)[0][:, 0, :]
+        ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
         expected_transcription_options = WhisperHelper.select_transcription_options(batch_size, prompt_mode)
 
         parity = 1
