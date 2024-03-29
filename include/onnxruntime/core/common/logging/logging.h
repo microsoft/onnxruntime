@@ -58,7 +58,8 @@ namespace logging {
 
 using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 
-#if __cplusplus >= 202002L
+// NOTE When other compilers support std::chrono::operator<<, update this.
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L
 namespace timestamp_ns = std::chrono;
 #else
 namespace timestamp_ns = ::date;
