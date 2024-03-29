@@ -140,7 +140,7 @@ namespace Dml::GraphDescBuilder
         }
 
         // Adjust the node indices in the intermediate edges
-        std::unordered_set<std::string_view> usedLargeConstantNames;
+        std::unordered_set<std::string> usedLargeConstantNames;
         for (auto& intermediateEdge : graphIntermediateEdges)
         {
             intermediateEdge.FromNodeIndex = shiftedIndicesMapping[intermediateEdge.FromNodeIndex];
@@ -151,9 +151,10 @@ namespace Dml::GraphDescBuilder
             {
                 if (pos != 0)
                 {
-                    intermediateEdge.Name = intermediateEdge.Name.substr(0, pos);
-                    usedLargeConstantNames.insert(intermediateEdge.Name); // need part of name which is coming from the model.
-                    intermediateEdge.Name += "nodeIdx:" + std::to_string(intermediateEdge.FromNodeIndex) + "-outputIdx:" + std::to_string(intermediateEdge.FromNodeOutputIndex);
+                    std::string constantNamePartComingFromModel = intermediateEdge.Name.substr(0, pos - 1);
+                    usedLargeConstantNames.insert(constantNamePartComingFromModel); // need part of name which is coming from the model.
+                    intermediateEdge.Name = constantNamePartComingFromModel;
+                    intermediateEdge.Name += "-nodeIdx:" + std::to_string(intermediateEdge.FromNodeIndex) + "-outputIdx:" + std::to_string(intermediateEdge.FromNodeOutputIndex);
                 }
                 else
                 {
@@ -179,7 +180,7 @@ namespace Dml::GraphDescBuilder
         // Erase the mapping if the input Edge is not used by any node
         for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end();)
         {
-            if (!usedLargeConstantNames.count(it->first))
+            if (!usedLargeConstantNames.count(std::string(it->first)))
             {
                 it = serializedGraphLargeConstantNameToSubgraphInputIndex.erase(it);
             }
