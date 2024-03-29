@@ -14,7 +14,7 @@ namespace onnxruntime {
 @class ConstantSharing
 
 Transformer that traverses the graph top-down and performs constant sharing, i.e.,
-constant initializers having same dtype, value and shape, will be replaced by one single (newly created) initializer.
+constant initializers having same data type, value and shape, will be replaced by one single initializer.
 Currently, only scalar-valued initializers are handled.
 */
 class ConstantSharing : public GraphTransformer {
