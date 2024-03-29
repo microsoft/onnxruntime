@@ -821,8 +821,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_options.layerwise_recompute_auto_enabled:
             notes.append(
-                f"[{mem_row._columns[0]}] Layer-wise memory optimization is enabled automatically upon detecting "
-                "torch.utils.checkpoint usage during model execution. \n  If this is not what you want,"
+                f"[{mem_row._columns[0]}] Layer-wise recompute is enabled automatically upon detecting "
+                "torch.utils.checkpoint usage during model execution. \n  If this is not what you want, "
                 "using export ORTMODULE_MEMORY_OPT_LEVEL=0 can disable the auto enabling, but "
                 "in that case, it's mostly likely that the model export would be failed."
             )
