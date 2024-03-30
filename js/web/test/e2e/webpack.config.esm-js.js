@@ -17,6 +17,6 @@ module.exports = {
   plugins :
   [
     // Use "copy-webpack-plugin" to copy the onnxruntime-web WebAssembly files to the output directory.
-    new CopyPlugin({patterns : [{from : 'node_modules/onnxruntime-web/dist/ort-*.{js,wasm}', to : '[name][ext]'}]}),
+    new CopyPlugin({patterns : [{from : 'node_modules/onnxruntime-web/dist/ort-*.{js,mjs,wasm}', to : '[name][ext]'}]}),
   ]
 };

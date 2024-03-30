@@ -203,7 +203,7 @@ async function buildOrt({
   // distribution code is split into multiple files:
   // - [bundle-name][.min].[m]js
   // - [bundle-name].proxy[.min].[m]js
-  // - ort[-training]-wasm[-simd][-threaded][.jsep].js
+  // - ort[-training]-wasm[-simd][-threaded][.jsep].mjs
   // - ort-wasm[-simd]-threaded[.jsep].worker.js
   const external = isNode ? ['onnxruntime-common'] : [
     'node:fs/promises',
@@ -283,12 +283,12 @@ async function buildTest() {
  * If a project uses Webpack to bundle the code, Webpack will try to resolve the dynamic import calls. However, we don't
  * want Webpack to resolve the dynamic import calls inside the ort-web bundle because:
  *
- * - We want to keep the ort-*.js and ort-*.wasm as-is. This makes it able to replace the ort-*.js and ort-*.wasm with a
- * custom build if needed.
+ * - We want to keep the ort-*.mjs and ort-*.wasm as-is. This makes it able to replace the ort-*.mjs and ort-*.wasm with
+ * a custom build if needed.
  * - The Emscripten generated code uses `require()` to load Node.js modules. Those code is guarded by a feature check to
  * make sure only run in Node.js. Webpack does not recognize the feature check and will try to resolve the `require()`
  * in browser environment. This will cause the Webpack build to fail.
- * - There are multiple entry points that use dynamic import to load the ort-*.js and ort-*.wasm. If the content of the
+ * - There are multiple entry points that use dynamic import to load the ort-*.mjs and ort-*.wasm. If the content of the
  * dynamic import is resolved by Webpack, it will be duplicated in the final bundle. This will increase the bundle size.
  *
  * What about other bundlers?

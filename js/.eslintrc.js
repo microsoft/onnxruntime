@@ -218,10 +218,6 @@ module.exports = {
       'guard-for-in': 'off'
     }
   }, {
-    files: ['web/lib/wasm/binding/**/*.ts'], rules: {
-      '@typescript-eslint/naming-convention': 'off'
-    }
-  }, {
     files: ['react_native/e2e/src/**/*.ts', 'react_native/e2e/src/**/*.tsx'], rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',

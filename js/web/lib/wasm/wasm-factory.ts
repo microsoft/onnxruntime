@@ -3,8 +3,7 @@
 
 import {Env} from 'onnxruntime-common';
 
-import {OrtWasmModule} from './binding/ort-wasm';
-import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
+import type {OrtWasmModule, OrtWasmThreadedModule} from './wasm-types';
 
 let wasm: OrtWasmModule|undefined;
 let initialized = false;

@@ -68,8 +68,13 @@
   "main": "dist/ort-web.node.js",
   "exports": {
     ".": {
-      "node": "./dist/ort.node.min.js",
-      "import": "./dist/ort.esm.min.js",
+      "node": {
+        "import": "./dist/ort.node.min.mjs",
+        "require": "./dist/ort.node.min.js",
+        "types": "./types.d.ts",
+        "default": "./dist/ort.node.min.js"
+      },
+      "import": "./dist/ort.min.mjs",
       "require": "./dist/ort.min.js",
       "types": "./types.d.ts",
       "default": "./dist/ort.min.js"
@@ -109,8 +114,7 @@
       "require": "./dist/ort.training.wasm.min.js",
       "types": "./types.d.ts",
       "default": "./dist/ort.training.wasm.min.js"
-    },
-    "./tools/webpack-plugin": "./tools/webpack-plugin.js"
+    }
   },
   "types": "./types.d.ts",
   "description": "A Javascript library for running ONNX models on browsers"

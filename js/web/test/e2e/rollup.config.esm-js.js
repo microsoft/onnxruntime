@@ -21,6 +21,6 @@ module.exports = {
     terser(),
 
     // Use "rollup-plugin-copy" to copy the onnxruntime-web WebAssembly files to the output directory.
-    copy({targets : [{src : 'node_modules/onnxruntime-web/dist/ort-*.{js,wasm}', dest : 'dist/rollup_esm_js'}]})
+    copy({targets : [{src : 'node_modules/onnxruntime-web/dist/ort-*.{js,mjs,wasm}', dest : 'dist/rollup_esm_js'}]})
   ]
 };

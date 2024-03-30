@@ -3,6 +3,8 @@
 
 import type {Tensor} from 'onnxruntime-common';
 
+/* eslint-disable @typescript-eslint/naming-convention */
+
 export declare namespace JSEP {
   type BackendType = unknown;
   type AllocFunction = (size: number) => number;
@@ -208,5 +210,6 @@ export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Parti
   // #endregion
 }
 
-declare const moduleFactory: EmscriptenModuleFactory<OrtWasmModule>;
-export default moduleFactory;
+export interface OrtWasmThreadedModule extends OrtWasmModule {
+  PThread?: {terminateAllThreads(): void};
+}
