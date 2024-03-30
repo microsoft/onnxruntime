@@ -56,7 +56,9 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         # Decoder out: (logits, past_key_values, encoder_hidden_state)
         if self.model_impl == "openai":
             encoder_hidden_states.unsqueeze(0)
-            decinit_out, present = self.whisper_decoder_openai_init(decoder_input_ids, encoder_hidden_states, remove_hooks=remove_hooks)
+            decinit_out, present = self.whisper_decoder_openai_init(
+                decoder_input_ids, encoder_hidden_states, remove_hooks=remove_hooks
+            )
             return decinit_out, encoder_hidden_states, present
         else:
             decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_hidden_states)
