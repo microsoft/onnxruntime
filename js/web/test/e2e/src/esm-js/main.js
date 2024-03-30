@@ -3,10 +3,10 @@
 
 'use strict';
 
-import * as ort from 'onnxruntime-web/experimental';
-import testInferenceAndValidate from './shared.js';
+import * as ort from 'onnxruntime-web/wasm';
+import {setupMultipleThreads, default as testInferenceAndValidate} from './shared.js';
 
 it('Browser package consuming test - [.js][esm]', async function() {
-  ort.env.wasm.numThreads = 1;
+  setupMultipleThreads(ort);
   await testInferenceAndValidate(ort, {executionProviders: ['wasm']});
 });

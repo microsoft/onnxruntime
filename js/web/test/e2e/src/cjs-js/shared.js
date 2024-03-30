@@ -21,6 +21,11 @@ const assert = (cond) => {
   if (!cond) throw new Error();
 };
 
+const setupMultipleThreads = (ort) => {
+  ort.env.wasm.numThreads = 2;
+  assert(typeof SharedArrayBuffer !== 'undefined');
+};
+
 const testInferenceAndValidate = async (ort, options) => {
   const model = base64StringToUint8Array(testModelData);
   const session = await ort.InferenceSession.create(model, options);
@@ -41,4 +46,7 @@ const testInferenceAndValidate = async (ort, options) => {
   }
 };
 
-module.exports = {testInferenceAndValidate};
+module.exports = {
+  setupMultipleThreads,
+  testInferenceAndValidate
+};

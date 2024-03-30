@@ -3,10 +3,10 @@
 
 'use strict';
 
-const ort = require('onnxruntime-web');
-const {testInferenceAndValidate} = require('./shared');
+const ort = require('onnxruntime-web/wasm');
+const {setupMultipleThreads, testInferenceAndValidate} = require('./shared');
 
 it('Browser package consuming test - [.js][commonjs]', async function() {
-  ort.env.wasm.numThreads = 1;
+  setupMultipleThreads(ort);
   await testInferenceAndValidate(ort, {executionProviders: ['wasm']});
 });

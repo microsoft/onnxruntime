@@ -33,7 +33,7 @@ files.push(
     {pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true},
 );
 
-const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de'];
+const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de', '--enable-features=SharedArrayBuffer'];
 
 module.exports = function(config) {
   const distPrefix = SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/';

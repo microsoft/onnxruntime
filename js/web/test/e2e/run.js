@@ -132,6 +132,7 @@ async function testAllBrowserPackagesConsumingCases() {
   await runKarma({hostInKarma: true, main: './dist/webpack_esm_js/ort-test-e2e.bundle.mjs', ortMain: ''});
   await runKarma({hostInKarma: true, main: './dist/webpack_umd_js/ort-test-e2e.bundle.js', ortMain: ''});
   await runKarma({hostInKarma: true, main: './dist/rollup_esm_js/ort-test-e2e.bundle.mjs', ortMain: ''});
+  await runKarma({hostInKarma: true, main: './dist/rollup_umd_js/ort-test-e2e.bundle.js', ortMain: ''});
 }
 
 async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js'}) {
