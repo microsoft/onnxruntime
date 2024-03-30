@@ -99,3 +99,14 @@ else()
     set(DML_PACKAGE_DIR ${dml_INCLUDE_DIR}/..)
   endif()
 endif()
+
+FetchContent_Declare(
+    directx_headers
+    URL ${DEP_URL_directx_headers}
+    URL_HASH SHA1=${DEP_SHA1_directx_headers}
+)
+
+FetchContent_Populate(directx_headers)
+set(directx_headers_INCLUDE_DIRS  "${directx_headers_SOURCE_DIR}/include")
+
+include_directories(BEFORE ${directx_headers_INCLUDE_DIRS})

@@ -214,7 +214,6 @@ stages:
             Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.pdb -File -Recurse | ForEach-Object { $_.Delete() }
             Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.lib -File -Recurse | ForEach-Object { $_.Delete() }
             Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
-            Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime4j_jni.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
             cd $(Agent.TempDirectory)/RelWithDebInfo
             tree /f
           displayName: 'Copy native test needs files'
@@ -222,10 +221,11 @@ stages:
 
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - powershell: |
+              Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime4j_jni.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
               Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/java" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
               cd $(Agent.TempDirectory)/RelWithDebInfo
               tree /f
-            displayName: 'Copy java folder for java test'
+            displayName: 'Copy java pad and folder for java test'
             workingDirectory: '$(Build.BinariesDirectory)'
 
         - task: PublishPipelineArtifact@1
