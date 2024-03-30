@@ -30,15 +30,34 @@ export const initializeFlags = (): void => {
   }
 
   if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads <= 0) {
-    // Web: when crossOriginIsolated is false, SharedArrayBuffer is not available so WebAssembly threads will not work.
-    // Node.js: onnxruntime-web does not support multi-threads in Node.js.
-    if ((typeof self !== 'undefined' && !self.crossOriginIsolated) ||
-        (typeof process !== 'undefined' && process.versions && process.versions.node)) {
+    // The following logic only applies when `ort.env.wasm.numThreads` is not set by user. We will always honor user's
+    // setting if it is provided.
+
+    // Browser: when crossOriginIsolated is false, SharedArrayBuffer is not available so WebAssembly threads will not
+    // work. In this case, we will set numThreads to 1.
+    //
+    // There is an exception: when the browser is configured to force-enable SharedArrayBuffer (e.g. Chromuim with
+    // --enable-features=SharedArrayBuffer), it is possible that `self.crossOriginIsolated` is false and
+    // SharedArrayBuffer is available at the same time. This is usually for testing. In this case,  we will still set
+    // numThreads to 1 here. If we want to enable multi-threading in test, we should set `ort.env.wasm.numThreads` to a
+    // value greater than 1.
+    if (typeof self !== 'undefined' && !self.crossOriginIsolated) {
+      env.wasm.numThreads = 1;
+    } else {
+      const numCpuLogicalCores =
+          typeof navigator === 'undefined' ? require('node:os').cpus().length : navigator.hardwareConcurrency;
+      env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
+    }
+  } else {
+    if (BUILD_DEFS.DISABLE_WASM_THREAD && env.wasm.numThreads > 1) {
+      // eslint-disable-next-line no-console
+      console.warn(
+          'env.wasm.numThreads is set to ' + env.wasm.numThreads +
+          ', however, currently onnxruntime-web build does not support multi-threads. ' +
+          'Please consider using a different export of onnxruntime-web.');
+
       env.wasm.numThreads = 1;
     }
-    const numCpuLogicalCores =
-        typeof navigator === 'undefined' ? require('node:os').cpus().length : navigator.hardwareConcurrency;
-    env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
   }
 };
 

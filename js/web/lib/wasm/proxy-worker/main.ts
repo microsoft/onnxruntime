@@ -35,7 +35,7 @@ declare global {
   type HTMLImageElement = unknown;
 }
 
-import {OrtWasmMessage, SerializableTensorMetadata} from '../proxy-messages';
+import type {OrtWasmMessage, SerializableTensorMetadata} from '../proxy-messages';
 import {createSession, copyFromExternalBuffer, endProfiling, extractTransferableBuffers, initEp, initRuntime, releaseSession, run} from '../wasm-core-impl';
 import {initializeWebAssembly} from '../wasm-factory';
 

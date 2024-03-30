@@ -21,7 +21,8 @@ const files = [
   {pattern: './model_with_orig_ext_data.bin', included: false},
 ];
 if (ORT_MAIN) {
-  files.push({pattern: distPrefix + ORT_MAIN});
+  files.push(
+      {pattern: (SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/') + ORT_MAIN});
 }
 if (TEST_MAIN.endsWith('.mjs')) {
   files.push({pattern: TEST_MAIN, type: 'module'});
@@ -30,13 +31,12 @@ if (TEST_MAIN.endsWith('.mjs')) {
 }
 files.push(
     {pattern: './dist/**/*', included: false, nocache: true, watched: false},
-    {pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true},
+    {pattern: './node_modules/onnxruntime-web/dist/*.*', included: false, nocache: true},
 );
 
 const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de', '--enable-features=SharedArrayBuffer'];
 
 module.exports = function(config) {
-  const distPrefix = SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/';
   config.set({
     frameworks: ['mocha'],
     files,

@@ -28,15 +28,6 @@ const isMultiThreadSupported = (numThreads: number): boolean => {
     return false;
   }
 
-  // onnxruntime-web does not support multi-threads in Node.js.
-  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
-    // eslint-disable-next-line no-console
-    console.warn(
-        'env.wasm.numThreads is set to ' + numThreads +
-        ', however, currently onnxruntime-web does not support multi-threads in Node.js. ' +
-        'Please consider using onnxruntime-node for performance critical scenarios.');
-  }
-
   try {
     // Test for transferability of SABs (for browsers. needed for Firefox)
     // https://groups.google.com/forum/#!msg/mozilla.dev.platform/IHkBZlHETpA/dwsMNchWEQAJ

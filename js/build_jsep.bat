@@ -32,13 +32,13 @@ exit /b 1
 if ["%~2"]==["st"] (
     set BUILD_DIR=%ROOT%build_jsep_st
     set THREADED_EXTRA_FLAG=
-    set TARGET_FILE_PREFIX=ort-wasm-simd
+    set TARGET_FILE_PREFIX=ort-wasm-simd.jsep
     goto :arg3
 )
 if ["%~2"]==["mt"] (
     set BUILD_DIR=%ROOT%build_jsep_mt
     set THREADED_EXTRA_FLAG=--enable_wasm_threads
-    set TARGET_FILE_PREFIX=ort-wasm-simd-threaded
+    set TARGET_FILE_PREFIX=ort-wasm-simd-threaded.jsep
     goto :arg3
 )
 echo Invalid threading option "%~2", must be "st" or "mt"
@@ -87,5 +87,4 @@ IF NOT "%ERRORLEVEL%" == "0" (
   exit /b %ERRORLEVEL%
 )
 
-copy /Y %BUILD_DIR%\%CONFIG%\%TARGET_FILE_PREFIX%.jsep.mjs %ROOT%js\web\lib\wasm\binding\%TARGET_FILE_PREFIX%.jsep.mjs
-copy /Y %BUILD_DIR%\%CONFIG%\%TARGET_FILE_PREFIX%.jsep.wasm %ROOT%js\web\dist\%TARGET_FILE_PREFIX%.jsep.wasm
+copy /Y %BUILD_DIR%\%CONFIG%\%TARGET_FILE_PREFIX%.* %ROOT%js\web\dist\

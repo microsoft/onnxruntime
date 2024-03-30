@@ -192,6 +192,9 @@ export interface OrtTrainingAPIs {
   _OrtTrainingReleaseSession(trainingHandle: number): void;
 }
 
+/**
+ * The interface of the WebAssembly module for ONNX Runtime, compiled from C++ source code by Emscripten.
+ */
 export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<OrtTrainingAPIs>,
                                        Partial<JSEP.Module> {
   // #region emscripten functions
@@ -210,6 +213,9 @@ export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Parti
   // #endregion
 }
 
+/**
+ * The interface of the WebAssembly module for ONNX Runtime with PThread support.
+ */
 export interface OrtWasmThreadedModule extends OrtWasmModule {
   PThread?: {terminateAllThreads(): void};
 }

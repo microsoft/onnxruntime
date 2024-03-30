@@ -66,22 +66,6 @@ const COPYRIGHT_HEADER = `/*!
  * Licensed under the MIT License.
  */`;
 
-/**
- * A custom footer used to append to the end of IIFE bundle to make it compatible with CommonJS module system.
- *
- * ESBuild does not support UMD format (which is a combination of IIFE and CommonJS). We don't want to generate 2 build
- * targets (IIFE and CommonJS) because it will increase the package size. Instead, we generate IIFE and append this
- * footer to make it compatible with CommonJS module system.
- *
- * see also: https://github.com/evanw/esbuild/issues/507
- */
-const COMMONJS_FOOTER = `
-if (typeof exports === "object" && typeof module === "object") {
-  module.exports = ort;
-}
-`;
-const COMMONJS_FOOTER_MIN = 'typeof exports=="object"&&typeof module=="object"&&(module.exports=ort);';
-
 interface OrtBuildOptions {
   isProduction?: boolean;
   isNode?: boolean;
@@ -91,13 +75,38 @@ interface OrtBuildOptions {
 }
 
 async function buildBundle(options: esbuild.BuildOptions) {
+  // Patch banner:
+  //
+  // - Add copy right header.
+  // - For Node + ESM, add a single line fix to make it work.
+  //   (see: https://github.com/evanw/esbuild/pull/2067#issuecomment-1981642558)
+  const NODE_ESM_FIX_MIN = 'import{createRequire}from"module";const require=createRequire(import.meta.url);';
+  const banner = {
+    js: options.platform === 'node' && options.format === 'esm' ? COPYRIGHT_HEADER + '\n' + NODE_ESM_FIX_MIN :
+                                                                  COPYRIGHT_HEADER
+  };
+
+  // Patch footer:
+  //
+  // For IIFE format, add a custom footer to make it compatible with CommonJS module system.
+  // For other formats, no footer is needed.
+  //
+  // ESBuild does not support UMD format (which is a combination of IIFE and CommonJS). We don't want to generate 2
+  // build targets (IIFE and CommonJS) because it will increase the package size. Instead, we generate IIFE and append
+  // this footer to make it compatible with CommonJS module system.
+  //
+  // see also: https://github.com/evanw/esbuild/issues/507
+  //
+  const COMMONJS_FOOTER_MIN = 'typeof exports=="object"&&typeof module=="object"&&(module.exports=ort);';
+  const footer = options.format === 'iife' ? {js: COMMONJS_FOOTER_MIN} : undefined;
+
   const result = await esbuild.build({
     logLevel: DEBUG ? (DEBUG === 'verbose' || DEBUG === 'save' ? 'verbose' : 'debug') : 'info',
     metafile: !!DEBUG,
     absWorkingDir: SOURCE_ROOT_FOLDER,
     bundle: true,
-    banner: {js: COPYRIGHT_HEADER},
-    footer: options.format === 'iife' ? {js: options.minify ? COMMONJS_FOOTER_MIN : COMMONJS_FOOTER} : undefined,
+    banner,
+    footer,
     ...options
   });
   if (DEBUG) {
@@ -478,7 +487,6 @@ async function main() {
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
       },
     });
     // ort.node.min.mjs
@@ -492,7 +500,6 @@ async function main() {
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
       },
     });
   }
@@ -520,17 +527,17 @@ async function main() {
       outputBundleName: 'ort',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true'},
     });
-    // ort.webgpu[.min].js
+    // ort.webgpu[.min].[m]js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.webgpu',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
     });
-    // ort.wasm[.min].js
+    // ort.wasm[.min].[m]js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.wasm',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
     });
-    // ort.webgl[.min].js
+    // ort.webgl[.min].[m]js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.webgl',
       define: {
@@ -539,7 +546,7 @@ async function main() {
         'BUILD_DEFS.DISABLE_WASM': 'true',
       },
     });
-    // ort.wasm-core[.min].js
+    // ort.wasm-core[.min].[m]js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.wasm-core',
       define: {
@@ -550,7 +557,7 @@ async function main() {
         'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
       },
     });
-    // ort.training.wasm[.min].js
+    // ort.training.wasm[.min].[m]js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.training.wasm',
       define: {

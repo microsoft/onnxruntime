@@ -71,12 +71,12 @@ async function main() {
   // test case run in Node.js
   await testAllNodejsCases();
 
-  // // test cases with self-host (ort hosted in same origin)
-  // await testAllBrowserCases({hostInKarma: true});
+  // test cases with self-host (ort hosted in same origin)
+  await testAllBrowserCases({hostInKarma: true});
 
-  // // test cases without self-host (ort hosted in same origin)
-  // startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
-  // await testAllBrowserCases({hostInKarma: false});
+  // test cases without self-host (ort hosted in same origin)
+  startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
+  await testAllBrowserCases({hostInKarma: false});
 
   // run bundlers
   await runInShell(`npm run build`);
@@ -98,14 +98,8 @@ function prepareWasmPathOverrideFiles() {
 
 async function testAllNodejsCases() {
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
-  await runInShell('node --experimental-wasm-threads ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
-
-  // The multi-threaded export on Node.js is not working. Need a fix. Currently disable these 2 cases temporarily.
-  // TODO: re-enable the following commented tests once it's fixed
-  //
-  // await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.js');
-  // await runInShell('node --experimental-wasm-threads ./node_modules/mocha/bin/mocha ./node-test-main.js');
-
+  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.js');
+  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.mjs');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-filename.js');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-prefix.js');
 }
