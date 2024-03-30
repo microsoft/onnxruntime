@@ -158,7 +158,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const auto& output_name = gather_output.node_arg.Name();
 
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(gather_output.quant_param, quantize_param));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(gather_output, quantize_param));
   bool is_quantized_tensor = gather_output.quant_param.has_value();
 
   const auto* type_proto = gather_output.node_arg.TypeAsProto();

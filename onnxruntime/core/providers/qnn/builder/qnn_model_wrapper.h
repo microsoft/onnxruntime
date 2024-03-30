@@ -172,10 +172,11 @@ class QnnModelWrapper {
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
-  Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
-  Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name, std::vector<int32_t>& zero_points) const;
-  Status QnnModelWrapper::InitQnnQuantParams(const std::optional<onnxruntime::NodeUnitIODef::QuantParam>& ort_quant_params,
-                                             /*out*/ Qnn_QuantizeParams_t& qnn_quant_params);
+  Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
+  Status UnpackZeroPoints(const std::string& initializer_name, std::vector<int32_t>& zero_points) const;
+  Status InitQnnQuantParams(const onnxruntime::NodeUnitIODef& io_def,
+                            /*out*/ Qnn_QuantizeParams_t& qnn_quant_params);
+  Status IsPerAxisQuantized(const onnxruntime::NodeUnitIODef& io_def, /*out*/ bool& is_per_axis) const;
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,

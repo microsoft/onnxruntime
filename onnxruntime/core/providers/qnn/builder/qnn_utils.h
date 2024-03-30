@@ -4,6 +4,7 @@
 
 #include "QnnTypes.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/node_unit.h"
 
 #include <functional>
 #include <numeric>
@@ -39,10 +40,6 @@ inline void InitPerTensorQnnQuantParam(Qnn_QuantizeParams_t& quantize_param, flo
   quantize_param.scaleOffsetEncoding.offset = offset;
 }
 
-inline bool IsNotQuantized(const Qnn_QuantizeParams_t& quantize_param) {
-  return quantize_param.encodingDefinition == QNN_DEFINITION_UNDEFINED;
-}
-
 inline bool IsPerTensorQuantization(const Qnn_QuantizeParams_t& quantize_param) {
   return quantize_param.encodingDefinition == QNN_DEFINITION_DEFINED &&
          (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET ||
@@ -53,6 +50,14 @@ inline bool IsPerAxisQuantization(const Qnn_QuantizeParams_t& quantize_param) {
   return quantize_param.encodingDefinition == QNN_DEFINITION_DEFINED &&
          (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET ||
           quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET);
+}
+
+inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t& onnx_data_type) {
+  auto type_proto = node_arg.TypeAsProto();
+  ORT_RETURN_IF_NOT(type_proto != nullptr && type_proto->has_tensor_type() && type_proto->tensor_type().has_elem_type(),
+                    "NodeArg must have a tensor TypeProto");
+  onnx_data_type = type_proto->tensor_type().elem_type();
+  return Status::OK();
 }
 
 template <typename IntType>

@@ -368,45 +368,48 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
   return Status::OK();
 }
 
-Status QnnModelWrapper::InitQnnQuantParams(const std::optional<onnxruntime::NodeUnitIODef::QuantParam>& ort_quant_params,
+Status QnnModelWrapper::IsPerAxisQuantized(const onnxruntime::NodeUnitIODef& io_def, /*out*/ bool& is_per_axis) const {
+  const std::string& scale_name = io_def.quant_param->scale.Name();
+  const auto& graph_initializers = GetInitializerTensors();
+  auto iter = graph_initializers.find(scale_name);
+  ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
+                scale_name.c_str());
+  gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
+  TensorShape scale_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(*scale_tensor_proto);
+
+  const bool is_scalar_or_1_elem_vector = scale_shape.NumDimensions() == 0 ||
+                                          (scale_shape.NumDimensions() == 1 && scale_shape.Size() == 1);
+
+  is_per_axis = !is_scalar_or_1_elem_vector;
+  return Status::OK();
+}
+
+Status QnnModelWrapper::InitQnnQuantParams(const NodeUnitIODef& io_def,
                                            /*out*/ Qnn_QuantizeParams_t& qnn_quant_params) {
+  const std::optional<NodeUnitIODef::QuantParam>& ort_quant_params = io_def.quant_param;
+
   if (!ort_quant_params.has_value()) {
     qnn_quant_params.encodingDefinition = QNN_DEFINITION_UNDEFINED;
     qnn_quant_params.quantizationEncoding = QNN_QUANTIZATION_ENCODING_UNDEFINED;
     return Status::OK();
   }
 
-  const auto* scale_shape = ort_quant_params->scale.Shape();
-  ORT_RETURN_IF(scale_shape == nullptr, "Scale tensor proto must have a shape");
-  const int32_t scale_rank = scale_shape->dim_size();
-
-  constexpr int64_t DEFAULT_QDQ_AXIS = 1;
-  int64_t axis = ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS);
-  if (axis < 0) {
-    axis += scale_rank;
-  }
-  ORT_RETURN_IF_NOT(scale_rank == 0 || (axis >= 0 && axis < scale_rank),
-                    "Quantization axis must be within the range [0, rank - 1]");
-
-  const bool is_per_tensor = scale_rank == 0;
-
   std::vector<float> scales;
   std::vector<int32_t> zero_points;
 
-  ORT_RETURN_IF_ERROR(UnpackScales(ort_quant_params->scale.Name(), scales));  // TODO: We know how many scales.
-                                                                              // So, we could avoid extra copying into std::vector.
+  ORT_RETURN_IF_ERROR(UnpackScales(ort_quant_params->scale.Name(), scales));
 
   if (ort_quant_params->zero_point != nullptr) {
-    ORT_RETURN_IF_ERROR(UnpackZeroPoints(ort_quant_params->zero_point->Name(), zero_points));  // TODO: We know how many zero-points.
-                                                                                               // So, we could avoid extra copying into std::vector.
+    ORT_RETURN_IF_ERROR(UnpackZeroPoints(ort_quant_params->zero_point->Name(), zero_points));
   }
+
+  const bool is_per_tensor = scales.size() == 1;
 
   if (is_per_tensor) {
     qnn_quant_params.encodingDefinition = QNN_DEFINITION_DEFINED;
     qnn_quant_params.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
 
     // Parse scale & zero_point
-    ORT_RETURN_IF_NOT(scales.size() == 1, "Expected one scale value");
     qnn_quant_params.scaleOffsetEncoding.scale = scales[0];
 
     if (ort_quant_params->zero_point != nullptr) {
@@ -417,12 +420,24 @@ Status QnnModelWrapper::InitQnnQuantParams(const std::optional<onnxruntime::Node
     }
   } else {
     // Per-channel quantization.
+    const auto* io_shape = io_def.node_arg.Shape();
+    ORT_RETURN_IF(io_shape == nullptr, "Input/output tensor proto must have a shape");
+    const int32_t io_rank = io_shape->dim_size();
+
+    constexpr int64_t DEFAULT_QDQ_AXIS = 1;
+    int64_t axis = ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS);
+    if (axis < 0) {
+      axis += io_rank;
+    }
+    ORT_RETURN_IF_NOT(axis >= 0 && axis < io_rank,
+                      "Quantization axis must be within the range [0, rank - 1]");
+
     qnn_quant_params.encodingDefinition = QNN_DEFINITION_DEFINED;
     qnn_quant_params.quantizationEncoding = QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET;
 
     const size_t num_elems = scales.size();
     const bool no_zero_points = zero_points.empty();
-    ORT_RETURN_IF_NOT(num_elems > 0, "Expected at least one scale value");
+    ORT_RETURN_IF_NOT(num_elems > 1, "Expected more than one scale value");
     ORT_RETURN_IF_NOT(no_zero_points || zero_points.size() == num_elems,
                       "Expected the same number of zero-points and scales for per-channel quantization");
 
@@ -445,7 +460,7 @@ Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& te
 
   // Fill in quantization param info.
   tensor_info.quant_param = QNN_QUANTIZE_PARAMS_INIT;
-  ORT_RETURN_IF_ERROR(InitQnnQuantParams(input.quant_param, tensor_info.quant_param));
+  ORT_RETURN_IF_ERROR(InitQnnQuantParams(input, tensor_info.quant_param));
 
   // Fill in QNN data type.
   tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;

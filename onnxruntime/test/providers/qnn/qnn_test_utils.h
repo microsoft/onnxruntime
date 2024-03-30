@@ -4,8 +4,9 @@
 #pragma once
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include <string>
 #include <cmath>
+#include <string>
+#include <type_traits>
 #include <unordered_map>
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
@@ -31,7 +32,7 @@ struct QuantParams {
   float scale;
   QType zero_point;
 
-  static QuantParams<QType> Compute(float rmin, float rmax) {
+  static QuantParams<QType> Compute(float rmin, float rmax, bool symmetric = false) {
     // Ensure a minimum range of 0.0001 (required by QNN)
     rmax = std::max(rmax, rmin + 0.0001f);
 
@@ -42,8 +43,23 @@ struct QuantParams {
     constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
     constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
-    const float scale = rmax == rmin ? 1.0f : (rmax - rmin) / (qmax - qmin);
-    const float initial_zero_point = qmin - (rmin / scale);
+    if (symmetric) {
+      const float abs_max = std::max(std::abs(rmin), std::abs(rmax));
+      rmax = abs_max;
+      rmin = -abs_max;
+    }
+
+    const float scale = (rmax - rmin) / (qmax - qmin);
+    float initial_zero_point = 0.0f;
+
+    if (symmetric) {
+      // Symmetric uses same formula for zero-point as asymmetric, but we can cancel out terms for
+      // increased numerical accuracy.
+      initial_zero_point = (qmin + qmax) / 2.0f;
+    } else {
+      initial_zero_point = qmin - (rmin / scale);
+    }
+
     const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin, std::min(qmax, initial_zero_point))));
 
     return QuantParams<QType>{scale, zero_point};
@@ -60,7 +76,7 @@ using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder, std::vec
 
 // Computes quantization parameters for an array of floating-point values.
 template <typename QType = uint8_t>
-inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
+inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data, bool symmetric = false) {
   // Get min/max of raw data.
   float min_val = std::numeric_limits<float>::max();
   float max_val = std::numeric_limits<float>::min();
@@ -70,7 +86,7 @@ inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
     max_val = std::max(max_val, val);
   }
 
-  return QuantParams<QType>::Compute(min_val, max_val);
+  return QuantParams<QType>::Compute(min_val, max_val, symmetric);
 }
 
 /**
@@ -151,6 +167,10 @@ struct TestInputDef {
     return shape_;
   }
 
+  const TensorShape GetTensorShape() const {
+    return TensorShape(shape_);
+  }
+
   bool IsInitializer() const {
     return is_initializer_;
   }
@@ -202,7 +222,7 @@ struct TestInputDef {
     return range;
   }
 
-  std::vector<std::pair<T, T>> GetRangePerAxis(size_t axis) {
+  std::vector<std::pair<T, T>> GetRangePerAxis(size_t axis) const {
     auto which_type = data_info_.index();
     const size_t num_ranges = static_cast<size_t>(shape_.at(axis));
 
@@ -247,9 +267,68 @@ struct TestInputDef {
 };
 
 template <typename QType>
-inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def) {
+inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def, bool symmetric = false) {
   const std::pair<float, float> frange = input_def.GetRange();
-  return QuantParams<QType>::Compute(frange.first, frange.second);
+  return QuantParams<QType>::Compute(frange.first, frange.second, symmetric);
+}
+
+template <typename QType>
+static void GetTestInputQuantParamsPerAxis(const TestInputDef<float>& input_def, std::vector<float>& scales,
+                                           std::vector<QType>& zero_points, size_t axis, bool symmetric = false) {
+  const auto f32_ranges = input_def.GetRangePerAxis(axis);
+
+  scales.reserve(f32_ranges.size());
+  zero_points.reserve(f32_ranges.size());
+
+  for (const auto& range : f32_ranges) {
+    QuantParams<QType> params = QuantParams<QType>::Compute(range.first, range.second, symmetric);
+    scales.push_back(params.scale);
+    zero_points.push_back(params.zero_point);
+  }
+}
+
+template <typename FloatType, typename QuantType>
+static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType> output, const TensorShape& shape,
+                           gsl::span<const FloatType> scales, gsl::span<const QuantType> zero_points,
+                           std::optional<int64_t> axis) {
+  const size_t input_rank = shape.NumDimensions();
+  const size_t num_elems = static_cast<size_t>(shape.Size());
+  ORT_ENFORCE(input.size() == num_elems);
+  ORT_ENFORCE(output.size() == num_elems);
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + input_rank : static_cast<size_t>(*axis);
+    block_count = shape.SizeToDimension(axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = shape.SizeFromDimension(axis_no_neg + 1);
+  }
+
+  ORT_ENFORCE(scales.size() == broadcast_dim);
+  if constexpr (std::is_same_v<QuantType, int32_t>) {
+    ORT_ENFORCE(zero_points.empty());
+  } else {
+    ORT_ENFORCE(zero_points.empty() || zero_points.size() == broadcast_dim);
+  }
+
+  size_t i = 0;
+
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t bd = 0; bd < broadcast_dim; bd++) {
+      QuantType zp = zero_points.empty() ? static_cast<QuantType>(0) : zero_points[bd];
+      if constexpr (std::is_same_v<QuantType, int32_t>) {
+        for (size_t e = 0; e < block_size; e++) {
+          output[i + e] = static_cast<QuantType>(input[i + e] / scales[bd]);
+        }
+      } else {
+        ParQuantizeLinearStd(&input[i], &output[i], block_size, scales[bd], zp, nullptr);
+      }
+      i += block_size;
+    }
+  }
 }
 
 /**

@@ -116,6 +116,22 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     }
   }
 
+  // Validate that weight is signed type for per-channel quantization (required by QNN docs).
+  if (is_npu_backend) {
+    const auto& input_1 = inputs[1];  // weight
+    bool is_per_axis_quant = false;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerAxisQuantized(input_1, is_per_axis_quant));
+
+    if (is_per_axis_quant) {
+      int32_t elem_data_type = 0;
+      ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(input_1.node_arg, elem_data_type));
+
+      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
+                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16);
+      ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized per-channel");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -687,7 +703,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const std::string& output_node_type = is_depthwise_conv2d ? QNN_OP_DEPTH_WISE_CONV_2D : GetQnnOpType(node_unit.OpType());
 
   Qnn_QuantizeParams_t output_quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(outputs[0].quant_param, output_quantize_param));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(outputs[0], output_quantize_param));
   bool is_quantized_tensor = outputs[0].quant_param.has_value();
 
   const auto* type_proto = outputs[0].node_arg.TypeAsProto();

@@ -88,7 +88,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   const auto& inputs = node_unit.Inputs();
   for (size_t input_i = 0; input_i < inputs.size(); ++input_i) {
     Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(inputs[input_i].quant_param, quantize_param));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(inputs[input_i], quantize_param));
 
     bool is_quantized_tensor = inputs[input_i].quant_param.has_value();
     const auto& input_name = inputs[input_i].node_arg.Name();

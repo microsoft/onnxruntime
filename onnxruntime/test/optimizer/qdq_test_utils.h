@@ -40,6 +40,17 @@ AddQDQNodePairWithOutputAsGraphOutput(ModelTestBuilder& builder, NodeArg* q_inpu
   return dq_output;
 }
 
+template <typename T>
+typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
+AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, const std::vector<float>& scales, const std::vector<T>& zero_points,
+               const NodeAttributes* q_attrs = nullptr, const NodeAttributes* dq_attrs = nullptr, bool use_ms_domain = false) {
+  auto* q_output = builder.MakeIntermediate();
+  auto* dq_output = builder.MakeIntermediate();
+  builder.AddQuantizeLinearNode<T>(q_input, scales, zero_points, q_output, q_attrs, use_ms_domain);
+  builder.AddDequantizeLinearNode<T>(q_output, scales, zero_points, dq_output, dq_attrs, use_ms_domain);
+  return dq_output;
+}
+
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
