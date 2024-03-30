@@ -6646,7 +6646,7 @@ def test_auto_enable_layerwise_recompute_local_import(memory_optimization_level,
     try:
         _ = model(input)
     except Exception as e:
-        is_export_failed = "torch.utils.checkpoint.CheckpointFunction should not be exported to ONNX" in str(e)
+        is_export_failed = "There was an error while exporting the PyTorch model to ONNX" in str(e)
 
     layerwise_recompute_info_records = [
         record.message
@@ -6717,7 +6717,7 @@ def test_auto_enable_layerwise_recompute_global_import(memory_optimization_level
     try:
         _ = model(input)
     except Exception as e:
-        is_export_failed = "torch.utils.checkpoint.CheckpointFunction should not be exported to ONNX" in str(e)
+        is_export_failed = "There was an error while exporting the PyTorch model to ONNX" in str(e)
 
     layerwise_recompute_info_records = [
         record.message
