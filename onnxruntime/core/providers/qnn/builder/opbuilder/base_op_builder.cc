@@ -130,7 +130,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_i], output_info));
 
-    if (!output_info.quant_param.IsNotQuantized()) {
+    if (output_info.quant_param.IsQuantized()) {
       ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
                                                    output_i, output_info.qnn_data_type, output_info.quant_param));
     }
@@ -194,11 +194,11 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
   const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[input_index]);
   ORT_RETURN_IF_NOT(input_tensor_wrapper.GetTensorDataType() == qnn_data_type,
                     "Input and output data types do not match");
-  Qnn_QuantizeParams_t input_quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
+  const QnnQuantParamsWrapper& input_quant_param = input_tensor_wrapper.GetQnnQuantParams();
 
   float scale_diff = 0.0f;
   int32_t offset_diff = 0;
-  ORT_RETURN_IF_ERROR(CompareQnnQuantParams(quant_param.GetConst(), input_quant_param, scale_diff, offset_diff));
+  ORT_RETURN_IF_ERROR(CompareQnnQuantParams(quant_param.Get(), input_quant_param.Get(), scale_diff, offset_diff));
   constexpr float NEARLY_EQUAL_THRESHOLD = 1e-9f;
   constexpr float WARN_THRESHOLD = 1e-6f;
 

@@ -80,14 +80,11 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     qnn_data_type = QNN_DATATYPE_INT_32;
   }
 
-  // Even for Quantized model, Gather indices use int32 without quantization
-  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, input_shape), "Cannot get shape");
   std::vector<uint32_t> cast_output_shape(input_shape);
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, QnnQuantParamsWrapper(),
                                        std::move(input_shape), std::move(gather_indices));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
@@ -96,7 +93,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Add Cast node for indices
       indices_input_name = input_name + "_ort_qnn_ep_cast";
-      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, quantize_param,
+      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, QnnQuantParamsWrapper(),
                                    std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_input_name,

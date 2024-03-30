@@ -264,7 +264,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                       "BatchNormalization's input_mean does not support per-channel quantization");
     int i = 0;
     int offset = 0;
-    const Qnn_QuantizeParams_t& quant_param = mean_info.quant_param.GetConst();
+    const Qnn_QuantizeParams_t& quant_param = mean_info.quant_param.Get();
     for (; i < static_cast<int>(channel); ++i) {
       double mean_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(mean_info.qnn_data_type, mean_raw_ptr + offset, mean_value, offset));
@@ -290,7 +290,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                       "BatchNormalization's input_var does not support per-channel quantization");
     int i = 0;
     int offset = 0;
-    const Qnn_QuantizeParams_t& quant_param = var_info.quant_param.GetConst();
+    const Qnn_QuantizeParams_t& quant_param = var_info.quant_param.Get();
     for (; i < static_cast<int>(channel); ++i) {
       double var_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(var_info.qnn_data_type, var_raw_ptr + offset, var_value, offset));
@@ -319,7 +319,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                       "BatchNormalization's scale input does not support per-channel quantization");
     int i = 0;
     int offset = 0;
-    const Qnn_QuantizeParams_t& quant_param = scale_info.quant_param.GetConst();
+    const Qnn_QuantizeParams_t& quant_param = scale_info.quant_param.Get();
     for (; i < static_cast<int>(channel); ++i) {
       double scale_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(scale_info.qnn_data_type, scale_raw_ptr + offset, scale_value, offset));
@@ -351,7 +351,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                       "BatchNormalization's bias input does not support per-channel quantization");
     int i = 0;
     int offset = 0;
-    const Qnn_QuantizeParams_t& quant_param = bias_info.quant_param.GetConst();
+    const Qnn_QuantizeParams_t& quant_param = bias_info.quant_param.Get();
     for (; i < static_cast<int>(channel); ++i) {
       double bias_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(bias_info.qnn_data_type, bias_raw_ptr + offset, bias_value, offset));

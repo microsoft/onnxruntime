@@ -10,22 +10,16 @@
 namespace onnxruntime {
 namespace qnn {
 
-QnnQuantParamsWrapper::QnnQuantParamsWrapper(const Qnn_QuantizeParams_t& params)
-    : params_(QNN_QUANTIZE_PARAMS_INIT) {
-  Status status = Init(params);
-  assert(status.IsOK());
-}
-
 QnnQuantParamsWrapper::QnnQuantParamsWrapper(const QnnQuantParamsWrapper& other)
     : params_(QNN_QUANTIZE_PARAMS_INIT) {
   Status status = Init(other.params_);
-  assert(status.IsOK());  // Expect other to always have a supported quantization encoding.
+  assert(status.IsOK());  // Expect other QnnQuantParamsWrapper to always have a supported quantization encoding.
 }
 
 QnnQuantParamsWrapper& QnnQuantParamsWrapper::operator=(const QnnQuantParamsWrapper& other) {
   if (this != &other) {
     Status status = Init(other.params_);
-    assert(status.IsOK());  // Expect other to always have a supported quantization encoding.
+    assert(status.IsOK());  // Expect other QnnQuantParamsWrapper to always have a supported quantization encoding.
   }
 
   return *this;

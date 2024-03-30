@@ -17,7 +17,6 @@ class QnnModelWrapper;  // Forward-declare
 class QnnQuantParamsWrapper {
  public:
   QnnQuantParamsWrapper() : params_(QNN_QUANTIZE_PARAMS_INIT) {}
-  QnnQuantParamsWrapper(const Qnn_QuantizeParams_t& params);
 
   QnnQuantParamsWrapper(const QnnQuantParamsWrapper& other);
   QnnQuantParamsWrapper& operator=(const QnnQuantParamsWrapper& other);
@@ -25,18 +24,23 @@ class QnnQuantParamsWrapper {
   QnnQuantParamsWrapper(QnnQuantParamsWrapper&& other) = default;
   QnnQuantParamsWrapper& operator=(QnnQuantParamsWrapper&& other) = default;
 
-  QnnQuantParamsWrapper(float scale, int32_t offset = 0);
+  // Construct a per-tensor quantization param (SCALE_OFFSET)
+  QnnQuantParamsWrapper(float scale, int32_t offset);
 
   Qnn_QuantizeParams_t& Get() { return params_; }
-  const Qnn_QuantizeParams_t& GetConst() const { return params_; }
+  const Qnn_QuantizeParams_t& Get() const { return params_; }
 
+  // Initialize this object from a raw Qnn_QuantizeParam_t object.
   Status Init(const Qnn_QuantizeParams_t& params);
+
+  // Initialize this object from a (potentially) quantized ONNX tensor.
+  // QnnModelWrapper provides utilities for unpacking scale and zero-point ONNX initializers.
   Status Init(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef& io_def);
 
   QnnQuantParamsWrapper Copy() const;
 
-  bool IsNotQuantized() const {
-    return params_.encodingDefinition != QNN_DEFINITION_DEFINED;
+  bool IsQuantized() const {
+    return params_.encodingDefinition == QNN_DEFINITION_DEFINED;
   }
 
   bool IsPerTensorQuantization(bool include_bw = false) const {
@@ -51,6 +55,8 @@ class QnnQuantParamsWrapper {
             (include_bw && params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET));
   }
 
+  // Handle transposing of a per-axis quantized tensor. The quantization parameter's axis
+  // must be transposed using the inverse permutation of the Transpose.
   template <typename IntType>
   Status HandleTranspose(gsl::span<const IntType> perm) {
     if (!IsPerAxisQuantization(true)) {
@@ -72,6 +78,8 @@ class QnnQuantParamsWrapper {
     return Status::OK();
   }
 
+  // Handle "unsqueeze" of a per-axis quantized tensor. The quantization parameter's axis
+  // may need to be shifted if the unsqueeze inserted 1s before the quantization axis.
   template <typename IntType>
   Status HandleUnsqueeze(gsl::span<const IntType> orig_shape,
                          gsl::span<const IntType> new_shape) {
