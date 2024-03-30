@@ -223,6 +223,20 @@ namespace Dml
     void BucketizedBufferAllocator::SetResidency(bool value)
     {
         m_subAllocator->SetResidency(value);
+
+        if (!value)
+        {
+          for (auto& bucket : m_pool)
+          {
+            for (auto& resource : bucket.resources)
+            {
+              m_context->QueueReference(resource.resource.Get());
+              resource.resource.Reset();
+            }
+          }
+
+          m_pool.clear();
+        }
     }
 
     CPUAllocator::CPUAllocator(OrtMemType memType)
