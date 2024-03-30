@@ -222,6 +222,8 @@ stages:
     buildJava: true
     java_artifact_id: onnxruntime_gpu
     CudaVersion: 11.8
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 # CUDA with Tensorrt
 - template: templates/win-ci.yml
@@ -310,8 +312,8 @@ stages:
   dependsOn:
   - Linux_C_API_Packaging_GPU_x64
   - Linux_C_API_Packaging_GPU_TensorRT_x64
-  - Windows_Packaging_gpu
-  - Windows_Packaging_tensorrt
+  - Windows_Packaging_gpu_Testing
+  - Windows_Packaging_tensorrt_Testing
   - Download_Java_Tools
   condition: succeeded()
   jobs:
@@ -488,8 +490,8 @@ stages:
 
 - stage: Windows_Packaging_combined_GPU
   dependsOn:
-  - Windows_Packaging_gpu
-  - Windows_Packaging_tensorrt
+  - Windows_Packaging_gpu_Testing
+  - Windows_Packaging_tensorrt_Testing
   condition: succeeded()
   jobs:
   - job:
@@ -582,9 +584,9 @@ stages:
 - stage: NuGet_Packaging_GPU
   dependsOn:
   - Setup
-  - Windows_Packaging_gpu
+  - Windows_Packaging_gpu_Testing
   - Windows_Packaging_CPU_x64_default
-  - Windows_Packaging_tensorrt
+  - Windows_Packaging_tensorrt_Testing
   - Linux_C_API_Packaging_GPU_x64
   - Linux_C_API_Packaging_GPU_TensorRT_x64
   condition: succeeded()

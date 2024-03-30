@@ -1,8 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <dxcore.h>
 #include <vector>
+
+#define INITGUID
+#include <guiddef.h>
+#include <directx/dxcore.h>
+#undef INITGUID
+
+#include "directx/d3d12.h"
 
 #include <DirectML.h>
 #ifndef _GAMING_XBOX
@@ -157,12 +163,15 @@ static ComPtr<IDXCoreAdapterList> EnumerateDXCoreAdapters(IDXCoreAdapterFactory*
   // When DXCore APIs are available QI for relevant enumeration interfaces
   constexpr bool use_dxcore_workload_enumeration = false;
   if (!use_dxcore_workload_enumeration) {
-    // Get a list of all the adapters that support compute
-    GUID attributes[]{ DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE };
     ORT_THROW_IF_FAILED(
-      adapter_factory->CreateAdapterList(_countof(attributes),
-        attributes,
+      adapter_factory->CreateAdapterList(1,
+        &DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML,
         adapter_list.GetAddressOf()));
+
+    if (adapter_list->GetAdapterCount() == 0)
+    {
+        ORT_THROW_IF_FAILED(adapter_factory->CreateAdapterList(1, &DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE, adapter_list.GetAddressOf()));
+    }
   }
 
   return adapter_list;
@@ -477,6 +486,9 @@ static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_devi
   D3D12_FEATURE_DATA_FEATURE_LEVELS feature_levels = {};
 
   D3D_FEATURE_LEVEL feature_levels_list[] = {
+  #ifndef _GAMING_XBOX
+      D3D_FEATURE_LEVEL_1_0_GENERIC,
+  #endif
       D3D_FEATURE_LEVEL_1_0_CORE,
       D3D_FEATURE_LEVEL_11_0,
       D3D_FEATURE_LEVEL_11_1,
@@ -492,8 +504,9 @@ static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_devi
       sizeof(feature_levels)
       ));
 
-  auto is_feature_level_1_0_core = (feature_levels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE);
-  if (is_feature_level_1_0_core) {
+  auto use_compute_command_list = (feature_levels.MaxSupportedFeatureLevel <= D3D_FEATURE_LEVEL_1_0_CORE);
+  if (use_compute_command_list)
+  {
     return D3D12_COMMAND_LIST_TYPE_COMPUTE;
   }
 
@@ -533,12 +546,21 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
 
   auto feature_level = D3D_FEATURE_LEVEL_11_0;
   if (IsNPU(adapter.Get())) {
-    feature_level = D3D_FEATURE_LEVEL_1_0_CORE;
+    feature_level = D3D_FEATURE_LEVEL_1_0_GENERIC;
   }
 
   // Create D3D12 Device from DXCore Adapter
   ComPtr<ID3D12Device> d3d12_device;
-  ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), feature_level, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+  if (feature_level == D3D_FEATURE_LEVEL_1_0_GENERIC) {
+      // Attempt to create a D3D_FEATURE_LEVEL_1_0_CORE device first, in case the device supports this
+      // feature level and the D3D runtime does not support D3D_FEATURE_LEVEL_1_0_GENERIC
+      HRESULT hrUnused = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_1_0_CORE, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf()));
+  }
+  
+  if (!d3d12_device) {
+    ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), feature_level, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+  }
+
   return CreateDMLDeviceAndProviderFactory(d3d12_device.Get(), disable_metacommands, enable_dynamic_graph_fusion);
 }
 

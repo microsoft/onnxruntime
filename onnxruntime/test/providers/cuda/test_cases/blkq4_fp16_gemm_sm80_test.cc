@@ -11,14 +11,14 @@
  *   well with CUTLASS headers.
  */
 
+#include "blkq4_fp16_gemm_sm80.h"
+
+#include "gtest/gtest.h"
+#include <thrust/host_vector.h>
 #include <random>
 
 #include "core/framework/float16.h"
 #include "core/mlas/inc/mlas_q4.h"
-
-#include "blkq4_fp16_gemm_sm80.h"
-
-#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {
@@ -43,10 +43,10 @@ void testPrepack(int rows, int columns) {
   const auto meta_shape = Base::get_quant_meta_shape(rows, columns);
   const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
 
-  std::vector<ElementW> q_weights;
-  std::vector<ElementT> q_scales;
-  std::vector<ElementQOffset> q_zp;
-  std::vector<ElementT> dequants;
+  thrust::host_vector<ElementW> q_weights;
+  thrust::host_vector<ElementT> q_scales;
+  thrust::host_vector<ElementQOffset> q_zp;
+  thrust::host_vector<ElementT> dequants;
   onnxruntime::cuda::test::blkq4_weights_gen<ElementT, block_size, col_blocking, has_offset>(
       rows, columns, dequants, q_weights, q_scales, q_zp);
 

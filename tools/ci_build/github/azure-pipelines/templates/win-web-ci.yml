@@ -155,7 +155,7 @@ jobs:
   - script: |
      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
-    condition: and(succeeded(), eq('$(Agent.Diagnostic)', 'true'))
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\01
      npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\01
@@ -165,7 +165,7 @@ jobs:
   - script: |
      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
-    condition: and(succeeded(), eq('$(Agent.Diagnostic)', 'true'))
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\02
      npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\02
@@ -175,7 +175,7 @@ jobs:
   - script: |
      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
-    condition: and(succeeded(), eq('$(Agent.Diagnostic)', 'true'))
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\03
      npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\03
@@ -185,7 +185,7 @@ jobs:
   - script: |
      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
-    condition: and(succeeded(), eq('$(Agent.Diagnostic)', 'true'))
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\04
      npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\04
@@ -195,7 +195,7 @@ jobs:
   - script: |
      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
-    condition: and(succeeded(), eq('$(Agent.Diagnostic)', 'true'))
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\05
      npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\05
@@ -204,7 +204,7 @@ jobs:
   - script: |
      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
-    condition: and(succeeded(), eq('$(Agent.Diagnostic)', 'true'))
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\06
      npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\06

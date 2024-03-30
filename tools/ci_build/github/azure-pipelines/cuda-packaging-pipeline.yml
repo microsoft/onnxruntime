@@ -143,6 +143,8 @@ stages:
       CudaVersion: ${{ parameters.CudaVersion }}
       win_trt_home: ${{ variables.win_trt_home }}
       win_cuda_home: ${{ variables.win_cuda_home }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
   - template: stages/nuget-combine-cuda-stage.yml
     parameters:
       DoCompliance: ${{ parameters.DoCompliance }}
