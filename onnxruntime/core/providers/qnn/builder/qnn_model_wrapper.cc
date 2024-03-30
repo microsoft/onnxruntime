@@ -384,83 +384,11 @@ Status QnnModelWrapper::IsPerAxisQuantized(const onnxruntime::NodeUnitIODef& io_
   return Status::OK();
 }
 
-Status QnnModelWrapper::InitQnnQuantParams(const NodeUnitIODef& io_def,
-                                           /*out*/ Qnn_QuantizeParams_t& qnn_quant_params) {
-  const std::optional<NodeUnitIODef::QuantParam>& ort_quant_params = io_def.quant_param;
-
-  if (!ort_quant_params.has_value()) {
-    qnn_quant_params.encodingDefinition = QNN_DEFINITION_UNDEFINED;
-    qnn_quant_params.quantizationEncoding = QNN_QUANTIZATION_ENCODING_UNDEFINED;
-    return Status::OK();
-  }
-
-  std::vector<float> scales;
-  std::vector<int32_t> zero_points;
-
-  ORT_RETURN_IF_ERROR(UnpackScales(ort_quant_params->scale.Name(), scales));
-
-  if (ort_quant_params->zero_point != nullptr) {
-    ORT_RETURN_IF_ERROR(UnpackZeroPoints(ort_quant_params->zero_point->Name(), zero_points));
-  }
-
-  const bool is_per_tensor = scales.size() == 1;
-
-  if (is_per_tensor) {
-    qnn_quant_params.encodingDefinition = QNN_DEFINITION_DEFINED;
-    qnn_quant_params.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
-
-    // Parse scale & zero_point
-    qnn_quant_params.scaleOffsetEncoding.scale = scales[0];
-
-    if (ort_quant_params->zero_point != nullptr) {
-      ORT_RETURN_IF_NOT(zero_points.size() == 1, "Expected one zero-point value");
-      qnn_quant_params.scaleOffsetEncoding.offset = zero_points[0];
-    } else {
-      qnn_quant_params.scaleOffsetEncoding.offset = 0;
-    }
-  } else {
-    // Per-channel quantization.
-    const auto* io_shape = io_def.node_arg.Shape();
-    ORT_RETURN_IF(io_shape == nullptr, "Input/output tensor proto must have a shape");
-    const int32_t io_rank = io_shape->dim_size();
-
-    constexpr int64_t DEFAULT_QDQ_AXIS = 1;
-    int64_t axis = ort_quant_params->axis.value_or(DEFAULT_QDQ_AXIS);
-    if (axis < 0) {
-      axis += io_rank;
-    }
-    ORT_RETURN_IF_NOT(axis >= 0 && axis < io_rank,
-                      "Quantization axis must be within the range [0, rank - 1]");
-
-    qnn_quant_params.encodingDefinition = QNN_DEFINITION_DEFINED;
-    qnn_quant_params.quantizationEncoding = QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET;
-
-    const size_t num_elems = scales.size();
-    const bool no_zero_points = zero_points.empty();
-    ORT_RETURN_IF_NOT(num_elems > 1, "Expected more than one scale value");
-    ORT_RETURN_IF_NOT(no_zero_points || zero_points.size() == num_elems,
-                      "Expected the same number of zero-points and scales for per-channel quantization");
-
-    const size_t data_location = scale_offset_data_.size();
-
-    for (size_t i = 0; i < num_elems; i++) {
-      scale_offset_data_.push_back({scales[i], no_zero_points ? 0 : zero_points[i]});
-    }
-
-    qnn_quant_params.axisScaleOffsetEncoding.axis = static_cast<int32_t>(axis);
-    qnn_quant_params.axisScaleOffsetEncoding.numScaleOffsets = static_cast<uint32_t>(num_elems);
-    qnn_quant_params.axisScaleOffsetEncoding.scaleOffset = &scale_offset_data_[data_location];
-  }
-
-  return Status::OK();
-}
-
-Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& tensor_info) {
+Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& tensor_info) const {
   const std::string& name = input.node_arg.Name();
 
   // Fill in quantization param info.
-  tensor_info.quant_param = QNN_QUANTIZE_PARAMS_INIT;
-  ORT_RETURN_IF_ERROR(InitQnnQuantParams(input, tensor_info.quant_param));
+  ORT_RETURN_IF_ERROR(tensor_info.quant_param.Init(*this, input));
 
   // Fill in QNN data type.
   tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
@@ -484,19 +412,19 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
                                        const std::vector<uint32_t>& input_shape,
                                        const std::vector<uint32_t>& output_shape,
                                        const Qnn_DataType_t& tensor_data_type,
-                                       const Qnn_QuantizeParams_t& quantize_param,
+                                       const QnnQuantParamsWrapper& quantize_param,
                                        bool do_op_validation,
                                        bool is_for_input,
                                        bool is_for_output) {
   // Do not allow QNN EP to insert Reshape nodes with per-axis quantization on dynamic tensors.
   // We could technically support this by shifting the quantization param's axis value, but
   // we don't need this right now.
-  ORT_RETURN_IF(utils::IsPerAxisQuantization(quantize_param),
+  ORT_RETURN_IF(quantize_param.IsPerAxisQuantization(),
                 "Do not support inserted Reshape nodes with per-axis quantization");
   QnnTensorWrapper input_tensorwrapper(input_name,
                                        is_for_input ? QNN_TENSOR_TYPE_APP_WRITE : QNN_TENSOR_TYPE_NATIVE,
                                        tensor_data_type,
-                                       quantize_param,
+                                       quantize_param.Copy(),
                                        std::vector<uint32_t>(input_shape));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)),
                     "QNN EP: Failed to add input tensor for inserted Reshape.");
@@ -505,7 +433,7 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         tensor_data_type,
-                                        quantize_param,
+                                        quantize_param.Copy(),
                                         std::vector<uint32_t>(output_shape));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)),
                     "QNN EP: Failed to add output tensor for inserted Reshape.");
@@ -529,14 +457,14 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const std::vector<uint32_t>& transpose_perm,
                                          const std::vector<uint32_t>& output_shape,
                                          const Qnn_DataType_t& tensor_data_type,
-                                         const Qnn_QuantizeParams_t& quantize_param,
+                                         const QnnQuantParamsWrapper& quantize_param,
                                          bool do_op_validation,
                                          bool is_for_input,
                                          bool is_for_output) {
   // Do not allow QNN EP to insert transpose nodes with per-axis quantization on dynamic tensors.
   // We could technically support this by transposing the quantization param's axis value, but
   // we don't need this right now.
-  ORT_RETURN_IF(utils::IsPerAxisQuantization(quantize_param),
+  ORT_RETURN_IF(quantize_param.IsPerAxisQuantization(),
                 "Do not support inserted Transpose nodes with per-axis quantization");
   // No need to add this for output nodes as it is added as output tensor for previous node
   if (is_for_input) {
@@ -544,7 +472,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
     QnnTensorWrapper input_tensorwrapper(input_name,
                                          tensor_type,
                                          tensor_data_type,
-                                         quantize_param,
+                                         quantize_param.Copy(),
                                          std::vector<uint32_t>(input_shape));
     ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
@@ -561,7 +489,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         tensor_data_type,
-                                        quantize_param,
+                                        quantize_param.Copy(),
                                         std::move(output_shape_copy));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   const static std::string qnn_node_type = "Transpose";

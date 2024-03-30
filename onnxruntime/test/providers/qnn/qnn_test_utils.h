@@ -308,11 +308,7 @@ static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType
   }
 
   ORT_ENFORCE(scales.size() == broadcast_dim);
-  if constexpr (std::is_same_v<QuantType, int32_t>) {
-    ORT_ENFORCE(zero_points.empty());
-  } else {
-    ORT_ENFORCE(zero_points.empty() || zero_points.size() == broadcast_dim);
-  }
+  ORT_ENFORCE(zero_points.empty() || zero_points.size() == broadcast_dim);
 
   size_t i = 0;
 
@@ -321,7 +317,7 @@ static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType
       QuantType zp = zero_points.empty() ? static_cast<QuantType>(0) : zero_points[bd];
       if constexpr (std::is_same_v<QuantType, int32_t>) {
         for (size_t e = 0; e < block_size; e++) {
-          output[i + e] = static_cast<QuantType>(input[i + e] / scales[bd]);
+          output[i + e] = static_cast<QuantType>(input[i + e] / scales[bd]) + zp;
         }
       } else {
         ParQuantizeLinearStd(&input[i], &output[i], block_size, scales[bd], zp, nullptr);

@@ -48,7 +48,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
                                   const std::vector<std::string>& input_names,
                                   size_t output_index,
                                   Qnn_DataType_t qnn_data_type,
-                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
   // Info for each ONNX attribute of interest (attribute name + default value)
@@ -325,8 +325,8 @@ Status ResizeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrap
                                                  const std::vector<std::string>& input_names,
                                                  size_t output_index,
                                                  Qnn_DataType_t qnn_data_type,
-                                                 Qnn_QuantizeParams_t& quant_param) const {
-  if (!utils::IsPerTensorQuantization(quant_param)) {
+                                                 QnnQuantParamsWrapper& quant_param) const {
+  if (!quant_param.IsPerTensorQuantization()) {
     return Status::OK();
   }
 

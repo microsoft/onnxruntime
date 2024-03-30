@@ -36,7 +36,7 @@ class PoolOpBuilder : public BaseOpBuilder {
                                   const std::vector<std::string>& input_names,
                                   size_t output_index,
                                   Qnn_DataType_t qnn_data_type,
-                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
   Status SetCommonPoolParams(const NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size,
@@ -251,10 +251,10 @@ Status PoolOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrappe
                                                const std::vector<std::string>& input_names,
                                                size_t output_index,
                                                Qnn_DataType_t qnn_data_type,
-                                               Qnn_QuantizeParams_t& quant_param) const {
+                                               QnnQuantParamsWrapper& quant_param) const {
   // Force MaxPool outputs to use the same quantization parameters as the input if they are nearly equal.
   // This helps the HTP backend employ certain optimizations.
-  if (node_unit.OpType() == "MaxPool" && utils::IsPerTensorQuantization(quant_param)) {
+  if (node_unit.OpType() == "MaxPool" && quant_param.IsPerTensorQuantization()) {
     return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
                                                     0 /*input_index*/, output_index, qnn_data_type, quant_param);
   }

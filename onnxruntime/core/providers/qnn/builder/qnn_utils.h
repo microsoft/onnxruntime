@@ -33,25 +33,6 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
 
 bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
 
-inline void InitPerTensorQnnQuantParam(Qnn_QuantizeParams_t& quantize_param, float scale, int32_t offset = 0) {
-  quantize_param.encodingDefinition = QNN_DEFINITION_DEFINED;
-  quantize_param.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
-  quantize_param.scaleOffsetEncoding.scale = scale;
-  quantize_param.scaleOffsetEncoding.offset = offset;
-}
-
-inline bool IsPerTensorQuantization(const Qnn_QuantizeParams_t& quantize_param) {
-  return quantize_param.encodingDefinition == QNN_DEFINITION_DEFINED &&
-         (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET ||
-          quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET);
-}
-
-inline bool IsPerAxisQuantization(const Qnn_QuantizeParams_t& quantize_param) {
-  return quantize_param.encodingDefinition == QNN_DEFINITION_DEFINED &&
-         (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET ||
-          quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET);
-}
-
 inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t& onnx_data_type) {
   auto type_proto = node_arg.TypeAsProto();
   ORT_RETURN_IF_NOT(type_proto != nullptr && type_proto->has_tensor_type() && type_proto->tensor_type().has_elem_type(),
@@ -71,84 +52,6 @@ static Status InvertPerm(gsl::span<const IntType> perm, /*out*/ gsl::span<IntTyp
     size_t j = static_cast<size_t>(perm[i]);
     ORT_RETURN_IF_NOT(j < rank, "perm element out of range [0, rank - 1]");
     perm_inv[j] = static_cast<IntType>(i);
-  }
-
-  return Status::OK();
-}
-
-template <typename IntType>
-static Status TryTransposeQnnQuantParams(Qnn_QuantizeParams_t& quantize_param, gsl::span<const IntType> perm) {
-  if (!IsPerAxisQuantization(quantize_param)) {
-    return Status::OK();
-  }
-
-  if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
-    ORT_RETURN_IF_NOT(static_cast<size_t>(quantize_param.axisScaleOffsetEncoding.axis) < perm.size(),
-                      "Axis value is out of range of the provided permutation");
-    const int32_t new_axis = static_cast<int32_t>(perm[quantize_param.axisScaleOffsetEncoding.axis]);
-    quantize_param.axisScaleOffsetEncoding.axis = new_axis;
-  } else if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
-    ORT_RETURN_IF_NOT(static_cast<size_t>(quantize_param.bwAxisScaleOffsetEncoding.axis) < perm.size(),
-                      "Axis value is out of range of the provided permutation");
-    const int32_t new_axis = static_cast<int32_t>(perm[quantize_param.bwAxisScaleOffsetEncoding.axis]);
-    quantize_param.bwAxisScaleOffsetEncoding.axis = new_axis;
-  }
-
-  return Status::OK();
-}
-
-template <typename IntType>
-static Status HandleUnsqueezeOnQnnQuantParams(Qnn_QuantizeParams_t& quantize_param,
-                                              gsl::span<const IntType> orig_shape,
-                                              gsl::span<const IntType> new_shape) {
-  if (!IsPerAxisQuantization(quantize_param)) {
-    return Status::OK();
-  }
-
-  ORT_RETURN_IF_NOT(orig_shape.size() < new_shape.size(), "Expected unsqueezed shape to have a greater rank.");
-
-  // Get the axis value.
-  int32_t axis = 0;
-  if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
-    axis = quantize_param.axisScaleOffsetEncoding.axis;
-  } else if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
-    axis = quantize_param.bwAxisScaleOffsetEncoding.axis;
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Unhandled quantization encoding: ", quantize_param.quantizationEncoding);
-  }
-
-  // Find where the axis was moved to after unsqueeze.
-  size_t num_found = 0;
-  size_t j = 0;
-  for (size_t i = 0; i < orig_shape.size() && j < new_shape.size(); i++) {
-    while (orig_shape[i] != new_shape[j] && j < new_shape.size()) {
-      assert(new_shape[j] == 1);
-      j++;
-    }
-    assert(orig_shape[i] == new_shape[j]);
-    if (num_found == static_cast<size_t>(axis)) {
-      break;
-    }
-    num_found += 1;
-    j++;
-  }
-
-  if (j == static_cast<size_t>(axis)) {
-    return Status::OK();
-  }
-
-  // TODO: Remove
-  assert(false);  // We shouldn't run into this case yet.
-
-  // Set new axis.
-  if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
-    quantize_param.axisScaleOffsetEncoding.axis = static_cast<int32_t>(j);
-  } else if (quantize_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
-    quantize_param.bwAxisScaleOffsetEncoding.axis = static_cast<int32_t>(j);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Unhandled quantization encoding: ", quantize_param.quantizationEncoding);
   }
 
   return Status::OK();

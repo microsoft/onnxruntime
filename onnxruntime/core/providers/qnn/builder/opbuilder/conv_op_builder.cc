@@ -221,15 +221,15 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
 
       // Transpose quantization parameter's axis if this is using per-channel quantization.
-      if (utils::IsPerAxisQuantization(input_info.quant_param)) {
+      if (input_info.quant_param.IsPerAxisQuantization()) {
         const std::vector<size_t>& perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm : cnhw2hwcn_perm;
         std::vector<size_t> perm_inv(perm.size());
         ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(perm, perm_inv));
-        ORT_RETURN_IF_ERROR(utils::TryTransposeQnnQuantParams<size_t>(input_info.quant_param, perm_inv));
+        ORT_RETURN_IF_ERROR(input_info.quant_param.HandleTranspose<size_t>(perm_inv));
       }
     } else {
       // Add transpose node above weight input.
-      ORT_RETURN_IF(utils::IsPerAxisQuantization(input_info.quant_param),
+      ORT_RETURN_IF(input_info.quant_param.IsPerAxisQuantization(),
                     "Non-constant Conv inputs only support per-tensor quantization");
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Add HWCN Transpose node after input: " << input1_name;
@@ -260,7 +260,8 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
     }
 
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, actual_name);
-    QnnTensorWrapper input_tensorwrapper(actual_name, tensor_type, input_info.qnn_data_type, input_info.quant_param,
+    QnnTensorWrapper input_tensorwrapper(actual_name, tensor_type, input_info.qnn_data_type,
+                                         std::move(input_info.quant_param),
                                          std::move(actual_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
@@ -314,7 +315,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       };
 
       if (!input0_info.is_initializer) {
-        ORT_RETURN_IF(utils::IsPerAxisQuantization(input0_info.quant_param),
+        ORT_RETURN_IF(input0_info.quant_param.IsPerAxisQuantization(),
                       "Non-constant Conv inputs only support per-tensor quantization");
 
         // Add Reshape node to transform 1D input to 2D (i.e., set height to 1).
@@ -331,16 +332,15 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
                                                              is_graph_input));
       } else {
         // The reshape (unsqueeze) may require us to shift the quant parameter's axis.
-        if (utils::IsPerAxisQuantization(input0_info.quant_param)) {
-          ORT_RETURN_IF_ERROR(utils::HandleUnsqueezeOnQnnQuantParams<uint32_t>(input0_info.quant_param,
-                                                                               input0_info.shape,
-                                                                               shape));
+        if (input0_info.quant_param.IsPerAxisQuantization()) {
+          ORT_RETURN_IF_ERROR(input0_info.quant_param.HandleUnsqueeze<uint32_t>(input0_info.shape, shape));
         }
       }
 
       Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, conv_input0_name);
-      QnnTensorWrapper input_tensorwrapper(conv_input0_name, tensor_type, input0_info.qnn_data_type, input0_info.quant_param,
-                                           std::move(shape), std::move(unpacked_tensor));
+      QnnTensorWrapper input_tensorwrapper(conv_input0_name, tensor_type, input0_info.qnn_data_type,
+                                           std::move(input0_info.quant_param), std::move(shape),
+                                           std::move(unpacked_tensor));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
     } else {
       LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input0_name;
@@ -407,10 +407,8 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
                                                                                                  reshape_output);
 
       // The reshape (unsqueeze) may require us to shift the quant parameter's axis.
-      if (utils::IsPerAxisQuantization(input_info.quant_param)) {
-        ORT_RETURN_IF_ERROR(utils::HandleUnsqueezeOnQnnQuantParams<uint32_t>(input_info.quant_param,
-                                                                             input_info.shape,
-                                                                             shape_2d));
+      if (input_info.quant_param.IsPerAxisQuantization()) {
+        ORT_RETURN_IF_ERROR(input_info.quant_param.HandleUnsqueeze<uint32_t>(input_info.shape, shape_2d));
       }
 
       //
@@ -425,15 +423,15 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
 
       // Transpose quantization parameter's axis if this is using per-channel quantization.
-      if (utils::IsPerAxisQuantization(input_info.quant_param)) {
+      if (input_info.quant_param.IsPerAxisQuantization()) {
         const std::vector<size_t>& perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm : cnhw2hwcn_perm;
         std::vector<size_t> perm_inv(perm.size());
         ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(perm, perm_inv));
-        ORT_RETURN_IF_ERROR(utils::TryTransposeQnnQuantParams<size_t>(input_info.quant_param, perm_inv));
+        ORT_RETURN_IF_ERROR(input_info.quant_param.HandleTranspose<size_t>(perm_inv));
       }
     } else {
       // Dynamic weight: Add nodes to reshape to 2D, and then transpose.
-      ORT_RETURN_IF(utils::IsPerAxisQuantization(input_info.quant_param),
+      ORT_RETURN_IF(input_info.quant_param.IsPerAxisQuantization(),
                     "Non-constant Conv inputs only support per-tensor quantization");
 
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
@@ -473,7 +471,8 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
 
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, conv_weight_input_name);
     QnnTensorWrapper input_tensorwrapper(conv_weight_input_name, tensor_type, input_info.qnn_data_type,
-                                         input_info.quant_param, std::move(final_shape), std::move(unpacked_tensor));
+                                         std::move(input_info.quant_param), std::move(final_shape),
+                                         std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
 
@@ -702,8 +701,8 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   const std::string& output_node_type = is_depthwise_conv2d ? QNN_OP_DEPTH_WISE_CONV_2D : GetQnnOpType(node_unit.OpType());
 
-  Qnn_QuantizeParams_t output_quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.InitQnnQuantParams(outputs[0], output_quantize_param));
+  QnnQuantParamsWrapper output_quantize_param;
+  ORT_RETURN_IF_ERROR(output_quantize_param.Init(qnn_model_wrapper, outputs[0]));
   bool is_quantized_tensor = outputs[0].quant_param.has_value();
 
   const auto* type_proto = outputs[0].node_arg.TypeAsProto();
@@ -719,8 +718,8 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
         output_shape[2],  // C
     };
     const std::string conv_output_name = output_name + "_ort_qnn_ep_conv2d";
-    QnnTensorWrapper output_tensorwrapper(conv_output_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type, output_quantize_param,
-                                          std::vector<uint32_t>(output_shape_2d));
+    QnnTensorWrapper output_tensorwrapper(conv_output_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type,
+                                          output_quantize_param.Copy(), std::vector<uint32_t>(output_shape_2d));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
@@ -743,8 +742,8 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   } else {
     const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
     Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-    QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, qnn_data_type, output_quantize_param,
-                                          std::move(output_shape));
+    QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, qnn_data_type,
+                                          std::move(output_quantize_param), std::move(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,

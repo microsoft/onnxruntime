@@ -14,6 +14,7 @@
 #include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -23,7 +24,7 @@ namespace qnn {
 struct TensorInfo {
   std::vector<uint32_t> shape;
   Qnn_DataType_t qnn_data_type;
-  Qnn_QuantizeParams_t quant_param;
+  QnnQuantParamsWrapper quant_param;
   bool is_initializer;
   const ONNX_NAMESPACE::TensorProto* initializer_tensor;
 };
@@ -107,14 +108,14 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
-  Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info);
+  Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,
                         const std::vector<uint32_t>& input_shape,
                         const std::vector<uint32_t>& output_shape,
                         const Qnn_DataType_t& tensor_data_type,
-                        const Qnn_QuantizeParams_t& quantize_param,
+                        const QnnQuantParamsWrapper& quantize_param,
                         bool do_op_validation,
                         bool is_for_input = true,
                         bool is_for_output = false);
@@ -126,7 +127,7 @@ class QnnModelWrapper {
                           const std::vector<uint32_t>& transpose_perm,
                           const std::vector<uint32_t>& output_shape,
                           const Qnn_DataType_t& tensor_data_type,
-                          const Qnn_QuantizeParams_t& quantize_param,
+                          const QnnQuantParamsWrapper& quantize_param,
                           bool do_op_validation,
                           bool is_for_input = true,
                           bool is_for_output = false);
@@ -138,7 +139,7 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& input_shape,
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
-                                const Qnn_QuantizeParams_t& quantize_param,
+                                const QnnQuantParamsWrapper& quantize_param,
                                 bool do_op_validation,
                                 bool is_for_input = true,
                                 bool is_for_output = false) {
@@ -155,7 +156,7 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& input_shape,
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
-                                const Qnn_QuantizeParams_t& quantize_param,
+                                const QnnQuantParamsWrapper& quantize_param,
                                 bool do_op_validation,
                                 bool is_for_input = true,
                                 bool is_for_output = false) {
@@ -174,8 +175,6 @@ class QnnModelWrapper {
 
   Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
   Status UnpackZeroPoints(const std::string& initializer_name, std::vector<int32_t>& zero_points) const;
-  Status InitQnnQuantParams(const onnxruntime::NodeUnitIODef& io_def,
-                            /*out*/ Qnn_QuantizeParams_t& qnn_quant_params);
   Status IsPerAxisQuantized(const onnxruntime::NodeUnitIODef& io_def, /*out*/ bool& is_per_axis) const;
 
  private:
@@ -234,10 +233,6 @@ class QnnModelWrapper {
   const std::vector<uint32_t> nchw2hwcn_perm_{2, 3, 1, 0};
   const std::vector<uint32_t> cnhw2hwcn_perm_{2, 3, 0, 1};
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
-
-  // For per-channel quantization, this buffer stores the actual scale and zp values
-  // to which the Qnn_QuantizeParams_t structures point.
-  std::vector<Qnn_ScaleOffset_t> scale_offset_data_;  // For axisScaleOffset
 };  // QnnModelWrapper
 
 }  // namespace qnn

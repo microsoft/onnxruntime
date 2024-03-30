@@ -193,7 +193,7 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerAxisConvTestCase(const std:
 
       TensorShape bias_shape = bias_def.GetTensorShape();
       std::vector<int32_t> quantized_biases(bias_shape.Size());
-      QuantizeValues<float, int32_t>(bias_def.GetRawData(), quantized_biases, bias_shape, bias_scales, {}, 0);
+      QuantizeValues<float, int32_t>(bias_def.GetRawData(), quantized_biases, bias_shape, bias_scales, bias_zero_points, 0);
 
       NodeArg* bias_initializer = builder.MakeInitializer<int32_t>(bias_def.GetShape(), quantized_biases);
       NodeArg* bias_dq = builder.MakeIntermediate();
@@ -553,17 +553,16 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
 TEST_F(QnnHTPBackendTests, ConvU8S8S32_per_axis) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
-  //std::vector<int64_t> bias_shape = {3};
+  std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false, GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true, GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
-  //TestInputDef<float> bias_def(bias_shape, true, GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true, GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerAxisTest<uint8_t, int8_t>("Conv",
                                            input_def,
                                            weight_def,
-                                           {},
-                                           //bias_def,
+                                           bias_def,
                                            {1, 1},        // Strides
                                            {0, 0, 0, 0},  // Pads
                                            {1, 1},        // Dilations

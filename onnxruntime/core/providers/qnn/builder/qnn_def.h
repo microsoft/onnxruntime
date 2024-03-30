@@ -11,6 +11,7 @@
 #include <type_traits>
 #include "core/graph/basic_types.h"
 #include "core/common/common.h"
+#include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -144,12 +145,13 @@ class QnnTensorWrapper {
   QnnTensorWrapper(const std::string& name,
                    Qnn_TensorType_t tensor_type,
                    Qnn_DataType_t data_type,
-                   const Qnn_QuantizeParams_t& quantize_params,
+                   QnnQuantParamsWrapper&& quantize_params,
                    std::vector<uint32_t>&& shape,
                    std::vector<uint8_t>&& client_buf = {},
                    Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW) : tensor_name_(name),
                                                                            dimensions_(std::move(shape)),
-                                                                           client_buf_(std::move(client_buf)) {
+                                                                           client_buf_(std::move(client_buf)),
+                                                                           quant_params_(quantize_params) {
     SetQnnTensorType(qnn_tensor_, tensor_type);
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
     SetQnnTensorDataType(qnn_tensor_, data_type);
@@ -163,7 +165,7 @@ class QnnTensorWrapper {
       ORT_THROW("mem_type not supported for now.");
     }
 
-    SetQnnTensorQParams(qnn_tensor_, quantize_params);
+    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
   }
 
   QnnTensorWrapper(const Qnn_Tensor_t& qnn_tensor) : tensor_name_(GetQnnTensorName(qnn_tensor)),
@@ -171,13 +173,10 @@ class QnnTensorWrapper {
     qnn_tensor_ = qnn_tensor;
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
 
-    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
     const auto& src_quantize_param = GetQnnTensorQParams(qnn_tensor);
-    // quantization only support SCALE_OFFSET encoding
-    quantize_param.encodingDefinition = src_quantize_param.encodingDefinition;
-    quantize_param.quantizationEncoding = src_quantize_param.quantizationEncoding;
-    quantize_param.scaleOffsetEncoding = src_quantize_param.scaleOffsetEncoding;
-    SetQnnTensorQParams(qnn_tensor_, quantize_param);
+    Status status = quant_params_.Init(src_quantize_param);
+    assert(status.IsOK());
+    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
 
     uint32_t shape_rank = GetQnnTensorRank(qnn_tensor);
     uint32_t* shape_data = GetQnnTensorDims(qnn_tensor);
@@ -198,10 +197,12 @@ class QnnTensorWrapper {
     std::swap(tensor_name_, other.tensor_name_);
     std::swap(dimensions_, other.dimensions_);
     std::swap(client_buf_, other.client_buf_);
+    std::swap(quant_params_, other.quant_params_);
     std::swap(qnn_tensor_, other.qnn_tensor_);
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
     SetQnnTensorDim(qnn_tensor_, dimensions_);
     SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
+    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
   }
 
   ~QnnTensorWrapper() = default;
@@ -231,22 +232,11 @@ class QnnTensorWrapper {
   }
 
  private:
-  void CopyQuantizationEncoding(Qnn_QuantizeParams_t& dst, const Qnn_QuantizeParams_t& src) {
-    Qnn_QuantizationEncoding_t encoding = src.quantizationEncoding;
-    if (encoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET ||
-        encoding == QNN_QUANTIZATION_ENCODING_UNDEFINED) {
-      dst = src;
-    } else if (encoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
-      ORT_THROW("Axis scale offset quantization parameter is not supported.");
-    } else {
-      ORT_THROW("quantizationEncoding incorrect value.");
-    }
-  }
-
   std::string tensor_name_;
   std::vector<uint32_t> dimensions_;
   std::vector<uint8_t> client_buf_;
   Qnn_Tensor_t qnn_tensor_ = QNN_TENSOR_INIT;
+  QnnQuantParamsWrapper quant_params_;
 };
 
 class QnnParamWrapper {
