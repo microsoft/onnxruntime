@@ -45,7 +45,7 @@ struct NodeUnitIODef {
   struct QuantParam {
     const NodeArg& scale;
     const NodeArg* zero_point{nullptr};
-    std::optional<int64_t> axis;
+    std::optional<int64_t> axis{std::nullopt};
   };
 
   const NodeArg& node_arg;
