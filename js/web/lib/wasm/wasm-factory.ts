@@ -123,7 +123,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[`${wasmFileName}.wasm`] : undefined;
 
   const ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule> =
-      (await import(`${wasmPrefixOverride ?? './'}${wasmFileName}.js`)).default;
+      (await import(/* webpackIgnore: true */ `${wasmPrefixOverride ?? './'}${wasmFileName}.mjs`)).default;
 
   let isTimeout = false;
 

@@ -58,14 +58,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
   'BUILD_DEFS.DISABLE_TRAINING': 'true',
-
-  // 'process': 'undefined',
-  // 'typeof navigator': '"object"',
 };
-
-// const WEB_DEFINE = {
-//   'process': 'undefined',
-// };
 
 const COPYRIGHT_HEADER = `/*!
  * ONNX Runtime Web v${require('../package.json').version}
@@ -304,7 +297,7 @@ async function buildTest() {
  *
  */
 async function postProcess() {
-  const IMPORT_MAGIC_COMMENT = '/* webpackIgnore: true */';
+  const IMPORT_MAGIC_COMMENT = '/*webpackIgnore:true*/';
   const IMPORT_ORIGINAL = 'await import(`';
   const IMPORT_NEW = `await import(${IMPORT_MAGIC_COMMENT}\``;
 
@@ -325,12 +318,13 @@ async function postProcess() {
 
       let line = -1, column = -1, found = false;
       for (let i = 0; i < jsFileLines.length; i++) {
-        column = jsFileLines[i].indexOf(IMPORT_ORIGINAL);
-        if (column !== -1) {
-          if (found || column !== jsFileLines[i].lastIndexOf(IMPORT_ORIGINAL)) {
+        const importColumnIndex = jsFileLines[i].indexOf(IMPORT_ORIGINAL);
+        if (importColumnIndex !== -1) {
+          if (found || importColumnIndex !== jsFileLines[i].lastIndexOf(IMPORT_ORIGINAL)) {
             throw new Error('Multiple dynamic import calls found. Should not happen.');
           }
           line = i + 1;
+          column = importColumnIndex + IMPORT_ORIGINAL.length;
           jsFileLines[i] = jsFileLines[i].replace(IMPORT_ORIGINAL, IMPORT_NEW);
           found = true;
         }
@@ -343,21 +337,61 @@ async function postProcess() {
         throw new Error('Dynamic import call not found. Should not happen.');
       }
 
-      await SourceMapConsumer.with(await fs.readFile(sourcemapFilePath, 'utf-8'), null, async (consumer) => {
+      const originalSourcemapString = await fs.readFile(sourcemapFilePath, 'utf-8');
+      await SourceMapConsumer.with(originalSourcemapString, null, async (consumer) => {
+        // create new source map and set source content
+        const updatedSourceMap = new SourceMapGenerator();
+        for (const source of consumer.sources) {
+          const content = consumer.sourceContentFor(source);
+          if (!content) {
+            throw new Error(`Source content not found for source "${source}".`);
+          }
+          updatedSourceMap.setSourceContent(source, content);
+        }
+
+        if (sourcemapFilePath.endsWith('ort.all.min.mjs.map')) {
+          // eslint-disable-next-line no-debugger
+          debugger;
+        }
+
         consumer.eachMapping((mapping) => {
           if (mapping.generatedLine === line && mapping.generatedColumn >= column) {
             mapping.generatedColumn += IMPORT_MAGIC_COMMENT.length;
           }
+
+          updatedSourceMap.addMapping({
+            generated: {line: mapping.generatedLine, column: mapping.generatedColumn},
+            source: mapping.source,
+            original: {line: mapping.originalLine, column: mapping.originalColumn},
+            name: mapping.name,
+          });
         });
 
-        await fs.writeFile(sourcemapFilePath, SourceMapGenerator.fromSourceMap(consumer).toString());
+        const updatedSourcemapString = updatedSourceMap.toString();
+
+        // perform simple validation
+        const originalSourcemap = JSON.parse(originalSourcemapString);
+        const updatedSourcemap = JSON.parse(updatedSourcemapString);
+
+        if (originalSourcemap.sources.length !== updatedSourcemap.sources.length ||
+            originalSourcemap.sourcesContent.length !== updatedSourcemap.sourcesContent.length ||
+            new Set(originalSourcemap.names).size !== new Set(updatedSourcemap.names).size) {
+          throw new Error('Failed to update source map: source map length mismatch.');
+        }
+        const originalMappingsCount = originalSourcemap.mappings.split(/[;,]/);
+        const updatedMappingsCount = updatedSourcemap.mappings.split(/[;,]/);
+        if (originalMappingsCount.length !== updatedMappingsCount.length) {
+          throw new Error('Failed to update source map: mappings count mismatch.');
+        }
+
+        await fs.writeFile(sourcemapFilePath, updatedSourcemapString);
       });
 
       await fs.writeFile(jsFilePath, jsFileLines.join('\n'));
       const newJsFileSize = (await fs.stat(jsFilePath)).size;
       if (newJsFileSize - originalJsFileSize !== IMPORT_MAGIC_COMMENT.length) {
-        console.log(`File: ${file}, Original size: ${originalJsFileSize}, New size: ${newJsFileSize}`);
-        throw new Error(`Failed to insert magic comment to file "${file}".`);
+        throw new Error(`Failed to insert magic comment to file "${file}". Original size: ${
+            originalJsFileSize}, New size: ${newJsFileSize}`);
       }
     }
   }
@@ -367,16 +401,28 @@ async function validate() {
   const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
   for (const file of files) {
     // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
-    if ((file.endsWith('.min.js') || file.endsWith('.min.mjs')) && file.startsWith('ort.')) {
+    if ((file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.')) {
+      const isMinified = file.endsWith('.min.js') || file.endsWith('.min.mjs');
       const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
 
-      // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
+      if (isMinified) {
+        // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
+        //
+        // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In
+        // this case, we should fix the build script (this file).
+        //
+        if (content.includes('BUILD_DEFS')) {
+          throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
+        }
+      }
+
+      // all files should contain the magic comment to ignore dynamic import calls.
       //
-      // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In this
-      // case, we should fix the build script (this file).
-      //
-      if (content.includes('BUILD_DEFS')) {
-        throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
+      if (!file.includes('webgl')) {
+        const contentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
+        if (!content.includes(contentToSearch)) {
+          throw new Error(`Validation failed: "${file}" does not contain magic comment.`);
+        }
       }
     }
   }
@@ -426,6 +472,20 @@ async function main() {
       isProduction: true,
       isNode: true,
       format: 'cjs',
+      outputBundleName: 'ort.node.min',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
+      },
+    });
+    // ort.node.min.mjs
+    await buildOrt({
+      isProduction: true,
+      isNode: true,
+      format: 'esm',
       outputBundleName: 'ort.node.min',
       define: {
         ...DEFAULT_DEFINE,

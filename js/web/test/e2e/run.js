@@ -68,8 +68,8 @@ async function main() {
   // prepare .wasm files for path override testing
   prepareWasmPathOverrideFiles();
 
-  // // test case run in Node.js
-  // await testAllNodejsCases();
+  // test case run in Node.js
+  await testAllNodejsCases();
 
   // // test cases with self-host (ort hosted in same origin)
   // await testAllBrowserCases({hostInKarma: true});

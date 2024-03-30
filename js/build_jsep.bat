@@ -87,5 +87,5 @@ IF NOT "%ERRORLEVEL%" == "0" (
   exit /b %ERRORLEVEL%
 )
 
-copy /Y %BUILD_DIR%\%CONFIG%\%TARGET_FILE_PREFIX%.jsep.js %ROOT%js\web\lib\wasm\binding\%TARGET_FILE_PREFIX%.jsep.js
+copy /Y %BUILD_DIR%\%CONFIG%\%TARGET_FILE_PREFIX%.jsep.mjs %ROOT%js\web\lib\wasm\binding\%TARGET_FILE_PREFIX%.jsep.mjs
 copy /Y %BUILD_DIR%\%CONFIG%\%TARGET_FILE_PREFIX%.jsep.wasm %ROOT%js\web\dist\%TARGET_FILE_PREFIX%.jsep.wasm

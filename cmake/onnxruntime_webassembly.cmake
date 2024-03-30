@@ -225,7 +225,6 @@ else()
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
     "SHELL:-s FILESYSTEM=0"
-    "SHELL:-s EXPORT_ES6=1"
     "SHELL:-s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm,mainScriptUrlOrBlob]"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
@@ -316,5 +315,5 @@ else()
     string(APPEND target_name ".jsep")
   endif()
 
-  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name})
+  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")
 endif()
