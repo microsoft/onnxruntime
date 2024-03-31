@@ -1,3 +1,4 @@
+#pragma once
 #include "precomp.h"
 
 namespace Dml
@@ -6,29 +7,35 @@ namespace Dml
   {
     uint64_t Start = 0, Size = 0;
 
-    explicit operator bool() const noexcept;
-  };
+    uint64_t End() const noexcept;
 
-  uint64_t AlignMemoryOffset(uint64_t offset, uint64_t alignment);
+    explicit operator bool() const noexcept;
+    bool operator==(const MemorySegment&) const noexcept;
+  };
 
   class MemoryAllocator
   {
   public:
-    MemoryAllocator(uint64_t size);
+    MemoryAllocator(uint64_t size = 0);
+
+    void GrowBy(uint64_t size);
 
     uint64_t FreeSpace() const;
     uint64_t UsedSpace() const;
     uint64_t Capacity() const;
 
-    MemorySegment TryAllocate(uint64_t size, uint64_t alignment = 0);
+    MemorySegment TryAllocate(uint64_t size);
     void Deallocate(MemorySegment segment);
 
-    std::vector<MemorySegment> PartiallyAllocate(uint64_t size, uint64_t alignment = 0, uint64_t* remaining = nullptr);
+    std::vector<MemorySegment> TryMultipartAllocate(uint64_t size);
 
   private:
     uint64_t m_capacity;
     std::vector<MemorySegment> m_freeSpace;
 
-    MemorySegment TryAllocateFrom(MemorySegment* segment, uint64_t size, uint64_t alignment);
+    MemorySegment TryAllocateFrom(MemorySegment* segment, uint64_t size);
+
+    MemorySegment* SmallestFreeSegment(uint64_t minSize = 0);
+    MemorySegment* LargestFreeSegment();
   };
 }

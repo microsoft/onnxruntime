@@ -11,6 +11,26 @@ namespace Dml
     m_freeSpace.push_back({ 0, m_capacity });
   }
 
+  void MemoryAllocator::GrowBy(uint64_t size)
+  {
+    //The capacity will increase by the specified amount
+    auto newCapacity = size + m_capacity;
+
+    //If we have no free space or the last segment is not at the end, we need a new segment of free space
+    if (m_freeSpace.empty() || m_freeSpace.back().End() != m_capacity)
+    {
+      m_freeSpace.push_back({ m_capacity, size });
+    }
+    //Otherwise we can make the last free segment longer
+    else
+    {
+      m_freeSpace.back().Size += size;
+    }
+
+    //Set new capacity
+    m_capacity = newCapacity;
+  }
+
   uint64_t MemoryAllocator::FreeSpace() const
   {
     uint64_t result = 0;
@@ -31,31 +51,14 @@ namespace Dml
     return m_capacity;
   }
 
-  MemorySegment MemoryAllocator::TryAllocate(uint64_t size, uint64_t alignment)
+  MemorySegment MemoryAllocator::TryAllocate(uint64_t size)
   {
     //If we do not have empty space return or the capacity is too small return
     if (m_freeSpace.empty() || size > m_capacity) return {};
 
     //Otherwise find smallest empty slot
-    MemorySegment* selectedSlot = nullptr;
-    for (auto& slot : m_freeSpace)
-    {
-      //If slot is smaller than the alignment ignore it
-      if (slot.Size < alignment) continue;
-
-      //Calculate space after alignment
-      auto alignedStart = AlignMemoryOffset(slot.Start, alignment);
-      auto remainingSpace = slot.Start + slot.Size - alignedStart;
-
-      //If we have space then select the slot
-      if (remainingSpace >= size && (!selectedSlot || selectedSlot->Size > slot.Size))
-      {
-        selectedSlot = &slot;
-      }
-    }
-
-    //Allocate segment
-    return TryAllocateFrom(selectedSlot, size, alignment);
+    auto segment = SmallestFreeSegment(size);
+    return TryAllocateFrom(segment, size);
   }
 
   void MemoryAllocator::Deallocate(MemorySegment segment)
@@ -93,25 +96,37 @@ namespace Dml
     m_freeSpace.push_back(segment);
   }
 
-  vector<MemorySegment> MemoryAllocator::PartiallyAllocate(uint64_t size, uint64_t alignment, uint64_t * remaining)
+  std::vector<MemorySegment> MemoryAllocator::TryMultipartAllocate(uint64_t size)
   {
-    auto allocation = TryAllocate(size, alignment);
-    
-    return vector<MemorySegment>();
+    //Check if we have enough free space
+    if (FreeSpace() < size) return {};
+
+    //Try allocating in smallest continuous segment
+    auto continuousAllocation = TryAllocate(size);
+    if (continuousAllocation) return { continuousAllocation };
+
+    //Try multipart allocation
+    vector<MemorySegment> allocations;
+    uint64_t remainingSize = size;
+    while (remainingSize > 0)
+    {
+      auto segment = LargestFreeSegment();
+      auto allocation = TryAllocateFrom(segment, min(segment->Size, remainingSize));
+      remainingSize -= allocation.Size;
+      allocations.push_back(allocation);
+    }
+    return allocations;
   }
 
-  MemorySegment MemoryAllocator::TryAllocateFrom(MemorySegment* segment, uint64_t size, uint64_t alignment)
+  MemorySegment MemoryAllocator::TryAllocateFrom(MemorySegment* segment, uint64_t size)
   {
     //Validate inputs
-    if (!segment || m_freeSpace.empty() || segment < &m_freeSpace.front() || segment > &m_freeSpace.back()) return {};
-
-    auto alignedStart = AlignMemoryOffset(segment->Start, alignment);
-    if (alignedStart + size > segment->Size) return {};
+    if (!segment || m_freeSpace.empty() || segment < &m_freeSpace.front() || segment > &m_freeSpace.back() || segment->Size < size) return {};
 
     //Decrease free space
-    auto alignmentGap = alignedStart - segment->Start;
-    segment->Start = alignedStart + size;
-    segment->Size -= size + alignmentGap;
+    auto allocationStart = segment->Start;
+    segment->Start = segment->Start + size;
+    segment->Size -= size;
 
     //Remove empty slot if needed
     if (segment->Size == 0)
@@ -120,19 +135,49 @@ namespace Dml
       m_freeSpace.pop_back();
     }
 
-    //Keep alignment gap as free space
-    if (alignmentGap > 0u)
-    {
-      m_freeSpace.push_back(MemorySegment{alignedStart - alignmentGap, alignmentGap});
-    }
-
     //Return allocated segment
-    return { alignedStart, size };
+    return { allocationStart, size };
+  }
+
+  MemorySegment * MemoryAllocator::SmallestFreeSegment(uint64_t minSize)
+  {
+    MemorySegment* selectedSlot = nullptr;
+    for (auto& slot : m_freeSpace)
+    {
+      if (slot.Size >= minSize && (!selectedSlot || selectedSlot->Size > slot.Size))
+      {
+        selectedSlot = &slot;
+      }
+    }
+    return selectedSlot;
+  }
+
+  MemorySegment* MemoryAllocator::LargestFreeSegment()
+  {
+    MemorySegment* selectedSlot = nullptr;
+    for (auto& slot : m_freeSpace)
+    {
+      if (!selectedSlot || selectedSlot->Size < slot.Size)
+      {
+        selectedSlot = &slot;
+      }
+    }
+    return selectedSlot;
+  }
+
+  uint64_t MemorySegment::End() const noexcept
+  {
+    return Start + Size;
   }
 
   MemorySegment::operator bool() const noexcept
   {
     return Size > 0u;
+  }
+
+  bool MemorySegment::operator==(const MemorySegment& other) const noexcept
+  {
+    return Start == other.Start && Size == other.Size;
   }
 
   uint64_t AlignMemoryOffset(uint64_t offset, uint64_t alignment)
