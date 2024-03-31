@@ -38,8 +38,8 @@ template <typename T1, typename T2, typename T3>
 bool LabelEncoderFusion::IsValidForFusion(const Node& node, const Node& next_node) const {
   return (node.GetAttributes().find(KEYS_ATTR_NAME(T1)) != node.GetAttributes().end() &&
           node.GetAttributes().find(VALUES_ATTR_NAME(T2)) != node.GetAttributes().end() &&
-          next_node.GetAttributes().find(KEYS_ATTR_NAME(T2)) != node.GetAttributes().end() &&
-          next_node.GetAttributes().find(VALUES_ATTR_NAME(T3)) != node.GetAttributes().end());
+          next_node.GetAttributes().find(KEYS_ATTR_NAME(T2)) != next_node.GetAttributes().end() &&
+          next_node.GetAttributes().find(VALUES_ATTR_NAME(T3)) != next_node.GetAttributes().end());
 }
 
 /**
