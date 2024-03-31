@@ -36,7 +36,9 @@ namespace Dml::GraphDescBuilder
         std::vector<DmlSerializedGraphNode>& graphNodes,
         std::vector<DmlInputSerializedGraphEdge>& graphInputEdges,
         std::vector<DmlIntermediateSerializedGraphEdge>& graphIntermediateEdges,
-        std::vector<DmlOutputSerializedGraphEdge>& graphOutputEdges)
+        std::vector<DmlOutputSerializedGraphEdge>& graphOutputEdges,
+        std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToSubgraphInputIndex,
+        std::unordered_map<std::string_view, uint32_t>& serializedGraphLargeConstantNameToSubgraphInputIndex)
     {
         enum class NodeState
         {
@@ -124,8 +126,10 @@ namespace Dml::GraphDescBuilder
         graphNodes.resize(graphNodes.size() - shift);
 
         // Adjust the node indices in the input edges
+        std::unordered_set<uint32_t> usedInputEdgeIndex;
         for (auto& inputEdge : graphInputEdges)
         {
+            usedInputEdgeIndex.insert(inputEdge.GraphInputIndex);
             inputEdge.ToNodeIndex = shiftedIndicesMapping[inputEdge.ToNodeIndex];
         }
 
@@ -136,10 +140,54 @@ namespace Dml::GraphDescBuilder
         }
 
         // Adjust the node indices in the intermediate edges
+        std::unordered_set<std::string> usedLargeConstantNames;
         for (auto& intermediateEdge : graphIntermediateEdges)
         {
             intermediateEdge.FromNodeIndex = shiftedIndicesMapping[intermediateEdge.FromNodeIndex];
             intermediateEdge.ToNodeIndex = shiftedIndicesMapping[intermediateEdge.ToNodeIndex];
+            // We need to update the edge name only when the name contains the intermediateEdge.FromNodeIndex
+            size_t pos = intermediateEdge.Name.find("nodeIdx:");
+            if (pos != std::string::npos)
+            {
+                if (pos != 0)
+                {
+                    std::string constantNamePartComingFromModel = intermediateEdge.Name.substr(0, pos - 1);
+                    usedLargeConstantNames.insert(constantNamePartComingFromModel); // need part of name which is coming from the model.
+                    intermediateEdge.Name = constantNamePartComingFromModel;
+                    intermediateEdge.Name += "-nodeIdx:" + std::to_string(intermediateEdge.FromNodeIndex) + "-outputIdx:" + std::to_string(intermediateEdge.FromNodeOutputIndex);
+                }
+                else
+                {
+                    intermediateEdge.Name = "nodeIdx:" + std::to_string(intermediateEdge.FromNodeIndex) + "-outputIdx:" + std::to_string(intermediateEdge.FromNodeOutputIndex);
+                }
+            }
+        }
+
+
+        // Erase the mapping if the input Edge is not used by any node
+        for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end();)
+        {
+            if (!usedInputEdgeIndex.count(it->first))
+            {
+                it = serializedGraphInputIndexToSubgraphInputIndex.erase(it);
+            }
+            else
+            {
+                it++;
+            }
+        }
+        
+        // Erase the mapping if the input Edge is not used by any node
+        for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end();)
+        {
+            if (!usedLargeConstantNames.count(std::string(it->first)))
+            {
+                it = serializedGraphLargeConstantNameToSubgraphInputIndex.erase(it);
+            }
+            else
+            {
+                it++;
+            }
         }
     }
 
@@ -516,7 +564,12 @@ namespace Dml::GraphDescBuilder
             graphOutputShapes.GetMutableShape(outputIndex) = nodeOutputShapes[graphOutput->Name()].GetShape(outputNodeAndIndex.targetIndex);
         }
 
-        RemoveUnconnectedNodes(dmlGraphNodes, dmlGraphInputEdges, dmlGraphIntermediateEdges, dmlGraphOutputEdges);
+        RemoveUnconnectedNodes(dmlGraphNodes,
+                               dmlGraphInputEdges,
+                               dmlGraphIntermediateEdges,
+                               dmlGraphOutputEdges,
+                               serializedGraphInputIndexToSubgraphInputIndex,
+                               serializedGraphLargeConstantNameToSubgraphInputIndex);
 
         GraphDesc graphDesc{};
         graphDesc.InputCount = static_cast<uint32_t>(dmlGraphInputEdges.size());
