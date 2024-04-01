@@ -388,7 +388,7 @@ class WhisperHelper:
         batch_size: int,
         prompt_mode: bool,
     ):
-        if batch_size > 1 and prompt_mode is True:
+        if batch_size > 1 and prompt_mode:
             expected_transcription_no_comma_prompt1 = " John has doubts whether Sir Frederick Layton's work is really Greek after all and can discover in it but little of Rocky I"
             expected_transcription_misspelled_prompt1 = " John has doubts whether Sir Frederick Latins work is really Greek after all and can discover in it but little of Rocky I"
             expected_transcription_no_comma_prompt2 = " Maria has grave doubts whether Sir Frederick Layton's work is really Greek after all and can discover in it but little of Rocky"
@@ -432,8 +432,8 @@ class WhisperHelper:
         pt_model = WhisperForConditionalGeneration.from_pretrained(
             model_name_or_path, cache_dir=cache_dir, **extra_kwargs
         ).to(device)
-        processor = WhisperProcessor.from_pretrained(model_name_or_path)
-        config = WhisperConfig.from_pretrained(model_name_or_path)
+        processor = WhisperProcessor.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        config = WhisperConfig.from_pretrained(model_name_or_path, cache_dir=cache_dir)
 
         inputs, pt_transcription, pt_outputs, decoder_prompt_ids = WhisperHelper.pt_transcription_for_verify_onnx(
             processor,

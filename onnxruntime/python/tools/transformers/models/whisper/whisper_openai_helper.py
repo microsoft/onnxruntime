@@ -77,7 +77,7 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         ]
 
         # Remove forward hooks to avoid model cloning step
-        if hooks is not None and remove_hooks is True:
+        if hooks is not None and remove_hooks:
             self.kv_cache = {}
             for hook in hooks:
                 hook.remove()

@@ -133,7 +133,6 @@ class WhisperEncoderDecoderInitHelper:
         )
         input_list = inputs.to_list()
 
-        # TODO : Investigate whether copy of model if needed
         out = model(inputs.encoder_input_ids, inputs.decoder_input_ids, remove_hooks=True)
         present = out[2]
         present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
