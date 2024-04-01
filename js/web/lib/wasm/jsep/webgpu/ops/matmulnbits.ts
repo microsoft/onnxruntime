@@ -167,14 +167,13 @@ export const createBlockwiseMatMulNBitsProgramInfo =
             let col_times_components_plus_c = col * ${components} + c;
               ${
             zeroPoints ? `
-            var zero_point_byte_count: u32 = col_times_components_plus_c * ${
-                            zeroPointsBytesPerCol} + (block >> 0x1u);
+            var zero_point_byte_count: u32 = col_times_components_plus_c * ${zeroPointsBytesPerCol} + (block >> 0x1u);
             var zero_point_word_index: u32 = zero_point_byte_count >> 0x2u;
             var zero_point_byte_offset: u32 = zero_point_byte_count & 0x3u;
             var zero_point_nibble_offset: u32 = block & 0x1u;
             var zero_point_bits_offset: u32 = (zero_point_byte_offset << 3) + (zero_point_nibble_offset << 2);
             var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_word_index')} >> zero_point_bits_offset;` :
-                        ''}
+                         ''}
             var b_indices: ${b.type.indices};
             ${b.indicesSet('b_indices', '0', 'col_times_components_plus_c')};
             var block_offset: u32 = block * ${attributes.blockSize / aComponents};
@@ -200,8 +199,8 @@ export const createBlockwiseMatMulNBitsProgramInfo =
                     ${a.indicesSet('a_indices', inputRank - 2, 'm')};
                     let a_data = ${a.getByIndices('a_indices')};
                     workgroup_shared[block][m]${components > 1 ? '[c]' : ''} += ${
-          aComponents === 1 ? 'a_data * b_dequantized_values[j]' :
-                              `dot(a_data, b_dequantized_values[j / ${aComponents}])`};
+            aComponents === 1 ? 'a_data * b_dequantized_values[j]' :
+                                `dot(a_data, b_dequantized_values[j / ${aComponents}])`};
                                         }
                   offset++;
                 }
@@ -226,10 +225,8 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       };
       return {
         name: 'BlockwiseMatMulNBits',
-        shaderCache: {
-          hint: `${attributes.cacheKey};${inputs.length}}`,
-          inputDependencies: Array(inputs.length).fill('rank')
-        },
+        shaderCache:
+            {hint: `${attributes.cacheKey};${inputs.length}}`, inputDependencies: Array(inputs.length).fill('rank')},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
