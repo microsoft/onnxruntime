@@ -383,7 +383,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         parameters->max_length,
         this->temp_space_allocator_,
         ReinterpretAsSpan<const int32_t>(beam_indices),
-        cross_qk_buffer_value));
+        cross_qk_buffer_value,
+        parameters->num_beams));
     }
 
     // When all batches are finished, stop earlier to avoid wasting computation.
