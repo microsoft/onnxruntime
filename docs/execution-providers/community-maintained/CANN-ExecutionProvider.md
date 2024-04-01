@@ -80,7 +80,7 @@ Default value: false
 
 ### dump_om_model
 
-Whether to dump the OM(Offlined Model for Aasend Npu) to disk.
+Whether to dump the offline model for Ascend AI Processor to an .om file.
 
 Default value: true
 
