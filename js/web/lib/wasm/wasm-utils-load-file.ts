@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {isNode} from './wasm-utils-env';
+
 /**
  * Load a file into a Uint8Array.
  *
@@ -9,7 +11,7 @@
  */
 export const loadFile = async(file: string|Blob|ArrayBufferLike|Uint8Array): Promise<Uint8Array> => {
   if (typeof file === 'string') {
-    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+    if (isNode) {
       // load file into ArrayBuffer in Node.js
       try {
         const {readFile} = require('node:fs/promises');

@@ -58,6 +58,8 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
   'BUILD_DEFS.DISABLE_TRAINING': 'true',
+  'BUILD_DEFS.PROXY_WORKER_URL': 'proxy.min.mjs',
+  'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
 };
 
 const COPYRIGHT_HEADER = `/*!
@@ -74,7 +76,17 @@ interface OrtBuildOptions {
   define?: Record<string, string>;
 }
 
+const alreadyBuilt = new Set();
+
 async function buildBundle(options: esbuild.BuildOptions) {
+  // Skip if the same build options have been built before.
+  const serializedOptions = JSON.stringify(options);
+  if (alreadyBuilt.has(serializedOptions)) {
+    return;
+  } else {
+    alreadyBuilt.add(serializedOptions);
+  }
+
   // Patch banner:
   //
   // - Add copy right header.
@@ -100,6 +112,11 @@ async function buildBundle(options: esbuild.BuildOptions) {
   const COMMONJS_FOOTER_MIN = 'typeof exports=="object"&&typeof module=="object"&&(module.exports=ort);';
   const footer = options.format === 'iife' ? {js: COMMONJS_FOOTER_MIN} : undefined;
 
+  // For esm, set BUILD_DEFS.ESM_IMPORT_META_URL to the current file's URL.
+  if (options.format === 'esm') {
+    options.define = {...options.define, 'BUILD_DEFS.ESM_IMPORT_META_URL': 'import.meta.url'};
+  }
+
   const result = await esbuild.build({
     logLevel: DEBUG ? (DEBUG === 'verbose' || DEBUG === 'save' ? 'verbose' : 'debug') : 'info',
     metafile: !!DEBUG,
@@ -117,16 +134,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
       console.log(await esbuild.analyzeMetafile(result.metafile!, {verbose: DEBUG === 'verbose'}));
     }
   }
-  return result;
 }
-
-// async function minifyCode(sourceCode: string): Promise<string> {
-//   const result = await esbuild.transform(sourceCode, {
-//     minify: true,
-//     legalComments: 'none',
-//   });
-//   return result.code;
-// }
 
 async function buildOrt({
   isProduction = false,
@@ -135,101 +143,41 @@ async function buildOrt({
   outputBundleName,
   define = DEFAULT_DEFINE,
 }: OrtBuildOptions) {
-  // #region Plugin: resolve ignore imports
-
-  /**
-   * This plugin is used to ignore a few nodejs imports that are not used in the browser. Those imported functions are
-   * not really used in the browser because they are usually put behind a feature check. However, esbuild does not know
-   * that. It will complain about those imports are not available in the browser.
-   *
-   * This plugin will ignore those imports and replace them with empty exports.
-   */
-  const excludeNodejsImports = {
-    name: 'exclude-nodejs-imports',
-    setup(build: esbuild.PluginBuild) {
-      build.onResolve({filter: /(^node:|^worker_threads$|^fs$|^path$|^perf_hooks$|^os$)/}, args => ({
-                                                                                             namespace: 'nodejs-ignore',
-                                                                                             path: args.path,
-                                                                                             sideEffects: false,
-                                                                                           }));
-      build.onLoad({filter: /.*/, namespace: 'nodejs-ignore'}, args => {
-        switch (args.path) {
-          case 'node:fs/promises':
-          case 'node:fs':
-          case 'fs':
-            return {
-              contents: 'export const readFile = undefined;' +
-                  'export const readFileSync = undefined;' +
-                  'export const createReadStream = undefined;'
-            };
-          case 'node:os':
-          case 'os':
-            return {contents: 'export const cpus = undefined;'};
-          case 'node:path':
-          case 'path':
-            return {contents: 'export const join = undefined;'};
-          default:
-            return {contents: ''};
-        }
-      });
-    },
-  };
-  // #endregion
-
-  // #region Plugin: proxy worker loader
-
-  /**
-   * This plugin is used to load proxy worker code as string.
-   */
-  const proxyWorkerHandler = {
-    name: 'proxy-worker-handler',
-    setup(build: esbuild.PluginBuild) {
-      build.onResolve(
-          {filter: /proxy-worker\/main$/},
-          async args => ({path: args.path, namespace: 'proxy-worker', pluginData: args.resolveDir}));
-
-      build.onLoad({filter: /.*/, namespace: 'proxy-worker'}, async args => {
-        const result = await buildBundle({
-          entryPoints: [path.resolve(args.pluginData, args.path)],
-          outfile: `web/dist/${outputBundleName}.proxy.js`,
-          platform: 'browser',
-          plugins: [excludeNodejsImports],
-          define: {
-            ...build.initialOptions.define,
-            'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-          },
-          sourcemap: isProduction ? false : 'inline',
-          minify: isProduction,
-          write: false,
-        });
-
-        return {loader: 'text', contents: result.outputFiles![0].text};
-      });
-    },
-  };
-  // #endregion
-
   // distribution code is split into multiple files:
   // - [bundle-name][.min].[m]js
-  // - [bundle-name].proxy[.min].[m]js
+  // - [bundle-name].proxy[.min].mjs
   // - ort[-training]-wasm[-simd][-threaded][.jsep].mjs
   // - ort-wasm[-simd]-threaded[.jsep].worker.js
-  const external = isNode ? ['onnxruntime-common'] : [
-    'node:fs/promises',
-    'node:fs',
-    'node:os',
-  ];
-  const plugins: esbuild.Plugin[] = isNode ? [] : [/*excludeNodejsImports, */];
-  //
-  // TODO:
-  if (process.env.YouDontKnow) {
-    plugins.push(proxyWorkerHandler);
+  const platform = isNode ? 'node' : 'browser';
+  const external = isNode ? ['onnxruntime-common'] : ['node:fs/promises', 'node:fs', 'node:os'];
+  const plugins: esbuild.Plugin[] = [];
+
+  // Build proxy worker bundle if needed.
+  if (define['BUILD_DEFS.DISABLE_WASM_PROXY'] !== 'true') {
+    const fileName = `${
+        outputBundleName.endsWith('.min') ? outputBundleName.substring(0, outputBundleName.length - 4) :
+                                            outputBundleName}.proxy${isProduction ? '.min' : ''}.mjs`;
+    define['BUILD_DEFS.PROXY_WORKER_URL'] = JSON.stringify(fileName);
+    await buildBundle({
+      entryPoints: ['web/lib/wasm/proxy-worker/main.ts'],
+      outfile: `web/dist/${fileName}`,
+      platform,
+      format: 'esm',
+      plugins,
+      external,
+      define: {
+        ...define,
+        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+      },
+      sourcemap: isProduction ? 'external' : 'inline',
+      minify: isProduction,
+    });
   }
 
   await buildBundle({
     entryPoints: ['web/lib/index.ts'],
     outfile: `web/dist/${outputBundleName}.${format === 'esm' ? 'mjs' : 'js'}`,
-    platform: isNode ? 'node' : 'browser',
+    platform,
     format,
     globalName: 'ort',
     plugins,
@@ -330,7 +278,7 @@ async function postProcess() {
         const importColumnIndex = jsFileLines[i].indexOf(IMPORT_ORIGINAL);
         if (importColumnIndex !== -1) {
           if (found || importColumnIndex !== jsFileLines[i].lastIndexOf(IMPORT_ORIGINAL)) {
-            throw new Error('Multiple dynamic import calls found. Should not happen.');
+            throw new Error(`Multiple dynamic import calls found in "${jsFilePath}". Should not happen.`);
           }
           line = i + 1;
           column = importColumnIndex + IMPORT_ORIGINAL.length;
@@ -343,7 +291,7 @@ async function postProcess() {
           // skip webgl
           continue;
         }
-        throw new Error('Dynamic import call not found. Should not happen.');
+        throw new Error(`Dynamic import call not found in "${jsFilePath}". Should not happen.`);
       }
 
       const originalSourcemapString = await fs.readFile(sourcemapFilePath, 'utf-8');
@@ -356,11 +304,6 @@ async function postProcess() {
             throw new Error(`Source content not found for source "${source}".`);
           }
           updatedSourceMap.setSourceContent(source, content);
-        }
-
-        if (sourcemapFilePath.endsWith('ort.all.min.mjs.map')) {
-          // eslint-disable-next-line no-debugger
-          debugger;
         }
 
         consumer.eachMapping((mapping) => {

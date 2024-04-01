@@ -6,8 +6,9 @@
 const path = require('path');
 const fs = require('fs-extra');
 const {spawn} = require('child_process');
-const startServer = require('./simple-http-server');
 const minimist = require('minimist');
+
+const {NODEJS_TEST_CASES, BROWSER_TEST_CASES, BUNDLER_TEST_CASES} = require('./run-data');
 
 // copy whole folder to out-side of <ORT_ROOT>/js/ because we need to test in a folder that no `package.json` file
 // exists in its parent folder.
@@ -68,71 +69,71 @@ async function main() {
   // prepare .wasm files for path override testing
   prepareWasmPathOverrideFiles();
 
-  // test case run in Node.js
-  await testAllNodejsCases();
+  // start a HTTP server for hosting .wasm files (for cross-origin testing)
+  await fs.symlink(
+      path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist'),
+      path.join(TEST_E2E_RUN_FOLDER, 'dist'), 'junction');
+  const server = spawn('npx http-server . -p 8081 --cors', {shell: true, stdio: 'inherit', cwd: TEST_E2E_RUN_FOLDER});
 
-  // test cases with self-host (ort hosted in same origin)
-  await testAllBrowserCases({hostInKarma: true});
+  try {
+    // test case run in Node.js
+    await testAllNodejsCases();
 
-  // test cases without self-host (ort hosted in same origin)
-  startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
-  await testAllBrowserCases({hostInKarma: false});
+    // test cases with self-host (ort hosted in same origin)
+    await testAllBrowserCases({hostInKarma: true});
 
-  // run bundlers
-  await runInShell(`npm run build`);
+    // test cases without self-host (ort hosted in different origin)
+    await testAllBrowserCases({hostInKarma: false});
 
-  // test package consuming test
-  await testAllBrowserPackagesConsumingCases();
+    // run bundlers
+    await runInShell(`npm run build`);
 
-  // no error occurs, exit with code 0
-  process.exit(0);
+    // test package consuming test
+    await testAllBrowserPackagesConsumingCases();
+
+  } finally {
+    // close the server after all tests
+    server.kill();
+  }
 }
 
 function prepareWasmPathOverrideFiles() {
   const folder = path.join(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override');
-  const sourceFile = path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm.wasm');
+  const sourceFile = path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm');
   fs.emptyDirSync(folder);
-  fs.copyFileSync(sourceFile, path.join(folder, 'ort-wasm.wasm'));
-  fs.copyFileSync(sourceFile, path.join(folder, 'renamed.wasm'));
+  fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'ort-wasm.mjs'));
+  fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm.wasm'));
+  fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'renamed.wasm'));
 }
 
 async function testAllNodejsCases() {
-  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
-  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.js');
-  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.mjs');
-  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-filename.js');
-  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-prefix.js');
+  for (const caseName of NODEJS_TEST_CASES) {
+    await runInShell(`node ./node_modules/mocha/bin/mocha ${caseName}`);
+  }
 }
 
 async function testAllBrowserCases({hostInKarma}) {
-  await runKarma({hostInKarma, main: './browser-test-webgl.js'});
-  await runKarma({hostInKarma, main: './browser-test-webgl.js', ortMain: 'ort.webgl.min.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-multi-session-create.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-no-threads.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-no-threads.js', ortMain: 'ort.wasm-core.min.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-proxy.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-proxy-no-threads.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-path-override-filename.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-path-override-filename.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-path-override-prefix.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-path-override-prefix.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({hostInKarma, main: './browser-test-wasm-image-tensor-image.js'});
-  await runKarma({hostInKarma, main: './browser-test-webgpu-external-data.js', ortMain: 'ort.webgpu.min.js'});
+  for (const [testForSameOrigin, testForCrossOrigin, main, ortMain, args] of BROWSER_TEST_CASES) {
+    if (hostInKarma && testForSameOrigin) {
+      await runKarma({hostInKarma, main, ortMain, args});
+    }
+    if (!hostInKarma && testForCrossOrigin) {
+      await runKarma({hostInKarma, main, ortMain, args});
+    }
+  }
 }
 
 async function testAllBrowserPackagesConsumingCases() {
-  await runKarma({hostInKarma: true, main: './dist/webpack_esm_js/ort-test-e2e.bundle.mjs', ortMain: ''});
-  await runKarma({hostInKarma: true, main: './dist/webpack_umd_js/ort-test-e2e.bundle.js', ortMain: ''});
-  await runKarma({hostInKarma: true, main: './dist/rollup_esm_js/ort-test-e2e.bundle.mjs', ortMain: ''});
-  await runKarma({hostInKarma: true, main: './dist/rollup_umd_js/ort-test-e2e.bundle.js', ortMain: ''});
+  for (const main of BUNDLER_TEST_CASES) {
+    await runKarma({hostInKarma: true, main, ortMain: ''});
+  }
 }
 
-async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js'}) {
+async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js', args = []}) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
+  const argsStr = args.map(i => `--test-args=${i}`).join(' ');
   await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
-      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
+      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()} ${argsStr}`);
 }
 
 async function runInShell(cmd) {

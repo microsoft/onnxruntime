@@ -34,6 +34,14 @@ interface BuildDefinitions {
    * defines whether to disable training APIs in WebAssembly backend.
    */
   readonly DISABLE_TRAINING: boolean;
+  /**
+   * defines the URL of the proxy worker script. This is used when DISABLE_WASM_PROXY is false.
+   */
+  readonly PROXY_WORKER_URL: string;
+  /**
+   * placeholder for the import.meta.url in ESM. in CJS, this is undefined.
+   */
+  readonly ESM_IMPORT_META_URL: string|undefined;
 }
 
 declare const BUILD_DEFS: BuildDefinitions;

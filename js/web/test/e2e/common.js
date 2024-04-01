@@ -36,6 +36,14 @@ var testFunction = async function(ort, options) {
   assert(c.data[8] === 3300);
 };
 
+// parse command line arguments. to make it simple, we assign the arguments to global object.
+if (typeof __karma__ !== 'undefined' && __karma__.config.args) {
+  for (const arg of __karma__.config.args) {
+    const [key, value] = arg.split('=', 2);
+    window['__ort_arg_' + key] = value;
+  }
+}
+
 if (typeof module === 'object') {
   module.exports = testFunction;
 }

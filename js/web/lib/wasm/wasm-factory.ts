@@ -4,6 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import type {OrtWasmModule, OrtWasmThreadedModule} from './wasm-types';
+import {dynamicImportDefault, preloadWorker} from './wasm-utils-import';
 
 let wasm: OrtWasmModule|undefined;
 let initialized = false;
@@ -76,13 +77,13 @@ const getWasmFileNameWithoutExtension = (useSimd: boolean, useThreads: boolean) 
     if (!BUILD_DEFS.DISABLE_TRAINING) {
       return 'ort-training-wasm-simd';
     }
-    if (BUILD_DEFS.DISABLE_WASM_THREAD || !useThreads) {
-      return BUILD_DEFS.DISABLE_JSEP ? 'ort-wasm-simd' : 'ort-wasm-simd.jsep';
-    } else {
+    if (useThreads) {
       return BUILD_DEFS.DISABLE_JSEP ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.jsep';
+    } else {
+      return BUILD_DEFS.DISABLE_JSEP ? 'ort-wasm-simd' : 'ort-wasm-simd.jsep';
     }
   } else {
-    return (BUILD_DEFS.DISABLE_WASM_THREAD || !useThreads) ? 'ort-wasm-threaded' : 'ort-wasm';
+    return useThreads ? 'ort-wasm-threaded' : 'ort-wasm';
   }
 };
 
@@ -104,7 +105,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const numThreads = flags.numThreads!;
   const simd = flags.simd!;
 
-  const useThreads = isMultiThreadSupported(numThreads);
+  const useThreads = !BUILD_DEFS.DISABLE_WASM_THREAD && isMultiThreadSupported(numThreads);
   const useSimd = simd && isSimdSupported();
 
   const wasmPaths = flags.wasmPaths;
@@ -113,7 +114,12 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[`${wasmFileName}.wasm`] : undefined;
 
   const ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule> =
-      (await import(/* webpackIgnore: true */ `${wasmPrefixOverride ?? './'}${wasmFileName}.mjs`)).default;
+      (await dynamicImportDefault(`${wasmFileName}.mjs`, wasmPrefixOverride));
+
+  const wasmWorkerFileName = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ? `${wasmFileName}.worker.js` : '';
+  const wasmWorkerUrl = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ?
+      await preloadWorker(`${wasmFileName}.worker.js`, wasmPrefixOverride) :
+      '';
 
   let isTimeout = false;
 
@@ -137,12 +143,21 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
           return wasmPathOverride;
         }
 
+        if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && fileName === wasmWorkerFileName &&
+            wasmWorkerUrl !== wasmWorkerFileName) {
+          // when a valid rewritten worker URL is available, use it
+          return wasmWorkerUrl;
+        }
+
         return (wasmPrefixOverride ?? scriptDirectory) + fileName;
       }
     };
 
     if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads) {
       config.numThreads = numThreads;
+      if (wasmPrefixOverride) {
+        config.mainScriptUrlOrBlob = wasmPrefixOverride + `${wasmFileName}.mjs`;
+      }
     }
 
     ortWasmFactory(config).then(

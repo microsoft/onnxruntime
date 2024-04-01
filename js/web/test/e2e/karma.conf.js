@@ -15,6 +15,9 @@ if (typeof USER_DATA !== 'string') {
   throw new Error('flag --user-data=<CHROME_USER_DATA_FOLDER> is required');
 }
 
+const testArgs = args['test-args'];
+const normalizedTestArgs = !testArgs || Array.isArray(testArgs) ? testArgs : [testArgs];
+
 const files = [
   {pattern: './model.onnx', included: false},
   {pattern: './model_with_orig_ext_data.onnx', included: false},
@@ -29,10 +32,10 @@ if (TEST_MAIN.endsWith('.mjs')) {
 } else {
   files.push({pattern: './common.js'}, {pattern: TEST_MAIN});
 }
-files.push(
-    {pattern: './dist/**/*', included: false, nocache: true, watched: false},
-    {pattern: './node_modules/onnxruntime-web/dist/*.*', included: false, nocache: true},
-);
+files.push({pattern: './dist/**/*', included: false, nocache: true, watched: false});
+if (SELF_HOST) {
+  files.push({pattern: './node_modules/onnxruntime-web/dist/*.*', included: false, nocache: true});
+}
 
 const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de', '--enable-features=SharedArrayBuffer'];
 
@@ -45,10 +48,11 @@ module.exports = function(config) {
       '/model.onnx': '/base/model.onnx',
       '/model_with_orig_ext_data.onnx': '/base/model_with_orig_ext_data.onnx',
       '/model_with_orig_ext_data.bin': '/base/model_with_orig_ext_data.bin',
+      '/test-wasm-path-override/ort-wasm.mjs': '/base/node_modules/onnxruntime-web/dist/ort-wasm.mjs',
       '/test-wasm-path-override/ort-wasm.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
       '/test-wasm-path-override/renamed.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
     },
-    client: {captureConsole: true, mocha: {expose: ['body'], timeout: 60000}},
+    client: {captureConsole: true, args: normalizedTestArgs, mocha: {expose: ['body'], timeout: 60000}},
     reporters: ['mocha'],
     captureTimeout: 120000,
     reportSlowerThan: 100,

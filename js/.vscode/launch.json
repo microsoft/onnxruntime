@@ -22,7 +22,8 @@
       "request": "launch",
       "skipFiles": ["<node_internals>/**"],
       "type": "node",
-      "cwd": "${workspaceFolder}/web"
+      "cwd": "${workspaceFolder}/web",
+      "preLaunchTask": "tsc: build - web/script/tsconfig.json"
     },
     {
       "name": "[web] Launch Test Runner CLI in Node.js",

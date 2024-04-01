@@ -5,6 +5,7 @@ import {Backend, env, InferenceSession, InferenceSessionHandler} from 'onnxrunti
 
 import {initializeOrtEp, initializeWebAssemblyAndOrtRuntime} from './wasm/proxy-wrapper';
 import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler-inference';
+import {scriptSrc} from './wasm/wasm-utils-import';
 
 /**
  * This function initializes all flags for WebAssembly.
@@ -58,6 +59,11 @@ export const initializeFlags = (): void => {
 
       env.wasm.numThreads = 1;
     }
+  }
+
+  // overwrite wasm paths override if not set
+  if (env.wasm.wasmPaths === undefined && scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
+    env.wasm.wasmPaths = scriptSrc.substring(0, scriptSrc.lastIndexOf('/') + 1);
   }
 };
 
