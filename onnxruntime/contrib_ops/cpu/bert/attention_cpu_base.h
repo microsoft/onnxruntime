@@ -145,40 +145,58 @@ class AttentionCPUBase : public AttentionBase {
       const int loop_len = batch_size * num_heads_;
       const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
-      ThreadPool::TrySimpleParallelFor(tp, loop_len, [&](std::ptrdiff_t batch_head_id) {
-        const int batch_index = static_cast<int>(batch_head_id) / num_heads_;
+      TensorOpCost unit_cost;
+      unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * head_size * total_sequence_length);
+      unit_cost.bytes_loaded = double(sequence_length * head_size * sizeof(T) + head_size * total_sequence_length * sizeof(T));
+      unit_cost.bytes_stored = double(sequence_length * total_sequence_length * sizeof(T));
 
-        const int output_offset = static_cast<int>(batch_head_id) * sequence_length * total_sequence_length;
-        const int mask_offset = batch_index * sequence_length * total_sequence_length;
-        T* output = attention_probs + output_offset;
+      if (mask_data != nullptr) {
+        unit_cost.bytes_loaded += double(sequence_length * total_sequence_length * sizeof(T));
+        unit_cost.bytes_stored += double(sequence_length * total_sequence_length * sizeof(T));
+      }
 
-        // Broadcast mask data: (Bx)SxT -> (BxNx)SxT
-        if (mask_data != nullptr) {
-          memcpy(output,
-                 mask_data + mask_offset,
-                 static_cast<size_t>(sequence_length) * total_sequence_length * sizeof(T));
-        }
+      if (present || present_key) {
+        size_t bytes_to_copy_key = sizeof(T) * size_t(past || past_key ? present_chunk_length : present_chunk_length - past_chunk_length);
+        unit_cost.bytes_loaded += double(bytes_to_copy_key);
+        unit_cost.bytes_stored += double(bytes_to_copy_key);
+      }
 
-        const T* k = K + kv_input_chunk_length * batch_head_id;
-        if (nullptr != present) {
-          // Concatenate past_K and K : (BxNx)PxH, (BxNx)LxH -> (BxNx)TxH
-          k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, batch_head_id);
-        } else if (nullptr != present_key) {
-          k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, batch_head_id);
-        }
+      ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t i = begin; i != end; ++i) {
+          const int batch_index = static_cast<int>(i) / num_heads_;
 
-        // Compute Q*K' + AttentionMask
-        //                     original                 transposed             each iteration
-        // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
-        // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
-        // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
-        math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
-                                  Q + q_input_chunk_length * batch_head_id, k, mask_data != nullptr ? 1.0f : 0.0f,
-                                  output, nullptr);
+          const int output_offset = static_cast<int>(i) * sequence_length * total_sequence_length;
+          const int mask_offset = batch_index * sequence_length * total_sequence_length;
+          T* output = attention_probs + output_offset;
 
-        if (relative_position_bias_data != nullptr) {
-          for (int j = 0; j < sequence_length * total_sequence_length; j++) {
-            output[j] += relative_position_bias_data[output_offset + j];
+          // Broadcast mask data: (Bx)SxT -> (BxNx)SxT
+          if (mask_data != nullptr) {
+            memcpy(output,
+                   mask_data + mask_offset,
+                   static_cast<size_t>(sequence_length) * total_sequence_length * sizeof(T));
+          }
+
+          const T* k = K + kv_input_chunk_length * i;
+          if (nullptr != present) {
+            // Concatenate past_K and K : (BxNx)PxH, (BxNx)LxH -> (BxNx)TxH
+            k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
+          } else if (nullptr != present_key) {
+            k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i);
+          }
+
+          // Compute Q*K' + AttentionMask
+          //                     original                 transposed             each iteration
+          // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
+          // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
+          // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
+          math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
+                                    Q + q_input_chunk_length * i, k, mask_data != nullptr ? 1.0f : 0.0f,
+                                    output, nullptr);
+
+          if (relative_position_bias_data != nullptr) {
+            for (int j = 0; j < sequence_length * total_sequence_length; j++) {
+              output[j] += relative_position_bias_data[output_offset + j];
+            }
           }
         }
       });
@@ -222,32 +240,49 @@ class AttentionCPUBase : public AttentionBase {
       present += SafeInt<ptrdiff_t>(batch_size) * num_heads_ * total_sequence_length * v_head_size;
     }
 
-    ThreadPool::TrySimpleParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, [&](std::ptrdiff_t batch_head_id) {
-      const T* v = V + kv_input_chunk_length * batch_head_id;
+    // The cost of Gemm
+    TensorOpCost unit_cost;
+    unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * v_head_size * total_sequence_length);
+    unit_cost.bytes_loaded = double(sequence_length * total_sequence_length * sizeof(T) + v_head_size * total_sequence_length * sizeof(T));
+    unit_cost.bytes_stored = double(sequence_length * v_head_size * sizeof(T));
+
+    if (present || present_value) {
+      size_t bytes_to_copy_value = sizeof(T) * size_t(past || past_value ? present_chunk_length : present_chunk_length - past_chunk_length);
+      unit_cost.bytes_loaded += double(bytes_to_copy_value);
+      unit_cost.bytes_stored += double(bytes_to_copy_value);
+    }
+
+    const size_t bytes_to_copy_trans = SafeInt<size_t>(v_head_size) * sizeof(T);
+    unit_cost.bytes_loaded += double(SafeInt<size_t>(sequence_length) * bytes_to_copy_trans);
+    unit_cost.bytes_stored += double(SafeInt<size_t>(sequence_length) * bytes_to_copy_trans);
+
+    ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      for (std::ptrdiff_t i = begin; i != end; ++i) {
+        const T* v = V + kv_input_chunk_length * i;
         if (nullptr != present) {
           // Concatenate past_V and V: (BxNx)PxH_v, (BxNx)LxH_v -> (BxNx)TxH_v
-        v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, batch_head_id);
+          v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, i);
         } else if (nullptr != present_value) {
-        v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, batch_head_id);
+          v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, i);
         }
 
-      T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * batch_head_id;
-      ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * batch_head_id;
+        T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
+        ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
         math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
                         attention_probs + attention_probs_offset,
                         v, current_tmp_data, nullptr);
 
         // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
-      const int batch_index = static_cast<int>(batch_head_id / num_heads_);
-      const int head_index = static_cast<int>(batch_head_id % num_heads_);
+        const int batch_index = static_cast<int>(i / num_heads_);
+        const int head_index = static_cast<int>(i % num_heads_);
         T* src = current_tmp_data;
         ptrdiff_t dest_offset = (SafeInt<ptrdiff_t>(batch_index) * sequence_length * num_heads_ + head_index) * v_head_size;
         T* dest = output + dest_offset;
-        const auto bytes_to_copy = SafeInt<size_t>(v_head_size) * sizeof(T);
         for (int j = 0; j < sequence_length; j++) {
-          memcpy(dest, src, bytes_to_copy);
+          memcpy(dest, src, bytes_to_copy_trans);
           src += v_head_size;
           dest += v_hidden_size;
+        }
       }
     });
   }
