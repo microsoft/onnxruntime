@@ -74,7 +74,7 @@ static CoreCounter GetCoreInfo() {
 
     read += currentProcessorInfo->Size;
   }
-  //Cores with L2 and LLC cache levels = # Physical Cores - # logical cores without LLC
+  // Cores with L2 and LLC cache levels = # Physical Cores - # logical cores without LLC
   cores.LLCCores = cores.PhysicalCores - CountSetBits(dwLevel2GroupMask & ~dwLevel3GroupMask);
 
   return cores;
