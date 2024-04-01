@@ -36,6 +36,24 @@ function getNextUserDataDir() {
 // commandline arguments
 const BROWSER = minimist(process.argv.slice(2)).browser || 'Chrome_default';
 
+async function startHttpServer(root) {
+  const server =
+      spawn('npx http-server . -p 8081 --cors', {shell: true, stdio: ['pipe', 'inherit', 'inherit'], cwd: root});
+  await delay(2500);
+
+  return {
+    close: async () => {
+      // Write CTRL-C to the server process to close it
+      server.stdin.write('\x03');
+      server.stdin.end();
+      await new Promise((resolve) => {server.on('exit', (code, signal) => {
+                          console.log(`http-server exited with code ${code} and signal ${signal}`);
+                          resolve();
+                        })});
+    }
+  };
+}
+
 async function main() {
   // find packed package
   const {globbySync} = await import('globby');
@@ -73,7 +91,7 @@ async function main() {
   await fs.symlink(
       path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist'),
       path.join(TEST_E2E_RUN_FOLDER, 'dist'), 'junction');
-  const server = spawn('npx http-server . -p 8081 --cors', {shell: true, stdio: 'inherit', cwd: TEST_E2E_RUN_FOLDER});
+  const server = await startHttpServer(TEST_E2E_RUN_FOLDER);
 
   try {
     // test case run in Node.js
@@ -93,7 +111,7 @@ async function main() {
 
   } finally {
     // close the server after all tests
-    server.kill();
+    await server.close();
   }
 }
 

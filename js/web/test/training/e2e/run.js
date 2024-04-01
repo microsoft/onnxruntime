@@ -6,7 +6,6 @@
 const path = require('path');
 const fs = require('fs-extra');
 const {spawn} = require('child_process');
-const startServer = require('./simple-http-server');
 const minimist = require('minimist');
 
 // copy whole folder to out-side of <ORT_ROOT>/js/ because we need to test in a folder that no `package.json` file
@@ -39,6 +38,24 @@ function getNextUserDataDir() {
 
 // commandline arguments
 const BROWSER = minimist(process.argv.slice(2)).browser || 'Chrome_default';
+
+async function startHttpServer(root) {
+  const server =
+      spawn('npx http-server . -p 8081 --cors', {shell: true, stdio: ['pipe', 'inherit', 'inherit'], cwd: root});
+  await delay(2500);
+
+  return {
+    close: async () => {
+      // Write CTRL-C to the server process to close it
+      server.stdin.write('\x03');
+      server.stdin.end();
+      await new Promise((resolve) => {server.on('exit', (code, signal) => {
+                          console.log(`http-server exited with code ${code} and signal ${signal}`);
+                          resolve();
+                        })});
+    }
+  };
+}
 
 async function main() {
   // find packed package
@@ -74,20 +91,22 @@ async function main() {
   prepareTrainingDataByCopying();
 
   console.log('===============================================================');
-  console.log("Running self-hosted tests");
+  console.log('Running self-hosted tests');
   console.log('===============================================================');
   // test cases with self-host (ort hosted in same origin)
   await testAllBrowserCases({hostInKarma: true});
 
   console.log('===============================================================');
-  console.log("Running not self-hosted tests");
+  console.log('Running not self-hosted tests');
   console.log('===============================================================');
-  // test cases without self-host (ort hosted in same origin)
-  startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
-  await testAllBrowserCases({hostInKarma: false});
-
-  // no error occurs, exit with code 0
-  process.exit(0);
+  // test cases without self-host (ort hosted in cross origin)
+  const server = await startHttpServer(path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
+  try {
+    await testAllBrowserCases({hostInKarma: false});
+  } finally {
+    // close the server after all tests
+    await server.close();
+  }
 }
 
 async function testAllBrowserCases({hostInKarma}) {
