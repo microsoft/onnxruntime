@@ -86,7 +86,7 @@
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'windows,Python,X64,CUDA':
-			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 11.X (default): <br/>pip install onnxruntime-gpu <br/>For CUDA 12.X: <br/>pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,Python,ARM64,CUDA':
 			"For Jetpack 4.4+, follow installation instructions from <a class='text-blue-500' href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
@@ -101,7 +101,7 @@
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,Python,X64,CUDA':
-			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 11.X (default): <br/>pip install onnxruntime-gpu <br/>For CUDA 12.X: <br/>pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,C-API,ARM32,DefaultCPU':
 			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
