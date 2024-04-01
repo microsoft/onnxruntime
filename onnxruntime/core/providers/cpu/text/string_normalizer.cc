@@ -83,7 +83,110 @@ class Locale {
   _locale_t loc_;
 };
 
-using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
+// using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
+
+class Utf8Converter {
+ public:
+  Utf8Converter() = default;
+
+  size_t ComputeRequiredSizeToUtf8(const std::wstring& wstr) const {
+    if (wstr.empty()) {
+      return 0;
+    }
+
+    int ret = WideCharToMultiByte(CP_UTF8,
+                                  0,
+                                  wstr.data(),
+                                  narrow<int>(wstr.length()),  // We specify the length so no trailing zero terminator
+                                  NULL,
+                                  0,      // indicates we need the buffer size.
+                                  NULL,   // Must be NULL for UTF-8
+                                  NULL);  // Must be NULL for UTF-8
+
+    // Failed. This is unlikely since the original UTF-8 to wchar_t succeeded.
+    // So we throw.
+    if (ret == 0) {
+      const auto error_code = GetLastError();
+      ORT_THROW("WideCharToMultiByte failed errcode = ",
+                error_code, " - ",
+                std::system_category().message(error_code));
+    }
+
+    return narrow<size_t>(ret);
+  }
+
+  Status ConvertToUtf8(const std::wstring& wstr, std::string& dest) const {
+    const int ret = WideCharToMultiByte(CP_UTF8, 0,
+                                        wstr.data(),
+                                        narrow<int>(wstr.length()),
+                                        dest.data(),
+                                        narrow<int>(dest.length()),
+                                        nullptr,
+                                        nullptr);
+
+    if (ret == 0) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WideCharToMultiByte failed errcode = ",
+                             error_code, " - ",
+                             std::system_category().message(error_code));
+    }
+
+    dest.resize(narrow<size_t>(ret));
+    return Status::OK();
+  }
+
+  Status ComputeRequiredSizeToWideChar(const std::string& str, size_t& wchars) {
+    if (str.empty()) {
+      wchars = 0;
+      return Status::OK();
+    }
+
+    const int ret = MultiByteToWideChar(CP_UTF8,
+                                        MB_ERR_INVALID_CHARS,
+                                        str.data(),
+                                        narrow<int>(str.length()),
+                                        nullptr,
+                                        0);
+
+    if (ret == 0) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MultiByteToWideChar failed errcode = ",
+                             error_code, " - ",
+                             std::system_category().message(error_code));
+    }
+
+    wchars = narrow<size_t>(ret);
+    return Status::OK();
+  }
+
+  Status ConvertToWchar(const std::string& str, std::wstring& wstr) {
+    const int ret = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                        str.data(),
+                                        narrow<int>(str.length()),
+                                        wstr.data(),
+                                        narrow<int>(wstr.length()));
+
+    if (ret == 0) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MultiByteToWideChar failed errcode = ",
+                             error_code, " - ",
+                             std::system_category().message(error_code));
+    }
+
+    wstr.resize(narrow<size_t>(ret));
+    return Status::OK();
+  }
+
+  // Used only in the constructor to initialize stop_words
+  std::wstring from_bytes(const std::string& s) {
+    size_t size_required = 0;
+    ORT_THROW_IF_ERROR(ComputeRequiredSizeToWideChar(s, size_required));
+    std::wstring result;
+    result.resize(size_required);
+    ORT_THROW_IF_ERROR(ConvertToWchar(s, result));
+    return result;
+  }
+};
 
 const std::string default_locale("en-US");
 
@@ -123,14 +226,14 @@ class Locale {
 
 #if defined(__APPLE__) || defined(__ANDROID__)
 
-using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
+using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t> >;
 
 #else
 
 // All others (not Windows, Apple, or Android)
 class Utf8Converter {
  public:
-  Utf8Converter(const std::string&, const std::wstring&) {}
+  Utf8Converter() = default;
 
   std::wstring from_bytes(const std::string& s) const {
     std::wstring result;
@@ -213,57 +316,6 @@ const std::string default_locale("en_US.UTF-8");  // All non-MS and not Apple
 #endif
 
 #endif  // _MSC_VER
-
-template <class ForwardIter>
-Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
-                      const Locale& loc,
-                      Utf8Converter& converter,
-                      size_t N, size_t C,
-                      StringNormalizer::CaseAction caseaction) {
-  std::vector<int64_t> output_dims;
-  if (N == 1) {
-    output_dims.push_back(1);
-  }
-
-  // Empty output case
-  if (C == 0) {
-    output_dims.push_back(1);
-    TensorShape output_shape(output_dims);
-    // This will create one empty string
-    ctx->Output(0, output_shape);
-    return Status::OK();
-  }
-
-  output_dims.push_back(C);
-
-  TensorShape output_shape(output_dims);
-  auto output_tensor = ctx->Output(0, output_shape);
-  auto const output_data = output_tensor->MutableData<std::string>();
-
-  size_t output_idx = 0;
-  while (first != end) {
-    auto& s = *first;
-    if (caseaction == StringNormalizer::LOWER || caseaction == StringNormalizer::UPPER) {
-      std::wstring wstr = converter.from_bytes(s);
-      if (wstr == wconv_error) {
-        // Please do not include the input text in the error message as it could
-        // be deemed as a compliance violation by teams using this operator
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Input contains invalid utf8 chars");
-      }
-      // In place transform
-      loc.ChangeCase(caseaction, wstr);
-      *(output_data + output_idx) = converter.to_bytes(wstr);
-    } else {
-      assert(caseaction == StringNormalizer::NONE);
-      // Simple copy or move if the iterator points to a non-const string
-      *(output_data + output_idx) = std::move(s);
-    }
-    ++output_idx;
-    ++first;
-  }
-  return Status::OK();
-}
 }  // namespace string_normalizer
 
 using namespace string_normalizer;
@@ -290,27 +342,22 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
     ORT_ENFORCE(false, "attribute case_change_action has invalid value");
   }
 
-  if (!is_case_sensitive_) {
-    // Convert stop words to a case which can help us preserve the case of filtered strings
-    compare_caseaction_ = (case_change_action_ == UPPER) ? UPPER : LOWER;
-  }
-
+  compare_caseaction_ = (case_change_action_ == UPPER) ? UPPER : LOWER;
   locale_name_ = info.GetAttrOrDefault("locale", default_locale);
-  Locale locale(locale_name_);
-  Utf8Converter converter(conv_error, wconv_error);
 
-  std::vector<std::string> swords = info.GetAttrsOrDefault<std::string>("stopwords");
-  for (auto& sw : swords) {
-    ORT_ENFORCE(!sw.empty(), "Empty stopwords not allowed");
-    if (is_case_sensitive_) {
-      auto p = stopwords_.insert(std::move(sw));
-      ORT_ENFORCE(p.second, "Duplicate stopwords not allowed");
-    } else {
-      std::wstring wstr = converter.from_bytes(sw);
-      ORT_ENFORCE(wstr != wconv_error, "Stopword contains invalid utf8 chars");
+  std::vector<std::string> stop_words = info.GetAttrsOrDefault<std::string>("stopwords");
+  if (is_case_sensitive_) {
+    stopwords_.reserve(stop_words.size());
+    for (std::string& s : stop_words) {
+      stopwords_.insert(std::move(s));
+    }
+  } else {
+    Locale locale(locale_name_);
+    Utf8Converter converter;
+    for (std::string& s : stop_words) {
+      std::wstring wstr = converter.from_bytes(s);
       locale.ChangeCase(compare_caseaction_, wstr);
-      auto p = wstopwords_.insert(std::move(wstr));
-      ORT_ENFORCE(p.second, "Duplicate stopwords not allowed");
+      wstopwords_.insert(std::move(wstr));
     }
   }
 }
@@ -319,95 +366,154 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   using namespace string_normalizer;
 
   auto X = ctx->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   auto input_dims = X->Shape().GetDims();
 
-  size_t N = 0;
-  size_t C = 0;
+  TensorShapeVector output_shape;
+  int64_t C = 0;
   if (input_dims.size() == 1) {
     if (input_dims[0] < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Single dimension value must be greater than 0");
     }
-    C = onnxruntime::narrow<size_t>(input_dims[0]);
+    C = input_dims[0];
   } else if (input_dims.size() == 2) {
     if (input_dims[0] != 1 || input_dims[1] < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Input dimensions are either[C > 0] or [1][C > 0] allowed");
     }
-    N = 1;
-    C = onnxruntime::narrow<size_t>(input_dims[1]);
+    output_shape.push_back(1);
+    C = input_dims[1];
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input dimensions are either[C > 0] or [1][C > 0] allowed");
   }
 
-  Status status;
+  // Special case, no filtering and no case change
+  if (case_change_action_ == NONE &&
+      ((is_case_sensitive_ && stopwords_.empty()) ||
+       (!is_case_sensitive_ && wstopwords_.empty()))) {
+    output_shape.push_back(C);
+    auto output_tensor = ctx->Output(0, output_shape);
+    auto const output_data = output_tensor->MutableData<std::string>();
+    std::copy(X->Data<std::string>(), X->Data<std::string>() + C, output_data);
+    return Status::OK();
+  }
+
+  // We need to know the result dimension first, and for that we need to filter
+  // the words first. If the compare with stop words is case insensitive, we
+  // can go ahead and compare the input strings straight away. Otherwise, we need
+  // Upper case or lowercase them to compare with wide stop words.
+
   Locale locale(locale_name_);
-  Utf8Converter converter(conv_error, wconv_error);
-  auto* const input_data = X->Data<std::string>();
-  using StrRef = std::reference_wrapper<const std::string>;
-  if (is_case_sensitive_) {
-    if (!stopwords_.empty()) {
-      InlinedVector<StrRef> filtered_strings;
-      filtered_strings.reserve(C);
-      auto first = input_data;
-      auto const last = input_data + C;
-      while (first != last) {
-        const std::string& s = *first;
-        if (0 == stopwords_.count(s)) {
-          filtered_strings.push_back(std::cref(s));
-        }
-        ++first;
+  Utf8Converter converter;
+
+  // We need to change case either because of filtering or because of the
+  // case change requested.
+  // Compute the largest widestring buffer needed.
+  size_t max_wide_buffer_len = 0;
+  auto input_span = X->DataAsSpan<std::string>();
+  for (const auto& s : input_span) {
+    size_t wchars;
+    // Checks for invalid UTF-8 characters on Windows
+    ORT_RETURN_IF_ERROR(converter.ComputeRequiredSizeToWideChar(s, wchars));
+    max_wide_buffer_len = std::max(max_wide_buffer_len, wchars);
+  }
+
+  // Reuse reserved space
+  std::wstring wchar_buffer;
+  wchar_buffer.reserve(max_wide_buffer_len);
+
+  // Output everything and change case as required
+  auto output_no_filtering = [&](const TensorShape& output_shape) {
+    auto output_tensor = ctx->Output(0, output_shape);
+    auto const output_data = output_tensor->MutableData<std::string>();
+    for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
+      const std::string& s = input_span[i];
+      wchar_buffer.resize(max_wide_buffer_len);
+      ORT_RETURN_IF_ERROR(converter.ConvertToWchar(s, wchar_buffer));
+      locale.ChangeCase(case_change_action_, wchar_buffer);
+
+      auto& dest = output_data[i];
+      size_t utf8_buffer_len = converter.ComputeRequiredSizeToUtf8(wchar_buffer);
+      dest.resize(utf8_buffer_len);
+      ORT_RETURN_IF_ERROR(converter.ConvertToUtf8(wchar_buffer, dest));
+    }
+    return Status::OK();
+  };
+
+  auto output_filtered = [&](const TensorShape& output_shape, gsl::span<const size_t> filtered_indices) {
+    // According to the spec, if all strings are filtered out
+    // the output must have a shape of {1} with a single empty string.
+    auto output_tensor = ctx->Output(0, output_shape);
+    auto output_data = output_tensor->MutableData<std::string>();
+    for (size_t i : filtered_indices) {
+      const std::string& s = input_span[i];
+      if (case_change_action_ != NONE) {
+        wchar_buffer.resize(max_wide_buffer_len);
+        ORT_RETURN_IF_ERROR(converter.ConvertToWchar(s, wchar_buffer));
+        locale.ChangeCase(case_change_action_, wchar_buffer);
+
+        auto& dest = *output_data++;
+        size_t utf8_buffer_len = converter.ComputeRequiredSizeToUtf8(wchar_buffer);
+        dest.resize(utf8_buffer_len);
+        ORT_RETURN_IF_ERROR(converter.ConvertToUtf8(wchar_buffer, dest));
+      } else {
+        *output_data++ = s;
       }
-      status = CopyCaseAction(filtered_strings.cbegin(), filtered_strings.cend(), ctx, locale, converter,
-                              N, filtered_strings.size(), case_change_action_);
+    }
+    return Status::OK();
+  };
+
+  Status status;
+
+  if (is_case_sensitive_) {
+    if (stopwords_.empty()) {
+      assert(case_change_action_ != NONE);
+      output_shape.push_back(C);
+      status = output_no_filtering(output_shape);
     } else {
-      // Nothing to filter. Copy input to output and change case if needed
-      status = CopyCaseAction(input_data, input_data + C, ctx, locale, converter, N, C, case_change_action_);
+      // we need to filter
+      InlinedVector<size_t> filtered_strings_indecies;
+      filtered_strings_indecies.reserve(C);
+
+      for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
+        const std::string& s = input_span[i];
+        if (stopwords_.count(s) == 0) {
+          filtered_strings_indecies.push_back(i);
+        }
+      }
+
+      const int64_t filtered_count = std::max(1LL, narrow<int64_t>(filtered_strings_indecies.size()));
+      output_shape.push_back(filtered_count);
+      status = output_filtered(output_shape, filtered_strings_indecies);
     }
   } else {
-    if (!wstopwords_.empty()) {
-      // Filter input. When no case action is required
-      // we simply store original string references.
-      // Otherwise, we store converted strings.
-      InlinedVector<StrRef> filtered_orignal_strings;
-      InlinedVector<std::string> filtered_cased_strings;
-      filtered_orignal_strings.reserve(C);
-      filtered_cased_strings.reserve(C);
-      auto first = input_data;
-      auto const last = input_data + C;
-      while (first != last) {
-        const std::string& s = *first;
-        std::wstring wstr = converter.from_bytes(s);
-        if (wstr == wconv_error) {
-          // Please do not include the input text in the error message as it could
-          // be deemed as a compliance violation by teams using this operator
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Input contains invalid utf8 chars");
-        }
-        locale.ChangeCase(compare_caseaction_, wstr);
-        if (0 == wstopwords_.count(wstr)) {
-          if (case_change_action_ == NONE) {
-            filtered_orignal_strings.push_back(std::cref(s));
-          } else {
-            filtered_cased_strings.push_back(converter.to_bytes(wstr));
-          }
-        }
-        ++first;
-      }
-      if (case_change_action_ == NONE) {
-        status = CopyCaseAction(filtered_orignal_strings.cbegin(), filtered_orignal_strings.cend(), ctx, locale, converter,
-                                N, filtered_orignal_strings.size(), NONE);
-      } else {
-        status = CopyCaseAction(filtered_cased_strings.begin(), filtered_cased_strings.end(), ctx, locale, converter,
-                                N, filtered_cased_strings.size(), NONE);
-      }
+    if (wstopwords_.empty()) {
+      assert(case_change_action_ != NONE);
+      output_shape.push_back(C);
+      status = output_no_filtering(output_shape);
     } else {
-      // Nothing to filter. Copy input to output and change case if needed
-      status = CopyCaseAction(input_data, input_data + C, ctx, locale, converter, N, C, case_change_action_);
+      // Case insensitive filtering is performed by converting the input strings
+      // to the same case. For that we convert to wchar_t UNICODE.
+      // Otherwise, we need to pull ICU library on all platforms
+      InlinedVector<size_t> filtered_strings_indecies;
+      filtered_strings_indecies.reserve(C);
+      for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
+        const std::string& s = input_span[i];
+        wchar_buffer.resize(max_wide_buffer_len);
+        ORT_RETURN_IF_ERROR(converter.ConvertToWchar(s, wchar_buffer));
+        locale.ChangeCase(compare_caseaction_, wchar_buffer);
+        if (wstopwords_.count(wchar_buffer) == 0) {
+          filtered_strings_indecies.push_back(i);
+        }
+      }
+
+      const int64_t filtered_count = std::max(1LL, narrow<int64_t>(filtered_strings_indecies.size()));
+      output_shape.push_back(filtered_count);
+      status = output_filtered(output_shape, filtered_strings_indecies);
     }
   }
+
   return status;
 }
 }  // namespace onnxruntime
