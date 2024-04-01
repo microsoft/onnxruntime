@@ -209,11 +209,11 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       Bias = BufferBias.GetBuffer(N);
     }
 
-#if 0
-    auto print_matrix = [](size_t ncols, size_t nrows, const float* data) {
+#if 1
+    auto print_matrix = [](size_t nrows, size_t ncols, const float* data) {
       for (size_t row = 0; row < nrows; ++row) {
         for (size_t col = 0; col < ncols; ++col) {
-          std::cout << data[row * nrows + col] << "\t";
+          std::cout << data[row * ncols + col] << "\t";
         }
         std::cout << "\n";
       }

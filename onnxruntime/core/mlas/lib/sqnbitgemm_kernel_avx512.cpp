@@ -235,7 +235,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
     }
 
     // TODO: block size shall be multiple of 16 but MLAS_QUANT4_BLK_UNIT is 32
-    // follwing code compute 32 float as once so lets not to use SubBlkLen(16)
+    // follwing code compute 32 floats as once so lets not to use SubBlkLen(16)
     // code copied from MlasQ4GemmKernelAvx512f in q4gemm_avx512.cc which only works
     // with the NCols==4 case.
     for (size_t kk = 0; kk < ck; kk += MLAS_QUANT4_BLK_UNIT) {
@@ -249,6 +249,8 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
       __m512 av_hi = mask == 0 ? _mm512_setzero_ps()
         : _mm512_maskz_loadu_ps(__mmask16(mask), ARowPtr + k + kk + 16);
 
+      // TODO: following code to unpack b does not work with MatMulNBits.
+      //
       // Load B col vectors
       __m128i bvi4[NCols];
       UnrolledLoop<NCols>([&](size_t i) {
