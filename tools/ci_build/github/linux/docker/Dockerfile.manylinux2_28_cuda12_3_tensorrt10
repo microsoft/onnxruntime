@@ -1,4 +1,4 @@
-# The default ARGs are for cuda 12.4 with cudnn9, TensorRT is optional
+# The default ARGs are for cuda 12.3 with cudnn9, TensorRT is optional
 # Please overwrite BASEIMAGE, TRT_VERSION and other arguments with
 # --docker-build-args ' --build-arg BASEIMAGE=other_base_image --build-arg TRT_VERSION=other_trt_version etc...'
 # for other cuda version and TRT version
