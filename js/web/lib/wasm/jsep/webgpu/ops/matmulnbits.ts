@@ -63,10 +63,11 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const blobSize = attributes.blockSize / 8 * attributes.bits;
       const blobSizeInWords = blobSize / 4;
       const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
+      const outputNumber = getMaxComponents(dimAOuter);
       const components = getMaxComponents(dimBOuter);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
-      const outputSize = ShapeUtil.size(outputShape) / components / aComponents;
+      const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
 
       const workgroupSizeX = Math.min(maxComputeWorkgroupSizes[0], nBlocksPerCol);
       const workgroupSize = [workgroupSizeX, 1, 1];
@@ -141,7 +142,8 @@ export const createBlockwiseMatMulNBitsProgramInfo =
         const zeroPointsBytesPerCol = Math.floor((nBlocksPerCol + 1) / 2);
         return `
         const components = ${components};
-        var<workgroup> workgroup_shared: array<array<${output.type.value}, ${dimAOuter}>, ${workgroupSize[0]}>;
+        var<workgroup> workgroup_shared: array<array<array<${output.type.value}, ${outputNumber}>, ${
+            Math.ceil(dimAOuter / outputNumber)}>, ${workgroupSize[0]}>;
         ${dequantizeImpl};
         ${ortUnpack8x4snormImpl};
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
@@ -154,8 +156,10 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           var col = workgroup_id.y;
           var batch = workgroup_id.z;
           if (local_id.x == 0u) {
-            for (var n: u32 = 0; n < ${dimAOuter}u; n++) {
-              workgroup_shared[block][n] = ${output.type.value}(0);
+            for (var m: u32 = 0; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
+              for (var k: u32 = 0; k < ${outputNumber}u; k++) {
+                workgroup_shared[block][m][k] = ${output.type.value}(0);
+              }
             }
           }
 
@@ -195,13 +199,15 @@ export const createBlockwiseMatMulNBitsProgramInfo =
                 var offset: u32 = word_offset;
                 for (var j: u32 = 0; j < 8; j += ${aComponents}) {
                   ${a.indicesSet('a_indices', inputRank - 1, 'offset')};
-                  for (var m: u32 = 0; m < ${dimAOuter}u; m++) {
-                    ${a.indicesSet('a_indices', inputRank - 2, 'm')};
-                    let a_data = ${a.getByIndices('a_indices')};
-                    workgroup_shared[block][m]${components > 1 ? '[c]' : ''} += ${
+                  for (var m: u32 = 0; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
+                    for (var k: u32 = 0; k < ${outputNumber}u; k++) {
+                      ${a.indicesSet('a_indices', inputRank - 2, `m * ${outputNumber} + k`)};
+                      let a_data = ${a.getByIndices('a_indices')};
+                    workgroup_shared[block][m][k]${components > 1 ? '[c]' : ''} += ${
             aComponents === 1 ? 'a_data * b_dequantized_values[j]' :
                                 `dot(a_data, b_dequantized_values[j / ${aComponents}])`};
-                                        }
+                    }
+                  }
                   offset++;
                 }
                 word_offset += ${8 / aComponents};
@@ -213,13 +219,15 @@ export const createBlockwiseMatMulNBitsProgramInfo =
 
           ${output.indicesSet('output_indices', '0', 'batch')};
           ${output.indicesSet('output_indices', outputRank - 1, 'col')};
-          for (var m: u32 = 0u; m < ${dimAOuter}u; m++) {
-            var output_value: ${output.type.value} = ${output.type.value}(0);
-            for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
-              output_value += workgroup_shared[b][m];
+          for (var m: u32 = 0u; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
+            for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
+              var output_value: ${output.type.value} = ${output.type.value}(0);
+              for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
+                output_value += workgroup_shared[b][m][k];
+              }
+              ${output.indicesSet('output_indices', outputRank - 2, `m * ${outputNumber} + k`)};
+              ${output.setByIndices('output_indices', 'output_value')};
             }
-            ${output.indicesSet('output_indices', outputRank - 2, 'm')};
-            ${output.setByIndices('output_indices', 'output_value')}
           }
         }`;
       };
@@ -238,7 +246,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
 
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  const maxComputeWorkgroupSizes = context.maxComputeWorkgroupSizes();
+  const maxComputeWorkgroupSizes = context.getMaxComputeWorkgroupSizes();
   context.compute(createBlockwiseMatMulNBitsProgramInfo(context.inputs, attributes, maxComputeWorkgroupSizes));
 };
 
