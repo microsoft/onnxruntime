@@ -152,8 +152,8 @@ class AttentionCPUBase : public AttentionBase {
       unit_cost.bytes_stored = static_cast<double>(probs_matrix_bytes);
 
       if (mask_data != nullptr) {
-        unit_cost.bytes_loaded += double(probs_matrix_bytes);
-        unit_cost.bytes_stored += double(probs_matrix_bytes);
+        unit_cost.bytes_loaded += static_cast<double>(probs_matrix_bytes);
+        unit_cost.bytes_stored += static_cast<double>(probs_matrix_bytes);
       }
 
       if (present || present_key) {
@@ -163,8 +163,8 @@ class AttentionCPUBase : public AttentionBase {
       }
 
       if (relative_position_bias_data != nullptr) {
-        unit_cost.compute_cycles += double(sequence_length * total_sequence_length);
-        unit_cost.bytes_loaded += probs_matrix_bytes;
+        unit_cost.compute_cycles += static_cast<double>(sequence_length * total_sequence_length);
+        unit_cost.bytes_loaded += probs_matrix_bytes * 2;
         unit_cost.bytes_stored += probs_matrix_bytes;
       }
 
@@ -260,8 +260,9 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     const size_t bytes_to_copy_trans = SafeInt<size_t>(v_head_size) * sizeof(T);
-    unit_cost.bytes_loaded += double(SafeInt<size_t>(sequence_length) * bytes_to_copy_trans);
-    unit_cost.bytes_stored += double(SafeInt<size_t>(sequence_length) * bytes_to_copy_trans);
+    double bytes_to_copy_trans_all = static_cast<double>(sequence_length * bytes_to_copy_trans);
+    unit_cost.bytes_loaded += bytes_to_copy_trans_all;
+    unit_cost.bytes_stored += bytes_to_copy_trans_all;
 
     ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
