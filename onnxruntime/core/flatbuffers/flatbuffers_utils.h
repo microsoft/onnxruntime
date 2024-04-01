@@ -5,7 +5,7 @@
 
 #include <unordered_map>
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"

@@ -334,7 +334,7 @@ class WhisperHelper:
         try:
             from datasets import load_dataset
         except Exception as e:
-            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)
+            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)  # noqa: G201
             install_cmd = "pip install datasets"
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)

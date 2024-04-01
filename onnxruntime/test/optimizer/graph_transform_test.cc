@@ -65,6 +65,7 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/shape_input_merge.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
@@ -4879,6 +4880,53 @@ TEST_F(GraphTransformationTests, FastGeluFusionWithCastsTest3) {
   ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
+TEST_F(GraphTransformationTests, CseWithConstantOfShape) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    std::vector<std::variant<int64_t, std::string>> input_shape;
+    input_shape.reserve(4);
+    input_shape.emplace_back("dim0");
+    input_shape.emplace_back(512);
+    input_shape.emplace_back(16);
+    input_shape.emplace_back("dim3");
+    auto* input_arg = builder.MakeSymbolicInput<float>(input_shape);
+    auto* shape_out_1 = builder.MakeIntermediate();
+    auto* shape_out_2 = builder.MakeIntermediate();
+    auto* constant_of_shape_out_1 = builder.MakeIntermediate();
+    auto* constant_of_shape_out_2 = builder.MakeIntermediate();
+    auto* mul_out_1 = builder.MakeIntermediate();
+    auto* mul_out_2 = builder.MakeOutput();
+    builder.AddNode("Shape", {input_arg}, {shape_out_1});
+    builder.AddNode("Shape", {input_arg}, {shape_out_2});
+    TensorProto value_tensor;
+    value_tensor.add_dims(1);
+    float value = 2.333f;
+    value_tensor.set_raw_data(reinterpret_cast<const char*>(&value), sizeof(float));
+    value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    builder.AddNode("ConstantOfShape", {shape_out_1}, {constant_of_shape_out_1}).AddAttribute("value", value_tensor);
+    builder.AddNode("ConstantOfShape", {shape_out_2}, {constant_of_shape_out_2}).AddAttribute("value", value_tensor);
+    builder.AddNode("Mul", {input_arg, constant_of_shape_out_1}, {mul_out_1});
+    builder.AddNode("Mul", {mul_out_1, constant_of_shape_out_2}, {mul_out_2});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Shape"] == 2);
+    TEST_RETURN_IF_NOT(op_count_map["ConstantOfShape"] == 2);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Shape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_map["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<CommonSubexpressionElimination>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, QuickGelu) {
   // Sigmoid(x*alpha)*x, float
   {
@@ -7541,6 +7589,80 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
+}
+
+TEST_F(GraphTransformationTests, ShapeInputMerge) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    std::vector<std::variant<int64_t, std::string>> input_shape;
+    input_shape.reserve(5);
+    input_shape.emplace_back("dim0");
+    input_shape.emplace_back(512);
+    input_shape.emplace_back(1);
+    input_shape.emplace_back(1536);
+    input_shape.emplace_back("dim4");
+    auto* input_arg = builder.MakeSymbolicInput<float>(input_shape);
+    auto* neg_out = builder.MakeIntermediate();
+    auto* axes_initializer = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(2)});
+    auto* squeeze_out = builder.MakeIntermediate();
+    auto* cast_out = builder.MakeIntermediate();
+    auto* unsqueeze_out = builder.MakeOutput();
+    auto* shape_1_out = builder.MakeOutput();
+    auto* shape_2_out = builder.MakeOutput();
+    auto* shape_3_out = builder.MakeOutput();
+    auto* shape_4_out = builder.MakeOutput();
+    auto* shape_5_out = builder.MakeOutput();
+    builder.AddNode("Neg", {input_arg}, {neg_out});
+    builder.AddNode("Squeeze", {neg_out, axes_initializer}, {squeeze_out});
+    builder.AddNode("Cast", {squeeze_out}, {cast_out}).AddAttribute("to", static_cast<int64_t>(10));
+    builder.AddNode("Unsqueeze", {cast_out, axes_initializer}, {unsqueeze_out});
+    builder.AddNode("Shape", {input_arg}, {shape_1_out});
+    builder.AddNode("Shape", {neg_out}, {shape_2_out});
+    builder.AddNode("Shape", {squeeze_out}, {shape_3_out});
+    builder.AddNode("Shape", {cast_out}, {shape_4_out});
+    builder.AddNode("Shape", {unsqueeze_out}, {shape_5_out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    InlinedHashMap<std::string, int> ref_count;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Shape") {
+        std::string name = node.InputDefs()[0]->Name();
+        if (ref_count.find(name) == ref_count.end()) {
+          ref_count[name] = 1;
+        } else {
+          ref_count[name]++;
+        }
+      }
+    }
+    TEST_RETURN_IF_NOT(ref_count.size() == 5);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    InlinedHashMap<std::string, int> ref_count;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Shape") {
+        std::string name = node.InputDefs()[0]->Name();
+        if (ref_count.find(name) == ref_count.end()) {
+          ref_count[name] = 1;
+        } else {
+          ref_count[name]++;
+        }
+      }
+    }
+    TEST_RETURN_IF_NOT(ref_count.size() == 2);
+    int sum = 0, mul = 1;
+    for (auto& entry : ref_count) {
+      sum += entry.second;
+      mul *= entry.second;
+    }
+    TEST_RETURN_IF_NOT(sum == 5 && mul == 6);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ShapeInputMerge>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
 }
 
 }  // namespace test

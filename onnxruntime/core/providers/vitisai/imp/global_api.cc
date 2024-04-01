@@ -188,7 +188,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     auto file_path = ToPathString(filename);
     auto status = Model::Load(file_path, *model_proto);
     vai_assert(status.IsOK(), "load model proto error");
-    auto model = Model::Create(std::move(*model_proto), file_path, logger);
+    auto model = Model::Create(std::move(*model_proto), file_path, nullptr, logger);
     return model.release();
   };
   the_global_api.model_delete = [](Model* model) { delete model; };
@@ -198,7 +198,8 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     auto& model = const_cast<onnxruntime::Model&>(const_model);
     auto model_proto = model.ToProto();
     auto file_path = model.MainGraph().ModelPath().ToPathString();
-    auto ret = Model::Create(std::move(*model_proto), file_path, logger);
+    auto local_registries = IOnnxRuntimeOpSchemaRegistryList{model.MainGraph().GetSchemaRegistry()};
+    auto ret = Model::Create(std::move(*model_proto), file_path, &local_registries, logger);
     auto status = ret->MainGraph().Resolve();
     vai_assert(status.IsOK(), status.ErrorMessage());
     return ret.release();

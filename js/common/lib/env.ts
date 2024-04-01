@@ -144,12 +144,51 @@ export declare namespace Env {
       ondata?: (data: WebGpuProfilingData) => void;
     };
     /**
+     * Set or get the power preference.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as options for `navigator.gpu.requestAdapter()`.
+     *
+     * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
+     *
+     * @defaultValue `undefined`
+     */
+    powerPreference?: 'low-power'|'high-performance';
+    /**
+     * Set or get the force fallback adapter flag.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as options for `navigator.gpu.requestAdapter()`.
+     *
+     * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
+     *
+     * @defaultValue `undefined`
+     */
+    forceFallbackAdapter?: boolean;
+    /**
+     * Set or get the adapter for WebGPU.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as the GPU adapter for the underlying WebGPU backend to create GPU device.
+     *
+     * If this property is not set, it will be available to get after the first WebGPU inference session is created. The
+     * value will be the GPU adapter that created by the underlying WebGPU backend.
+     *
+     * When use with TypeScript, the type of this property is `GPUAdapter` defined in "@webgpu/types".
+     * Use `const adapter = env.webgpu.adapter as GPUAdapter;` in TypeScript to access this property with correct type.
+     *
+     * see comments on {@link Tensor.GpuBufferType}
+     */
+    adapter: unknown;
+    /**
      * Get the device for WebGPU.
+     *
+     * This property is only available after the first WebGPU inference session is created.
      *
      * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
      * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
      *
-     * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
+     * see comments on {@link Tensor.GpuBufferType} for more details about why not use types defined in "@webgpu/types".
      */
     readonly device: unknown;
     /**

@@ -70,8 +70,8 @@ list(FILTER coreml_proto_generated_srcs INCLUDE REGEX "\.pb\.(h|cc)$")
 source_group(TREE ${CMAKE_CURRENT_BINARY_DIR} PREFIX coreml_proto_generated FILES ${coreml_proto_generated_srcs})
 
 # These are shared utils,
-# TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
-file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
+# TODO, move this to a separate lib when used by EPs other than NNAPI and CoreML
+file(GLOB onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
   "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
 )

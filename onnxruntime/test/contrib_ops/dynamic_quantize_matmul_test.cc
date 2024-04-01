@@ -89,7 +89,7 @@ void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
                                bool has_bias = false,
                                bool empty_input = false) {
   // create rand inputs
-  RandomValueGenerator random{};
+  RandomValueGenerator random{1668426375};
 
   int64_t M = empty_input ? 1 : 4;
   int64_t N = 128;

@@ -10,7 +10,7 @@ import torch.onnx.symbolic_helper as sym_help
 from packaging import version
 from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
-from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
+from torch.onnx.symbolic_helper import parse_args
 
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
@@ -176,9 +176,9 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     try:
         # Tolerant to the case when sizes of indices are not available or not usable (for example
         # when DeepSpeed stage3 enabled, all weights size is (0), this will fail.)
-        indices_shape = _get_tensor_sizes(indices)
+        indices_shape = sym_help._get_tensor_sizes(indices)
         if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-            output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
+            output_type = weight.type().with_sizes([*indices_shape, sym_help._get_tensor_dim_size(weight, 1)])
             output.setType(output_type)
     except IndexError:
         output.setType(weight.type())
@@ -845,3 +845,30 @@ def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
     )
 
     return res
+
+
+# Adapted from torch.onnx.symbolic_opset13.softmax -
+# https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset13.py#L27
+# We don't need overloads symbolic_opset9 because training support opsets >= 13.
+#
+# Why we need to define softmax export logic here?
+# For the usage `nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32)` in the model,
+# https://github.com/huggingface/transformers/blob/76a33a10923ccc1074917f6b6a1e719e626b7dc9/src/transformers/models/mistral/modeling_mistral.py#L302
+# If dtype is specified, the input tensor is casted to dtype before the operation is performed.
+# This is useful for preventing data type overflows. While existing ONNX exporter do the cast after the operation.
+# This override can be a workaround before PyTorch fix the issues in coming releases.
+# (TODO: pengwa - add PyTorch versions when the issue is fixed).
+@register_symbolic("softmax")
+@parse_args("v", "i", "none")
+def softmax(g, input, dim, dtype=None):
+    from torch.onnx import _type_utils
+
+    casted_input = input
+    need_cast_for_compute = dtype and dtype.node().kind() != "prim::Constant"
+    if need_cast_for_compute:
+        parsed_dtype = sym_help._get_const(dtype, "i", "dtype")
+        casted_input = g.op("Cast", input, to_i=_type_utils.JitScalarType(parsed_dtype).onnx_type())
+
+    softmax = g.op("Softmax", casted_input, axis_i=dim)
+
+    return softmax

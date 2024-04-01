@@ -220,6 +220,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
   auto compile_capabilities = utils::CreateSupportedPartitions(graph_viewer, supported_compiled_nodes, stop_ops_,
                                                                generate_metadef_name, ep_name_,
                                                                onnxruntime::utils::kInternalTestingExecutionProvider,
+                                                               /*QDQ NodeUnit map*/ nullptr,
                                                                debug_output_);
 
   if (!static_capabilities.empty()) {

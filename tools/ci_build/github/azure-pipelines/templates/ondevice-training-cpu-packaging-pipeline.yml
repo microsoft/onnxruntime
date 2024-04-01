@@ -149,12 +149,6 @@ stages:
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-arm Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-training-win-arm'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
       displayName: 'Download linux-x64 Pipeline Artifact'
       inputs:
         artifactName: 'onnxruntime-training-linux-x64'
