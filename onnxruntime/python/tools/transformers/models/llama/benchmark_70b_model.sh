@@ -7,6 +7,6 @@ MPI="mpirun --allow-run-as-root
     --tag-output --npernode $NUM_GPUS --bind-to numa
     -x MIOPEN_FIND_MODE=1"
 
-CMD="$MPI python benchmark.py ${@:2}"
+CMD="$MPI python -m models.llama.benchmark ${@:2}"
 
 $CMD

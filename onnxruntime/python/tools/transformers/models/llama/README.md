@@ -1,25 +1,26 @@
 # Contents
- - [LLaMA-2](#llama-2)
-   - [Prerequisites](#prerequisites)
-   - [Exporting LLaMA-2](#exporting-llama-2)
-   - [Examples of Exporting LLaMA-2](#examples-of-exporting-llama-2)
-   - [Parity Checking LLaMA-2](#parity-checking-llama-2)
-   - [Benchmarking LLaMA-2](#benchmark-llama-2)
-     - [Variants](#variants)
-     - [Benchmark All](#benchmark-all)
-     - [Benchmark E2E](#benchmark-e2e)
-   - [E2E Inference with LLaMA-2](#e2e-inference-with-llama-2)
- - [Mistral](#mistral)
-   - [Exporting Mistral](#exporting-mistral)
-   - [Optimizing and Quantizing Mistral](#optimizing-and-quantizing-mistral)
-   - [Benchmarking Mistral](#benchmark-mistral)
 
+- [LLaMA-2](#llama-2)
+  - [Prerequisites](#prerequisites)
+  - [Exporting LLaMA-2](#exporting-llama-2)
+  - [Examples of Exporting LLaMA-2](#examples-of-exporting-llama-2)
+  - [Parity Checking LLaMA-2](#parity-checking-llama-2)
+  - [Benchmarking LLaMA-2](#benchmark-llama-2)
+    - [Variants](#variants)
+    - [Benchmark All](#benchmark-all)
+    - [Benchmark E2E](#benchmark-e2e)
+  - [E2E Inference with LLaMA-2](#e2e-inference-with-llama-2)
+- [Mistral](#mistral)
+  - [Exporting Mistral](#exporting-mistral)
+  - [Optimizing and Quantizing Mistral](#optimizing-and-quantizing-mistral)
+  - [Benchmarking Mistral](#benchmark-mistral)
 
 # LLaMA-2
 
 ## Prerequisites
 
 Please note the package versions needed for using LLaMA-2 in the `requirements.txt` file that fits your scenario.
+
 - `requirements-cpu.txt`
   - For running LLaMA-2 on CPU
 - `requirements-cuda.txt`
@@ -37,6 +38,7 @@ Please note the package versions needed for using LLaMA-2 in the `requirements.t
 There are several ways to export LLaMA-2 models (using LLaMA-2 7B as an example).
 
 ### Option 1: from convert_to_onnx
+
 ```
 # From source:
 $ git clone https://github.com/microsoft/onnxruntime
@@ -82,6 +84,7 @@ model.save_pretrained(name.split("/")[-1] + "-onnx")
 Here are some additional examples for exporting LLaMA-2.
 
 Export Model with Different GPU Device Ids
+
 ```
 # From source using first GPU:
 $ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
@@ -91,6 +94,7 @@ $ CUDA_VISIBLE_DEVICES=1 python3 -m onnxruntime.transformers.models.llama.conver
 ```
 
 Export Saved Model on Disk
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
@@ -100,6 +104,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 ```
 
 Export for FP32 CUDA
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda
@@ -109,6 +114,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 ```
 
 Export for FP32 CPU
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32-cpu --precision fp32 --execution_provider cpu
@@ -118,6 +124,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 ```
 
 Export for FP16 CUDA (with MultiHeadAttention)
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda
@@ -127,6 +134,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 ```
 
 Export for FP16 CUDA (with GroupQueryAttention)
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --use_gqa
@@ -138,6 +146,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 Note: GroupQueryAttention currently works with the FP16 CUDA and INT4 CUDA models, and it can provide faster inference than MultiHeadAttention, especially for large sequence lengths (e.g. 1024 or larger). For the best performance, you should pre-allocate the KV cache buffers to have size `(batch_size, num_heads, max_sequence_length, head_size)` so that the past KV and present KV caches share the same memory. You also need to bind them with ONNX Runtime's [IO binding](https://onnxruntime.ai/docs/api/python/api_summary.html#iobinding).
 
 Here is an example of how you can bind directly to `torch.tensor` objects:
+
 ```
 # Assumes all inputs and outputs to the model are pre-allocated with the correct shapes in GPU memory
 
@@ -184,6 +193,7 @@ io_binding.synchronize_outputs()
 ```
 
 Export for INT8 CPU (SmoothQuant)
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu --no_merged
@@ -195,6 +205,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 Note: [Intel's Neural Compressor](https://github.com/intel/neural-compressor) takes time to run the SmoothQuant quantization algorithm on LLMs. On an [Azure Standard_NC24s_v3 VM](https://learn.microsoft.com/en-us/azure/virtual-machines/ncv3-series), it takes about ~30-45 min for each of the exported ONNX models.
 
 Export for INT8 CPU (DynamicQuant)
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method quantize_dynamic --execution_provider cpu
@@ -204,6 +215,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 ```
 
 Export for INT4 CUDA
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-gpu --precision int4 --quantization_method blockwise --execution_provider cuda --use_gqa
@@ -215,6 +227,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 Note: See the FP16 CUDA notes about GroupQueryAttention. The `--use_gqa` flag is optional.
 
 Export for INT4 CPU
+
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-cpu --precision int4 --quantization_method blockwise --execution_provider cpu
@@ -224,6 +237,7 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 ```
 
 Export LLaMA-2 70B sharded model into 4 partitions
+
 ```
 # From source:
 # 1. Install necessary packages from requirements-70b-model.txt
@@ -241,6 +255,7 @@ $ CUDA_VISIBLE_DEVICES=0,1,2,3 bash convert_70b_model.sh 4 -m meta-llama/Llama-2
 Here are some examples of how you can use the parity checker to verify your LLaMA-2 ONNX model.
 
 1. Merged ONNX model, FP32 CPU
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
     --model_name meta-llama/Llama-2-7b-hf \
@@ -252,6 +267,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
 ```
 
 2. Merged ONNX model, FP32 CUDA
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
     --model_name meta-llama/Llama-2-7b-hf \
@@ -263,6 +279,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
 ```
 
 3. Merged ONNX model, FP16 CUDA
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
     --model_name meta-llama/Llama-2-7b-hf \
@@ -274,6 +291,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
 ```
 
 4. Merged ONNX model, FP16 CUDA with GroupQueryAttention
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
     --model_name meta-llama/Llama-2-7b-hf \
@@ -292,6 +310,7 @@ Here are some examples of how you can benchmark LLaMA-2.
 ### Variants
 
 1. PyTorch without `torch.compile`, FP32
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type hf-pt-eager \
@@ -305,6 +324,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
 ```
 
 2. PyTorch with `torch.compile`, FP16
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type hf-pt-compile \
@@ -318,6 +338,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
 ```
 
 3. Optimum + ONNX Runtime, FP32, export via Optimum or convert_to_onnx
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
@@ -332,6 +353,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
 ```
 
 4. Optimum + ONNX Runtime, FP16, export via Optimum or convert_to_onnx
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
@@ -346,6 +368,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
 ```
 
 5. ONNX Runtime, FP32, Microsoft custom export
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
@@ -359,6 +382,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
 ```
 
 6. ONNX Runtime, FP16, Microsoft custom export
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
@@ -372,6 +396,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark \
 ```
 
 7. ONNX Runtime, FP32, convert_to_onnx, use 2nd GPU
+
 ```
 CUDA_VISIBLE_DEVICES=1 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
@@ -385,6 +410,7 @@ CUDA_VISIBLE_DEVICES=1 python3 -m models.llama.benchmark \
 ```
 
 8. ONNX Runtime, FP16, convert_to_onnx, use 5th GPU
+
 ```
 CUDA_VISIBLE_DEVICES=4 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
@@ -398,6 +424,7 @@ CUDA_VISIBLE_DEVICES=4 python3 -m models.llama.benchmark \
 ```
 
 9. ONNX Runtime, FP16, convert_to_onnx, LLaMA-2 70B shard to 4 GPUs
+
 ```
 CUDA_VISIBLE_DEVICES=4,5,6,7 bash benchmark_70b_model.sh 4 \
     --benchmark-type ort-convert-to-onnx \
@@ -410,10 +437,24 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 bash benchmark_70b_model.sh 4 \
     --num-runs 100
 ```
 
+```
+CUDA_VISIBLE_DEVICES=4,5 bash models/llama/benchmark_70b_model.sh 2 \
+    --benchmark-type ort-convert-to-onnx \
+    --ort-model-path /wy/ORT_GENAI/wangye/mixtral/src/python/py/models/example-models/mixtral_rank_{}/model.onnx \
+    --model-name mistralai/Mixtral-8x7B-v0.1 \
+    --cache-dir ./model_cache \
+    --precision fp16 \
+    --device cuda \
+    --warmup-runs 5 \
+    --num-runs 100
+```
+
 You can profile a variant by adding the `--profile` flag and providing one batch size and sequence length combination.
 
 ### Benchmark All
+
 You can use `benchmark_all.py` to benchmark across various options and automatically store the results in a CSV file. Here is an example.
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_all \
     --hf-pt-eager \
@@ -433,9 +474,11 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_all \
 ```
 
 ### Benchmark E2E
+
 You can use `benchmark_e2e.py` to benchmark the full end-to-end scenario and automatically store the results in a CSV file. This tool uses `argmax` for sampling to standardize the benchmarking process.
 
 1. PyTorch without `torch.compile`, FP32
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
     --benchmark-type pt-eager \
@@ -450,6 +493,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
 ```
 
 2. PyTorch with `torch.compile`, FP16
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
     --benchmark-type pt-compile \
@@ -464,6 +508,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
 ```
 
 3. ONNX Runtime with `convert_to_onnx`, FP32
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
     --benchmark-type ort \
@@ -479,6 +524,7 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
 ```
 
 4. ONNX Runtime with `convert_to_onnx`, FP16
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.benchmark_e2e \
     --benchmark-type ort \
@@ -502,7 +548,7 @@ For end-to-end inference, please visit the [ONNX Runtime Inference Examples fold
 
 ## Introduction
 
-These tools for LLaMA-2 also allow the quantization and optimization of Mistral in ORT. 
+These tools for LLaMA-2 also allow the quantization and optimization of Mistral in ORT.
 
 ## Exporting Mistral
 
@@ -510,8 +556,8 @@ There is currently one supported way to export Mistral to ONNX format:
 
 ### [Hugging Face Optimum](https://github.com/huggingface/optimum)
 
-
 The following command will export Mistral in full precision:
+
 ```
 python -m optimum.exporters.onnx -m mistralai/Mistral-7B-v0.1 --library-name transformers /path/to/model/directory
 ```
@@ -519,12 +565,14 @@ python -m optimum.exporters.onnx -m mistralai/Mistral-7B-v0.1 --library-name tra
 ## Optimizing and Quantizing Mistral
 
 To quantize Mistral to FP16 and apply fusion optimizations, you can run the following command:
+
 ```
 python -m models.llama.convert_to_onnx -i /path/to/model/directory -o /path/to/optimized_model/directory -p fp16 --optimize_optimum -m mistralai/Mistral-7B-v0.1
 ```
 
 ## Benchmark Mistral
-The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT version, you can run: 
+
+The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT version, you can run:
 
 ```
 CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
@@ -551,4 +599,3 @@ CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
     -p fp16 \
     -m mistralai/Mistral-7B-v0.1
 ```
-
