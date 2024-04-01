@@ -354,21 +354,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
     ORT_RETURN_IF_ERROR(status);
 
-    if (decoder_subgraph_.output_cross_qk_) {
-      int decoder_output_first_cross_qk = decoder_subgraph_.GetFirstPresentOutputIndex() + (2 * decoder_subgraph_.num_layers);
-      ORT_RETURN_IF_ERROR(this->update_decoder_cross_qk_func_(
-        iteration_counter,
-        this->ort_stream_,
-        &decoder_fetches[decoder_output_first_cross_qk],
-        qk_layer_pointers,
-        parameters->num_layers,
-        static_cast<int>(cross_qk_layer_head_pair_count),
-        cross_qk_layer_head_pairs,
-        cross_qk_buffer_data,
-        parameters->max_length,
-        this->temp_space_allocator_));
-    }
-
 #ifdef DEBUG_GENERATION
     for (int i = 0; i <= decoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
       dumper->Print("decoder_fetches", i, true);
@@ -383,6 +368,23 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                                 beam_state,
                                                 cpu_state,
                                                 iteration_counter));
+
+    if (decoder_subgraph_.output_cross_qk_) {
+      int decoder_output_first_cross_qk = decoder_subgraph_.GetFirstPresentOutputIndex() + (2 * decoder_subgraph_.num_layers);
+      ORT_RETURN_IF_ERROR(this->update_decoder_cross_qk_func_(
+        iteration_counter,
+        this->ort_stream_,
+        &decoder_fetches[decoder_output_first_cross_qk],
+        qk_layer_pointers,
+        parameters->num_layers,
+        static_cast<int>(cross_qk_layer_head_pair_count),
+        cross_qk_layer_head_pairs,
+        cross_qk_buffer_data,
+        parameters->max_length,
+        this->temp_space_allocator_,
+        ReinterpretAsSpan<const int32_t>(beam_indices),
+        cross_qk_buffer_value));
+    }
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (this->beam_scorer_->IsDone()) {

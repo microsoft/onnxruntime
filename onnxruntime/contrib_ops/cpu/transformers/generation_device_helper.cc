@@ -581,6 +581,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
     for (size_t j = 0; j < beam_indices.size(); j++) {
+      // Copying from j to beam_index[j]
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_key = present_span.subspan(beam_index * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
       gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * SafeInt<size_t>(block_size_per_beam),
@@ -1096,7 +1097,9 @@ Status UpdateDecoderCrossQK(
     [[maybe_unused]] const int* cross_qk_layer_head_pairs,
     [[maybe_unused]] float* cross_qk_buffer_data,
     [[maybe_unused]] int max_length,
-    [[maybe_unused]] AllocatorPtr allocator
+    [[maybe_unused]] AllocatorPtr allocator,
+    [[maybe_unused]] gsl::span<const int32_t> beam_indices_gpu,
+    [[maybe_unused]] OrtValue cross_qk_buffer_value
 ) {
   throw std::runtime_error("CPU beam search current not support output cross QK.");
   return Status::OK();

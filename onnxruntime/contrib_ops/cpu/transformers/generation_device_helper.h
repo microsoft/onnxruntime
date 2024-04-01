@@ -206,7 +206,9 @@ using UpdateDecoderCrossQKFunc = std::function<Status(
     const int* cross_qk_layer_head_pairs,
     float* cross_qk_buffer_data,
     int max_length,
-    AllocatorPtr allocator)>;
+    AllocatorPtr allocator,
+    gsl::span<const int32_t> beam_indices_gpu,
+    OrtValue cross_qk_buffer_value )>;
 
 
 using FinalizeDecoderCrossQKFunc = std::function<Status(
@@ -398,7 +400,9 @@ Status UpdateDecoderCrossQK(
     const int* cross_qk_layer_head_pairs,
     float* cross_qk_buffer_data,
     int max_length,
-    AllocatorPtr allocator
+    AllocatorPtr allocator,
+    gsl::span<const int32_t> beam_indices_gpu,
+    OrtValue cross_qk_buffer_value
 );
 
 Status FinalizeDecoderCrossQK(
