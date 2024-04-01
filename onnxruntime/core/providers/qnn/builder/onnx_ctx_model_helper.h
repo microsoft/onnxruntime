@@ -56,7 +56,8 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
 Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
                                QnnBackendManager* qnn_backend_manager,
-                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
+                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                               const logging::Logger& logger);
 
 Status CreateEPContextNodes(Model* model,
                             unsigned char* buffer,

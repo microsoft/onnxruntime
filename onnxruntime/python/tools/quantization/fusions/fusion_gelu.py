@@ -112,7 +112,9 @@ class FusionGelu(Fusion):
             return False
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = onnx.helper.make_node("Gelu", inputs=[subgraph_input], outputs=[subgraph_output])
+        fused_node = onnx.helper.make_node(
+            "Gelu", name=self.create_unique_node_name(), inputs=[subgraph_input], outputs=[subgraph_output]
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         return True
@@ -173,11 +175,9 @@ class FusionGelu(Fusion):
             if not self.has_constant_input(sqrt_node, 2.0):
                 return False
 
-        root_node = self.model.get_parent(div, 0, output_name_to_node)
-        if root_node is None:
-            return False
+        subgraph_input = div.input[0]
 
-        if root_node.output[0] not in mul.input:
+        if subgraph_input not in mul.input:
             return False
 
         subgraph_nodes = [div, erf_node, add_after_erf, mul_after_erf, mul]
@@ -188,7 +188,9 @@ class FusionGelu(Fusion):
             return False
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = onnx.helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[mul.output[0]])
+        fused_node = onnx.helper.make_node(
+            "Gelu", name=self.create_unique_node_name(), inputs=[subgraph_input], outputs=[mul.output[0]]
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         return True
@@ -239,9 +241,8 @@ class FusionGelu(Fusion):
         if i < 0:
             return False
 
-        root_node = self.model.get_parent(first_mul, 0 if i == 1 else 1, output_name_to_node)
-        if root_node is None:
-            return False
+        root_input_index = 1 - i
+        subgraph_input = first_mul.input[root_input_index]
 
         if mul_half.output[0] not in input_name_to_nodes:
             return False
@@ -250,7 +251,7 @@ class FusionGelu(Fusion):
             return False
         last_mul = children[0]
 
-        if not (last_mul.input[0] == root_node.output[0] or last_mul.input[1] == root_node.output[0]):
+        if not (last_mul.input[0] == subgraph_input or last_mul.input[1] == subgraph_input):
             return False
 
         subgraph_nodes = [first_mul, erf_node, add_after_erf, mul_half, last_mul]
@@ -263,7 +264,9 @@ class FusionGelu(Fusion):
             return False
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = onnx.helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[last_mul.output[0]])
+        fused_node = onnx.helper.make_node(
+            "Gelu", name=self.create_unique_node_name(), inputs=[subgraph_input], outputs=[last_mul.output[0]]
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         return True

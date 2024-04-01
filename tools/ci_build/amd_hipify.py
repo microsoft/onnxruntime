@@ -181,6 +181,8 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("rocm_device_prop_", "cuda_device_prop_")
     s = s.replace("rocm_device_arch_", "cuda_device_arch_")
 
+    s = s.replace("HipTuningContext", "RocmTuningContext")
+
     # We want hipfft, which needs hipDataType etc, but only do this for files that have "fft" in their names
     # And we do this last, undoing or fixing hipify mistakes.
     if "fft" in src_file_path:

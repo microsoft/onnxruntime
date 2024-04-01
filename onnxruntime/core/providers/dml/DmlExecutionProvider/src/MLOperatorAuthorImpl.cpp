@@ -1508,31 +1508,17 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_TRY
         {
             assert(operatorGraphDesc != nullptr);
-            // Either nodesAsOpDesc or nodesIDMLOperator can be present.
-            assert(operatorGraphDesc->nodeCount == 0 || (!operatorGraphDesc->nodesAsOpDesc ^ !operatorGraphDesc->nodesAsIDMLOperator));
+            assert(operatorGraphDesc->nodeCount == 0 || operatorGraphDesc->nodes);
 
-            if (operatorGraphDesc->nodesAsOpDesc)
+            m_graphNodeCreateInfo->nodes = std::vector<std::unique_ptr<AbstractOperatorDesc>>();
+            for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
             {
-                m_graphNodeCreateInfo->nodesAsOperatorDesc = std::vector<std::unique_ptr<AbstractOperatorDesc>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
-                {
-                    auto* node = operatorGraphDesc->nodesAsOpDesc[nodeIndex];
-                    assert(node != nullptr);
-                    AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
-                    m_graphNodeCreateInfo->nodesAsOperatorDesc.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
-                }
+                auto* node = operatorGraphDesc->nodes[nodeIndex];
+                assert(node != nullptr);
+                AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
+                m_graphNodeCreateInfo->nodes.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
             }
-            else
-            {
-                m_graphNodeCreateInfo->nodesAsIDMLOperator = std::vector<Microsoft::WRL::ComPtr<IDMLOperator>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
-                {
-                    auto* node = operatorGraphDesc->nodesAsIDMLOperator[nodeIndex];
-                    assert(node != nullptr);
-                    m_graphNodeCreateInfo->nodesAsIDMLOperator.push_back(node);
-                }
-            }
-
+            
             // There can be operators (or kernels) which don't require any input.
             assert(operatorGraphDesc->inputEdgeCount == 0 || operatorGraphDesc->inputEdges != nullptr);
             m_graphNodeCreateInfo->inputEdges.insert(

@@ -68,7 +68,7 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
   const dataType = inputs[0].dataType;
   const axis = ShapeUtil.normalizeAxis(attributes.axis, inputShape.length);
   const outputs = new Array<IndicesHelper>(attributes.numOutputs);
-  const input = inputVariable('input', dataType, inputShape);
+  const input = inputVariable('input', dataType, inputShape.length);
   const sizeInSplitAxis = new Array<number>(attributes.numOutputs);
   const outputsTensorInfo: TensorInfo[] = [];
   const outputShapes: number[][] = [];
@@ -80,7 +80,7 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
     const outputShape = inputShape.slice();
     outputShape[attributes.axis] = attributes.splitSizes[i];
     outputShapes.push(outputShape);
-    outputs[i] = outputVariable(`output${i}`, dataType, outputShape);
+    outputs[i] = outputVariable(`output${i}`, dataType, outputShape.length);
     outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType});
   }
   programUniforms.push(

@@ -22,6 +22,7 @@ gsl::span<const char> tensor_proto_as_raw(const ONNX_NAMESPACE::TensorProto& ten
     mut_tensor.clear_double_data();
     mut_tensor.clear_uint64_data();
     memcpy(mut_tensor.mutable_raw_data()->data(), unpacked_tensor.data(), unpacked_tensor.size());
+    mut_tensor.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_DEFAULT);
   }
   return gsl::span<const char>(tensor.raw_data().data(), tensor.raw_data().size());
 }

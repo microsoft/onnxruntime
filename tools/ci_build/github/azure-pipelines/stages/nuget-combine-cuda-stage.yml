@@ -17,8 +17,8 @@ stages:
 - stage: NuGet_Packaging_GPU
   dependsOn:
     - Set_ReleaseVersionSuffix
-    - Windows_Packaging_gpu
-    - Windows_Packaging_tensorrt
+    - Windows_Packaging_gpu_Testing
+    - Windows_Packaging_tensorrt_Testing
     - Linux_C_API_Packaging_CPU_x64
     - Linux_C_API_Packaging_GPU_x64
     - Linux_C_API_Packaging_GPU_TensorRT_x64
@@ -213,13 +213,6 @@ stages:
             PlatformsSupported: 'linux-x64'
             VerifyNugetSigning: false
 
-        - task: PublishPipelineArtifact@0
-          displayName: 'Publish Pipeline NuGet Artifact'
-          inputs:
-            artifactName: 'drop-signed-nuget-GPU'
-            targetPath: '$(Build.ArtifactStagingDirectory)'
-
-
         - task: MSBuild@1
           displayName: 'Clean C#'
           inputs:
@@ -240,6 +233,12 @@ stages:
         - template: ../templates/component-governance-component-detection-steps.yml
           parameters:
             condition: 'succeeded'
+
+        - task: PublishPipelineArtifact@0
+          displayName: 'Publish Pipeline NuGet Artifact'
+          inputs:
+            artifactName: 'drop-signed-nuget-GPU'
+            targetPath: '$(Build.ArtifactStagingDirectory)'
 
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'

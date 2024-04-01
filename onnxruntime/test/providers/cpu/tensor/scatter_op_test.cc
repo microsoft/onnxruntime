@@ -268,7 +268,7 @@ static void scatter_invalid_index(const char* op_name, int op_version) {
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "indices element out of data bounds, idx=4 must be within the inclusive range [-4,3]",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Scatter, InvalidIndex) {
@@ -291,9 +291,10 @@ static void scatter_bool_with_axis_tests(const char* op_name, int op_version) {
   test.AddOutput<bool>("y", {1, 5}, {false, true, false, false, false});
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+           {kCudaNHWCExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaNHWCExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #endif
 }
 

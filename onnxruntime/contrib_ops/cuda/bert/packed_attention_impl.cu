@@ -440,7 +440,7 @@ Status LaunchTransposeRemovePadding(
 
 template <typename T>
 Status FusedScaledDotProductAttention(
-    const cudaDeviceProp& device_prop,
+    const cudaDeviceProp& /*device_prop*/,
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
     PackedAttentionData<T>& data) {

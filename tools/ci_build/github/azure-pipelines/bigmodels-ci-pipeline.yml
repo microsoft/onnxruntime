@@ -25,7 +25,7 @@ pr:
     - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
-#### end trigger ####parameters:
+#### end trigger ####
 
 # reference: https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/README.md
 parameters:
@@ -214,7 +214,7 @@ stages:
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements-cuda11.txt; \
-            python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
+            python3 -m pip install --upgrade polygraphy onnx-graphsurgeon ; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
             find $(pwd)/ORT_CUDA -name "*.png" -exec cp {} /images/ \; ; \
@@ -314,12 +314,81 @@ stages:
               pushd /workspace/onnxruntime/python/tools/transformers/ ; \
               python3 -m pip install --upgrade pip ; \
               pushd models/llama ; \
-              python3 -m pip install -r requirements-cuda.txt ; \
+              python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
               popd ; \
             "
       displayName: 'Run Llama2 to Onnx F16 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+- stage: Whisper_ONNX
+  dependsOn:
+  - Build_Onnxruntime_Cuda
+  jobs:
+  - job: Whisper_ONNX
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: Onnxruntime-Linux-A10-24G
+    steps:
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Onnxruntime Artifact'
+        ArtifactName: 'drop-ort-linux-gpu'
+        TargetPath: '$(Build.BinariesDirectory)/ort-artifact/'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimepackagestest
+        UpdateDepsTxt: false
+
+    - task: DownloadPackage@1
+      # The model data in artifact is downloaded from openai/whisper-large-v3 in huggingface model hub
+      # In order to save size, removed .git directory and pickled files, and keep the safetensors model files
+      displayName: 'Download Whisper Model'
+      inputs:
+        packageType: upack
+        feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+        version: 1.0.0
+        definition: 'b583ce7c-1a8f-4099-ae28-5d5f56c478b1'
+        downloadPath: $(Agent.TempDirectory)/whisper_large_v3
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
+           onnxruntimepackagestest \
+            bash -c '
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/whisper ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              python3 -m models.whisper.convert_to_onnx -m /whisper_large_v3 --output whisperlargev3 --use_external_data_format ; \
+              popd ; \
+            '
+      displayName: 'Convert Whisper Model'
       workingDirectory: $(Build.SourcesDirectory)

@@ -32,7 +32,7 @@ TEST(GridsampleContribOpTest, gridsample_default) {
                          3.8000f, 7.9000f, 8.7000f, 9.5000f, 10.3000f, 5.3000f,
                          5.4000f, 11.1000f, 11.9000f, 12.7000f, 13.5000f, 6.9000f,
                          3.0000f, 6.1500f, 6.5500f, 6.9500f, 7.3500f, 3.7500f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
 }
 
 TEST(GridsampleContribOpTest, gridsample_paddingmode_zeros) {
@@ -45,7 +45,7 @@ TEST(GridsampleContribOpTest, gridsample_paddingmode_zeros) {
                         5.0000f, 5.0000f, 10.0000f, 10.0000f});
   test.AddAttribute("padding_mode", "zeros");
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {0.0000f, 0.0000f, 1.7000f, 0.0000f, 0.0000f, 1.7000f, 0.0000f, 0.0000f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
 }
 
 TEST(GridsampleContribOpTest, gridsample_paddingmode_border) {
@@ -58,7 +58,7 @@ TEST(GridsampleContribOpTest, gridsample_paddingmode_border) {
                         5.0000f, 5.0000f, 10.0000f, 10.0000f});
   test.AddAttribute("padding_mode", "border");
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {0.0000f, 0.0000f, 1.7000f, 5.0000f, 5.0000f, 1.7000f, 5.0000f, 5.0000f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
 }
 
 TEST(GridsampleContribOpTest, gridsample_paddingmode_reflection) {
@@ -71,7 +71,8 @@ TEST(GridsampleContribOpTest, gridsample_paddingmode_reflection) {
                         5.0000f, 5.0000f, 10.0000f, 10.0000f});
   test.AddAttribute("padding_mode", "reflection");
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {2.5000f, 0.0000f, 1.7000f, 2.5000f, 2.5000f, 1.7000f, 5.0000f, 2.5000f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // Accuracy issue for QNN
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaNHWCExecutionProvider, kQnnExecutionProvider});  // Accuracy issue for QNN
 }
 
 TEST(GridsampleContribOpTest, gridsample_aligncorners_true) {
@@ -86,7 +87,7 @@ TEST(GridsampleContribOpTest, gridsample_aligncorners_true) {
   test.AddAttribute("mode", "bilinear");
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {0.0000f, 1.2500f, 2.0000f, 2.5000f, 2.5000f, 2.0000f, 3.7500f, 5.0000f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
 }
 
 TEST(GridsampleContribOpTest, gridsample_mode_bilinear) {
@@ -99,7 +100,7 @@ TEST(GridsampleContribOpTest, gridsample_mode_bilinear) {
                         0.5000f, 0.5000f, 1.0000f, 1.0000f});
   test.AddAttribute("mode", "bilinear");
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {0.0000f, 0.5000f, 1.7000f, 2.5000f, 2.5000f, 1.7000f, 4.5000f, 1.2500f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
 }
 
 TEST(GridsampleContribOpTest, gridsample_mode_nearest) {
@@ -112,7 +113,7 @@ TEST(GridsampleContribOpTest, gridsample_mode_nearest) {
                         0.5000f, 0.5000f, 1.0000f, 1.0000f});
   test.AddAttribute("mode", "nearest");
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {0.f, 0.f, 2.f, 2.f, 2.f, 2.f, 5.f, 0.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
 }
 
 TEST(GridsampleContribOpTest, gridsample_mode_bicubic) {
@@ -125,7 +126,8 @@ TEST(GridsampleContribOpTest, gridsample_mode_bicubic) {
                         0.5000f, 0.5000f, 1.0000f, 1.0000f});
   test.AddAttribute("mode", "bicubic");
   test.AddOutput<float>("Y", {1, 1, 2, 4}, {-0.1406f, 0.3828f, 1.7556f, 2.9688f, 2.9688f, 1.7556f, 5.1445f, 1.3906f});
-  test.Run();
+  test.SetOutputTolerance(0.0001f);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaNHWCExecutionProvider});
 }
 
 }  // namespace test

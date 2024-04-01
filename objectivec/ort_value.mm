@@ -148,6 +148,9 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
 - (nullable ORTTensorTypeAndShapeInfo*)tensorTypeAndShapeInfoWithError:(NSError**)error {
   try {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
+    if (!tensorTypeAndShapeInfo) {
+      ORT_CXX_API_THROW("ORTValue is not a tensor.", ORT_RUNTIME_EXCEPTION);
+    }
     return CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
@@ -156,6 +159,9 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
 - (nullable NSMutableData*)tensorDataWithError:(NSError**)error {
   try {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
+    if (!tensorTypeAndShapeInfo) {
+      ORT_CXX_API_THROW("ORTValue is not a tensor.", ORT_RUNTIME_EXCEPTION);
+    }
     if (tensorTypeAndShapeInfo.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
       ORT_CXX_API_THROW(
           "This ORTValue holds string data. Please call tensorStringDataWithError: "
@@ -182,6 +188,9 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
 - (nullable NSArray<NSString*>*)tensorStringDataWithError:(NSError**)error {
   try {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
+    if (!tensorTypeAndShapeInfo) {
+      ORT_CXX_API_THROW("ORTValue is not a tensor.", ORT_RUNTIME_EXCEPTION);
+    }
     const size_t elementCount = tensorTypeAndShapeInfo.GetElementCount();
     const size_t tensorStringDataLength = _value->GetStringTensorDataLength();
     std::vector<char> tensorStringData(tensorStringDataLength, '\0');

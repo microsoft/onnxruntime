@@ -64,16 +64,22 @@ namespace perftest {
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
       "\t    [Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
+      "\t    [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n"
+      "\n"
       "\t    [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
       "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
       "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"
       "\t    [DML only] [enable_dynamic_graph_fusion]: Options: 'true', 'false', \n"
+      "\t    [DML only] [enable_graph_serialization]: Options: 'true', 'false', \n"
+      "\n"
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
       "\t    [OpenVINO only] [enable_npu_fast_compile]: Optionally enabled to speeds up the model's compilation on NPU device targets.\n"
       "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t    [OpenVINO only] [cache_dir]: Explicitly specify the path to dump and load the blobs(Model caching) or cl_cache (Kernel Caching) files feature. If blob files are already present, it will be directly loaded.\n"
       "\t    [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device(Reduces the CPU Utilization while using GPU) \n"
+      "\t    [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_npu_fast_compile|true num_of_threads|5 enable_opencl_throttling|true cache_dir|\"<path>\"\"\n"
+      "\n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options: 'basic', 'detailed', default 'off'.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
@@ -88,9 +94,10 @@ namespace perftest {
       "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
       "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
       "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
-      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
-      "\t [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_npu_fast_compile|true num_of_threads|5 enable_opencl_throttling|true cache_dir|\"<path>\"\"\n"
-      "\t [Example] [For QNN EP] -e qnn -i \"backend_path|/folderpath/libQnnCpu.so\" \n\n"
+      "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
+      "\t    Otherwise, it will be fp32 precision. Only works for float32 model. Defaults to '0' (with FP32 precision.). \n"
+      "\t    [Example] [For QNN EP] -e qnn -i \"backend_path|/folderpath/libQnnCpu.so\" \n"
+      "\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
       "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"
       "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"
@@ -107,20 +114,23 @@ namespace perftest {
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
       "\t    [TensorRT only] [trt_context_memory_sharing_enable]: Enable TensorRT context memory sharing between subgraphs.\n"
       "\t    [TensorRT only] [trt_layer_norm_fp32_fallback]: Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow.\n"
-      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
-      "\t [Example] [For TensorRT EP] -e tensorrt -i 'trt_fp16_enable|true trt_int8_enable|true trt_int8_calibration_table_name|calibration.flatbuffers trt_int8_use_native_calibration_table|false trt_force_sequential_engine_build|false'\n"
+      "\t    [Example] [For TensorRT EP] -e tensorrt -i 'trt_fp16_enable|true trt_int8_enable|true trt_int8_calibration_table_name|calibration.flatbuffers trt_int8_use_native_calibration_table|false trt_force_sequential_engine_build|false'\n"
+      "\n"
       "\t    [NNAPI only] [NNAPI_FLAG_USE_FP16]: Use fp16 relaxation in NNAPI EP..\n"
       "\t    [NNAPI only] [NNAPI_FLAG_USE_NCHW]: Use the NCHW layout in NNAPI EP.\n"
       "\t    [NNAPI only] [NNAPI_FLAG_CPU_DISABLED]: Prevent NNAPI from using CPU devices.\n"
       "\t    [NNAPI only] [NNAPI_FLAG_CPU_ONLY]: Using CPU only in NNAPI EP.\n"
-      "\t [Usage]: -e <provider_name> -i '<key1> <key2>'\n\n"
-      "\t [Example] [For NNAPI EP] -e nnapi -i \" NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED \"\n"
+      "\t    [Example] [For NNAPI EP] -e nnapi -i \"NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED\"\n"
+      "\n"
+      "\t    [CoreML only] [COREML_FLAG_CREATE_MLPROGRAM]: Create an ML Program model instead of Neural Network.\n"
+      "\t    [Example] [For CoreML EP] -e coreml -i \"COREML_FLAG_CREATE_MLPROGRAM\"\n"
+      "\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
       "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
-      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
-      "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
+      "\t    [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
+      "\n"
       "\t-T [Set intra op thread affinities]: Specify intra op thread affinity string\n"
       "\t [Example]: -T 1,2;3,4;5,6 or -T 1-2;3-4;5-6 \n"
       "\t\t Use semicolon to separate configuration between threads.\n"
@@ -191,7 +201,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqzn"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqzn"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -219,9 +229,6 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         } else {
           return false;
         }
-        break;
-      case 'b':
-        test_config.backend = optarg;
         break;
       case 'p':
         test_config.run_config.profile_file = optarg;
