@@ -92,7 +92,7 @@ class ComputeContextImpl implements ComputeContext {
     this.inputs = inputs;
   }
 
-  maxComputeWorkgroupSizes(): [number, number, number] {
+  getMaxComputeWorkgroupSizes(): [number, number, number] {
     return [
       this.backend.device.limits.maxComputeWorkgroupSizeX, this.backend.device.limits.maxComputeWorkgroupSizeY,
       this.backend.device.limits.maxComputeWorkgroupSizeZ
