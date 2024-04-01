@@ -267,7 +267,7 @@ async function postProcess() {
 
       const originalJsFileSize = (await fs.stat(jsFilePath)).size;
 
-      if (!(await fs.stat(sourcemapFilePath)).isFile()) {
+      if (!files.includes(file + '.map')) {
         continue;
       }
 
