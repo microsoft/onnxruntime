@@ -47,10 +47,10 @@ Return Value:
         vbroadcastss zmm0,DWORD PTR C_UNDERSCORE(MlasMinimumF32Value)[rip]
         test    rsi,rsi
         jz      .LReduceMaximum.ExitKernel
-        cmp     rsi,8
+        cmp     rsi,16
         jb      .LReduceMaximum.ProcessRemainingCountBy1
         cmp     rsi,64
-        jb      .LReduceMaximum.ProcessRemainingCountBy8
+        jb      .LReduceMaximum.ProcessRemainingCountBy16
         vmovaps zmm1,zmm0
         vmovaps zmm2,zmm0
         vmovaps zmm3,zmm0
@@ -61,6 +61,7 @@ Return Value:
         sub     rsi,64
         vmaxps  zmm2,zmm2,ZMMWORD PTR [rdi+32*4]
         vmaxps  zmm3,zmm3,ZMMWORD PTR [rdi+48*4]
+        #sub     rsi,64
         add     rdi,64*4                        # advance input by 64 elements
         cmp     rsi,64
         jae     .LReduceMaximum.ProcessRemainingCountBy64
@@ -68,16 +69,18 @@ Return Value:
         vmaxps  zmm2,zmm2,zmm3
         vmaxps  zmm0,zmm0,zmm2
 
-.LReduceMaximum.ProcessRemainingCountBy8:
-        cmp     rsi,8
-        jb      .LReduceMaximum.ProcessRemainingCountLessThan8
-        vmaxps  ymm0,ymm0,YMMWORD PTR [rdi]
-        sub     rsi,8
-        add     rdi,8*4                         # advance input by 8 elements
-        jmp     .LReduceMaximum.ProcessRemainingCountBy8
+.LReduceMaximum.ProcessRemainingCountBy16:
+        cmp     rsi,16
+        jb      .LReduceMaximum.ProcessRemainingCountLessThan16
+        vmaxps  zmm0,zmm0,ZMMWORD PTR [rdi]
+        sub     rsi,16
+        add     rdi,16*4                         # advance input by 16 elements
+        jmp     .LReduceMaximum.ProcessRemainingCountBy16
 
-.LReduceMaximum.ProcessRemainingCountLessThan8:
-        vextractf128 xmm1,ymm0,1                # reduce to single scalar
+.LReduceMaximum.ProcessRemainingCountLessThan16:
+        vextractf32x8     ymm1,zmm0,1           # reduce to single scalar
+        vmaxps  ymm0,ymm0,ymm1
+        vextractf128 xmm1,ymm0,1
         vmaxps  xmm0,xmm0,xmm1
         vshufps xmm1,xmm0,xmm0,0xEE
         vmaxps  xmm0,xmm0,xmm1
