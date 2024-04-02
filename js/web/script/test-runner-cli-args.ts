@@ -103,6 +103,7 @@ Options:
 
  --no-sandbox                  This flag will be passed to Chrome.
                                  Sometimes Chrome need this flag to work together with Karma.
+ --user-data-dir=<...>         This flag will be passed to browsers to specify the user data directory.
  --chromium-flags=<...>        This flag will be passed to Chrome and Edge browsers. Can be used multiple times.
 
 Examples:
@@ -195,6 +196,7 @@ export interface TestRunnerCliArgs {
   webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
   globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
+  userDataDir?: string;
   chromiumFlags: string[];
 }
 
@@ -477,6 +479,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
 
+  // Option: --user-data-dir
+  const userDataDir = args['user-data-dir'];
+
   // parse chromium flags
   let chromiumFlags = args['chromium-flags'];
   if (!chromiumFlags) {
@@ -515,6 +520,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     wasmOptions,
     globalEnvFlags,
     noSandbox,
+    userDataDir,
     chromiumFlags
   };
 }
