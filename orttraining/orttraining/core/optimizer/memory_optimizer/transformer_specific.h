@@ -23,6 +23,6 @@ void FindLayerBoundaryLayerNormNodes(const GraphViewer& graph_viewer,
                                      const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                          node_index_to_its_order_in_topological_sort_map,
                                      const ptrdiff_t& yield_op_order_in_topological_sort,
-                                     InlinedHashSet<const Node*>& layer_boundary_ln_nodes);
+                                     InlinedVector<const Node*>& layer_boundary_ln_nodes);
 
 }  // namespace onnxruntime::optimizer::memory_optimizer

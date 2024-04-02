@@ -216,7 +216,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a43ce67187bab219520fd80f21af8bbd4354bc8c",
+          "commitHash": "bacfaaa951653cd4e72efe727a543567cb38f7de",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -340,6 +340,16 @@
           "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
         },
         "comments": "composable_kernel"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "de28d93dfa9ebf3e473127c1c657e1920a5345ee",
+          "repositoryUrl": "https://github.com/microsoft/DirectX-Headers.git"
+        },
+        "comments": "directx_headers"
       }
     }
   ]
