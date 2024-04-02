@@ -26,7 +26,7 @@ cd onnxruntime-genai
 
 ## Install ONNX Runtime
 
-By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build. These instructions use ORT_HOME as the location.
+By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build. These instructions use `ORT_HOME` as the location.
 
 ### Option 1: Install from release
 
@@ -50,7 +50,7 @@ Extract the nuget package.
 tar xvf Microsoft.ML.OnnxRuntime.1.18.0-dev-20240322-0323-ca825cb6e6.nupkg
 ```
   
-Copy the include and lib files into <ORT_HOME>.
+Copy the include and lib files into `ORT_HOME`.
   
 On Windows
   
@@ -75,14 +75,14 @@ git clone https://github.com/microsoft/onnxruntime.git
 cd onnxruntime
 ```
 
-Create include and lib folders in the ORT_HOME directory
+Create include and lib folders in the `ORT_HOME` directory
 
 ```bash
 mkdir <ORT HOME>/include
 mkdir <ORT_HOME>/lib
 ```
 
-Build from source and copy the include and libraries into ORT_HOME
+Build from source and copy the include and libraries into `ORT_HOME`
 
 On Windows
 
@@ -106,7 +106,7 @@ cp build/Linux/RelWithDebInfo/libonnxruntime*.so* <ORT_HOME>/lib
 
 ```bash
 cd ..
-python build.py
+python build.py [--ort_home <ORT_HOME>]
 ```
 
 ### Build for CUDA
@@ -115,7 +115,7 @@ These instructions assume you already have CUDA installed.
 
 ```bash
 cd ..
-python build.py --cuda_home <path to cuda home>
+python build.py --cuda_home <path to cuda home> [--ort_home <ORT_HOME>]
 ```
 
 ### Build for DirectML
@@ -137,7 +137,7 @@ copy Microsoft.AI.DirectML.1.13.1\bin\x64-win\DirectML.dll lib
 After the extra files have been copied into <ORT HOME>, build onnxruntime-genai as follows:
 
 ```bash
-python build.py --use_dml
+python build.py --use_dml [--ort_home <ORT_HOME>]
 ```
 
    
