@@ -40,7 +40,7 @@ mv onnxruntime-linux-x64-gpu-1.17.1/include .
 mv onnxruntime-linux-x64-gpu-1.17.1/lib .
 ```
 
-### Install from nightly
+### Option 2: Install from nightly
 
 Download the nightly nuget package `Microsoft.ML.OnnxRuntime` from: https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly.
   
@@ -68,7 +68,7 @@ cp build/native/include/onnxruntime_c_api.h <ORT_HOME>/include
 cp build/linux-x64/native/libonnxruntime*.so* <ORT_HOME>/lib
 ```      
       
-### Build from source
+### Option 3: Build from source
 
 ```
 git clone https://github.com/microsoft/onnxruntime.git
