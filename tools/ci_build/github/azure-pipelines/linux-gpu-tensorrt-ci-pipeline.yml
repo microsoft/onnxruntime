@@ -79,7 +79,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda12_3_trt10
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda12_3_tensorrt10
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
       --network=host
