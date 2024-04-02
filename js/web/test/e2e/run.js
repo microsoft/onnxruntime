@@ -6,6 +6,7 @@
 const path = require('path');
 const fs = require('fs-extra');
 const {spawn} = require('child_process');
+const startServer = require('./simple-http-server');
 const minimist = require('minimist');
 
 const {NODEJS_TEST_CASES, BROWSER_TEST_CASES, BUNDLER_TEST_CASES} = require('./run-data');
@@ -35,24 +36,6 @@ function getNextUserDataDir() {
 
 // commandline arguments
 const BROWSER = minimist(process.argv.slice(2)).browser || 'Chrome_default';
-
-async function startHttpServer(root) {
-  const server =
-      spawn('npx http-server . -p 8081 --cors', {shell: true, stdio: ['pipe', 'inherit', 'inherit'], cwd: root});
-  await delay(2500);
-
-  return {
-    close: async () => {
-      // Write CTRL-C to the server process to close it
-      server.stdin.write('\x03');
-      server.stdin.end();
-      await new Promise((resolve) => {server.on('exit', (code, signal) => {
-                          console.log(`http-server exited with code ${code} and signal ${signal}`);
-                          resolve();
-                        })});
-    }
-  };
-}
 
 async function main() {
   // find packed package
@@ -88,10 +71,15 @@ async function main() {
   prepareWasmPathOverrideFiles();
 
   // start a HTTP server for hosting .wasm files (for cross-origin testing)
+  const serverWwwRoot = path.resolve(TEST_E2E_RUN_FOLDER, 'wwwroot');
+  fs.emptyDirSync(serverWwwRoot);
   await fs.symlink(
-      path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist'),
-      path.join(TEST_E2E_RUN_FOLDER, 'dist'), 'junction');
-  const server = await startHttpServer(TEST_E2E_RUN_FOLDER);
+      path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist'), path.join(serverWwwRoot, 'dist'),
+      'junction');
+  await fs.symlink(
+      path.resolve(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override'), path.join(serverWwwRoot, 'test-wasm-path-override'),
+      'junction');
+  const server = startServer(serverWwwRoot, 8081);
 
   try {
     // test case run in Node.js
