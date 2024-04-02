@@ -795,12 +795,19 @@ class ShaderHelperImpl implements ShaderHelper {
     const workgroupSizeX = typeof workgroupSize === 'number' ? workgroupSize : workgroupSize[0];
     const workgroupSizeY = typeof workgroupSize === 'number' ? 1 : workgroupSize[1];
     const workgroupSizeZ = typeof workgroupSize === 'number' ? 1 : workgroupSize[2];
+
     if (workgroupSizeX > this.limits.maxComputeWorkgroupSizeX ||
         workgroupSizeY > this.limits.maxComputeWorkgroupSizeY ||
         workgroupSizeZ > this.limits.maxComputeWorkgroupSizeZ) {
       throw new Error(`workgroup size [${workgroupSizeX}, ${workgroupSizeY}, ${
           workgroupSizeZ}] exceeds the maximum workgroup size [${this.limits.maxComputeWorkgroupSizeX}, ${
           this.limits.maxComputeWorkgroupSizeY}, ${this.limits.maxComputeWorkgroupSizeZ}].`);
+    }
+
+    if (workgroupSizeX * workgroupSizeY * workgroupSizeZ > this.limits.maxComputeInvocationsPerWorkgroup) {
+      throw new Error(`workgroup size [${workgroupSizeX}, ${workgroupSizeY}, ${
+          workgroupSizeZ}] exceeds the maximum workgroup invocations ${
+          this.limits.maxComputeInvocationsPerWorkgroup}.`);
     }
 
     const is1DimensionDispatch = this.normalizedDispatchGroup[1] === 1 && this.normalizedDispatchGroup[2] === 1;
