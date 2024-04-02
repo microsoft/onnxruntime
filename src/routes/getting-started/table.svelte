@@ -89,7 +89,7 @@
 			"For CUDA 11.X (default): <br/>pip install onnxruntime-gpu <br/>For CUDA 12.X: <br/>pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,Python,ARM64,CUDA':
-			"For Jetpack 4.4+, follow installation instructions from <a class='text-blue-500' href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
+			"For Jetpack 4.4+, follow installation instructions from <a class='text-blue-500' href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>. <br/>Note: We do not have CUDA 12.X ARM64 support at this time.",
 
 		'linux,C-API,X64,CUDA':
 			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
