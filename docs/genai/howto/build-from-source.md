@@ -123,20 +123,21 @@ nav_order: 2
    * Build for DirectML
 
      Two extra files are required for the DirectML build of onnxruntime-genai:
+
      * dml_provider_factory.h
      * DirectML.dll 
      
-      ```cmd
-      cd <ORT_HOME>
-      curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip > Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip
-      mkdir Microsoft.ML.OnnxRuntime.DirectML.1.17.1
-      tar xvf Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip -C Microsoft.ML.OnnxRuntime.DirectML.1.17.1
-      copy Microsoft.ML.OnnxRuntime.DirectML.1.17.1\build\native\include\dml_provider_factory.h include
-      curl -L https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.13.1 > Microsoft.AI.DirectML.1.13.1.nupkg
-      mkdir Microsoft.AI.DirectML.1.13.1
-      tar xvf Microsoft.AI.DirectML.1.13.1.nupkg -C Microsoft.AI.DirectML.1.13.1
-      copy Microsoft.AI.DirectML.1.13.1\bin\x64-win\DirectML.dll lib
-      ```
+     ```cmd
+     cd <ORT_HOME>
+     curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip > Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip
+     mkdir Microsoft.ML.OnnxRuntime.DirectML.1.17.1
+     tar xvf Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip -C Microsoft.ML.OnnxRuntime.DirectML.1.17.1
+     copy Microsoft.ML.OnnxRuntime.DirectML.1.17.1\build\native\include\dml_provider_factory.h include
+     curl -L https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.13.1 > Microsoft.AI.DirectML.1.13.1.nupkg
+     mkdir Microsoft.AI.DirectML.1.13.1
+     tar xvf Microsoft.AI.DirectML.1.13.1.nupkg -C Microsoft.AI.DirectML.1.13.1
+     copy Microsoft.AI.DirectML.1.13.1\bin\x64-win\DirectML.dll lib
+     ```
 
      After the extra files have been copied into <ORT HOME>, build onnxruntime-genai as follows:
 
