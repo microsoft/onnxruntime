@@ -2813,7 +2813,7 @@ void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("LayerNormalization")
