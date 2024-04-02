@@ -64,7 +64,7 @@ static CoreCounter GetCoreInfo() {
         cores.PhysicalCores++;
         break;
       case RelationCache:
-      //Cache level masks count Logicial processors
+        //Cache level masks count Logicial processors
         if (currentProcessorInfo->Cache.Level == 2) {
           dwLevel2GroupMask |= currentProcessorInfo->Cache.GroupMask.Mask;
         } else if (currentProcessorInfo->Cache.Level == 3) {

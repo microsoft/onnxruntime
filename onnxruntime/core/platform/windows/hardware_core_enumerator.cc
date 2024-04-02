@@ -16,7 +16,6 @@ struct LogicalProcessorInformation {
 struct CoreCounter {
   uint32_t PhysicalCores = 0;
   uint32_t LLCCores = 0;
-
 };
 
 static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RELATIONSHIP relationship) {
