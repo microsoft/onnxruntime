@@ -651,6 +651,12 @@ public class InferenceTest {
     runProvider(OrtProvider.CORE_ML);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
+  public void testDirectML() throws OrtException {
+    runProvider(OrtProvider.DIRECT_ML);
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
@@ -1926,6 +1932,8 @@ public class InferenceTest {
           options.addNnapi();
           break;
         case DIRECT_ML:
+          options.setMemoryPatternOptimization(false);
+          options.setExecutionMode(ExecutionMode.SEQUENTIAL);
           options.addDirectML(0);
           break;
         case ACL:
