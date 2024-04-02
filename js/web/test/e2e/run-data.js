@@ -46,6 +46,8 @@ const BUNDLER_TEST_CASES = [
   './dist/webpack_umd_js/ort-test-e2e.bundle.js',
   './dist/rollup_esm_js/ort-test-e2e.bundle.mjs',
   './dist/rollup_umd_js/ort-test-e2e.bundle.js',
+  './dist/parcel_esm_js/main.js',
+  './dist/parcel_umd_js/main.js',
 ];
 
 module.exports = {

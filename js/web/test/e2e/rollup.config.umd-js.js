@@ -20,7 +20,7 @@ module.exports = {
     nodeResolve(),
 
     // Use "@rollup/plugin-commonjs" to support CommonJS module resolve.
-    commonjs(),
+    commonjs({ignoreDynamicRequires : true}),
 
     // Use "@rollup/plugin-terser" to minify the output.
     terser(),
