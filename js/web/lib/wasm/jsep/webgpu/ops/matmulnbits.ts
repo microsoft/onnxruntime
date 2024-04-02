@@ -142,8 +142,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
         const zeroPointsBytesPerCol = Math.floor((nBlocksPerCol + 1) / 2);
         return `
         const block_size = ${attributes.blockSize};
-        var<workgroup> workgroup_shared: array<array<array<${output.type.value}, ${outputNumber}>, ${
-            Math.ceil(dimAOuter / outputNumber)}>, ${workgroupSize[0]}>;
+        var<workgroup> workgroup_shared: array<${output.type.value}, ${dimAOuter * workgroupSize[0]}>;
         ${dequantizeImpl};
         ${ortUnpack8x4snormImpl};
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
@@ -195,18 +194,26 @@ export const createBlockwiseMatMulNBitsProgramInfo =
                 let b_dequantized_values = dequantize(b_quantized_values, zero_point, scale);
                 // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
                 var offset: u32 = word_offset;
-                for (var j: u32 = 0; j < 8; j += ${aComponents}) {
-                  for (var m: u32 = 0; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
-                    for (var k: u32 = 0; k < ${outputNumber}u; k++) {
-                      let a_data = a_data_array[m * ${outputNumber} + k][offset];
-                      workgroup_shared[block][m][k]${components > 1 ? '[c]' : ''} += ${
-            aComponents === 1 ? 'a_data * b_dequantized_values[j]' :
-                                `dot(a_data, b_dequantized_values[j / ${aComponents}])`};
-                    }
-                  }
-                  offset++;
-                }
-                word_offset += ${8 / aComponents};
+                ${(() => {
+          const code = [];
+          for (let j = 0; j < 8; j += aComponents) {
+            for (let m = 0; m < Math.ceil(dimAOuter / outputNumber); m++) {
+              for (let k = 0; k < outputNumber; k++) {
+                code.push(`workgroup_shared[((block * ${dimAOuter / outputNumber} + ${m}) * ${outputNumber}) + ${k}] ${
+                    components > 1 ? '[c]' : ''} +=
+                            ${
+                    aComponents === 1 ?
+                        `a_data_array[${m} * ${outputNumber} + ${k}][offset] * b_dequantized_values[${j}]` :
+                        `dot(a_data_array[${m} * ${outputNumber} + ${k}][offset], b_dequantized_values[${j} / ${
+                            aComponents}]);`};
+                        `);
+              }
+            }
+            code.push('offset++;');
+          }
+          code.push(`word_offset += ${8 / aComponents};`);
+          return code.join('\n');
+        })()};
               }
             }
           }
@@ -216,14 +223,18 @@ export const createBlockwiseMatMulNBitsProgramInfo =
             ${output.indicesSet('output_indices', '0', 'batch')};
             ${output.indicesSet('output_indices', outputRank - 1, 'col')};
             for (var m: u32 = 0u; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
-              for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
-                var output_value: ${output.type.value} = ${output.type.value}(0);
-                for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
-                  output_value += workgroup_shared[b][m][k];
-                }
-                ${output.indicesSet('output_indices', outputRank - 2, `m * ${outputNumber} + k`)};
-                ${output.setByIndices('output_indices', 'output_value')};
-              }
+                ${(() => {
+          const code = [];
+          for (let k = 0; k < outputNumber; k++) {
+            const rhs = Array.from(
+                {length: nBlocksPerCol},
+                (_, b) => `workgroup_shared[(${b * dimAOuter / outputNumber} + m) * ${outputNumber} + ${k}]`);
+            code.push(`let output_value${k} = ${rhs.join(' + ')};`);
+            code.push(`${output.indicesSet('output_indices', outputRank - 2, `m * ${outputNumber} + ${k}`)};`);
+            code.push(`${output.setByIndices('output_indices', `output_value${k}`)};`);
+          }
+          return code.join('\n');
+        })()};
             }
           }
         }`;
