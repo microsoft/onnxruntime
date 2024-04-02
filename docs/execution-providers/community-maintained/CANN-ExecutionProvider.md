@@ -78,6 +78,12 @@ Whether to dump the subgraph into onnx format for analysis of subgraph segmentat
 
 Default value: false
 
+### dump_om_model
+
+Whether to dump the offline model for Ascend AI Processor to an .om file.
+
+Default value: true
+
 ### precision_mode
 
 The precision mode of the operator.
