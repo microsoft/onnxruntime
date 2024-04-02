@@ -34,7 +34,7 @@ RUN pip install setuptools>=68.2.2
 RUN v="10.0.0.6-1+cuda12.4" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
-    sudo apt-get install -y \
+    sudo apt-get install -s \
     libnvinfer-dev=${v} \
     libnvinfer-dispatch-dev=${v} \
     libnvinfer-dispatch10=${v} \
@@ -49,8 +49,6 @@ RUN v="10.0.0.6-1+cuda12.4" &&\
     libnvinfer10=${v} \
     libnvonnxparsers-dev=${v} \
     libnvonnxparsers10=${v} \
-    libnvparsers-dev=${v} \
-    libnvparsers10=${v} \
     tensorrt-dev=${v}
 
 # Compile trtexec
