@@ -39,19 +39,6 @@ then
                --config Release --build_shared_lib --update --build --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
 fi
 
-# Validate deps.txt
-cd ${ORT_SOURCE}
-FILE_PATH="./cmake/deps.txt"
-
-while IFS= read -r line; do
-    case "$line" in
-        onnx_tensorrt*)
-            echo "Found: $line"
-            exit 0
-            ;;
-    esac
-done < "$FILE_PATH"
-
 cd ${WORKSPACE}
 
 mkdir build

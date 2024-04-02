@@ -417,6 +417,7 @@ def main():
     identifier = get_identifier(
         args.commit_datetime, args.commit_hash, args.trt_version, args.branch, args.use_tensorrt_oss_parser
     )
+    print(f"DB record identifier: {identifier}")
     upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
 
     try:
