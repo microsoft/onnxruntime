@@ -141,7 +141,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
         }`;
         const zeroPointsBytesPerCol = Math.floor((nBlocksPerCol + 1) / 2);
         return `
-        const components = ${components};
+        const block_size = ${attributes.blockSize};
         var<workgroup> workgroup_shared: array<array<array<${output.type.value}, ${outputNumber}>, ${
             Math.ceil(dimAOuter / outputNumber)}>, ${workgroupSize[0]}>;
         ${dequantizeImpl};
@@ -155,16 +155,15 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           var block = local_id.x;
           var col = workgroup_id.y;
           var batch = workgroup_id.z;
-          if (local_id.x == 0u) {
-            for (var m: u32 = 0; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
-              for (var k: u32 = 0; k < ${outputNumber}u; k++) {
-                workgroup_shared[block][m][k] = ${output.type.value}(0);
-              }
+          var a_data_array: array<array<${a.type.value}, block_size / ${aComponents}>, ${dimAOuter}>;
+          ${a.indicesSet('a_indices', '0', 'batch')};
+          for (var m: u32 = 0; m < ${dimAOuter}; m++) {
+            ${a.indicesSet('a_indices', '1', 'm')};
+            for (var i: u32 = 0; i < block_size / ${aComponents}; i++) {
+              ${a.indicesSet('a_indices', '2', `(block_size / ${aComponents}) * block + i`)};
+              a_data_array[m][i] = ${a.getByIndices('a_indices')};
             }
           }
-
-          ${a.indicesSet('a_indices', '0', 'batch')};
-
           workgroupBarrier();
           // Two zero points are packed into one byte when uniforms.bits is 4.
           for (var c: u32 = 0; c < ${components}; c++) {
@@ -180,14 +179,13 @@ export const createBlockwiseMatMulNBitsProgramInfo =
                          ''}
             var b_indices: ${b.type.indices};
             ${b.indicesSet('b_indices', '0', 'col_times_components_plus_c')};
-            var block_offset: u32 = block * ${attributes.blockSize / aComponents};
             // The scale and zero points are computed per block.
             var scales_index = col_times_components_plus_c * ${nBlocksPerCol} + block;
             let scale = ${scales.getByOffset('scales_index')};
             // The default zero point is 8 for unsigned 4-bit quantization.
             let zero_point = ${dataType}(${zeroPoints ? '(zero_point_word) & 0xFu' : 8.0});
             ${b.indicesSet('b_indices', '1', 'block')};
-            var word_offset: u32 = block_offset;
+            var word_offset: u32 = 0;
             for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
               ${b.indicesSet('b_indices', '2', 'word')};
               let b_data = ${b.getByIndices('b_indices')};
@@ -198,12 +196,10 @@ export const createBlockwiseMatMulNBitsProgramInfo =
                 // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
                 var offset: u32 = word_offset;
                 for (var j: u32 = 0; j < 8; j += ${aComponents}) {
-                  ${a.indicesSet('a_indices', inputRank - 1, 'offset')};
                   for (var m: u32 = 0; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
                     for (var k: u32 = 0; k < ${outputNumber}u; k++) {
-                      ${a.indicesSet('a_indices', inputRank - 2, `m * ${outputNumber} + k`)};
-                      let a_data = ${a.getByIndices('a_indices')};
-                    workgroup_shared[block][m][k]${components > 1 ? '[c]' : ''} += ${
+                      let a_data = a_data_array[m * ${outputNumber} + k][offset];
+                      workgroup_shared[block][m][k]${components > 1 ? '[c]' : ''} += ${
             aComponents === 1 ? 'a_data * b_dequantized_values[j]' :
                                 `dot(a_data, b_dequantized_values[j / ${aComponents}])`};
                     }
