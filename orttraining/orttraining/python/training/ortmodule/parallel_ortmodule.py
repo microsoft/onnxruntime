@@ -1,8 +1,37 @@
 from typing import Optional
+import os
 
 from .options import DebugOptions
 from .ortmodule import ORTModule
 from . import _utils
+
+
+def wrap_submodule_with_ort(model, submodule_path: str, debug_options=None):
+    """
+    Wraps a specific submodule within a model with ORTModule and applies debug options.
+    This function assumes a direct path to the submodule for replacement.
+    """
+
+    path_parts = submodule_path.split(".")
+    parent_module = model
+    for part in path_parts[:-1]:
+        parent_module = getattr(parent_module, part)
+
+    target_name_or_index = path_parts[-1]
+
+    # Wrap the target submodule with ORTModule and DebugOptions
+    try:
+        target_index = int(target_name_or_index)
+        is_index = True
+    except ValueError:
+        is_index = False
+
+    if is_index:
+        parent_module[target_index] = ORTModule(parent_module[target_index], debug_options)
+    else:
+        setattr(
+            parent_module, target_name_or_index, ORTModule(getattr(parent_module, target_name_or_index), debug_options)
+        )
 
 
 def prepare_model_for_parallel_pipeline(model, debug_options: Optional[DebugOptions] = None) -> None:
@@ -32,19 +61,18 @@ def prepare_model_for_parallel_pipeline(model, debug_options: Optional[DebugOpti
 
     hf_device_map = model.hf_device_map
 
-    for name, device in hf_device_map.items():
-        # Retrieve submodule using a safe navigation method
-        layer = model
-        for part in name.split("."):
-            layer = getattr(layer, part)
-
+    for submodule_path, device in hf_device_map.items():
         # Construct ORTModule with debug options if provided
         if debug_options:
             new_onnx_prefix = str(device).replace(":", "_") + "_" + debug_options.onnx_prefix
+            device_folder_name = "device_" + str(device).replace(":", "_")
+            device_save_path = os.path.join(debug_options.save_path, device_folder_name)
+            if not os.path.exists(device_save_path):
+                os.makedirs(device_save_path)
 
             parallel_debug_options = DebugOptions(
-                debug_options.log_level, debug_options.save_onnx, new_onnx_prefix, debug_options.save_path
+                debug_options.log_level, debug_options.save_onnx, new_onnx_prefix, device_save_path
             )
-            setattr(model, name, ORTModule(layer, parallel_debug_options))
+            wrap_submodule_with_ort(model, submodule_path, parallel_debug_options)
         else:
-            setattr(model, name, ORTModule(layer))
+            wrap_submodule_with_ort(model, submodule_path)
