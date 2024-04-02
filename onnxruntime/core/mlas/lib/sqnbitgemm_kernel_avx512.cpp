@@ -307,6 +307,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
     }
 
     b += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    s++;
 
     if constexpr (HasZeroPoint) {
       QuantBZeroPointIdx += 1;
