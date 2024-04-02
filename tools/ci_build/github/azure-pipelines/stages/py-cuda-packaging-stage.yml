@@ -65,9 +65,9 @@ stages:
           SpecificArtifact: ${{ parameters.SpecificArtifact }}
           BuildId: ${{ parameters.BuildId }}
           ${{ if eq(parameters.cuda_version, '11.8') }}:
-            EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8 --cuda_home=$(Agent.TempDirectory)\v11.8  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+            EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8 --cuda_home=$(Agent.TempDirectory)\v11.8  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ${{ if eq(parameters.cuda_version, '12.2') }}:
-            EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0 --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+            EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0 --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
       - template: ../templates/py-linux-gpu.yml
