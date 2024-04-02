@@ -40,8 +40,211 @@ ONNX_CPU_OPERATOR_KERNEL(
     StringNormalizer);
 
 namespace string_normalizer {
-const std::string conv_error("Conversion Error");
-const std::wstring wconv_error(L"Conversion Error");
+
+// codecvt_utf8 is deprecated, we will want to replace it with our class
+class Utf8ConverterGeneric {
+ public:
+  size_t ComputeRequiredSizeToUtf8(const std::wstring& wstr) const {
+    if (wstr.empty()) {
+      return 0;
+    }
+
+    size_t result = 0;
+    mbstate_t state = {0};
+
+    const wchar_t* src = wstr.data();
+    const wchar_t* src_end = src + wstr.length();
+
+    char dummy_dest[128] = {0};
+
+    char* char_next = dummy_dest;
+    const wchar_t* wchar_next = src;
+
+    size_t converted = 0;
+
+    std::codecvt_base::result ret_code = std::codecvt_base::ok;
+
+    // Continue while we exhaust the sequence
+    while (true) {
+      ret_code = converter_.out(state,
+                                wchar_next,
+                                src_end,
+                                wchar_next,
+                                std::begin(dummy_dest),
+                                std::end(dummy_dest),
+                                char_next);
+      result += (char_next - dummy_dest);
+      converted = (wchar_next - src);
+
+      if (converted == wstr.length()) {
+        break;
+      }
+
+      if (ret_code != std::codecvt_base::partial &&
+          ret_code != std::codecvt_base::ok) {
+        break;
+      }
+    }
+
+    ORT_ENFORCE(ret_code != std::codecvt_base::noconv, "Conversion is expected");
+
+    if (ret_code != std::codecvt_base::ok) {
+      ORT_THROW("Failed to compute size for UTF-8. Converted only first: ",
+                converted, " codepoints out of: ", wstr.length());
+    }
+
+    return result;
+  }
+
+  // We assume the caller pre-allocated the correct length
+  Status ConvertToUtf8(const std::wstring& wstr, std::string& str) const {
+    if (wstr.empty()) {
+      str.clear();
+      return Status::OK();
+    }
+
+    mbstate_t state = {0};
+
+    const wchar_t* src = wstr.data();
+    const wchar_t* src_end = src + wstr.length();
+
+    char* dest = str.data();
+    char* dest_end = dest + str.length();
+
+    char* char_next = dest;
+    const wchar_t* wchar_next = src;
+
+    std::codecvt_base::result ret_code = converter_.out(state,
+                                                        src,
+                                                        src_end,
+                                                        wchar_next,
+                                                        dest,
+                                                        dest_end,
+                                                        char_next);
+
+    if (ret_code != std::codecvt_base::ok) {
+      size_t converted = narrow<size_t>(wchar_next - wstr.data());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to convert to UTF-8. Converted only first: ",
+                             converted, " codepoints out of: ", wstr.length());
+    }
+
+    str.resize(char_next - dest);
+
+    return Status::OK();
+  }
+
+  Status ComputeRequiredSizeToWideChar(const std::string& str, size_t& wchars) {
+    if (str.empty()) {
+      wchars = 0;
+      return Status::OK();
+    }
+
+    size_t result = 0;
+    mbstate_t state = {0};
+
+    const char* src = str.data();
+    const char* src_end = src + str.length();
+
+    wchar_t dummy_dest[256] = {0};
+    const char* char_next = src;
+    wchar_t* wchar_next = dummy_dest;
+
+    size_t converted = 0;
+
+    std::codecvt_base::result ret_code = std::codecvt_base::ok;
+    while (true) {
+      ret_code = converter_.in(state,
+                               char_next,
+                               src_end,
+                               char_next,
+                               std::begin(dummy_dest),
+                               std::end(dummy_dest),
+                               wchar_next);
+      result += (wchar_next - dummy_dest);
+      converted = (char_next - src);
+      if (converted == str.length()) {
+        break;
+      }
+
+      if (ret_code != std::codecvt_base::partial &&
+          ret_code != std::codecvt_base::ok) {
+        break;
+      }
+    }
+
+    ORT_ENFORCE(ret_code != std::codecvt_base::noconv, "Conversion is expected");
+
+    if (ret_code != std::codecvt_base::ok) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Failed to compute buffer size for wchar_t. Converted only first: ",
+                             converted, " bytes out of: ", str.length(),
+                             " Source: ", src);
+    }
+
+    wchars = result;
+    return Status::OK();
+  }
+
+  // We assume the destination buffer is preallocated correctly
+  Status ConvertToWchar(const std::string& str, std::wstring& wstr) {
+    if (str.empty()) {
+      // Preserve the buffer for re-use, just set size to 0
+      wstr.clear();
+      return Status::OK();
+    }
+
+    mbstate_t state = {0};
+    const char* src = str.data();
+    const char* src_end = src + str.length();
+
+    wchar_t* dest = wstr.data();
+    wchar_t* dest_end = dest + wstr.length();
+
+    const char* char_next = src;
+    wchar_t* wchar_next = dest;
+
+    std::codecvt_base::result ret_code = converter_.in(state,
+                                                       src,
+                                                       src_end,
+                                                       char_next,
+                                                       dest,
+                                                       dest_end,
+                                                       wchar_next);
+
+    if (ret_code != std::codecvt_base::ok) {
+      size_t converted = narrow<size_t>(char_next - str.data());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to convert to wchar_t. Converted only first: ",
+                             converted, " bytes out of: ", str.length(),
+                             " Source: ", src);
+    }
+
+    wstr.resize(wchar_next - dest);
+
+    return Status::OK();
+  }
+
+  std::wstring from_bytes(const std::string& s) {
+    std::wstring result;
+
+    size_t wchars = 0;
+    ORT_THROW_IF_ERROR(ComputeRequiredSizeToWideChar(s, wchars));
+
+    result.resize(wchars);
+    ORT_THROW_IF_ERROR(ConvertToWchar(s, result));
+    return result;
+  }
+
+ private:
+  // class CodecvtUtf8 : public std::codecvt<wchar_t, char, std::mbstate_t> {
+  //  public:
+  //   using Base = std::codecvt<wchar_t, char, std::mbstate_t>;
+  //   explicit CodecvtUtf8(size_t refs = 0) : Base(refs) {}
+  //   ~CodecvtUtf8() = default;
+  // };
+
+  // CodecvtUtf8 converter_;
+  std::codecvt_utf8<wchar_t> converter_;
+};
 
 // We need to specialize for MS as there is
 // a std::locale creation bug that affects different
@@ -83,12 +286,8 @@ class Locale {
   _locale_t loc_;
 };
 
-// using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
-
-class Utf8Converter {
+class Utf8ConverterWindows {
  public:
-  Utf8Converter() = default;
-
   size_t ComputeRequiredSizeToUtf8(const std::wstring& wstr) const {
     if (wstr.empty()) {
       return 0;
@@ -116,6 +315,11 @@ class Utf8Converter {
   }
 
   Status ConvertToUtf8(const std::wstring& wstr, std::string& dest) const {
+    if (wstr.empty()) {
+      dest.clear();
+      return Status::OK();
+    }
+
     const int ret = WideCharToMultiByte(CP_UTF8, 0,
                                         wstr.data(),
                                         narrow<int>(wstr.length()),
@@ -160,6 +364,12 @@ class Utf8Converter {
   }
 
   Status ConvertToWchar(const std::string& str, std::wstring& wstr) {
+    if (str.empty()) {
+      // Preserve the buffer for re-use, just set size to 0
+      wstr.clear();
+      return Status::OK();
+    }
+
     const int ret = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
                                         str.data(),
                                         narrow<int>(str.length()),
@@ -189,6 +399,8 @@ class Utf8Converter {
 };
 
 const std::string default_locale("en-US");
+
+using Utf8Converter = Utf8ConverterWindows;
 
 #else  // _MSC_VER
 
@@ -226,7 +438,7 @@ class Locale {
 
 #if defined(__APPLE__) || defined(__ANDROID__)
 
-using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t> >;
+using Utf8Converter = Utf8ConverterGeneric;
 
 #else
 
