@@ -20,19 +20,24 @@
 using onnxruntime::narrow;
 
 float* alloc_aligned_buffer(int D, int byte_aligned, void*& buffer) {
-  buffer = (void*)(malloc(D * sizeof(float) + 64 * 2));
+  constexpr int max_byte_aligned = 128;
+
+  buffer = (void*)(malloc(D * sizeof(float) + max_byte_aligned * 2));
 
   //std::cout << "buffer: " << buffer << std::endl;
   //std::cout << "((uintptr_t)(buffer) & ~63): " << (void*)((uintptr_t)(buffer) & ~63) << std::endl;
 
-  float* ptr = (float*)(((uintptr_t)(buffer) & ~63) + 64 + byte_aligned);
+  float* ptr = (float*)(((uintptr_t)(buffer) & ~(max_byte_aligned - 1)) + max_byte_aligned + byte_aligned);
   switch (byte_aligned) {
+    case 4:
+    case 8:
     case 16:
     case 32:
+    case 64:
       ORT_ENFORCE(((uintptr_t)(ptr) % byte_aligned == 0) && ((uintptr_t)(ptr) % (byte_aligned << 1) != 0));
       break;
-    case 64:
-      ORT_ENFORCE((uintptr_t)(ptr) % 64 == 0);
+    case max_byte_aligned:
+      ORT_ENFORCE((uintptr_t)(ptr) % max_byte_aligned == 0);
       break;
     default:
       throw std::invalid_argument("byte_aligned must be 16, 32, or 64!");
@@ -207,7 +212,7 @@ static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"Byte Aligned", "N", "D", "Threads"});
 
   b->ArgsProduct({
-      {16, 32, 64},     // Byte Aligned
+      {4, 8, 16, 32, 64, 128},     // Byte Aligned
       {208000, 240000}, // N
       {13, 15, 2000},   // D
       {1, 8},           // Threads
@@ -231,28 +236,28 @@ BENCHMARK(COMPUTESOFTMAXINPLACE)->ArgNames({"N", "D", "Threads"})
 
 BENCHMARK(REDUCEMAXIMUMF32KERNELAVX)->ArgNames({"Byte Aligned", "D"})
     ->ArgsProduct({
-      {16, 32, 64},   // Byte Aligned
+      {4, 8, 16, 32, 64, 128},   // Byte Aligned
       {13, 15, 2000}, // D
       })
     ->UseRealTime();
 
 BENCHMARK(REDUCEMAXIMUMF32KERNELAVX512F)->ArgNames({"Byte Aligned", "D"})
     ->ArgsProduct({
-      {16, 32, 64},   // Byte Aligned
+      {4, 8, 16, 32, 64, 128},   // Byte Aligned
       {13, 15, 2000}, // D
       })
     ->UseRealTime();
 
 BENCHMARK(COMPUTESUMEXPF32KERNELAVX512F)->ArgNames({"Byte Aligned", "D"})
     ->ArgsProduct({
-      {16, 32, 64},   // Byte Aligned
+      {4, 8, 16, 32, 64, 128},   // Byte Aligned
       {13, 15, 2000}, // D
       })
     ->UseRealTime();
 
 BENCHMARK(COMPUTESOFTMAXOUTPUTF32KERNELAVX)->ArgNames({"Byte Aligned", "D"})
     ->ArgsProduct({
-      {16, 32, 64},   // Byte Aligned
+      {4, 8, 16, 32, 64, 128},   // Byte Aligned
       {13, 15, 2000}, // D
       })
     ->UseRealTime();
