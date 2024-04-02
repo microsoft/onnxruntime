@@ -216,17 +216,18 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           }
 
           workgroupBarrier();
-
-          ${output.indicesSet('output_indices', '0', 'batch')};
-          ${output.indicesSet('output_indices', outputRank - 1, 'col')};
-          for (var m: u32 = 0u; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
-            for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
-              var output_value: ${output.type.value} = ${output.type.value}(0);
-              for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
-                output_value += workgroup_shared[b][m][k];
+          if (local_id.x == 0u) {
+            ${output.indicesSet('output_indices', '0', 'batch')};
+            ${output.indicesSet('output_indices', outputRank - 1, 'col')};
+            for (var m: u32 = 0u; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
+              for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
+                var output_value: ${output.type.value} = ${output.type.value}(0);
+                for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
+                  output_value += workgroup_shared[b][m][k];
+                }
+                ${output.indicesSet('output_indices', outputRank - 2, `m * ${outputNumber} + k`)};
+                ${output.setByIndices('output_indices', 'output_value')};
               }
-              ${output.indicesSet('output_indices', outputRank - 2, `m * ${outputNumber} + k`)};
-              ${output.setByIndices('output_indices', 'output_value')};
             }
           }
         }`;
