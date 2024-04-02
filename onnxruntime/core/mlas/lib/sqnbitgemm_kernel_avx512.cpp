@@ -599,7 +599,7 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32(
     const float* Bias
 )
 {
-    QuantA, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, BlockCountK, Bias;
+  QuantA, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, BlockCountK, Bias;
 }
 
 template <bool HasZeroPoint>
