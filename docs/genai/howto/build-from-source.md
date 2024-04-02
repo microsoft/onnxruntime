@@ -17,144 +17,139 @@ nav_order: 2
 
 `cmake`
 
-## Build steps
+## Clone the onnxruntime-genai repo
 
-1. Clone this repo
+```bash
+git clone https://github.com/microsoft/onnxruntime-genai
+cd onnxruntime-genai
+```
 
-   ```bash
-   git clone https://github.com/microsoft/onnxruntime-genai
-   cd onnxruntime-genai
-   ```
+## Install ONNX Runtime
 
-2. Install ONNX Runtime
+By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build. These instructions use ORT_HOME as the location.
 
-   By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build. These instructions use ORT_HOME as the location.
+### Option 1: Install from release
 
-   * Install from release
+These instructions are for the Linux GPU build of ONNX Runtime. Replace `linux-gpu` with your target of choice.
 
-     These instructions are for the Linux GPU build of ONNX Runtime. Replace `linux-gpu` with your target of choice.
+```bash
+cd <ORT_HOME>
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-gpu-1.17.1.tgz
+tar xvzf onnxruntime-linux-x64-gpu-1.17.1.tgz 
+mv onnxruntime-linux-x64-gpu-1.17.1/include .
+mv onnxruntime-linux-x64-gpu-1.17.1/lib .
+```
 
-      ```bash
-      cd <ORT_HOME>
-      curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-gpu-1.17.1.tgz
-      tar xvzf onnxruntime-linux-x64-gpu-1.17.1.tgz 
-      mv onnxruntime-linux-x64-gpu-1.17.1/include .
-      mv onnxruntime-linux-x64-gpu-1.17.1/lib .
-      ```
+### Install from nightly
 
-    * Install from nightly
-
-      Download the nightly nuget package `Microsoft.ML.OnnxRuntime` from: https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly.
+Download the nightly nuget package `Microsoft.ML.OnnxRuntime` from: https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly.
   
-      Extract the nuget package.
+Extract the nuget package.
   
-      ```bash
-      tar xvf Microsoft.ML.OnnxRuntime.1.18.0-dev-20240322-0323-ca825cb6e6.nupkg
-      ```
+```bash
+tar xvf Microsoft.ML.OnnxRuntime.1.18.0-dev-20240322-0323-ca825cb6e6.nupkg
+```
   
-      Copy the include and lib files into $ORT_HOME.
+Copy the include and lib files into <ORT_HOME>.
   
-      On Windows
+On Windows
   
-      Example is given for `win-x64`. Change this to your architecture if different.
+Example is given for `win-x64`. Change this to your architecture if different.
 
-      ```cmd
-      copy build\native\include\onnxruntime_c_api.h $ORT_HOME\include
-      copy runtimes\win-x64\native\*.dll $ORT_HOME\lib
-      ```
+```cmd
+copy build\native\include\onnxruntime_c_api.h <ORT_HOME>\include
+copy runtimes\win-x64\native\*.dll <ORT_HOME>\lib
+```
 
-      On Linux
+On Linux
 
-      ```cmd
-      cp build/native/include/onnxruntime_c_api.h $ORT_HOME/include
-      cp build/linux-x64/native/libonnxruntime*.so* $ORT_HOME/lib
-      ```      
+```cmd
+cp build/native/include/onnxruntime_c_api.h <ORT_HOME>/include
+cp build/linux-x64/native/libonnxruntime*.so* <ORT_HOME>/lib
+```      
       
-    * Or build from source
+### Build from source
 
-      ```
-      git clone https://github.com/microsoft/onnxruntime.git
-      cd onnxruntime
-      ```
+```
+git clone https://github.com/microsoft/onnxruntime.git
+cd onnxruntime
+```
 
-      Create include and lib folders in the ORT_HOME directory
+Create include and lib folders in the ORT_HOME directory
 
-      ```bash
-      mkdir <ORT HOME>/include
-      mkdir <ORT_HOME>/lib
-      ```
+```bash
+mkdir <ORT HOME>/include
+mkdir <ORT_HOME>/lib
+```
 
-      Build from source and copy the include and libraries into ORT_HOME
+Build from source and copy the include and libraries into ORT_HOME
 
-      On Windows
+On Windows
 
-      ```cmd
-      build.bat --build_shared_lib --skip_tests --parallel [--use_cuda]
-      copy include\onnxruntime\core\session\onnxruntime_c_api.h <ORT_HOME>\include
-      copy build\Windows\Debug\Debug\*.dll <ORT_HOME>\lib
-      ```
+```cmd
+build.bat --build_shared_lib --skip_tests --parallel [--use_cuda]
+copy include\onnxruntime\core\session\onnxruntime_c_api.h <ORT_HOME>\include
+copy build\Windows\Debug\Debug\*.dll <ORT_HOME>\lib
+```
 
-      On Linux
+On Linux
 
-      ```cmd
-      ./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda]
-      cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
-      cp build/Linux/RelWithDebInfo/libonnxruntime*.so* <ORT_HOME>/lib
-      ```
+```cmd
+./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda]
+cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
+cp build/Linux/RelWithDebInfo/libonnxruntime*.so* <ORT_HOME>/lib
+```
 
-3. Build onnxruntime-genai
+## Build onnxruntime-genai
 
-   * Build for CPU
+### Build for CPU
 
-     ```bash
-     cd ..
-     python build.py
-     ```
+```bash
+cd ..
+python build.py
+```
 
-   * Build for CUDA
+### Build for CUDA
 
-     These instructions assume you already have CUDA installed.
+These instructions assume you already have CUDA installed.
 
-     ```bash
-     cd ..
-     python build.py --cuda_home <path to cuda home>
-     ```
+```bash
+cd ..
+python build.py --cuda_home <path to cuda home>
+```
 
-   * Build for DirectML
+### Build for DirectML
 
-     Two extra files are required for the DirectML build of onnxruntime-genai:
-
-     * dml_provider_factory.h
-     * DirectML.dll 
+Two extra files are required for the DirectML build of onnxruntime-genai `dml_provider_factory.h` and `DirectML.dll`. 
      
-     ```cmd
-     cd <ORT_HOME>
-     curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip > Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip
-     mkdir Microsoft.ML.OnnxRuntime.DirectML.1.17.1
-     tar xvf Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip -C Microsoft.ML.OnnxRuntime.DirectML.1.17.1
-     copy Microsoft.ML.OnnxRuntime.DirectML.1.17.1\build\native\include\dml_provider_factory.h include
-     curl -L https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.13.1 > Microsoft.AI.DirectML.1.13.1.nupkg
-     mkdir Microsoft.AI.DirectML.1.13.1
-     tar xvf Microsoft.AI.DirectML.1.13.1.nupkg -C Microsoft.AI.DirectML.1.13.1
-     copy Microsoft.AI.DirectML.1.13.1\bin\x64-win\DirectML.dll lib
-     ```
+```cmd
+cd <ORT_HOME>
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip > Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip
+mkdir Microsoft.ML.OnnxRuntime.DirectML.1.17.1
+tar xvf Microsoft.ML.OnnxRuntime.DirectML.1.17.1.zip -C Microsoft.ML.OnnxRuntime.DirectML.1.17.1
+copy Microsoft.ML.OnnxRuntime.DirectML.1.17.1\build\native\include\dml_provider_factory.h include
+curl -L https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.13.1 > Microsoft.AI.DirectML.1.13.1.nupkg
+mkdir Microsoft.AI.DirectML.1.13.1
+tar xvf Microsoft.AI.DirectML.1.13.1.nupkg -C Microsoft.AI.DirectML.1.13.1
+copy Microsoft.AI.DirectML.1.13.1\bin\x64-win\DirectML.dll lib
+```
 
-     After the extra files have been copied into <ORT HOME>, build onnxruntime-genai as follows:
+After the extra files have been copied into <ORT HOME>, build onnxruntime-genai as follows:
 
-     ```bash
-     python build.py --use_dml
-     ```
+```bash
+python build.py --use_dml
+```
 
    
-4. Install the library into your application
+### Install the library into your application
 
-   * Install Python wheel
+#### Install Python wheel
 
-     ```bash
-     cd build/wheel
-     pip install *.whl
-     ```
+```bash
+cd build/wheel
+pip install *.whl
+```
 
-   * Install Nuget package
+#### Install Nuget package
 
-   * Install C/C++ header file and library
+#### Install C/C++ header file and library
