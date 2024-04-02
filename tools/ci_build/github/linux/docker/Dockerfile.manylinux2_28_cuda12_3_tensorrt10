@@ -164,25 +164,7 @@ CMD ["/bin/bash"]
 RUN if [ -n "$TRT_VERSION" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
     dnf -y install  \
-    libnvinfer-devel-${TRT_VERSION}  \
-    libnvinfer-dispatch-devel-${TRT_VERSION}  \
-    libnvinfer-dispatch10-${TRT_VERSION}  \
-    libnvinfer-headers-devel-${TRT_VERSION}  \
-    libnvinfer-headers-plugin-devel-${TRT_VERSION}  \
-    libnvinfer-lean-devel-${TRT_VERSION}  \
-    libnvinfer-lean10-${TRT_VERSION}  \
-    libnvinfer-plugin-devel-${TRT_VERSION}  \
-    libnvinfer-plugin10-${TRT_VERSION}  \
-    libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
-    libnvinfer-vc-plugin10-${TRT_VERSION}  \
-    libnvinfer10-${TRT_VERSION}  \
-    libnvonnxparsers-devel-${TRT_VERSION}  \
-    libnvonnxparsers10-${TRT_VERSION}  \
-    tensorrt-libs-${TRT_VERSION} \
-    tensorrt-dev-${TRT_VERSION} \
-    python3-libnvinfer-${TRT_VERSION} \
-    python3-libnvinfer-lean-${TRT_VERSION} \
-    python3-libnvinfer-dispatch-${TRT_VERSION} \
+    tensorrt-${TRT_VERSION} \
 else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
