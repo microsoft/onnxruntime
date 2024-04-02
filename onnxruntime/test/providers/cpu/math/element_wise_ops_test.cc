@@ -1198,7 +1198,7 @@ TEST(MathOpTest, Sum_6) {
 #if defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT EP: Segfault on latest TRT10 due to older opset 6
 #endif
 }
 

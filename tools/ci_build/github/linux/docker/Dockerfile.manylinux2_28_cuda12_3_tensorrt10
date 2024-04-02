@@ -182,7 +182,7 @@ RUN if [ -n "$TRT_VERSION" ]; then  \
     tensorrt-dev-${TRT_VERSION} \
     python3-libnvinfer-${TRT_VERSION} \
     python3-libnvinfer-lean-${TRT_VERSION} \
-    python3-libnvinfer-dispatch-${TRT_VERSION}
+    python3-libnvinfer-dispatch-${TRT_VERSION} \
 else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
