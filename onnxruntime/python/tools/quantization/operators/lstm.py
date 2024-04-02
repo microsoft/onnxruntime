@@ -103,6 +103,8 @@ class LSTMQuant(QuantOperatorBase):
 
         kwargs = {}
         for attribute in node.attribute:
+            if attribute.name == "layout":
+                continue
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
