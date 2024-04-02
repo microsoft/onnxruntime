@@ -55,8 +55,8 @@ RUN v="10.0.0.6-1+cuda12.4" &&\
     python3-libnvinfer-lean=${v} \
     python3-libnvinfer-dispatch=${v}
 
-# Compile trtexec
-RUN cd /usr/src/tensorrt/samples/trtexec && make
+## Compile trtexec
+#RUN cd /usr/src/tensorrt/samples/trtexec && make
 
 # Install Valgrind
 RUN apt-get install -y valgrind
