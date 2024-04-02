@@ -121,30 +121,10 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           }
         })();
 
-        const dequantizeImpl = `
-        fn dequantize(quantized: ${qDqDataType}, zero_point: ${dataType}, scale: ${dataType}) -> ${qDqDataType} {
-          ${(() => {
-          if (aComponents === 1) {
-            return `var dequantized = ${qDqDataType}(${
-                Array.from({length: 8}, (_, i) => `(quantized[${i}] - zero_point) * scale`).join(', ')});
-              return dequantized;`;
-          } else {
-            return `var zero_points: ${qDqDataType} = ${qDqDataType}(${Array(8).fill('zero_point').join(',')});
-              return (quantized - zero_points) * scale;`;
-          }
-        })()}
-        }`;
-        const ortUnpack8x4snormImpl = `
-        fn ortUnpack8x4snorm(value: u32) -> ${qDqDataType} {
-          return ${qDqDataType}(${
-            Array.from({length: 8}, (_, i) => `${dataType}((value >> ${(i * 4).toString()}) & 0xFu)`).join(', ')});
-        }`;
         const zeroPointsBytesPerCol = Math.floor((nBlocksPerCol + 1) / 2);
         return `
         const block_size = ${attributes.blockSize};
         var<workgroup> workgroup_shared: array<${output.type.value}, ${dimAOuter * workgroupSize[0]}>;
-        ${dequantizeImpl};
-        ${ortUnpack8x4snormImpl};
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart([
           workgroupSize[0], workgroupSize[1], workgroupSize[2]
@@ -190,8 +170,16 @@ export const createBlockwiseMatMulNBitsProgramInfo =
               let b_data = ${b.getByIndices('b_indices')};
               for (var i: u32 = 0; i < ${bComponents}; i++) {
                 let b_value = ${bComponents === 1 ? 'b_data' : 'b_data[word + i]'};
-                let b_quantized_values: ${qDqDataType} = ortUnpack8x4snorm(b_value);
-                let b_dequantized_values = dequantize(b_quantized_values, zero_point, scale);
+                let b_quantized_values = ${qDqDataType}(${
+            Array.from({length: 8}, (_, i) => `${dataType}((b_value >> ${(i * 4).toString()}) & 0xFu)`).join(', ')});
+                let b_dequantized_values = ${(() => {
+          if (aComponents === 1) {
+            return `return ${qDqDataType}(${
+                Array.from({length: 8}, (_, i) => `(b_quantized_values[${i}] - zero_point) * scale`).join(', ')});`;
+          } else {
+            return `(b_quantized_values - ${qDqDataType}(${Array(8).fill('zero_point').join(',')})) * scale;`;
+          }
+        })()};
                 // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
                 var offset: u32 = word_offset;
                 ${(() => {
