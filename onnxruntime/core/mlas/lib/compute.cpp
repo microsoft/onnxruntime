@@ -19,6 +19,8 @@ Abstract:
 
 --*/
 
+//#include <iostream>
+
 #include "mlasi.h"
 
 //
@@ -848,6 +850,7 @@ Return Value:
     const bool LogSoftmax = WorkBlock->LogSoftmax;
 
     const float* Input = WorkBlock->Input + n * D;
+    //float* Input = (float*)(WorkBlock->Input + n * D);
     float* Output = WorkBlock->Output + n * D;
 
     while (CountN > 0) {
@@ -856,11 +859,16 @@ Return Value:
         // Find the maximum value for the row.
         //
 
+        //Input = (float*)(((uintptr_t)(Input) & ~(64 - 1)));
+        //Output = Input;
+        //ORT_ENFORCE((uintptr_t)(Input) % 64 == 0);
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
         float Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
 #else
         float Maximum = MlasReduceMaximumF32Kernel(Input, D);
 #endif
+        //std::cout << "Maximum: " << Maximum << "\n";
+
         float NegativeMaximum = -Maximum;
 
         if (LogSoftmax) {
