@@ -78,7 +78,8 @@ stages:
         submodules: recursive
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda12_3_tensorrt10
+          Dockerfile: ${{ if eq(parameters.CudaVersion, '12.3') }}: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda12_3_trt10
+                      ${{ if ne(parameters.CudaVersion, '12.3') }}: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "
           --network=host
