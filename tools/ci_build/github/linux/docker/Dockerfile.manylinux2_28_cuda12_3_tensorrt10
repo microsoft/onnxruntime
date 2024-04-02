@@ -163,8 +163,7 @@ CMD ["/bin/bash"]
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
-    dnf -y install  \
-    tensorrt-${TRT_VERSION} \
+    dnf -y install tensorrt-${TRT_VERSION}; \
 else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
