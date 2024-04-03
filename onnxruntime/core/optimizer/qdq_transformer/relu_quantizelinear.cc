@@ -48,7 +48,7 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   if (zero_point.size() != 1 ||
       (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 && zero_point.data<int8_t>()[0] != -128) ||
       (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT8 && zero_point.data<uint8_t>()[0] != 0) ||
-      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT16 && zero_point.data<int16_t>()[0] != -32,768) ||
+      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT16 && zero_point.data<int16_t>()[0] != -32768) ||
       (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT16 && zero_point.data<uint16_t>()[0] != 0)) {
     return Status::OK();
   }
