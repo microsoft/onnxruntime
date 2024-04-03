@@ -6,6 +6,7 @@
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
 #include "core/providers/dml/DmlExecutionProvider/src/IExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlReusedCommandListState.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -36,7 +37,7 @@ namespace Dml
             ID3D12Device* d3d12Device,
             ID3D12CommandQueue* queue,
             bool enableMetacommands,
-            bool enableDynamicGraphFusion);
+            bool enableGraphCapture);
 
         void ReleaseCompletedReferences();
 
@@ -153,7 +154,13 @@ namespace Dml
         STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
-        bool DynamicGraphFusionEnabled() const noexcept;
+        bool GraphCaptureEnabled() const noexcept;
+        bool GraphCaptured(int graph_annotation_id) const;
+        Status ReplayGraph(int graph_annotation_id);
+        Status OnRunStart(const onnxruntime::RunOptions& run_options);
+        Status OnRunEnd();
+        int GetCurrentGraphAnnotationId() const { return m_currentGraphAnnotationId; }
+        void AppendCapturedGraph(int annotationId, std::unique_ptr<DmlReusedCommandListState> capturedGraph);
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
 
@@ -189,8 +196,13 @@ namespace Dml
         bool m_isMcdmDevice = false;
         bool m_areCustomHeapsSupported = false;
         bool m_areMetacommandsEnabled = true;
-        bool m_dynamicGraphFusionEnabled = false;
+        int m_currentGraphAnnotationId = 0;
         bool m_native16BitShaderOpsSupported = false;
+        bool m_graphCaptured = false;
+        bool m_graphCaptureEnabled = false;
+
+        std::unordered_map<int, std::vector<std::unique_ptr<DmlReusedCommandListState>>> m_capturedGraphs;
+        std::unordered_set<int> m_graphCapturingDone;
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
@@ -243,7 +255,7 @@ namespace Dml
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* commandQueue,
             bool enableMetacommands,
-            bool enableDynamicGraphFusion
+            bool enableGraphCapture
         );
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
@@ -278,12 +290,14 @@ namespace Dml
             return Status::OK();
         }
 
-        onnxruntime::Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) final override
+        Status OnRunStart(const onnxruntime::RunOptions& run_options) final
         {
-            // Flush any pending work to the GPU, but don't block for completion, permitting it
-            // to overlap other work.
-            m_impl->Flush();
-            return Status::OK();
+            return m_impl->OnRunStart(run_options);
+        }
+
+        Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) final
+        {
+            return m_impl->OnRunEnd();
         }
 
         void Flush()
@@ -306,14 +320,24 @@ namespace Dml
             return m_impl.Get();
         }
 
-        bool DynamicGraphFusionEnabled() const
-        {
-            return m_impl->DynamicGraphFusionEnabled();
-        }
-
         virtual std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators() override
         {
             return m_impl->CreatePreferredAllocators();
+        }
+
+        bool IsGraphCaptureEnabled() const override
+        {
+            return m_impl->GraphCaptureEnabled();
+        }
+
+        bool IsGraphCaptured(int graph_annotation_id) const override
+        {
+            return m_impl->GraphCaptured(graph_annotation_id);
+        }
+
+        Status ReplayGraph(int graph_annotation_id) override
+        {
+            return m_impl->ReplayGraph(graph_annotation_id);
         }
 
     private:
