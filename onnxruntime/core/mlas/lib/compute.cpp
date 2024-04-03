@@ -865,6 +865,7 @@ Return Value:
         //ORT_ENFORCE((uintptr_t)(Input) % 64 == 0);
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
         //float Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
+        #if 1
         //std::cout << "Input: " << Input << ", D: " << D << ", Maximum: " << Maximum << "\n";
         constexpr size_t Alignment = 64;
         const float* AlignedInput = (const float*)(((uintptr_t)(Input) + Alignment - 1) & ~(Alignment - 1));
@@ -876,12 +877,6 @@ Return Value:
         float Maximum = ReduceMaximumF32Kernel(Input, UnalignedCount /*AlignedInput - Input*/);
         //float Maximum = *std::max_element(Input, /*Input + UnalignedCount*/ AlignedInput);
         Maximum = std::max(Maximum, ReduceMaximumF32Kernel(AlignedInput, D - UnalignedCount));
-        #if 0
-        float Maximum = std::max(
-            //ReduceMaximumF32Kernel(Input, UnalignedCount),
-            *std::max_element(Input, Input + UnalignedCount /*AlignedInput*/),
-            ReduceMaximumF32Kernel(AlignedInput, D - UnalignedCount)
-        );
         #endif
 #else
         float Maximum = MlasReduceMaximumF32Kernel(Input, D);
@@ -923,14 +918,11 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64)
             //float Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Output, D, &NegativeMaximum);
+            #if 1
             float* AlignedOutput = Output + UnalignedCount;
             MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* ComputeSumExpF32Kernel = GetMlasPlatform().ComputeSumExpF32Kernel;
             float Accumulation = ComputeSumExpF32Kernel(Input, Output, UnalignedCount, &NegativeMaximum);
             Accumulation += ComputeSumExpF32Kernel(AlignedInput, AlignedOutput, D - UnalignedCount, &NegativeMaximum);
-            #if 0
-            float Accumulation =
-                ComputeSumExpF32Kernel(Input, Output, UnalignedCount, &NegativeMaximum) +
-                ComputeSumExpF32Kernel(AlignedInput, AlignedOutput, D - UnalignedCount, &NegativeMaximum);
             #endif
 #else
             float Accumulation = MlasComputeSumExpF32Kernel(Input, Output, D, &NegativeMaximum);
@@ -944,9 +936,11 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
             //GetMlasPlatform().ComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
+            #if 1
             MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel = GetMlasPlatform().ComputeSoftmaxOutputF32Kernel;
             ComputeSoftmaxOutputF32Kernel(Output, UnalignedCount, Parameters);
             ComputeSoftmaxOutputF32Kernel(AlignedOutput, D - UnalignedCount, Parameters);
+            #endif
 #else
             MlasComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
 #endif
