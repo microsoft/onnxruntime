@@ -23,6 +23,8 @@ if (ARCH !== 'x64' && ARCH !== 'ia32' && ARCH !== 'arm64' && ARCH !== 'arm') {
 }
 // --onnxruntime-build-dir=
 const ONNXRUNTIME_BUILD_DIR = buildArgs['onnxruntime-build-dir'];
+// --onnxruntime-generator=
+const ONNXRUNTIME_GENERATOR = buildArgs['onnxruntime-generator'];
 // --rebuild
 const REBUILD = !!buildArgs.rebuild;
 // --use_dml
@@ -54,6 +56,9 @@ const args = [
 ];
 if (ONNXRUNTIME_BUILD_DIR && typeof ONNXRUNTIME_BUILD_DIR === 'string') {
   args.push(`--CDONNXRUNTIME_BUILD_DIR=${ONNXRUNTIME_BUILD_DIR}`);
+}
+if (ONNXRUNTIME_GENERATOR && typeof ONNXRUNTIME_GENERATOR === 'string') {
+  args.push(`--CDONNXRUNTIME_GENERATOR=${ONNXRUNTIME_GENERATOR}`);
 }
 if (USE_DML) {
   args.push('--CDUSE_DML=ON');
