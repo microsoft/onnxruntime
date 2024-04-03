@@ -204,6 +204,17 @@ stages:
             inputs:
               AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
 
+          - task: TSAUpload@2
+            displayName: 'TSA upload'
+            condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+            inputs:
+              GdnPublishTsaOnboard: false
+              GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+
+          - template: component-governance-component-detection-steps.yml
+            parameters:
+              condition: 'succeeded'
+
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
     dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
     jobs:
@@ -270,14 +281,3 @@ stages:
             python onnx_backend_test_series.py
           workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Run Python Tests'
-
-        - task: TSAUpload@2
-          displayName: 'TSA upload'
-          condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-          inputs:
-            GdnPublishTsaOnboard: false
-            GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-
-        - template: component-governance-component-detection-steps.yml
-          parameters:
-            condition: 'succeeded'

@@ -27,14 +27,8 @@ typedef struct IDMLDevice IDMLDevice;
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
-extern "C" {
-#endif
 
-enum OrtDmlPerformancePreference {
-  Default = 0,
-  HighPerformance = 1,
-  MinimumPower = 2
-};
+extern "C" {
 
 enum OrtDmlDeviceFilter : uint32_t {
 #ifdef ENABLE_NPU_ADAPTER_ENUMERATION
@@ -54,10 +48,32 @@ inline OrtDmlDeviceFilter& operator|=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter 
 inline OrtDmlDeviceFilter& operator&=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a &= (int)b); }
 inline OrtDmlDeviceFilter& operator^=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a ^= (int)b); }
 
+#else
+
+typedef enum OrtDmlDeviceFilter {
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
+  Any = 0xffffffff,
+  Gpu = 1 << 0,
+  Npu = 1 << 1,
+#else
+  Gpu = 1 << 0,
+#endif
+} OrtDmlDeviceFilter;
+
+#endif
+
+typedef enum OrtDmlPerformancePreference {
+  Default = 0,
+  HighPerformance = 1,
+  MinimumPower = 2
+} OrtDmlPerformancePreference;
+
 struct OrtDmlDeviceOptions {
   OrtDmlPerformancePreference Preference;
   OrtDmlDeviceFilter Filter;
 };
+
+typedef struct OrtDmlDeviceOptions OrtDmlDeviceOptions;
 
 /**
  * [[deprecated]]

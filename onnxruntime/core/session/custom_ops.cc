@@ -865,6 +865,26 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     def_builder.Provider(onnxruntime::kCpuExecutionProvider);
   }
 
+  if (op->version >= 18 && op->GetMayInplace != nullptr) {
+    int* input_index = nullptr;
+    int* output_index = nullptr;
+    size_t len = op->GetMayInplace(&input_index, &output_index);
+    if (len > 0) {
+      for (size_t i = 0; i < len; i++) def_builder.MayInplace(input_index[i], output_index[i]);
+      op->ReleaseMayInplace(input_index, output_index);
+    }
+  }
+
+  if (op->version >= 18 && op->GetAliasMap != nullptr) {
+    int* input_index = nullptr;
+    int* output_index = nullptr;
+    size_t len = op->GetAliasMap(&input_index, &output_index);
+    if (len > 0) {
+      for (size_t i = 0; i < len; i++) def_builder.Alias(input_index[i], output_index[i]);
+      op->ReleaseAliasMap(input_index, output_index);
+    }
+  }
+
   KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info,
                                          std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<CustomOpKernel>(info, *op);

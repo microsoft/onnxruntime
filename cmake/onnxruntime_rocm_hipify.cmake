@@ -60,6 +60,8 @@ set(contrib_ops_excluded_files
   "quantization/matmul_nbits.cc"
   "quantization/matmul_nbits.cuh"
   "quantization/matmul_nbits.cu"
+  "quantization/moe_quantization.h"
+  "quantization/moe_quantization.cc"
   "quantization/quantize_dequantize_linear.cc"
   "quantization/qordered_ops/qordered_attention_impl.cu"
   "quantization/qordered_ops/qordered_attention_impl.h"

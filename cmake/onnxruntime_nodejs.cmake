@@ -88,7 +88,7 @@ add_custom_target(js_common_npm_ci ALL
 
 add_custom_target(nodejs_binding_wrapper ALL
     COMMAND ${NPM_CLI} ci
-    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE}
+    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --onnxruntime-generator=${CMAKE_GENERATOR}
         --arch=${NODEJS_BINDING_ARCH} ${NODEJS_BINDING_USE_CUDA} ${NODEJS_BINDING_USE_DML} ${NODEJS_BINDING_USE_TENSORRT}
         ${NODEJS_BINDING_USE_COREML}
     WORKING_DIRECTORY ${JS_NODE_ROOT}

@@ -16,8 +16,8 @@ from .fusion_lpnorm import FusionLpNormalization
 
 
 def qnn_preprocess_model(
-    model_input: Path,
-    model_output: Path,
+    model_input: str | Path | onnx.ModelProto,
+    model_output: str | Path,
     fuse_layernorm: bool = False,
     save_as_external_data: bool = False,
     all_tensors_to_one_file: bool = False,
@@ -37,7 +37,7 @@ def qnn_preprocess_model(
     - (Optional) Fuse ReduceMean sequence into a single LayerNormalization node.
 
     Args:
-        model_input: Path to the input model file.
+        model_input: Path to the input model file or ModelProto.
         model_output: Path the output model file, which is only created if this method returns True.
         fuse_layernorm: True if ReduceMean sequences should be fused into LayerNormalization nodes.
             Defaults to False.
@@ -82,7 +82,7 @@ def qnn_preprocess_model(
             to cancel out.
     """
     modified = False
-    model = onnx.load_model(model_input)
+    model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load_model(model_input)
     onnx_model = ONNXModel(model)
 
     # Fuse Erf sequence into a single Gelu
