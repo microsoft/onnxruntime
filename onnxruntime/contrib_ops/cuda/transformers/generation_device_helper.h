@@ -160,7 +160,9 @@ Status UpdateDecoderCrossQK(
     AllocatorPtr allocator,
     gsl::span<const int32_t> beam_indices_gpu,
     OrtValue cross_qk_buffer_value,
-    int num_beams);
+    int num_beams,
+    const transformers::IConsoleDumper* dumper
+    );
 
 Status FinalizeDecoderCrossQK(
     Stream* stream,
@@ -176,7 +178,9 @@ Status FinalizeDecoderCrossQK(
     float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data,
-    gsl::span<const int32_t> beam_indices);
+    gsl::span<const int32_t> beam_indices,
+    const transformers::IConsoleDumper* dumper,
+    int real_decoded_length);
 
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib

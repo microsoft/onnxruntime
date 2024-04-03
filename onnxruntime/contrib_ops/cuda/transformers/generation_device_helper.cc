@@ -1489,7 +1489,8 @@ Status UpdateDecoderCrossQK(
     AllocatorPtr allocator,
     gsl::span<const int32_t> beam_indices_gpu,
     OrtValue cross_qk_buffer_value,
-    int num_beams) {
+    int num_beams,
+    const transformers::IConsoleDumper* dumper) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   if (qk_layer_pointers.get() == nullptr) {
@@ -1528,7 +1529,7 @@ Status UpdateDecoderCrossQK(
   cudaStreamSynchronize(cuda_stream);
 
   const TensorShape& cross_qk_shape = cross_qk_buffer_value.Get<Tensor>().Shape(); // shape [batchxbeam, layer_head_pair_count, max_length, frame]
-                                                                                   // [batch, num_beams, layer_head_pair_count, max_length, frames] ?
+                                                                                   
   // Create a tensor with same shape to copy shuffled data to.
   OrtValue shuffled_cross_qk;
   auto cross_qk_type = cross_qk_buffer_value.Get<Tensor>().DataType();
@@ -1536,7 +1537,7 @@ Status UpdateDecoderCrossQK(
 
   auto block_size_per_beam = cross_qk_shape[1] * cross_qk_shape[2] * cross_qk_shape[3];
 
-  auto batch_size = num_beams * block_size_per_beam;
+  auto block_size_per_batch = num_beams * block_size_per_beam;
 
   gsl::span<float> old_cross_qk_span = gsl::make_span<float>(cross_qk_buffer_value.GetMutable<Tensor>()->MutableData<float>(), onnxruntime::narrow<size_t>(cross_qk_shape.Size()));
   gsl::span<float> new_cross_qk_span = gsl::make_span<float>(shuffled_cross_qk.GetMutable<Tensor>()->MutableData<float>(), onnxruntime::narrow<size_t>(cross_qk_shape.Size()));
@@ -1547,7 +1548,7 @@ Status UpdateDecoderCrossQK(
     int32_t beam_index = beam_indices_gpu[j];
     int32_t batch_index = j / num_beams;
 
-    gsl::span<float> new_cross_qk = new_cross_qk_span.subspan(batch_index * batch_size + beam_index * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
+    gsl::span<float> new_cross_qk = new_cross_qk_span.subspan(batch_index * block_size_per_batch + beam_index * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
     gsl::span<float> old_cross_qk = old_cross_qk_span.subspan(j * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync((void*)new_cross_qk.data(), old_cross_qk.data(), sizeof(float) * block_size_per_beam,
@@ -1555,6 +1556,8 @@ Status UpdateDecoderCrossQK(
   }
 
   cross_qk_buffer_data = new_cross_qk_span.data();
+
+  //dumper->Print("Cross_QK_Scores update:", cross_qk_buffer_data, batchxbeam, max_length, frames); //batchxbeam, layer_head_pair_count, max_length, frame
 
   return Status::OK();
 }
@@ -1573,8 +1576,13 @@ Status FinalizeDecoderCrossQK(
     float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data,
-    gsl::span<const int32_t> beam_indices_gpu) {
+    gsl::span<const int32_t> beam_indices_gpu,
+    const transformers::IConsoleDumper* dumper,
+    int real_decoded_length) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+
+  // Print output here:
+  //dumper->Print("Cross_QK_Scores Finalize:", cross_qk_buffer_data, batch_size * num_beams, *cross_qk_layer_head_pairs, max_length, frames_of_k); //batchxbeam, layer_head_pair_count, max_length, frame
 
   cuda::LaunchFinalizeCrossQK(
     cuda_stream,
@@ -1591,6 +1599,11 @@ Status FinalizeDecoderCrossQK(
     num_return_sequences,
     cache_indir_data,
     beam_indices_gpu.data());
+
+  // Print output here:
+  std::cout << "Iteration_number: " << iteration_number << std::endl;
+  std::cout << "Context decoding number: " << context_decoding_len << std::endl;
+  //dumper->Print("Cross_QK_Output:", cross_qk_output, batch_size, cross_qk_layer_head_pair_count, iteration_number - 1, frames_of_k); //batchxbeam, layer_head_pair_count, max_length, frame
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
