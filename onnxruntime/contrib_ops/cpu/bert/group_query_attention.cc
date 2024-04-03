@@ -3,18 +3,17 @@
 
 #include "group_query_attention.h"
 #include "group_query_attention_helper.h"
+#include "attention_utils.h"
 
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/transpose_helper.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/providers/cpu/tensor/reshape_helper.h"
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
+#include <iostream>
 
 using onnxruntime::concurrency::ThreadPool;
 
@@ -24,19 +23,16 @@ namespace contrib {
 // TODO: get this right
 // TODO: How can I specify float32 for cpu only
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T)                                         \
-ONNX_OPERATOR_TYPED_KERNEL_EX( \
-    GroupQueryAttention,   \
-    kMSDomain, \
-    1, \
-    T, \
-    kCpuExecutionProvider, \
-    KernelDefBuilder() \
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
-        .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>()}), \
-    GroupQueryAttention<T>);
-
-REGISTER_KERNEL_TYPED(float)
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    GroupQueryAttention,
+    kMSDomain,
+    1,
+    float,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>()}),
+    GroupQueryAttention<float>);
 
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info) : OpKernel(info), GQAAttentionBase(info, false) {
@@ -48,51 +44,51 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info) : OpKernel
   kv_num_heads_ = static_cast<int>(kv_num_heads);
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
-  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+  is_unidirectional_ = true; // info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 }
 
-// Reshape Q/K/V from BxSxD to BxSxNxH
-Status Reshape_BSD_to_BSNH(Tensor* qkv,
-                           int batch_size,
-                           int sequence_length,
-                           int num_heads,
-                           int head_size) {
-  std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
-  gsl::span<const int64_t> reshape_dims_span{reshape_dims};
-  TensorShape qkv_bsnh(reshape_dims_span);
-  qkv->Reshape(qkv_bsnh);
-  return Status::OK();
-}
+// // Reshape Q/K/V from BxSxD to BxSxNxH
+// Status Reshape_BSD_to_BSNH(Tensor* qkv,
+//                            int batch_size,
+//                            int sequence_length,
+//                            int num_heads,
+//                            int head_size) {
+//   std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
+//   gsl::span<const int64_t> reshape_dims_span{reshape_dims};
+//   TensorShape qkv_bsnh(reshape_dims_span);
+//   qkv->Reshape(qkv_bsnh);
+//   return Status::OK();
+// }
 
-// Transpose Q/K/V from BxSxNxH to BxNxSxH
-Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
-                              OrtValue& qkv_transposed,
-                              concurrency::ThreadPool* tp = nullptr) {
-  std::vector<size_t> permutations({0, 2, 1, 3});
-  gsl::span<const size_t> permutations_span{permutations};
-  size_t from = 2, to = 1;
-  SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, tp);
-  return Status::OK();
-}
+// // Transpose Q/K/V from BxSxNxH to BxNxSxH
+// Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
+//                               OrtValue& qkv_transposed,
+//                               concurrency::ThreadPool* tp = nullptr) {
+//   std::vector<size_t> permutations({0, 2, 1, 3});
+//   gsl::span<const size_t> permutations_span{permutations};
+//   size_t from = 2, to = 1;
+//   SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, tp);
+//   return Status::OK();
+// }
 
-template <typename T>
-Status MaybeTransposeToBNSH(OpKernelContext* context, AllocatorPtr allocator,
-                                      int batch_size, int num_heads, int sequence_length, int head_size,
-                                      const Tensor* in, OrtValue& out) {
-  auto element_type = DataTypeImpl::GetType<T>();
-  std::vector<int64_t> new_dims({batch_size, num_heads, sequence_length, head_size});
-  gsl::span<const int64_t> new_dims_span{new_dims};
-  TensorShape v_BNLH(new_dims_span);
-  Tensor::InitOrtValue(element_type, v_BNLH, allocator, out);
-  std::unique_ptr<Tensor> reshaped;
-  if (in->Shape().GetDims().size() == 3) {
-    reshaped = std::make_unique<Tensor>(in->DataType(), in->Shape(), const_cast<void*>(in->DataRaw()), in->Location());
-    ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(reshaped.get(), batch_size, sequence_length, num_heads, head_size));
-  }
-  ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((reshaped == nullptr) ? in : reshaped.get(), out));
+// template <typename T>
+// Status MaybeTransposeToBNSH(OpKernelContext* context, AllocatorPtr allocator,
+//                                       int batch_size, int num_heads, int sequence_length, int head_size,
+//                                       const Tensor* in, OrtValue& out) {
+//   auto element_type = DataTypeImpl::GetType<T>();
+//   std::vector<int64_t> new_dims({batch_size, num_heads, sequence_length, head_size});
+//   gsl::span<const int64_t> new_dims_span{new_dims};
+//   TensorShape v_BNLH(new_dims_span);
+//   Tensor::InitOrtValue(element_type, v_BNLH, allocator, out);
+//   std::unique_ptr<Tensor> reshaped;
+//   if (in->Shape().GetDims().size() == 3) {
+//     reshaped = std::make_unique<Tensor>(in->DataType(), in->Shape(), const_cast<void*>(in->DataRaw()), in->Location());
+//     ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(reshaped.get(), batch_size, sequence_length, num_heads, head_size));
+//   }
+//   ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((reshaped == nullptr) ? in : reshaped.get(), out));
 
-  return Status::OK();
-};
+//   return Status::OK();
+// };
 
 template <typename T>
 Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
@@ -138,7 +134,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const int present_kv_seqlen = parameters.seqlen_present_kv_cache;
   int head_size = parameters.head_size;
   int q_hidden_size = parameters.hidden_size;
-  int kv_hidden_size = parameters.kv_hidden_size;
 
   std::vector<int64_t> output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
@@ -180,7 +175,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(),
                         V.GetMutable<Tensor>()->MutableData<T>(), past_key, past_value, output, present_k, present_v,
-                        batch_size, sequence_length, head_size, kv_hidden_size, context);
+                        batch_size, sequence_length, head_size, q_hidden_size, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

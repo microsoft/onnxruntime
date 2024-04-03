@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <iostream>
 #include "attention_base.h"
 #include "attention_helper.h"
 
@@ -31,7 +32,7 @@ class GQAAttentionBase : public AttentionBase {
                         int batch_size,                        // batch size (B)
                         int sequence_length,                   // sequence length of Q (S)
                         int head_size,                      // head size of Q or K (H)
-                        int kv_hidden_size,                     // hidden size of K and V (D_v)
+                        int hidden_size,                     // hidden size of output (O)
                         OpKernelContext* context) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -53,19 +54,16 @@ class GQAAttentionBase : public AttentionBase {
 
     bool causal = (is_unidirectional_ && sequence_length > 1);
 
-    // TODO: replace mask with gqa seqlen stuff
-    // void* mask_data = nullptr;
-    // if (mask_index != nullptr || causal) {
-    //   size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
-    //   mask_data = allocator->Alloc(mask_data_bytes);
-    //   memset(mask_data, 0, mask_data_bytes);
-    // }
-    // BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
+    void* mask_data = nullptr;
+    if (/*mask_index != nullptr ||*/ causal) {
+      size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
+      mask_data = allocator->Alloc(mask_data_bytes);
+      memset(mask_data, 0, mask_data_bytes);
+    }
+    BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
-    // const int32_t* mask_index_data = mask_index != nullptr ? mask_index->Data<int32_t>() : nullptr;
-    // gsl::span<const int64_t> mask_index_dims = mask_index != nullptr
-    //                                                ? mask_index->Shape().GetDims()
-    //                                                : gsl::span<const int64_t>{};
+    const int32_t* mask_index_data = nullptr; // mask_index != nullptr ? mask_index->Data<int32_t>() : nullptr;
+    gsl::span<const int64_t> mask_index_dims = gsl::span<const int64_t>{}; //mask_index != nullptr ? mask_index->Shape().GetDims() : gsl::span<const int64_t>{};
 
     const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
     T* present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
@@ -73,7 +71,8 @@ class GQAAttentionBase : public AttentionBase {
     T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
 
     // TODO: figure out masking parameter
-    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, causal,
+    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
+                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data), causal,
                              batch_size, sequence_length, past_sequence_length,
                              head_size, past_key_data, present_key_data, tp);
 
@@ -83,7 +82,7 @@ class GQAAttentionBase : public AttentionBase {
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs),
-                            V, batch_size, sequence_length, past_sequence_length, head_size, kv_hidden_size,
+                            V, batch_size, sequence_length, past_sequence_length, head_size, hidden_size,
                             past_value_data, present_value_data, tp);
 
     return Status::OK();
@@ -98,9 +97,9 @@ class GQAAttentionBase : public AttentionBase {
   void ComputeAttentionProbs(T* attention_probs,                        // output buffer with size BxNxSxT
                              const T* Q,                                // Q data. Its size is BxNxSxH
                              const T* K,                                // k data. Its size is BxNxLxH
-                            //  const int32_t* mask_index,                 // mask index. nullptr if no mask.
-                            //  gsl::span<const int64_t> mask_index_dims,  // mask index shape
-                            //  T* mask_data,                              // buffer for mask data.
+                             const int32_t* mask_index,                 // mask index. nullptr if no mask.
+                             gsl::span<const int64_t> mask_index_dims,  // mask index shape
+                             T* mask_data,                              // buffer for mask data.
                              bool causal,                               // has causal (unidirectional) mask
                              int batch_size,                            // batch size of self-attention
                              int sequence_length,                       // sequence length of self-attention (S)
@@ -117,10 +116,10 @@ class GQAAttentionBase : public AttentionBase {
     const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;             // T x H
 
     // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
-    // if (mask_data != nullptr) {
-    //   PrepareMask(mask_index, mask_index_dims, mask_data,
-    //               causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
-    // }
+    if (mask_data != nullptr) {
+      PrepareMask(nullptr, mask_index_dims, mask_data,
+                  causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
+    }
 
     const int loop_len = batch_size * num_heads_;
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
@@ -130,25 +129,22 @@ class GQAAttentionBase : public AttentionBase {
 
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
-        // const int batch_index = static_cast<int>(i) / num_heads_;
-        // const int head_index = static_cast<int>(i) % num_heads_;
+        const int batch_index = static_cast<int>(i) / num_heads_;
 
         const int output_offset = static_cast<int>(i) * sequence_length * total_sequence_length;
-        // const int mask_offset = batch_index * sequence_length * total_sequence_length;
+        const int mask_offset = batch_index * sequence_length * total_sequence_length;
         T* output = attention_probs + output_offset;
 
         // Broadcast mask data: (Bx)SxT -> (BxNx)SxT
-        // if (mask_data != nullptr) {
-        //   memcpy(output,
-        //          mask_data + mask_offset,
-        //          static_cast<size_t>(sequence_length) * total_sequence_length * sizeof(T));
-        // }
+        if (mask_data != nullptr) {
+          memcpy(output,
+                 mask_data + mask_offset,
+                 static_cast<size_t>(sequence_length) * total_sequence_length * sizeof(T));
+        }
 
         const T* k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
-        if (nullptr != present_key && i % kv_num_heads_factor == 0) {
+        if (nullptr != present_key) {
           k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i/kv_num_heads_factor);
-        } else {
-          k = present_key + (i / kv_num_heads_factor) * present_chunk_length;
         }
 
         // TODO: is comment correct?
@@ -160,7 +156,7 @@ class GQAAttentionBase : public AttentionBase {
         // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
         // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
         math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
-                                  Q + q_input_chunk_length * i, k, 0.0f, output, nullptr);
+                                  Q + q_input_chunk_length * i, k, mask_data != nullptr ? 1.0f : 0.0f, output, nullptr);
       }
     });
 
@@ -171,7 +167,7 @@ class GQAAttentionBase : public AttentionBase {
   }
 
   template <typename T>
-  void ComputeVxAttentionScore(T* output,                 // buffer for the result with size BxSxNxH_v
+  void ComputeVxAttentionScore(T* output,                 // buffer for the result with size BxSxNxH
                                T* tmp_buffer,             // buffer for temp use with size is BxNxSxH
                                const T* attention_probs,  // Attention probs with size BxNxSxT
                                const T* V,                // V value with size BxN_kvxSxH
@@ -179,7 +175,7 @@ class GQAAttentionBase : public AttentionBase {
                                int sequence_length,       // sequence length
                                int past_sequence_length,  // sequence length in past state
                                int head_size,           // head size of Q, K, V
-                               int kv_hidden_size,         // hidden size of K and V
+                               int hidden_size,         // hidden size of Output
                                const T* past_value,       // past value only (if not using past state)
                                T* present_value,          // present value only (if not using present state)
                                ThreadPool* tp) const {
@@ -196,10 +192,8 @@ class GQAAttentionBase : public AttentionBase {
     ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const T* v = V + kv_input_chunk_length * (i / kv_num_heads_factor);
-        if (nullptr != present_value && i % kv_num_heads_factor == 0) {
+        if (nullptr != present_value) {
           v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, i / kv_num_heads_factor);
-        } else {
-          v = present_value + (i / kv_num_heads_factor) * present_chunk_length; // TODO: technically unnecessary..?
         }
 
         T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
@@ -218,7 +212,7 @@ class GQAAttentionBase : public AttentionBase {
         for (int j = 0; j < sequence_length; j++) {
           memcpy(dest, src, bytes_to_copy);
           src += head_size;
-          dest += kv_hidden_size;
+          dest += hidden_size;
         }
       }
     });
