@@ -20,46 +20,87 @@ struct DefaultTolerance;
 
 template <>
 struct DefaultTolerance<double> {
-  static constexpr float absolute = 1e-6f;
+  static constexpr float absolute = 1e-5f;
   static constexpr float relative = 1e-5f;
+
+  // Allow to have different default absolute tolerance for different providers.
+  static float get_absolute(const std::string& /*provider_type*/) {
+    return absolute;
+  }
 };
 
 template <>
 struct DefaultTolerance<float> {
+#if defined(ENABLE_TRAINING)
+  static constexpr float absolute = 1e-3f;
+#else
   static constexpr float absolute = 1e-5f;
+#endif
+
   static constexpr float relative = 1e-4f;
+
+  static float get_absolute(const std::string& /*provider_type*/) {
+    return absolute;
+  }
 };
 
 template <>
 struct DefaultTolerance<MLFloat16> {
-  // The thresholds are estimated with PyTorch script like the following:
+#if defined(ENABLE_TRAINING)
+  static constexpr float absolute = 0.005f;
+#else
+  // The thresholds for inference are estimated with PyTorch script like the following:
   //    x = torch.rand(1000, 1000)
   //    absolute = ((x + 1e-6).to(torch.float16) - x).abs().max() * 10
   //    x[abs(x) < absolute] = absolute
   //    relative = ((x - x.to(torch.float16)) / x).abs().max() * 2
   static constexpr float absolute = 0.0025f;
+#endif
+
   static constexpr float relative = 0.001f;
+
+  static float get_absolute(const std::string& provider_type) {
+    if (provider_type == kDmlExecutionProvider) {
+      return 0.005f;
+    }
+    return absolute;
+  }
 };
 
 template <>
 struct DefaultTolerance<BFloat16> {
+  // The thresholds for inference are estimated with PyTorch script like the following:
+  //    x = torch.rand(1000, 1000)
+  //    absolute = ((x + 1e-6).to(torch.bfloat16) - x).abs().max() * 10
+  //    x[abs(x) < absolute] = absolute
+  //    relative = ((x - x.to(torch.bfloat16)) / x).abs().max() * 2
   static constexpr float absolute = 0.02f;
   static constexpr float relative = 0.01f;
+
+  static float get_absolute(const std::string& /*provider_type*/) {
+    return absolute;
+  }
+};
+
+struct ToleranceParams {
+  float absolute;
+  float relative;
 };
 
 template <typename T>
-T get_tolerance(float absolute, float relative, T expected_value) {
+ToleranceParams get_tolerance_params(const ValidateOutputParams& params, const std::string& provider_type) {
+  ToleranceParams new_params;
+  new_params.absolute = params.absolute_error.has_value() ? *(params.absolute_error) : DefaultTolerance<T>::get_absolute(provider_type);
+  new_params.relative = params.relative_error.has_value() ? *(params.relative_error) : DefaultTolerance<T>::relative;
+  return new_params;
+}
+
+template <typename T>
+T get_tolerance(const ToleranceParams& params, T expected_value) {
   static_assert(std::is_floating_point<T>::value, "T must be a floating point type");
 
   // The formula is similar to numpy.isclose: https://numpy.org/doc/stable/reference/generated/numpy.isclose.html
-  return static_cast<T>(absolute) + static_cast<T>(relative) * std::abs(expected_value);
-}
-
-template <typename T, typename D>  // D is the original data type
-T get_tolerance(const ValidateOutputParams& params, T expected_value) {
-  float absolute = (params.absolute_error.has_value() ? *(params.absolute_error) : DefaultTolerance<D>::absolute);
-  float relative = (params.relative_error.has_value() ? *(params.relative_error) : DefaultTolerance<D>::relative);
-  return get_tolerance<T>(absolute, relative, expected_value);
+  return static_cast<T>(params.absolute) + static_cast<T>(params.relative) * std::abs(expected_value);
 }
 
 template <typename T>
@@ -201,7 +242,10 @@ struct TensorCheck<int8_t> {
       cur_actual = actual.template Data<int8_t>();
     }
 
-    const bool has_abs_err = params.absolute_error.has_value();
+    // When absolute error is less than 1 for int8, it has same effect as no tolerance.
+    const bool has_abs_err = params.absolute_error.has_value() && *(params.absolute_error) >= 1.0f;
+
+    // TODO: the relative error is not used for int8 yet.
     if (has_abs_err) {
       double threshold = *(params.absolute_error);
 
@@ -221,10 +265,8 @@ struct TensorCheck<double> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& /*provider_type*/) const {
+                  const std::string& provider_type) const {
     auto size = actual.Shape().Size();
-
-    const bool has_tolerance = params.absolute_error.has_value() || params.relative_error.has_value();
 
     // deal with rare cases in which order of output data from a kernel MAY be
     // undefined
@@ -240,10 +282,7 @@ struct TensorCheck<double> {
       cur_actual = actual.Data<double>();
     }
 
-    double threshold = 0.001;
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
-    threshold = 0.005;
-#endif
+    auto tolerance_params = get_tolerance_params<double>(params, provider_type);
 
     for (int64_t i = 0; i < size; ++i) {
       // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
@@ -253,7 +292,7 @@ struct TensorCheck<double> {
       } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
       } else {
-        double tolerance = has_tolerance ? get_tolerance<double, double>(params, cur_expected[i]) : threshold;
+        double tolerance = get_tolerance<double>(tolerance_params, cur_expected[i]);
         EXPECT_NEAR(cur_expected[i], cur_actual[i], tolerance) << "i:" << i;
       }
     }
@@ -264,9 +303,7 @@ template <typename T>
 void InternalNumericalCheck(const Tensor& expected,
                             const Tensor& actual,
                             const ValidateOutputParams& params,
-                            const std::string& /*provider_type*/) {
-  const bool has_tolerance = params.absolute_error.has_value() || params.relative_error.has_value();
-
+                            const std::string& provider_type) {
   // deal with rare cases in which order of output data from a kernel MAY be
   // undefined
   Tensor expected_sorted, actual_sorted;
@@ -282,11 +319,7 @@ void InternalNumericalCheck(const Tensor& expected,
     cur_actual = actual.Data<T>();
   }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
-  constexpr float threshold = 0.005f;
-#else
-  constexpr float threshold = 0.0001f;
-#endif
+  auto tolerance_params = get_tolerance_params<T>(params, provider_type);
 
   for (int64_t i = 0; i < size; ++i) {
     // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
@@ -296,7 +329,7 @@ void InternalNumericalCheck(const Tensor& expected,
     } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
       EXPECT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
     } else {
-      T tolerance = has_tolerance ? get_tolerance<T, T>(params, cur_expected[i]) : threshold;
+      T tolerance = get_tolerance<T>(tolerance_params, cur_expected[i]);
       EXPECT_NEAR(cur_expected[i], cur_actual[i], tolerance) << "i:" << i;
     }
   }
@@ -317,7 +350,7 @@ struct TensorCheck<MLFloat16> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& /*provider_type*/) const {
+                  const std::string& provider_type) const {
     auto* cur_expected = expected.Data<MLFloat16>();
     auto* cur_actual = actual.Data<MLFloat16>();
     auto size = actual.Shape().Size();
@@ -333,21 +366,15 @@ struct TensorCheck<MLFloat16> {
       sort_expected_and_actual_buffers<float>(f_expected, f_actual);
     }
 
-    const bool has_tolerance = params.absolute_error.has_value() || params.relative_error.has_value();
+    auto tolerance_params = get_tolerance_params<MLFloat16>(params, provider_type);
 
-    float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM)
-    threshold = 0.005f;
-#elif defined(USE_DML)
-    threshold = 0.02f;
-#endif
     for (int64_t i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i;
       } else {
-        float tolerance = has_tolerance ? get_tolerance<float, MLFloat16>(params, f_expected[i]) : threshold;
+        float tolerance = get_tolerance<float>(tolerance_params, f_expected[i]);
         EXPECT_NEAR(f_expected[i], f_actual[i], tolerance) << "i:" << i;
       }
     }
@@ -359,7 +386,7 @@ struct TensorCheck<BFloat16> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& /*provider_type*/) const {
+                  const std::string& provider_type) const {
     auto* cur_expected = expected.Data<BFloat16>();
     auto* cur_actual = actual.Data<BFloat16>();
     auto size = actual.Shape().Size();
@@ -375,13 +402,7 @@ struct TensorCheck<BFloat16> {
       sort_expected_and_actual_buffers<float>(f_expected, f_actual);
     }
 
-    const bool has_tolerance = params.absolute_error.has_value() || params.relative_error.has_value();
-
-    float abs_threshold = 0.0001f;
-    float rel_threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
-    rel_threshold = 0.05f;  // expect at least 95% close
-#endif
+    auto tolerance_params = get_tolerance_params<BFloat16>(params, provider_type);
 
     for (int64_t i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -389,9 +410,7 @@ struct TensorCheck<BFloat16> {
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i;
       } else {
-        float tolerance = has_tolerance
-                              ? get_tolerance<float, BFloat16>(params, f_expected[i])
-                              : get_tolerance<float>(abs_threshold, rel_threshold, f_expected[i]);
+        float tolerance = get_tolerance<float>(tolerance_params, f_expected[i]);
         EXPECT_NEAR(f_expected[i], f_actual[i], tolerance) << "i:" << i;
       }
     }

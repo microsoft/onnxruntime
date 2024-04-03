@@ -252,8 +252,10 @@ export class WebGpuBackend {
       }
     };
 
-    Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
-    Object.defineProperty(this.env.webgpu, 'adapter', {value: adapter});
+    Object.defineProperty(
+        this.env.webgpu, 'device', {value: this.device, writable: false, enumerable: true, configurable: false});
+    Object.defineProperty(
+        this.env.webgpu, 'adapter', {value: adapter, writable: false, enumerable: true, configurable: false});
 
     // init queryType, which is necessary for InferenceSession.create
     this.setQueryType();
@@ -561,6 +563,24 @@ export class WebGpuBackend {
       artifact = this.programManager.build(program, normalizedDispatchGroup);
       this.programManager.setArtifact(key, artifact);
       LOG_DEBUG('info', () => `[artifact] key: ${key}, programName: ${program.name}`);
+    }
+
+    // validate uniform variables
+    if (programUniforms && artifact.uniformVariablesInfo) {
+      if (programUniforms.length !== artifact.uniformVariablesInfo.length) {
+        throw new Error(`Uniform variables count mismatch: expect ${artifact.uniformVariablesInfo.length}, got ${
+            programUniforms.length} in program "${artifact.programInfo.name}".`);
+      }
+      for (let i = 0; i < programUniforms.length; i++) {
+        const uniform = programUniforms[i];
+        const actualType = uniform.type;
+        const actualLength = typeof uniform.data === 'number' ? 1 : uniform.data.length;
+        const [type, length] = artifact.uniformVariablesInfo[i];
+        if (actualType !== type || actualLength !== length) {
+          throw new Error(`Uniform variable ${i} mismatch: expect type ${type} with size ${length}, got type ${
+              actualType} with size ${actualLength} in program "${artifact.programInfo.name}".`);
+        }
+      }
     }
 
     LOG_DEBUG(

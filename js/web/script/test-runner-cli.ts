@@ -573,6 +573,9 @@ async function main() {
         karmaArgs.push('--log-level debug');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
+      if (args.userDataDir) {
+        karmaArgs.push(`--user-data-dir="${args.userDataDir}"`);
+      }
       karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
       if (browser.startsWith('Edge')) {
         // There are currently 2 Edge browser launchers:
@@ -671,7 +674,7 @@ async function main() {
       case 'edge':
         return 'EdgeTest';
       case 'firefox':
-        return 'Firefox';
+        return 'FirefoxTest';
       case 'electron':
         return 'Electron';
       case 'safari':

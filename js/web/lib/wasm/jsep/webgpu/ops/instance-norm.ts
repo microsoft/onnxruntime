@@ -148,8 +148,7 @@ const computeMean =
   ${shaderHelper.mainStart(WG)}
     let currentImageNumber = global_idx / ${WG} / uniforms.C;
     let currentChannelNumber = (global_idx / ${WG}) % uniforms.C;
-    let wgId = global_idx % ${WG};
-    let wgOffset = wgId * uniforms.wg_size;
+    let wgOffset = local_id.x * uniforms.wg_size;
     if (wgOffset >= uniforms.H) {
         return;
     }
@@ -207,7 +206,7 @@ const computeMean =
     let offset = currentImageNumber * uniforms.image_size;
     var sum = ${fillVector('f32', components)};
     var squaredSum = ${fillVector('f32', components)};
-    for (var i: u32 = 0; i < ${WG}; i++) {
+    for (var i: u32 = 0; i < min(${WG}, uniforms.H); i++) {
         let value = input[offset + i + currentChannelNumber * ${WG}];
         sum += value[0];
         squaredSum += value[1];

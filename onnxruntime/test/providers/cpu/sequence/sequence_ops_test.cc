@@ -442,6 +442,19 @@ TEST(SequenceOpsTest, SplitToSequence_PositiveAxisScalarSplit) {
   test.Run();
 }
 
+TEST(SequenceOpsTest, SplitToSequence_StringSplit) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<std::string>("input", {3}, std::vector<std::string>({"Test string", "Another string", "A third and much longer string"}));
+  int64_t axis = 0;
+  test.AddAttribute("axis", axis);
+  SeqTensors<std::string> output;
+  output.AddTensor({1}, {"Test string"});
+  output.AddTensor({1}, {"Another string"});
+  output.AddTensor({1}, {"A third and much longer string"});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat) {
   OpTester test("SplitToSequence", 11);
   test.AddInput<float>("input", {5, 2}, GetConsecutiveVector<float>(1.f, 10));
