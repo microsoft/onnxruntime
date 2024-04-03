@@ -111,29 +111,29 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperWithLocale) {
   // - UPPER should produce the same output as they are all lower.
 
   OpTester test("StringNormalizer", opset_ver, domain);
-  InitTestAttr(test, "UPPER", true, {u8"monday"}, test_locale);
+  InitTestAttr(test, "UPPER", true, {"monday"}, test_locale);
   std::vector<int64_t> dims{7};
-  std::vector<std::string> input = {std::string(u8"monday"),
-                                    std::string(u8"tuesday"),
-                                    std::string(u8"Besançon"),
-                                    std::string(u8"École élémentaire"),
-                                    std::string(u8"Понедельник"),
-                                    std::string(u8"mit freundlichen grüßen"),
-                                    std::string(u8"中文")};
+  std::vector<std::string> input = {"monday",
+                                    "tuesday",
+                                    "Besançon",
+                                    "École élémentaire",
+                                    "Понедельник",
+                                    "mit freundlichen grüßen",
+                                    "中文"};
   test.AddInput<std::string>("T", dims, input);
 
   // en_US results (default)
-  std::vector<std::string> output = {std::string(u8"TUESDAY"),
+  std::vector<std::string> output = {"TUESDAY",
                                      // It does upper case cecedille, accented E
                                      // and german umlaut but fails
                                      // with german eszett
-                                     std::string(u8"BESANÇON"),
-                                     std::string(u8"ÉCOLE ÉLÉMENTAIRE"),
+                                     "BESANÇON",
+                                     "ÉCOLE ÉLÉMENTAIRE",
                                      // No issues with Cyrllic
-                                     std::string(u8"ПОНЕДЕЛЬНИК"),
-                                     std::string(u8"MIT FREUNDLICHEN GRÜßEN"),
+                                     "ПОНЕДЕЛЬНИК",
+                                     "MIT FREUNDLICHEN GRÜßEN",
                                      // Chinese do not have cases
-                                     std::string(u8"中文")};
+                                     "中文"};
   test.AddOutput<std::string>("Y", {6}, output);
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
@@ -146,29 +146,29 @@ TEST(ContribOpTest, StringNormalizerInsensitiveFilterOutUpperWithLocale) {
   // - UPPER should produce the same output as they are all lower.
 
   OpTester test("StringNormalizer", opset_ver, domain);
-  InitTestAttr(test, "UPPER", false, {u8"monday"}, test_locale);
+  InitTestAttr(test, "UPPER", false, {"monday"}, test_locale);
   std::vector<int64_t> dims{7};
-  std::vector<std::string> input = {std::string(u8"monday"),
-                                    std::string(u8"tuesday"),
-                                    std::string(u8"Besançon"),
-                                    std::string(u8"École élémentaire"),
-                                    std::string(u8"Понедельник"),
-                                    std::string(u8"mit freundlichen grüßen"),
-                                    std::string(u8"中文")};
+  std::vector<std::string> input = {"monday",
+                                    "tuesday",
+                                    "Besançon",
+                                    "École élémentaire",
+                                    "Понедельник",
+                                    "mit freundlichen grüßen",
+                                    "中文"};
   test.AddInput<std::string>("T", dims, input);
 
   // en_US results (default)
-  std::vector<std::string> output = {std::string(u8"TUESDAY"),
+  std::vector<std::string> output = {"TUESDAY",
                                      // It does upper case cecedille, accented E
                                      // and german umlaut but fails
                                      // with german eszett
-                                     std::string(u8"BESANÇON"),
-                                     std::string(u8"ÉCOLE ÉLÉMENTAIRE"),
+                                     "BESANÇON",
+                                     "ÉCOLE ÉLÉMENTAIRE",
                                      // No issues with Cyrllic
-                                     std::string(u8"ПОНЕДЕЛЬНИК"),
-                                     std::string(u8"MIT FREUNDLICHEN GRÜßEN"),
+                                     "ПОНЕДЕЛЬНИК",
+                                     "MIT FREUNDLICHEN GRÜßEN",
                                      // Chinese do not have cases
-                                     std::string(u8"中文")};
+                                     "中文"};
   test.AddOutput<std::string>("Y", {6}, output);
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
@@ -182,8 +182,7 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperEmptyCase) {
   OpTester test("StringNormalizer", opset_ver, domain);
   InitTestAttr(test, "UPPER", true, {"monday"}, test_locale);
   std::vector<int64_t> dims{2};
-  std::vector<std::string> input = {std::string("monday"),
-                                    std::string("monday")};
+  std::vector<std::string> input = {"monday", "monday"};
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<std::string> output{""};  // One empty string

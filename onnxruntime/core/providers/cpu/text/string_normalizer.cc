@@ -539,7 +539,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   size_t max_wide_buffer_len = 0;
   auto input_span = X->DataAsSpan<std::string>();
   for (const auto& s : input_span) {
-    size_t wchars;
+    size_t wchars = 0;
     // Checks for invalid UTF-8 characters on Windows
     ORT_RETURN_IF_ERROR(converter.ComputeRequiredSizeToWideChar(s, wchars));
     max_wide_buffer_len = std::max(max_wide_buffer_len, wchars);
@@ -600,7 +600,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
     } else {
       // we need to filter
       InlinedVector<size_t> filtered_strings_indecies;
-      filtered_strings_indecies.reserve(C);
+      filtered_strings_indecies.reserve(narrow<size_t>(C));
 
       for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
         const std::string& s = input_span[i];
@@ -623,7 +623,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       // to the same case. For that we convert to wchar_t UNICODE.
       // Otherwise, we need to pull ICU library on all platforms
       InlinedVector<size_t> filtered_strings_indecies;
-      filtered_strings_indecies.reserve(C);
+      filtered_strings_indecies.reserve(narrow<size_t>(C));
       for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
         const std::string& s = input_span[i];
         wchar_buffer.resize(max_wide_buffer_len);
