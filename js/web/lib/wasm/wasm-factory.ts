@@ -4,7 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import type {OrtWasmModule, OrtWasmThreadedModule} from './wasm-types';
-import {dynamicImportDefault, preloadWorker} from './wasm-utils-import';
+import {dynamicImportDefault, preloadWorker, scriptSrc} from './wasm-utils-import';
 
 let wasm: OrtWasmModule|undefined;
 let initialized = false;
@@ -118,7 +118,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   const wasmWorkerFileName = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ? `${wasmFileName}.worker.js` : '';
   const wasmWorkerUrl = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ?
-      await preloadWorker(`${wasmFileName}.worker.js`, wasmPrefixOverride) :
+      await preloadWorker(`${wasmFileName}.worker.js`, wasmPrefixOverride ?? scriptSrc) :
       '';
 
   let isTimeout = false;

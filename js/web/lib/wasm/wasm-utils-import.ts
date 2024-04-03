@@ -8,10 +8,15 @@ import {isNode} from './wasm-utils-env';
  *
  * In Node.js, this is undefined.
  */
-export const scriptSrc = isNode ?
-    undefined :
-    (typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src :
-                                       BUILD_DEFS.ESM_IMPORT_META_URL);
+export const scriptSrc =
+    // if Nodejs, return undefined
+    isNode ? undefined :
+             // if It's ESM, use import.meta.url
+             BUILD_DEFS.ESM_IMPORT_META_URL ??
+        // use `document.currentScript.src` if available
+        (typeof document !== 'undefined' ? (document.currentScript as HTMLScriptElement)?.src :
+                                           // use `self.location.href` if available
+                                           (typeof self !== 'undefined' ? self.location?.href : undefined));
 
 /**
  * The origin of the current location.
