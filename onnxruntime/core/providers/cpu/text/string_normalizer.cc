@@ -526,16 +526,14 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  // We need to know the result dimension first, and for that we need to filter
-  // the words first. If the compare with stop words is case insensitive, we
-  // can go ahead and compare the input strings straight away. Otherwise, we need
+  // We need to know the result dimension, and for that we need to filter
+  // the words first. If we compare with stop words is case insensitive, we
+  // can go ahead and compare the input strings. Otherwise, we need
   // Upper case or lowercase them to compare with wide stop words.
 
   Locale locale(locale_name_);
   Utf8Converter converter;
 
-  // We need to change case either because of filtering or because of the
-  // case change requested.
   // Compute the largest widestring buffer needed.
   size_t max_wide_buffer_len = 0;
   auto input_span = X->DataAsSpan<std::string>();
@@ -569,8 +567,6 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   };
 
   auto output_filtered = [&](const TensorShape& output_shape, gsl::span<const size_t> filtered_indices) {
-    // According to the spec, if all strings are filtered out
-    // the output must have a shape of {1} with a single empty string.
     auto output_tensor = ctx->Output(0, output_shape);
     auto output_data = output_tensor->MutableData<std::string>();
     for (size_t i : filtered_indices) {
@@ -610,6 +606,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
       }
 
+      // According to the spec, if all strings are filtered out
+      // the output must have a shape of {1} with a single empty string.
       const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indecies.size()));
       output_shape.push_back(filtered_count);
       status = output_filtered(output_shape, filtered_strings_indecies);
@@ -621,8 +619,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       status = output_no_filtering(output_shape);
     } else {
       // Case insensitive filtering is performed by converting the input strings
-      // to the same case. For that we convert to wchar_t UNICODE.
-      // Otherwise, we need to pull ICU library on all platforms
+      // to compare_caseaction_. For that we convert to wchar_t UNICODE.
+      // Otherwise, we need to pull ICU library on all platforms.
       InlinedVector<size_t> filtered_strings_indecies;
       filtered_strings_indecies.reserve(narrow<size_t>(C));
       for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
@@ -635,6 +633,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
       }
 
+      // According to the spec, if all strings are filtered out
+      // the output must have a shape of {1} with a single empty string.
       const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indecies.size()));
       output_shape.push_back(filtered_count);
       status = output_filtered(output_shape, filtered_strings_indecies);

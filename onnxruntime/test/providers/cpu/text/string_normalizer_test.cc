@@ -206,7 +206,7 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperEmptyCase) {
 
 // Fails on iOS because necessary locales are not installed
 // MacOS runs fine.
-#ifdef __APPLE__
+#ifndef __APPLE__
 TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperSameOutput) {
   // Empty output case
   // - casesensitive approach
