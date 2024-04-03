@@ -214,7 +214,6 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
       auto it = attrs.find("func_name");
       ORT_ENFORCE(it != attrs.end());
       if (it->second.s().find("onnxruntime.training.ortmodule._mem_efficient_grad_mgmt.ParamRetrievalFunction") != std::string::npos) {
-        std::cout << "Skip node " << node->Name() << " with func_name " << it->second.s() << std::endl;
         node_in_reversed_order.push_back(node->Index());
         continue;
       }
