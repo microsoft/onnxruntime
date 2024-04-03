@@ -1,5 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -125,13 +126,19 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperWithLocale) {
   // en_US results (default)
   std::vector<std::string> output = {"TUESDAY",
                                      // It does upper case cecedille, accented E
-                                     // and german umlaut but fails
-                                     // with german eszett
                                      "BESANÇON",
                                      "ÉCOLE ÉLÉMENTAIRE",
                                      // No issues with Cyrllic
                                      "ПОНЕДЕЛЬНИК",
+  // Works with german umlaut but fails
+  // with german Eszett. Reason being, capital case for Eszett
+  // was introduced only recently into encodings
+  // and some platforms produce it, but others do not
+#ifdef __wasm__
+                                     "MIT FREUNDLICHEN GRÜẞEN",
+#else
                                      "MIT FREUNDLICHEN GRÜßEN",
+#endif
                                      // Chinese do not have cases
                                      "中文"};
   test.AddOutput<std::string>("Y", {6}, output);
@@ -159,14 +166,21 @@ TEST(ContribOpTest, StringNormalizerInsensitiveFilterOutUpperWithLocale) {
 
   // en_US results (default)
   std::vector<std::string> output = {"TUESDAY",
-                                     // It does upper case cecedille, accented E
-                                     // and german umlaut but fails
-                                     // with german eszett
+                                     // It does upper case cecedille, and accented E
                                      "BESANÇON",
                                      "ÉCOLE ÉLÉMENTAIRE",
                                      // No issues with Cyrllic
                                      "ПОНЕДЕЛЬНИК",
+  // Works with german umlaut but fails
+  // with german Eszett (ß). Reason being, capital case for Eszett
+  // was introduced only recently into encodings
+  // and some platforms produce it, but others do not
+#ifdef __wasm__
+                                     "MIT FREUNDLICHEN GRÜẞEN",
+#else
                                      "MIT FREUNDLICHEN GRÜßEN",
+#endif
+
                                      // Chinese do not have cases
                                      "中文"};
   test.AddOutput<std::string>("Y", {6}, output);
@@ -190,6 +204,10 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperEmptyCase) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+// Fails on iOS because necessary locales are not installed
+// MacOS runs fine.
+
+#if defined(TARGET_IPHONE_SIMULATOR) || defined(TARGET_OS_IPHONE)
 TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperSameOutput) {
   // Empty output case
   // - casesensitive approach
@@ -206,6 +224,7 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperSameOutput) {
   test.AddOutput<std::string>("Y", {1, 1}, output);
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
