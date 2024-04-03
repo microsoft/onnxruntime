@@ -54,7 +54,6 @@ class OpSignature;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
-using TimeStampedEntry = std::pair<const Node*, float>;
 #endif
 
 namespace fbs {
@@ -1079,13 +1078,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                       const std::function<bool(const Node*, const Node*)>& stop) const;
 
 #if !defined(ORT_MINIMAL_BUILD)
-
   /** Performs topological sort with Kahn's algorithm on the graph/s.
   @param enter Visit function that will be invoked on a node when it is visited.
   @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
   */
   void KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
-                            const std::function<bool(const TimeStampedEntry&, const TimeStampedEntry&)>& comp) const;
+                            const std::function<bool(const Node*, const Node*)>& comp) const;
 
 #endif
 

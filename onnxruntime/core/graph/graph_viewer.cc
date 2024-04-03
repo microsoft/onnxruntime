@@ -24,9 +24,7 @@ struct PriorityNodeCompare {
   // Used for std::priority_queue
   // If return false, n1 will be output first
   // If return true, n2 will be output first
-  bool operator()(const TimeStampedEntry& entry1, const TimeStampedEntry& entry2) const {
-    const Node* n1 = entry1.first;
-    const Node* n2 = entry2.first;
+  bool operator()(const Node* n1, const Node* n2) const {
     // nodes in global high priority list will be output first
     const bool isN1HighPri = IsHighPri(n1);
     const bool isN2HighPri = IsHighPri(n2);
@@ -95,12 +93,6 @@ struct PriorityNodeCompare {
       if (n1_impact != -1 && n2_impact != -1) {
         return n2_impact > n1_impact;
       }
-    }
-
-    const float ts1 = entry1.second;
-    const float ts2 = entry2.second;
-    if (ts1 != ts2) {
-      return ts1 > ts2;
     }
 
 #endif
@@ -183,50 +175,11 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
   }
 #endif
 #if !defined(ORT_MINIMAL_BUILD)
-  std::vector<NodeIndex> nodes_in_topological_order_with_priority;
   graph.KahnsTopologicalSort(
-      [&nodes_in_topological_order_with_priority](const Node* n) {
-        nodes_in_topological_order_with_priority.push_back(n->Index());
+      [this](const Node* n) {
+        nodes_in_topological_order_with_priority_.push_back(n->Index());
       },
       PriorityNodeCompare());
-
-  // Tune the order a bit.
-  // If a node is used by a consumer node, but the execution order of the consumer node is later than the producer node,
-  // we should move the producer node to right before the consumer node. In this case, the producer node will only be executed
-  // when needed and the memory can be released earlier. We do this in reversed topological order to hanlde the single-input-single_output
-  // node chains.
-  InlinedVector<NodeIndex> node_in_reversed_order;
-  node_in_reversed_order.reserve(nodes_in_topological_order_with_priority.size());
-  for (auto it = nodes_in_topological_order_with_priority.rbegin(); it != nodes_in_topological_order_with_priority.rend(); ++it) {
-    const Node* node = graph_->GetNode(*it);
-
-    if (node->GetOutputEdgesCount() != 1) {
-      // Don't need tune, just add it to the front of reversed_order.
-      node_in_reversed_order.push_back(node->Index());
-      continue;
-    }
-
-    // Handle the "High priority nodes" differently
-    // So, it may break the computation order also when recompute is enabled.
-    // But as ShapeInputMerge is introduced, there is much less chance to let recompute subgraph consumed by a normal Shape
-    // or Size node. (TODO: pengwa): observe from real models and see if we need to handle this case.
-    if (node->OpType() == "Shape" || node->OpType() == "Size") {
-      node_in_reversed_order.push_back(node->Index());
-      continue;
-    }
-
-    const Node* consumer = &(*(node->OutputNodesBegin()));
-    // Insert the consumer node right after the producer node. (Remember the order is reversed here).
-    auto it_consumer = std::find(node_in_reversed_order.begin(), node_in_reversed_order.end(), consumer->Index());
-    ORT_ENFORCE(it_consumer != node_in_reversed_order.end());
-    node_in_reversed_order.insert(it_consumer + 1, node->Index());  // Then node is inserted right after the consumer node.
-  }
-
-  nodes_in_topological_order_with_priority_.insert(
-      nodes_in_topological_order_with_priority_.end(),
-      node_in_reversed_order.rbegin(),
-      node_in_reversed_order.rend());
-
 #endif
 
   if (filter_info_) {

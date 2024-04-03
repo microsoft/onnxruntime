@@ -1820,7 +1820,7 @@ void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
 
 template <typename T>
 struct VisitorPriorityQueue {
-  using ComparatorType = std::function<bool(const T&, const T&)>;
+  using ComparatorType = std::function<bool(T, T)>;
   std::list<T> list_;
   const ComparatorType comparator_ = nullptr;
   VisitorPriorityQueue(const ComparatorType& comp) : comparator_(comp) {}
@@ -1837,16 +1837,10 @@ struct VisitorPriorityQueue {
 
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
-                                 const std::function<bool(const TimeStampedEntry&, const TimeStampedEntry&)>& comp) const {
+                                 const std::function<bool(const Node*, const Node*)>& comp) const {
   InlinedVector<size_t> in_degree(MaxNodeIndex(), 0);
   InlinedVector<NodeIndex> topo_order;
-  VisitorPriorityQueue<TimeStampedEntry> to_visit(comp);
-
-  float time_stamp = 0.0f;
-  auto get_time_stamp = [&time_stamp]() -> float {
-    time_stamp += 1;
-    return time_stamp;
-  };
+  VisitorPriorityQueue<const Node*> to_visit(comp);
 
   auto number_of_nodes = NumberOfNodes();
   topo_order.reserve(number_of_nodes);
@@ -1855,13 +1849,12 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
     size_t input_edge_count = node.GetInputEdgesCount();
     in_degree[node.Index()] = input_edge_count;
     if (input_edge_count == 0) {
-      to_visit.push(&node, get_time_stamp());
+      to_visit.push(&node);
     }
   }
 
   while (!to_visit.empty()) {
-    const TimeStampedEntry ts_entry = to_visit.top();
-    cosnt Node* current = ts_entry.first;
+    const Node* current = to_visit.top();
     to_visit.pop();
 
     if (!current) continue;
@@ -1875,7 +1868,7 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
       node_in_degree--;
 
       if (node_in_degree == 0) {
-        to_visit.push(&*node_it, get_time_stamp());
+        to_visit.push(&*node_it);
       }
     }
     topo_order.push_back(current->Index());
