@@ -102,7 +102,7 @@ class TrainingManager(GraphExecutionManager):
                 input_data_index = i
                 break  # Stop the loop once the tensor with grad_fn is found
 
-        if input_data_index is not None:
+        if input_data_index:
             input_info = (inputs[input_data_index].device, input_data_index)
 
         run_info = _RunStateInfo(state, output_info, input_info)
@@ -229,7 +229,7 @@ class TrainingManager(GraphExecutionManager):
                     # In case of ORT Parallel Training, the input data should be sent to the previous device to be used in the backward pass.
                     if input_data_index is not None:
                         # Apply to() only to the element at input_data_index
-                        if updated_transferred_backward_outputs[input_data_index] != None:
+                        if updated_transferred_backward_outputs[input_data_index]:
                             modified_transferred_backward_outputs = list(updated_transferred_backward_outputs)
                             modified_transferred_backward_outputs[input_data_index] = (
                                 updated_transferred_backward_outputs[input_data_index].to(prev_device_str)

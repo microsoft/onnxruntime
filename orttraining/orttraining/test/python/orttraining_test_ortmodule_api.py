@@ -2707,9 +2707,12 @@ def test_model_with_multiple_devices_cpu_cuda():
         )
     else:
         # ORT backend
-        with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        with pytest.raises(ValueError) as e:
             ort_model = ORTModule(pt_model)
-        assert str(e.value) == "ORTModule supports a single device per model"
+        assert (
+            str(e.value)
+            == "Model is dispatched to multiple devices, use prepare_model_for_parallel_pipeline to wrap your model."
+        )
 
 
 def test_model_with_multiple_devices_to_to():
@@ -2737,9 +2740,12 @@ def test_model_with_multiple_devices_to_to():
         )
     else:
         # ORT backend
-        with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        with pytest.raises(ValueError) as e:
             ort_model = ORTModule(pt_model)
-        assert str(e.value) == "ORTModule supports a single device per model"
+        assert (
+            str(e.value)
+            == "Model is dispatched to multiple devices, use prepare_model_for_parallel_pipeline to wrap your model."
+        )
 
 
 def test_model_with_multiple_devices_to_cpu():
@@ -2767,9 +2773,12 @@ def test_model_with_multiple_devices_to_cpu():
         )
     else:
         # ORT backend
-        with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        with pytest.raises(ValueError) as e:
             ort_model = ORTModule(pt_model)
-        assert str(e.value) == "ORTModule supports a single device per model"
+        assert (
+            str(e.value)
+            == "Model is dispatched to multiple devices, use prepare_model_for_parallel_pipeline to wrap your model."
+        )
 
 
 def test_model_with_multiple_devices_to_cuda():
@@ -2797,9 +2806,12 @@ def test_model_with_multiple_devices_to_cuda():
         )
     else:
         # ORT backend
-        with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        with pytest.raises(ValueError) as e:
             ort_model = ORTModule(pt_model)
-        assert str(e.value) == "ORTModule supports a single device per model"
+        assert (
+            str(e.value)
+            == "Model is dispatched to multiple devices, use prepare_model_for_parallel_pipeline to wrap your model."
+        )
 
 
 @pytest.mark.parametrize("device", ["cuda", "cuda:0", "cuda:1", "cuda:2"])

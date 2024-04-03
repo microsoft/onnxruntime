@@ -44,7 +44,7 @@ class _RunStateInfo:
         self,
         state,
         output_info: List[Tuple[torch.Size, torch.device, torch.dtype]],
-        input_info: Tuple[torch.device, int] = None,
+        input_info: Optional[Tuple[torch.device, int]] = None,
     ):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.

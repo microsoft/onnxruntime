@@ -1,9 +1,9 @@
-from typing import Optional
 import os
+from typing import Optional
 
+from . import _utils
 from .options import DebugOptions
 from .ortmodule import ORTModule
-from . import _utils
 
 
 def wrap_submodule_with_ort(model, submodule_path: str, debug_options=None):

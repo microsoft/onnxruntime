@@ -128,15 +128,21 @@ def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matc
                 pt_out = pt_model(inputs)
                 _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
             else:
-                with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
+                with pytest.raises(ValueError) as type_error:
                     # Initialize with fallback policy because Exception will happen during __init__
                     ort_model = ORTModule(copy.deepcopy(pt_model))
-                assert "ORTModule supports a single device per model" in str(type_error.value)
+                assert (
+                    "Model is dispatched to multiple devices, use prepare_model_for_parallel_pipeline to wrap your model."
+                    in str(type_error.value)
+                )
         else:
-            with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
+            with pytest.raises(ValueError) as type_error:
                 # Initialize with fallback policy because Exception will happen during __init__
                 ort_model = ORTModule(copy.deepcopy(pt_model))
-            assert "ORTModule supports a single device per model" in str(type_error.value)
+            assert (
+                "Model is dispatched to multiple devices, use prepare_model_for_parallel_pipeline to wrap your model."
+                in str(type_error.value)
+            )
 
 
 @pytest.mark.parametrize(
