@@ -140,8 +140,8 @@ def create_backend_test(test_name=None):
         if backend.supports_device("OPENVINO_CPU_FP16"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP16")
 
-        if backend.supports_device("OPENVINO_NPU_FP16"):
-            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU_FP16")
+        if backend.supports_device("OPENVINO_NPU"):
+            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU")
 
         if backend.supports_device("OPENVINO"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_opset18")

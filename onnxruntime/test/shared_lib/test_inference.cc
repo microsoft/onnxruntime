@@ -208,7 +208,7 @@ static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/mod
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/VariedInputCustomOp.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
-static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
+static constexpr PATH_TYPE OPTIONAL_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/custom_op_variadic_io.onnx");
 static constexpr PATH_TYPE VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR(
     "testdata/custom_op_variadic_undef_io.onnx");
@@ -1082,7 +1082,7 @@ TEST(CApiTest, invalid_variadic_input_homogeneity_custom_op) {
   }
 }
 
-TEST(CApiTest, optional_input_output_custom_op_handler) {
+TEST(CApiTest, optional_input_custom_op_handler) {
   MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
 
   // `MyCustomOpFooBar` defines a custom op with atmost 3 inputs and the second input is optional.
@@ -1147,7 +1147,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
   {
     std::vector<const char*> input_names = {"X1", "X2"};
     ort_inputs.erase(ort_inputs.begin() + 2);  // remove the last input in the container
-    Ort::Session session(*ort_env, OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2, session_options);
+    Ort::Session session(*ort_env, OPTIONAL_INPUT_CUSTOM_OP_MODEL_URI_2, session_options);
     auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
                                    &output_name, 1);
     ASSERT_EQ(ort_outputs.size(), 1u);
@@ -1166,6 +1166,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
     }
   }
 }
+
 TEST(CApiTest, custom_op_with_attributes_handler) {
   MyCustomOpWithAttributes custom_op{onnxruntime::kCpuExecutionProvider};
 
@@ -2861,6 +2862,17 @@ TEST(CApiTest, TestSharedAllocators) {
                         expected_dims_y,
                         expected_values_y,
                         nullptr);
+
+      // create session 3 to test separate allocation for initializers
+      session_options.AddConfigEntry("session.use_device_allocator_for_initializers", "1");
+      Ort::Session session3(*ort_env, MODEL_URI, session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session3,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
     }
 
     // Remove the registered shared allocator from the global environment
@@ -2871,7 +2883,10 @@ TEST(CApiTest, TestSharedAllocators) {
     // We should have seen 2 allocations per session (one for the sole initializer
     // and one for the output). So, for two sessions, we should have seen 4 allocations.
     size_t num_allocations = custom_allocator.NumAllocations();
-    ASSERT_TRUE(num_allocations == 4);
+    ASSERT_TRUE(num_allocations == 6);
+
+    size_t num_reserve_allocations = custom_allocator.NumReserveAllocations();
+    ASSERT_TRUE(num_reserve_allocations == 1);
 
     // Ensure that there was no leak
     custom_allocator.LeakCheck();
@@ -4020,6 +4035,24 @@ struct MockGQA : public OrtCustomOp {
       (*output_index)[1] = 2;
       return ret;
     };
+    OrtCustomOp::ReleaseMayInplace = [](int* input_index, int* output_index) {
+      free(input_index);
+      free(output_index);
+    };
+    OrtCustomOp::GetAliasMap = [](int** input_index, int** output_index) {
+      size_t ret = 2;
+      *input_index = static_cast<int*>(malloc(ret * sizeof(int)));
+      (*input_index)[0] = 5;
+      (*input_index)[1] = 6;
+      *output_index = static_cast<int*>(malloc(ret * sizeof(int)));
+      (*output_index)[0] = 7;
+      (*output_index)[1] = 8;
+      return ret;
+    };
+    OrtCustomOp::ReleaseAliasMap = [](int* input_index, int* output_index) {
+      free(input_index);
+      free(output_index);
+    };
   }
 };
 
@@ -4035,6 +4068,16 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(output_index[0], 1);
   ASSERT_EQ(output_index[1], 2);
   ASSERT_EQ(len, static_cast<size_t>(2));
-  free(input_index);
-  free(output_index);
+  mock_gqa.ReleaseMayInplace(input_index, output_index);
+
+  input_index = output_index = nullptr;
+  len = mock_gqa.GetAliasMap(&input_index, &output_index);
+  ASSERT_NE(input_index, nullptr);
+  ASSERT_NE(output_index, nullptr);
+  ASSERT_EQ(input_index[0], 5);
+  ASSERT_EQ(input_index[1], 6);
+  ASSERT_EQ(output_index[0], 7);
+  ASSERT_EQ(output_index[1], 8);
+  ASSERT_EQ(len, static_cast<size_t>(2));
+  mock_gqa.ReleaseAliasMap(input_index, output_index);
 }

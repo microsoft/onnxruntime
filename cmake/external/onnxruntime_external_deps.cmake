@@ -14,6 +14,16 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
     set(DEP_URL_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP_URL})
     # The third column is SHA1 hash value
     set(DEP_SHA1_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP})
+
+    if(ONNXRUNTIME_DEP_URL MATCHES "^https://")
+      # Search a local mirror folder
+      string(REGEX REPLACE "^https://" "${REPO_ROOT}/mirror/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
+
+      if(EXISTS "${LOCAL_URL}")
+        cmake_path(ABSOLUTE_PATH LOCAL_URL)
+        set(DEP_URL_${ONNXRUNTIME_DEP_NAME} "${LOCAL_URL}")
+      endif()
+    endif()
   endif()
 endforeach()
 
@@ -109,7 +119,7 @@ FetchContent_Declare(
     URL ${DEP_URL_flatbuffers}
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
     PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
-    FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
+    FIND_PACKAGE_ARGS 23.5.9 NAMES Flatbuffers
 )
 
 # Download a protoc binary from Internet if needed

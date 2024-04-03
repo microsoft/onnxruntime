@@ -32,13 +32,8 @@ from demo_utils import (
     repeat_prompt,
 )
 
-if __name__ == "__main__":
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
 
-    parser = arg_parser("Options for Stable Diffusion Demo")
-    add_controlnet_arguments(parser)
-    args = parse_arguments(is_xl=False, parser=parser)
-
+def main(args):
     controlnet_images, controlnet_scale = process_controlnet_arguments(args)
 
     pipeline, refiner = load_pipelines(args)
@@ -88,3 +83,20 @@ if __name__ == "__main__":
     pipeline.save_images(images, prompt, negative_prompt, metadata)
 
     pipeline.teardown()
+
+
+if __name__ == "__main__":
+    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+
+    parser = arg_parser("Options for Stable Diffusion Demo")
+    add_controlnet_arguments(parser)
+    args = parse_arguments(is_xl=False, parser=parser)
+
+    if args.user_compute_stream:
+        import torch
+
+        s = torch.cuda.Stream()
+        with torch.cuda.stream(s):
+            main(args)
+    else:
+        main(args)
