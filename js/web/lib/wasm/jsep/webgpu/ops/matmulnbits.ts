@@ -90,11 +90,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const workgroupSize = [workgroupSizeX, 1, 1];
       const dispatch = [Math.ceil(dimAOuter / workgroupSize[0]), Math.ceil(dimBOuter / components), batchSize];
 
-      const programUniforms: ProgramUniform[] = [
-        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: attributes.k},
-        {type: DataType.uint32, data: attributes.n}, {type: DataType.uint32, data: attributes.accuracyLevel},
-        {type: DataType.uint32, data: attributes.bits}, {type: DataType.uint32, data: attributes.blockSize}
-      ];
+      const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: attributes.blockSize}];
       const inputShapeTemp = [batchSize, dimAOuter, dimInner / aComponents];
       const bShape = ShapeUtil.convertShape(inputs[1].dims).slice();
       bShape.splice(-1, 1, blobSizeInWords / bComponents);
@@ -119,10 +115,7 @@ export const createBlockwiseMatMulNBitsProgramInfo =
         }
         const outputRank = outputShapeTemp.length;
         const output = outputVariable('output', inputs[0].dataType, outputRank, components);
-        const uniforms: UniformsArrayType = [
-          {name: 'output_size', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
-          {name: 'accuracy_level', type: 'u32'}, {name: 'bits', type: 'u32'}, {name: 'block_size', type: 'u32'}
-        ];
+        const uniforms: UniformsArrayType = [{name: 'block_size', type: 'u32'}];
         const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
 
         const qDqDataType = (() => {
