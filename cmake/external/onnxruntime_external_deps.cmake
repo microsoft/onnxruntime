@@ -14,6 +14,16 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
     set(DEP_URL_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP_URL})
     # The third column is SHA1 hash value
     set(DEP_SHA1_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP})
+
+    if(ONNXRUNTIME_DEP_URL MATCHES "^https://")
+      # Search a local mirror folder
+      string(REGEX REPLACE "^https://" "${REPO_ROOT}/mirror/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
+
+      if(EXISTS "${LOCAL_URL}")
+        cmake_path(ABSOLUTE_PATH LOCAL_URL)
+        set(DEP_URL_${ONNXRUNTIME_DEP_NAME} "${LOCAL_URL}")
+      endif()
+    endif()
   endif()
 endforeach()
 

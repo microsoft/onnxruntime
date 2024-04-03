@@ -25,17 +25,91 @@ index a6efc98e..8c4de8e7 100644
      "/wd4800",
  ]
 diff --git a/absl/copts/copts.py b/absl/copts/copts.py
-index 0d6c1ec3..75fd935f 100644
+index e6e11949..0aa7d868 100644
 --- a/absl/copts/copts.py
 +++ b/absl/copts/copts.py
-@@ -132,10 +132,6 @@ COPT_VARS = {
-             "/wd4068",  # unknown pragma
-             # qualifier applied to function type has no meaning; ignored
-             "/wd4180",
--            # conversion from 'type1' to 'type2', possible loss of data
--            "/wd4244",
--            # conversion from 'size_t' to 'type', possible loss of data
--            "/wd4267",
-             # The decorated name was longer than the compiler limit
-             "/wd4503",
-             # forcing value to bool 'true' or 'false' (performance warning)
+@@ -115,10 +115,6 @@ MSVC_WARNING_FLAGS = [
+     "/wd4068",  # unknown pragma
+     # qualifier applied to function type has no meaning; ignored
+     "/wd4180",
+-    # conversion from 'type1' to 'type2', possible loss of data
+-    "/wd4244",
+-    # conversion from 'size_t' to 'type', possible loss of data
+-    "/wd4267",
+     # The decorated name was longer than the compiler limit
+     "/wd4503",
+     # forcing value to bool 'true' or 'false' (performance warning)
+diff --git a/absl/debugging/symbolize_win32.inc b/absl/debugging/symbolize_win32.inc
+index 53a099a1..34d210d6 100644
+--- a/absl/debugging/symbolize_win32.inc
++++ b/absl/debugging/symbolize_win32.inc
+@@ -35,15 +35,15 @@ ABSL_NAMESPACE_BEGIN
+ 
+ static HANDLE process = NULL;
+ 
+-void InitializeSymbolizer(const char*) {
+-  if (process != nullptr) {
+-    return;
+-  }
++namespace {
++void InitializeSymbolizerImpl() {
++
+   process = GetCurrentProcess();
+ 
+   // Symbols are not loaded until a reference is made requiring the
+   // symbols be loaded. This is the fastest, most efficient way to use
+   // the symbol handler.
++
+   SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME);
+   if (!SymInitialize(process, nullptr, true)) {
+     // GetLastError() returns a Win32 DWORD, but we assign to
+@@ -54,6 +54,36 @@ void InitializeSymbolizer(const char*) {
+   }
+ }
+ 
++bool LookupAndInitialize(const void* pc, SYMBOL_INFO* symbol) {
++  auto hProcess = (process != NULL) ? process : GetCurrentProcess();
++  if (SymFromAddr(hProcess, reinterpret_cast<DWORD64>(pc), nullptr, symbol) != TRUE) {
++    if (GetLastError() == ERROR_INVALID_HANDLE && process == NULL) {
++      InitializeSymbolizerImpl();
++      if (SymFromAddr(process, reinterpret_cast<DWORD64>(pc), nullptr, symbol) != TRUE) {
++        return false;
++      }
++    } else {
++      return false;
++    }
++    return false;
++  }
++  return true;
++}
++}
++
++void InitializeSymbolizer(const char*) {
++  if (process != nullptr) {
++    return;
++  }
++
++  alignas(SYMBOL_INFO) char buf[sizeof(SYMBOL_INFO) + MAX_SYM_NAME];
++  SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(buf);
++  symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
++  symbol->MaxNameLen = MAX_SYM_NAME;
++
++  static_cast<void>(LookupAndInitialize(reinterpret_cast<const void*>(&InitializeSymbolizer), symbol));
++}
++
+ bool Symbolize(const void* pc, char* out, int out_size) {
+   if (out_size <= 0) {
+     return false;
+@@ -62,9 +92,11 @@ bool Symbolize(const void* pc, char* out, int out_size) {
+   SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(buf);
+   symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+   symbol->MaxNameLen = MAX_SYM_NAME;
+-  if (!SymFromAddr(process, reinterpret_cast<DWORD64>(pc), nullptr, symbol)) {
++
++  if(!LookupAndInitialize(pc, symbol)) {
+     return false;
+   }
++
+   const size_t out_size_t = static_cast<size_t>(out_size);
+   strncpy(out, symbol->Name, out_size_t);
+   if (out[out_size_t - 1] != '\0') {

@@ -265,7 +265,7 @@ export const createConvTranspose2DProgramInfo =
       const outputChannelsPerGroup = wShape[1];
 
       const programUniforms: ProgramUniform[] = [
-        {type: DataType.int32, data: outputSize}, {type: DataType.uint32, data: strides},
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: strides},
         {type: DataType.uint32, data: filterDims}, {type: DataType.uint32, data: dilations},
         {type: DataType.uint32, data: effectiveFilterDims}, {type: DataType.int32, data: pads},
         {type: DataType.uint32, data: inputChannelsPerGroup}, {type: DataType.uint32, data: outputChannelsPerGroup},

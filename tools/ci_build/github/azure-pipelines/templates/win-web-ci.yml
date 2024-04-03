@@ -153,31 +153,61 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test -- -e=chrome -b=webgl,wasm --karma-debug
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\01
+     npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\01
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl backend)'
-    condition: eq('${{ parameters.RunWebGpuTests }}', 'false')
+    condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'false'))
   - script: |
-     npm test -- -e=chrome -b=webgl,wasm,webgpu --karma-debug $(webgpuCommandlineExtraFlags)
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\02
+     npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\02
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
-    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+    condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
   - script: |
-     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor --karma-debug $(webgpuCommandlineExtraFlags)
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\03
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\03
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
-    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+    condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
   - script: |
-     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location --karma-debug $(webgpuCommandlineExtraFlags)
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\04
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\04
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
-    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+    condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
   - script: |
-     npm test -- --webgl.pack -b=webgl -e=chrome --karma-debug
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\05
+     npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\05
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm.proxy -b=wasm -e=chrome --karma-debug
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\06
+     npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\06
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
