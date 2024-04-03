@@ -4,22 +4,14 @@
 #include "string_normalizer.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "onnxruntime_config.h"
 
 #ifdef _MSC_VER
-#include <codecvt>
 #include <locale.h>
-#elif defined(__APPLE__) || defined(__ANDROID__)
-#include <codecvt>
-#else
-#include <limits>
-#include <iconv.h>
-
 #endif  // _MSC_VER
 
+#include <codecvt>
 #include <locale>
 #include <functional>
-#include <unordered_set>
 
 #if defined(__GNUC__)
 // Allow deprecated-declarations warning - std::wstring_convert is deprecated.
@@ -50,7 +42,7 @@ class Utf8ConverterGeneric {
     }
 
     size_t result = 0;
-    mbstate_t state = {0};
+    std::mbstate_t state = std::mbstate_t();
 
     const wchar_t* src = wstr.data();
     const wchar_t* src_end = src + wstr.length();
@@ -103,7 +95,7 @@ class Utf8ConverterGeneric {
       return Status::OK();
     }
 
-    mbstate_t state = {0};
+    std::mbstate_t state = std::mbstate_t();
 
     const wchar_t* src = wstr.data();
     const wchar_t* src_end = src + wstr.length();
@@ -140,7 +132,7 @@ class Utf8ConverterGeneric {
     }
 
     size_t result = 0;
-    mbstate_t state = {0};
+    std::mbstate_t state = std::mbstate_t();
 
     const char* src = str.data();
     const char* src_end = src + str.length();
@@ -193,7 +185,7 @@ class Utf8ConverterGeneric {
       return Status::OK();
     }
 
-    mbstate_t state = {0};
+    std::mbstate_t state = std::mbstate_t();
     const char* src = str.data();
     const char* src_end = src + str.length();
 
@@ -235,14 +227,6 @@ class Utf8ConverterGeneric {
   }
 
  private:
-  // class CodecvtUtf8 : public std::codecvt<wchar_t, char, std::mbstate_t> {
-  //  public:
-  //   using Base = std::codecvt<wchar_t, char, std::mbstate_t>;
-  //   explicit CodecvtUtf8(size_t refs = 0) : Base(refs) {}
-  //   ~CodecvtUtf8() = default;
-  // };
-
-  // CodecvtUtf8 converter_;
   std::codecvt_utf8<wchar_t> converter_;
 };
 
@@ -442,77 +426,7 @@ using Utf8Converter = Utf8ConverterGeneric;
 
 #else
 
-// All others (not Windows, Apple, or Android)
-class Utf8Converter {
- public:
-  Utf8Converter() = default;
-
-  std::wstring from_bytes(const std::string& s) const {
-    std::wstring result;
-    if (s.empty()) {
-      return result;
-    }
-    // Order of arguments is to, from
-    auto icvt = iconv_open("WCHAR_T", "UTF-8");
-    // CentOS is not happy with -1
-    if (std::numeric_limits<iconv_t>::max() == icvt) {
-      return wconv_error;
-    }
-
-    char* iconv_in = const_cast<char*>(s.c_str());
-    size_t iconv_in_bytes = s.length();
-    // Temporary buffer assumes 1 byte to 1 wchar_t
-    // to make sure it is enough.
-    const size_t buffer_len = iconv_in_bytes * sizeof(wchar_t);
-    auto buffer = std::make_unique<char[]>(buffer_len);
-    char* iconv_out = buffer.get();
-    size_t iconv_out_bytes = buffer_len;
-    auto ret = iconv(icvt, &iconv_in, &iconv_in_bytes, &iconv_out, &iconv_out_bytes);
-    if (static_cast<size_t>(-1) == ret) {
-      result = wconv_error;
-    } else {
-      size_t converted_bytes = buffer_len - iconv_out_bytes;
-      assert((converted_bytes % sizeof(wchar_t)) == 0);
-      result.assign(reinterpret_cast<const wchar_t*>(buffer.get()), converted_bytes / sizeof(wchar_t));
-    }
-    iconv_close(icvt);
-    return result;
-  }
-
-  std::string to_bytes(const std::wstring& wstr) const {
-    std::string result;
-    if (wstr.empty()) {
-      return result;
-    }
-    // Order of arguments is to, from
-    auto icvt = iconv_open("UTF-8", "WCHAR_T");
-    // CentOS is not happy with -1
-    if (std::numeric_limits<iconv_t>::max() == icvt) {
-      return conv_error;
-    }
-
-    // I hope this does not modify the incoming buffer
-    wchar_t* non_const_in = const_cast<wchar_t*>(wstr.c_str());
-    char* iconv_in = reinterpret_cast<char*>(non_const_in);
-    size_t iconv_in_bytes = wstr.length() * sizeof(wchar_t);
-    // Temp buffer, assume every code point converts into 3 bytes, this should be enough
-    // We do not convert terminating zeros
-    const size_t buffer_len = wstr.length() * 3;
-    auto buffer = std::make_unique<char[]>(buffer_len);
-
-    char* iconv_out = buffer.get();
-    size_t iconv_out_bytes = buffer_len;
-    auto ret = iconv(icvt, &iconv_in, &iconv_in_bytes, &iconv_out, &iconv_out_bytes);
-    if (static_cast<size_t>(-1) == ret) {
-      result = conv_error;
-    } else {
-      size_t converted_len = buffer_len - iconv_out_bytes;
-      result.assign(buffer.get(), converted_len);
-    }
-    iconv_close(icvt);
-    return result;
-  }
-};
+using Utf8Converter = Utf8ConverterGeneric;
 
 #endif
 
@@ -695,7 +609,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
       }
 
-      const int64_t filtered_count = std::max(1LL, narrow<int64_t>(filtered_strings_indecies.size()));
+      const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indecies.size()));
       output_shape.push_back(filtered_count);
       status = output_filtered(output_shape, filtered_strings_indecies);
     }
@@ -720,7 +634,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
       }
 
-      const int64_t filtered_count = std::max(1LL, narrow<int64_t>(filtered_strings_indecies.size()));
+      const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indecies.size()));
       output_shape.push_back(filtered_count);
       status = output_filtered(output_shape, filtered_strings_indecies);
     }
