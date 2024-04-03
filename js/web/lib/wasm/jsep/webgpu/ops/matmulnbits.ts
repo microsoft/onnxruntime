@@ -67,7 +67,6 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const components = getMaxComponents(dimBOuter);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
-      const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
       const elementSize = getTensorElementSize(inputs[0].dataType);
       if (!elementSize) {
         throw new Error(`Unsupported data type: ${inputs[0].dataType}`);
@@ -78,7 +77,16 @@ export const createBlockwiseMatMulNBitsProgramInfo =
         throw new Error('The required storage size per workgroup is too large.');
       }
       const maxWorkgroupsizeX = Math.ceil(maxComputeWorkgroupStorageSize / requiredStorageSizePerWorkgroupX);
-      const workgroupSizeX = Math.min(maxComputeWorkgroupSizes[0], nBlocksPerCol, maxWorkgroupsizeX);
+      const maxWorkgroupSizeX = Math.min(maxComputeWorkgroupSizes[0], nBlocksPerCol, maxWorkgroupsizeX);
+      // Find the largest workgroupSizeX that divides nBlocksPerCol.
+      const workgroupSizeX = (() => {
+        for (let i = maxWorkgroupSizeX; i > 1; i--) {
+          if (nBlocksPerCol % i === 0) {
+            return i;
+          }
+        }
+        return 1;
+      })();
       const workgroupSize = [workgroupSizeX, 1, 1];
       const dispatch = [Math.ceil(dimAOuter / workgroupSize[0]), Math.ceil(dimBOuter / components), batchSize];
 
