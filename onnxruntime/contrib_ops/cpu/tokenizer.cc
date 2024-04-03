@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+
+#include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/common/utf8_util.h"
 #include "core/framework/tensor.h"
@@ -35,7 +37,7 @@ class Tokenizer final : public OpKernel {
   std::string pad_value_;
   int64_t mincharnum_{0};
   bool char_tokenezation_{false};
-  std::vector<std::unique_ptr<re2::RE2>> separators_;
+  InlinedVector<std::unique_ptr<re2::RE2>> separators_;
   std::unique_ptr<re2::RE2> regex_;
 };
 
@@ -138,7 +140,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
     ++curr_input;
   }
 
-  std::vector<int64_t> output_dims(input_dims.begin(), input_dims.end());
+  TensorShapeVector output_dims(input_dims.begin(), input_dims.end());
   // Check if we have no output due to apparently empty strings input.
   if (max_tokens == 0) {
     output_dims.push_back(0);
@@ -160,31 +162,30 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   while (curr_input != last) {
     const auto& s = *curr_input;
     if (mark_) {
-      (output_data + output_index)->assign(&start_text, 1);
+      output_data[output_index].assign(&start_text, 1);
       ++output_index;
     }
     size_t tokens = 0;
     const size_t str_len = s.size();
     for (size_t token_idx = 0; token_idx < str_len;) {
       size_t tlen = 0;
-      bool result = utf8_bytes(static_cast<unsigned char>(s[token_idx]), tlen);
+      [[maybe_unused]] bool result = utf8_bytes(static_cast<unsigned char>(s[token_idx]), tlen);
       assert(result);
-      (void)result;
       assert(token_idx + tlen <= str_len);
-      *(output_data + output_index) = s.substr(token_idx, tlen);
+      output_data[output_index] = s.substr(token_idx, tlen);
       ++output_index;
       token_idx += tlen;
       ++tokens;
     }
     if (mark_) {
-      (output_data + output_index)->assign(&end_text, 1);
+      output_data[output_index].assign(&end_text, 1);
       ++output_index;
     }
     // Padding strings
     assert(tokens + (static_cast<size_t>(mark_) * 2) <= max_tokens);
     const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - tokens;
     for (size_t p = 0; p < pads; ++p) {
-      *(output_data + output_index) = pad_value_;
+      output_data[output_index] = pad_value_;
       ++output_index;
     }
     ++curr_input;
@@ -196,7 +197,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
                                                size_t N, size_t C,
                                                gsl::span<const int64_t> input_dims) const {
   using namespace re2;
-  std::vector<std::vector<StringPiece>> rows;
+  std::vector<InlinedVector<StringPiece>> rows;
   rows.reserve(N * C);
 
   // We do not constraint the search to match
@@ -219,10 +220,20 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
                     "Input string contains invalid utf8 chars: " + s);
     }
 
-    std::vector<StringPiece> row{s};
+    // This produces heap contention.
+    // Let's re-use the same vector with pre-allocated max space
+    // It is difficult to estimate the length of the buffer required here
+    // if no separate matches, we then have just one string
+    // We can not have more tokens than the number of utf-8 characters
+    // No data, available, so we can estimate half the number of UTF-8 characters
+    InlinedVector<StringPiece> row;
+    row.reserve(utf8_chars / 2);
+    row.emplace_back(s);
+
+    InlinedVector<StringPiece> tokens;
+    tokens.reserve(utf8_chars / 2);
 
     for (const auto& sep : separators_) {
-      std::vector<StringPiece> tokens;
       for (const auto& text : row) {
         const auto end_pos = text.length();
         size_t start_pos = 0;
@@ -269,15 +280,17 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
           }
         } while (match);
       }  // row
-      // Replace the row with the results of this tokenezation
-      row.swap(tokens);
+      // We want to preserve the buffer for the next separator
+      // copying slices is cheaper than allocating new memory
+      row = tokens;
+      tokens.clear();
     }  // separators_
     max_tokens = std::max(max_tokens, row.size());
     rows.push_back(std::move(row));
     ++curr_input;
   }
 
-  std::vector<int64_t> output_dims(input_dims.begin(), input_dims.end());
+  TensorShapeVector output_dims(input_dims.begin(), input_dims.end());
   // Check if we have no output due to either empty input
   // everything is a separator
   if (max_tokens == 0) {
@@ -307,21 +320,21 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
     size_t c_idx = output_index;
 #endif
     if (mark_) {
-      (output_data + output_index)->assign(&start_text, 1);
+      output_data[output_index].assign(&start_text, 1);
       ++output_index;
     }
     // Output tokens for this row
     for (const auto& token : row) {
-      (output_data + output_index)->assign(token.data(), token.size());
+      output_data[output_index].assign(token.data(), token.size());
       ++output_index;
     }
     if (mark_) {
-      (output_data + output_index)->assign(&end_text, 1);
+      output_data[output_index].assign(&end_text, 1);
       ++output_index;
     }
     const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
     for (size_t p = 0; p < pads; ++p) {
-      *(output_data + output_index) = pad_value_;
+      output_data[output_index] = pad_value_;
       ++output_index;
     }
 #ifdef _DEBUG
@@ -339,7 +352,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   using namespace re2;
   // Represents a token that will be output after
   // first is the index, second is the size;
-  std::vector<std::vector<StringPiece>> tokens;
+  std::vector<InlinedVector<StringPiece>> tokens;
   tokens.reserve(N * C);
 
   size_t max_tokens = 0;
