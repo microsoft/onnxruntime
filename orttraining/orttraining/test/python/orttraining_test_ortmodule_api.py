@@ -30,7 +30,15 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
+from onnxruntime.training.ortmodule import (
+    DebugOptions,
+    LogLevel,
+    ORTModule,
+    _fallback,
+    _io,
+    _utils,
+    prepare_model_for_parallel_pipeline,
+)
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
@@ -2812,6 +2820,25 @@ def test_model_with_multiple_devices_to_cuda():
             str(e.value)
             == "Model is dispatched to multiple devices, use prepare_model_for_parallel_pipeline to wrap your model."
         )
+
+
+def test_non_dispateched_model_pipeline_parallel():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10)
+            self.fc2 = torch.nn.Linear(10, 10)
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    pt_model = MultipleDeviceModel()
+
+    with pytest.raises(ValueError) as e:
+        prepare_model_for_parallel_pipeline(pt_model)
+    assert str(e.value) == "The model is not dispatched to multiple devices, use ORTModule to wrap your model."
 
 
 @pytest.mark.parametrize("device", ["cuda", "cuda:0", "cuda:1", "cuda:2"])
