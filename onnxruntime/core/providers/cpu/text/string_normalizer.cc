@@ -468,7 +468,8 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
     ORT_ENFORCE(false, "attribute case_change_action has invalid value");
   }
 
-  compare_caseaction_ = (case_change_action_ == UPPER) ? UPPER : LOWER;
+  // Set this to lower because some characters do not have capital case.
+  compare_caseaction_ = LOWER;
   locale_name_ = info.GetAttrOrDefault("locale", default_locale);
 
   std::vector<std::string> stop_words = info.GetAttrsOrDefault<std::string>("stopwords");

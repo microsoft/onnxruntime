@@ -206,8 +206,7 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperEmptyCase) {
 
 // Fails on iOS because necessary locales are not installed
 // MacOS runs fine.
-
-#if defined(TARGET_IPHONE_SIMULATOR) || defined(TARGET_OS_IPHONE)
+#ifdef __APPLE__
 TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperSameOutput) {
   // Empty output case
   // - casesensitive approach
