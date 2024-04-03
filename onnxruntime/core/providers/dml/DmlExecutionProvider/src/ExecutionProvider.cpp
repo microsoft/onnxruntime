@@ -19,6 +19,8 @@
 #include "core/framework/fallback_cpu_capability.h"
 #include "DmlCommittedResourceAllocator.h"
 #include "DmlCommittedResourceWrapper.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/common/parse_string.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -68,7 +70,7 @@ namespace Dml
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands,
-        bool enableDynamicGraphFusion) :
+        bool enableGraphCapture) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
@@ -81,7 +83,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableDynamicGraphFusion);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableGraphCapture);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -142,11 +144,11 @@ namespace Dml
         }
     }
 
-ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableDynamicGraphFusion)
+ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableGraphCapture)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
-          m_dynamicGraphFusionEnabled(enableDynamicGraphFusion)
+          m_graphCaptureEnabled(enableGraphCapture)
     {
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
@@ -1133,10 +1135,15 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
         return m_areMetacommandsEnabled;
     }
 
-    bool ExecutionProviderImpl::DynamicGraphFusionEnabled() const noexcept
+    bool ExecutionProviderImpl::GraphCaptureEnabled() const noexcept
     {
-        return m_dynamicGraphFusionEnabled;
+        return m_graphCaptureEnabled;
     }
+
+    bool ExecutionProviderImpl::GraphCaptured(int graph_annotation_id) const
+    {
+        return m_graphCapturingDone.find(graph_annotation_id) != m_graphCapturingDone.end();
+    };
 
     std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
@@ -1172,13 +1179,61 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
         return onnxruntime::common::Status::OK();
     }
 
+    void ExecutionProviderImpl::AppendCapturedGraph(int annotationId, std::unique_ptr<DmlReusedCommandListState> capturedGraph)
+    {
+        m_capturedGraphs[annotationId].push_back(std::move(capturedGraph));
+    }
+
+    onnxruntime::common::Status ExecutionProviderImpl::ReplayGraph(int graph_annotation_id)
+    {
+        for (auto& capturedGraph : m_capturedGraphs[graph_annotation_id])
+        {
+            ExecuteCommandList(capturedGraph->graphicsCommandList.Get(), &capturedGraph->fence, &capturedGraph->completionValue);
+        }
+
+        return onnxruntime::common::Status::OK();
+    }
+
+    Status ExecutionProviderImpl::OnRunStart(const onnxruntime::RunOptions& run_options)
+    {
+        if (GraphCaptureEnabled())
+        {
+            auto graph_annotation_str = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
+            // If graph annotation is not provided, fall back to the one dml graph per session behavior
+            int dml_graph_annotation_id = 0;
+            if (graph_annotation_str.has_value())
+            {
+                ORT_ENFORCE(onnxruntime::TryParseStringWithClassicLocale<int>(*graph_annotation_str, dml_graph_annotation_id),
+                            "Failed to parse the dml graph annotation id: ",
+                            *graph_annotation_str);
+            }
+
+            m_currentGraphAnnotationId = dml_graph_annotation_id;
+        }
+
+        return onnxruntime::common::Status::OK();
+    }
+
+    Status ExecutionProviderImpl::OnRunEnd()
+    {
+        if (GraphCaptureEnabled() && m_currentGraphAnnotationId != -1)
+        {
+            m_graphCapturingDone.insert(m_currentGraphAnnotationId);
+        }
+
+        // Flush any pending work to the GPU, but don't block for completion, permitting it
+        // to overlap other work.
+        Flush();
+        return onnxruntime::common::Status::OK();
+    }
+
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands,
-        bool enableDynamicGraphFusion)
+        bool enableGraphCapture)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableDynamicGraphFusion);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableGraphCapture);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)

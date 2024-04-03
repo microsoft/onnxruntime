@@ -29,14 +29,8 @@ typedef struct IDMLDevice IDMLDevice;
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
-extern "C" {
-#endif
 
-enum OrtDmlPerformancePreference {
-  Default = 0,
-  HighPerformance = 1,
-  MinimumPower = 2
-};
+extern "C" {
 
 enum OrtDmlDeviceFilter : uint32_t {
 #ifdef ENABLE_NPU_ADAPTER_ENUMERATION
@@ -56,10 +50,32 @@ inline OrtDmlDeviceFilter& operator|=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter 
 inline OrtDmlDeviceFilter& operator&=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a &= (int)b); }
 inline OrtDmlDeviceFilter& operator^=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a ^= (int)b); }
 
+#else
+
+typedef enum OrtDmlDeviceFilter {
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
+  Any = 0xffffffff,
+  Gpu = 1 << 0,
+  Npu = 1 << 1,
+#else
+  Gpu = 1 << 0,
+#endif
+} OrtDmlDeviceFilter;
+
+#endif
+
+typedef enum OrtDmlPerformancePreference {
+  Default = 0,
+  HighPerformance = 1,
+  MinimumPower = 2
+} OrtDmlPerformancePreference;
+
 struct OrtDmlDeviceOptions {
   OrtDmlPerformancePreference Preference;
   OrtDmlDeviceFilter Filter;
 };
+
+typedef struct OrtDmlDeviceOptions OrtDmlDeviceOptions;
 
 /**
  * [[deprecated]]
@@ -103,15 +119,16 @@ struct OrtDmlApi {
 
   /**
    * Creates a DirectML Execution Provider using the given DirectML device, and which executes work on the supplied D3D12
-   * command queue. The DirectML device and D3D12 command queue must have the same parent ID3D12Device, or an error will
-   * be returned. The D3D12 command queue must be of type DIRECT or COMPUTE (see D3D12_COMMAND_LIST_TYPE). If this
+   * command queue. If a DirectML device isn't provided, a default DirectML device will be created with the same D3D12 device
+   * that the supplied command queue is using. The DirectML device and D3D12 command queue must have the same parent ID3D12Device,
+   * or an error will be returned. The D3D12 command queue must be of type DIRECT or COMPUTE (see D3D12_COMMAND_LIST_TYPE). If this
    * function succeeds, the inference session maintains a strong reference on both the dml_device and the command_queue
    * objects.
    * See also: DMLCreateDevice
    * See also: ID3D12Device::CreateCommandQueue
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options,
-                  _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
+                  _In_opt_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
 
   /**
    * CreateGPUAllocationFromD3DResource

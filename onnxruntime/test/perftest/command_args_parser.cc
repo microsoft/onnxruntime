@@ -69,7 +69,7 @@ namespace perftest {
       "\t    [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
       "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
       "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"
-      "\t    [DML only] [enable_dynamic_graph_fusion]: Options: 'true', 'false', \n"
+      "\t    [DML only] [enable_graph_capture]: Options: 'true', 'false', \n"
       "\t    [DML only] [enable_graph_serialization]: Options: 'true', 'false', \n"
       "\n"
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
