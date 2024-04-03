@@ -566,17 +566,62 @@ QuantizeARow_CompInt8(
     std::byte* QuantA
 )
 {
-    const float* ADataBlkPtr = A;
-    std::byte* QuantABlkPtr = QuantA;
+  // port from MlasQ80BlkQuantRow
+  assert(BlkLen % 16 == 0);
+  const __m512 signBit = _mm512_set1_ps(-0.0f);
+  int8_t* blob = reinterpret_cast<int8_t*>(QuantA);
+  for (size_t k = 0; k < CountK; k += BlkLen) {
+    const size_t step = std::min(BlkLen, CountK - k);
 
-    for (size_t k = 0; k < CountK; k += BlkLen) {
-        const size_t k_blk_len = std::min(CountK - k, BlkLen);
+    __m512 maxAbs = _mm512_setzero_ps();
+    for (size_t kk = 0; kk < step; kk += 16) {
+      const size_t klen = std::min(size_t(16), step - kk);
 
-        QuantizeBlock<16>(BlkLen, ADataBlkPtr, k_blk_len, QuantABlkPtr);
+      uint32_t mask = 0xffff >> (16 - klen);
+      __m512 v0 = _mm512_maskz_loadu_ps(__mmask16(mask), A + k + kk);
 
-        ADataBlkPtr += BlkLen;
-        QuantABlkPtr += Q8BlkSize(BlkLen);
+      // Compute max(abs(e)) for the block
+      maxAbs = _mm512_max_ps(maxAbs, _mm512_andnot_ps(signBit, v0));
     }
+
+    __m256 max8 =
+      _mm256_max_ps(_mm512_extractf32x8_ps(maxAbs, 1), _mm512_extractf32x8_ps(maxAbs, 0));
+    __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(max8, 1), _mm256_castps256_ps128(max8));
+    max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
+    max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
+    const float maxScalar = _mm_cvtss_f32(max4);
+
+    // Quantize these floats
+    const float scale = maxScalar / 127.f;
+    *reinterpret_cast<float*>(blob) = scale;
+    blob += sizeof(float);
+
+    const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
+    const __m512 mul = _mm512_set1_ps(inverse_scale);
+    __m128i* dst = reinterpret_cast<__m128i*>(blob);
+
+    for (size_t kk = 0; kk < step; kk += 16) {
+      const size_t klen = std::min(size_t(16), step - kk);
+
+      uint32_t mask = 0xffff >> (16 - klen);
+      __m512 v0 = _mm512_maskz_loadu_ps(__mmask16(mask), A + k + kk);
+      v0 = _mm512_mul_ps(v0, mul);
+
+      // Round to nearest integer
+      v0 = _mm512_roundscale_ps(v0, _MM_ROUND_NEAREST);
+
+      // Convert floats to integers
+      __m512i i0 = _mm512_cvtps_epi32(v0);
+
+      // Convert int32 to int8
+      __m128i i0_8 = _mm512_cvtepi32_epi8(i0);
+      _mm_storeu_si128(dst++, i0_8);
+    }
+    if (step < BlkLen) {
+      memset(blob + step, 0, BlkLen - step);
+    }
+    blob += BlkLen;
+  }
 }
 
 template <size_t NCols, size_t SubBlkLen, bool HasZeroPoint>
@@ -676,9 +721,12 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
   const float* BiasPtr
 )
 {
+  // avx2 works with 32 8bit feature in A in a subloop(kk)
+  assert(SubBlkLen % 32 == 0);
+  assert(BlkLen % SubBlkLen == 0);
   // ported from MlasQ8Q4GemmKernelAvx512f
   const __m256i zero = _mm256_setzero_si256();
-  const __m256i lowMask = _mm256_set1_epi8(0xF);
+  const __m128i lowMask = _mm_set1_epi8(0xF);
 
   constexpr size_t BlkBitWidth = 4;
   constexpr size_t SubBlkStep = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, SubBlkLen);
@@ -696,6 +744,8 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
   // only used if HasZeroPoint == true
 
   for (size_t k = 0; k < CountK; k += BlkLen) {
+    size_t ck = std::min(CountK - k, BlkLen);
+
     const float a_scale = Q8BlkScale(ablob);
     ablob += sizeof(float);
 
@@ -722,23 +772,29 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
         });
     }
 
-    for (size_t kk = 0; kk < BlkLen; kk += SubBlkLen) {
+    for (size_t kk = 0; kk < ck; kk += SubBlkLen) {
       // Load A row vector
-      const __m256i a_bytes = _mm256_loadu_si256((const __m256i*)ablob);
-      ablob += BlkLen;
+      // 
+      size_t kklen = std::min((size_t)SubBlkLen, ck - kk);
+      uint32_t load_mask = 0xffffffff >> (SubBlkLen - kklen);
+      const __m256i a_bytes = _mm256_maskz_loadu_epi8(__mmask32(load_mask), (const __m256i*)ablob);
+      ablob += SubBlkLen;
 
       // Load 4 B column vectors (quantized to int4 blobs)
       __m128i bvi[NCols];
       UnrolledLoop<NCols>([&](size_t i) {
-        bvi[i] = _mm_loadu_si64(bptr[i]);
+        bvi[i] = _mm_loadu_si128((__m128i const*)bptr[i]);
         bptr[i] += SubBlkStep;
         });
 
       // expand 4b into byte array
       __m256i bytes[NCols];
       UnrolledLoop<NCols>([&](size_t i) {
-        bytes[i] = _mm256_set_m128i(_mm_srli_epi16(bvi[i], 4), bvi[i]);
-        bytes[i] = _mm256_and_si256(lowMask, bytes[i]);
+        __m128i lower = _mm_and_si128(bvi[i], lowMask);
+        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi[i], 4), lowMask);
+        __m128i u0 = _mm_unpacklo_epi8(lower, upper);
+        __m128i u1 = _mm_unpackhi_epi8(lower, upper);
+        bytes[i] = _mm256_set_m128i(u1, u0);
         });
 
       // Subtract zero-point from the integers
@@ -772,14 +828,15 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
     }
   }
 
-  if constexpr (NCols == 4) {
-    __m128 acc_x = FoldAccumulators(acc_lo[0], acc_lo[1], acc_lo[2], acc_lo[3]);
-    if (BiasPtr != nullptr) {
-      acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(BiasPtr));
-    }
-    _mm_storeu_ps(SumPtr, acc_x);
-  }
-  else {
+  // FoldAccumulators double count something: Expected: 1024 Actual: 2048@[0x0], M=1, N=32, K=1
+  //if constexpr (NCols == 4) {
+  //  __m128 acc_x = FoldAccumulators(acc_lo[0], acc_lo[1], acc_lo[2], acc_lo[3]);
+  //  if (BiasPtr != nullptr) {
+  //    acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(BiasPtr));
+  //  }
+  //  _mm_storeu_ps(SumPtr, acc_x);
+  //}
+  //else {
     UnrolledLoop<NCols>([&](size_t i) {
       __m128 vlow = _mm256_castps256_ps128(acc_lo[i]);
       __m128 vhigh = _mm256_extractf128_ps(acc_lo[i], 1); // Extract high 128 bit
@@ -793,7 +850,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
       _mm_store_ss(&SumPtr[i], vsum);
       SumPtr[i] += BiasPtr == nullptr ? 0.0f : BiasPtr[i];
       });
-  }
+  //}
 }
 
 template <bool HasZeroPoint>
