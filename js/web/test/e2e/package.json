@@ -21,13 +21,13 @@
     "webpack-cli": "^5.1.4"
   },
   "scripts": {
-    "build:w:esmjs": "webpack --mode=production --config webpack.config.esm-js.js",
+    "build:w:esmjs": "webpack --mode=production --config webpack.config.esm-js.js && node ./bundler.esm.postprocess.js ./dist/webpack_esm_js/ort-test-e2e.bundle.mjs",
     "build:w:umdjs": "webpack --mode=production --config webpack.config.umd-js.js",
     "build:w": "npm run build:w:esmjs && npm run build:w:umdjs",
     "build:r:esmjs": "rollup -c rollup.config.esm-js.js",
     "build:r:umdjs": "rollup -c rollup.config.umd-js.js",
     "build:r": "npm run build:r:esmjs && npm run build:r:umdjs",
-    "build:p:esmjs": "parcel build --no-autoinstall --target esm",
+    "build:p:esmjs": "parcel build --no-autoinstall --target esm && node ./bundler.esm.postprocess.js ./dist/parcel_esm_js/main.js",
     "build:p:umdjs": "parcel build --no-autoinstall --target umd",
     "build:p": "npm run build:p:esmjs && npm run build:p:umdjs",
     "build": "npm run build:w && npm run build:r && npm run build:p"
