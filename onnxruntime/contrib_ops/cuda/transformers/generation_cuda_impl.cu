@@ -1100,7 +1100,7 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
 
 void LaunchFinalizeCrossQK(
     cudaStream_t stream,
-    int iteration_number,
+    int real_decoding_len,
     int context_decoding_len,
     int batch_size,
     int num_beams,
@@ -1116,7 +1116,7 @@ void LaunchFinalizeCrossQK(
 ) {
   int64_t br = (int64_t)batch_size * num_return_sequences;
   ORT_ENFORCE(br < 65536L && cross_qk_layer_head_pair_count < 65536);
-  const int total_decoding_length = 28;
+  const int total_decoding_length = real_decoding_len - 1;
   dim3 block(512);
   dim3 grid(total_decoding_length, cross_qk_layer_head_pair_count, (unsigned)br);
   typedef typename ToCudaType<float>::MappedType CudaT;

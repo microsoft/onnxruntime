@@ -179,7 +179,6 @@ Status FinalizeDecoderCrossQK(
     int num_return_sequences,
     const int* cache_indir_data,
     gsl::span<const int32_t> beam_indices,
-    const transformers::IConsoleDumper* dumper,
     int real_decoded_length);
 
 }  // namespace GenerationCudaDeviceHelper

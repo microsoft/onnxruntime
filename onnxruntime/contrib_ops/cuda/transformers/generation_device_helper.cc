@@ -1577,16 +1577,13 @@ Status FinalizeDecoderCrossQK(
     int num_return_sequences,
     const int* cache_indir_data,
     gsl::span<const int32_t> beam_indices_gpu,
-    const transformers::IConsoleDumper* dumper,
     int real_decoded_length) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
-  // Print output here:
-  //dumper->Print("Cross_QK_Scores Finalize:", cross_qk_buffer_data, batch_size * num_beams, *cross_qk_layer_head_pairs, max_length, frames_of_k); //batchxbeam, layer_head_pair_count, max_length, frame
-
+  
   cuda::LaunchFinalizeCrossQK(
     cuda_stream,
-    iteration_number,
+    real_decoded_length,
     context_decoding_len,
     batch_size,
     num_beams,
@@ -1599,11 +1596,6 @@ Status FinalizeDecoderCrossQK(
     num_return_sequences,
     cache_indir_data,
     beam_indices_gpu.data());
-
-  // Print output here:
-  std::cout << "Iteration_number: " << iteration_number << std::endl;
-  std::cout << "Context decoding number: " << context_decoding_len << std::endl;
-  //dumper->Print("Cross_QK_Output:", cross_qk_output, batch_size, cross_qk_layer_head_pair_count, iteration_number - 1, frames_of_k); //batchxbeam, layer_head_pair_count, max_length, frame
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 

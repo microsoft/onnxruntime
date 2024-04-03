@@ -503,41 +503,37 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   if (decoder_subgraph_.output_cross_qk_) {
       // Trim output of Cross_QK to match real sequence size
     int real_decoded_length = 0;
-    for (int i = 0; i < output_sequences->Shape()[2]; i++) {
-      std::cout << "Token sequence: " << output_sequences->MutableDataAsSpan<int32_t>().data()[i] << " EOS Token: " << parameters->eos_token_id << std::endl;
+    for (int i = 0; i < output_sequences->Shape()[2]; i++) { // Assumes num_return_sequences and batch size == 1, need to change for bsz
       if (output_sequences->MutableDataAsSpan<int32_t>().data()[i] != parameters->eos_token_id)
         real_decoded_length++;
     }
 
-    std::cout<< "Real decoded length: " << real_decoded_length << std::endl;
-    real_decoded_length = 29;
-      TensorShape cross_qk_shape{
-          static_cast<int64_t>(parameters->batch_size),
-          static_cast<int64_t>(parameters->num_return_sequences),
-          cross_qk_layer_head_pair_count,
-          static_cast<int64_t>(real_decoded_length-1),
-          frames_of_k};
-      cross_qk_output = this->context_.Output(3, cross_qk_shape);
+    TensorShape cross_qk_shape{
+        static_cast<int64_t>(parameters->batch_size),
+        static_cast<int64_t>(parameters->num_return_sequences),
+        cross_qk_layer_head_pair_count,
+        static_cast<int64_t>(real_decoded_length-1),
+        frames_of_k};
+    cross_qk_output = this->context_.Output(3, cross_qk_shape);
 
-      size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
-      const int* cache_indir_data = decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>()->Data<int32_t>();
-      ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(
-        this->ort_stream_,
-        iteration_counter,
-        current_length,
-        parameters->batch_size,
-        parameters->num_beams,
-        parameters->max_length,
-        static_cast<int>(cross_qk_layer_head_pair_count),
-        cross_qk_layer_head_pairs,
-        static_cast<int>(frames_of_k),
-        cross_qk_buffer_data,
-        cross_qk_output->MutableData<float>(),
-        parameters->num_return_sequences,
-        cache_indir_data,
-        ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices),
-        this->GetConsoleDumper(),
-        real_decoded_length));
+    size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
+    const int* cache_indir_data = decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>()->Data<int32_t>();
+    ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(
+      this->ort_stream_,
+      iteration_counter,
+      current_length,
+      parameters->batch_size,
+      parameters->num_beams,
+      parameters->max_length,
+      static_cast<int>(cross_qk_layer_head_pair_count),
+      cross_qk_layer_head_pairs,
+      static_cast<int>(frames_of_k),
+      cross_qk_buffer_data,
+      cross_qk_output->MutableData<float>(),
+      parameters->num_return_sequences,
+      cache_indir_data,
+      ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices),
+      real_decoded_length));
     }
 
 

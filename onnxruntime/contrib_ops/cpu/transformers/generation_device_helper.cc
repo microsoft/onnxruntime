@@ -1122,7 +1122,6 @@ Status FinalizeDecoderCrossQK(
     [[maybe_unused]] int num_return_sequences,
     [[maybe_unused]] const int* cache_indir_data,
     [[maybe_unused]] gsl::span<const int32_t> beam_indices,
-    [[maybe_unused]] const transformers::IConsoleDumper* dumper,
     [[maybe_unused]] int real_decoded_length
 ) {
   throw std::runtime_error("CPU beam search current not support output cross QK.");
