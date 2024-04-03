@@ -35,7 +35,7 @@ static void InitTestAttr(OpTester& test, const std::string& case_change_action,
 
 using namespace str_normalizer_test;
 
-TEST(ContribOpTest, StringNormalizerSensetiveNoCase) {
+TEST(ContribOpTest, StringNormalizerSensitiveNoCase) {
   // - casesensitive approach
   // - no stopwords.
   // - No change case action, expecting default to take over
@@ -50,7 +50,7 @@ TEST(ContribOpTest, StringNormalizerSensetiveNoCase) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, StringNormalizerSensetiveFilterOutNoCase) {
+TEST(ContribOpTest, StringNormalizerSensitiveFilterOutNoCase) {
   // - casesensitive approach
   // - filter out monday
   // - No change case action
@@ -68,7 +68,7 @@ TEST(ContribOpTest, StringNormalizerSensetiveFilterOutNoCase) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, StringNormalizerSensetiveFilterOutLower) {
+TEST(ContribOpTest, StringNormalizerSensitiveFilterOutLower) {
   // - casesensitive approach
   // - filter out monday
   // - LOWER should produce the same output as they are all lower.
@@ -85,7 +85,7 @@ TEST(ContribOpTest, StringNormalizerSensetiveFilterOutLower) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, StringNormalizerSensetiveFilterOutUpper) {
+TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpper) {
   // - casesensitive approach
   // - filter out monday
   // - UPPER should produce the same output as they are all lower.
@@ -103,8 +103,8 @@ TEST(ContribOpTest, StringNormalizerSensetiveFilterOutUpper) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, StringNormalizerSensetiveFilterOutUpperWithLocale) {
-  // - case-SENSETIVE approach en_US locale
+TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperWithLocale) {
+  // - case-SENSITIVE approach en_US locale
   // - we test the behavior of a mix of english, french, german, russian and chinese
   //   with en_US locale
   // - filter out monday
@@ -138,8 +138,8 @@ TEST(ContribOpTest, StringNormalizerSensetiveFilterOutUpperWithLocale) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, StringNormalizerInsensetiveFilterOutUpperWithLocale) {
-  // - case-INSENSETIVE approach en_US locale
+TEST(ContribOpTest, StringNormalizerInsensitiveFilterOutUpperWithLocale) {
+  // - case-INSENSITIVE approach en_US locale
   // - we test the behavior of a mix of english, french, german, russian and chinese
   //   with en_US locale
   // - filter out monday
@@ -173,7 +173,7 @@ TEST(ContribOpTest, StringNormalizerInsensetiveFilterOutUpperWithLocale) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, StringNormalizerSensetiveFilterOutUpperEmptyCase) {
+TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperEmptyCase) {
   // Empty output case
   // - casesensitive approach
   // - filter out monday
@@ -191,7 +191,7 @@ TEST(ContribOpTest, StringNormalizerSensetiveFilterOutUpperEmptyCase) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, StringNormalizerSensetiveFilterOutUpperSameOutput) {
+TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperSameOutput) {
   // Empty output case
   // - casesensitive approach
   // - filter out monday
