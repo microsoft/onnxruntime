@@ -118,15 +118,19 @@ cd ..
 python build.py --cuda_home <path to cuda home> [--ort_home <ORT_HOME>]
 ```
    
-### Install the library into your application
+## Install the library into your application
 
-#### Install Python wheel
+### Install Python wheel
 
 ```bash
 cd build/wheel
 pip install *.whl
 ```
 
-#### Install Nuget package
+### Install Nuget package
 
-#### Install C/C++ header file and library
+_Coming soon_
+
+### Install C/C++ header file and library
+
+_Coming soon_
