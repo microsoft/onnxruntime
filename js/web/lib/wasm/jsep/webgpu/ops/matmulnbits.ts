@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
+import {DataType, getTensorElementSize} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -51,7 +51,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAt
 
 export const createBlockwiseMatMulNBitsProgramInfo =
     (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes,
-     maxComputeWorkgroupSizes: [number, number, number]): ProgramInfo => {
+     maxComputeWorkgroupSizes: [number, number, number], maxComputeWorkgroupStorageSize: number): ProgramInfo => {
       const inputShape = inputs[0].dims;
       const aRank = inputShape.length;
       const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
@@ -68,8 +68,17 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
       const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
-
-      const workgroupSizeX = Math.min(maxComputeWorkgroupSizes[0], nBlocksPerCol);
+      const elementSize = getTensorElementSize(inputs[0].dataType);
+      if (!elementSize) {
+        throw new Error(`Unsupported data type: ${inputs[0].dataType}`);
+      }
+      const requiredStorageSizePerWorkgroupX = dimAOuter * elementSize * components;
+      // TODO use alternative implementation if requiredStorageSizePerWorkgroupX is too large
+      if (requiredStorageSizePerWorkgroupX > maxComputeWorkgroupStorageSize) {
+        throw new Error('The required storage size per workgroup is too large.');
+      }
+      const maxWorkgroupsizeX = Math.ceil(maxComputeWorkgroupStorageSize / requiredStorageSizePerWorkgroupX);
+      const workgroupSizeX = Math.min(maxComputeWorkgroupSizes[0], nBlocksPerCol, maxWorkgroupsizeX);
       const workgroupSize = [workgroupSizeX, 1, 1];
       const dispatch = [Math.ceil(dimAOuter / workgroupSize[0]), Math.ceil(dimBOuter / components), batchSize];
 
@@ -242,8 +251,10 @@ export const createBlockwiseMatMulNBitsProgramInfo =
 
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  const maxComputeWorkgroupSizes = context.getMaxComputeWorkgroupSizes();
-  context.compute(createBlockwiseMatMulNBitsProgramInfo(context.inputs, attributes, maxComputeWorkgroupSizes));
+  const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
+  const maxComputeWorkgroupStorageSize = context.getMaxComputeWorkgroupStoragesize();
+  context.compute(createBlockwiseMatMulNBitsProgramInfo(
+      context.inputs, attributes, maxComputeWorkgroupSizes, maxComputeWorkgroupStorageSize));
 };
 
 export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes =>

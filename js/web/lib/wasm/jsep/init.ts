@@ -99,6 +99,10 @@ class ComputeContextImpl implements ComputeContext {
     ];
   }
 
+  getMaxComputeWorkgroupStoragesize(): number {
+    return this.backend.device.limits.maxComputeWorkgroupStorageSize;
+  }
+
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[] {
     // prepare inputs. inputs should always be valid data.
     const mappedInputs =
