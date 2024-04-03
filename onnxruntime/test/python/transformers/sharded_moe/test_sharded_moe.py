@@ -253,6 +253,9 @@ def run_ort_with_parity_check(
         " Parity: OK",
     )
 
+    print_out("output[0]:", output[0])
+    print_out("sharded_output[0]:", sharded_output[0])
+
 
 def test_moe_with_tensor_parallelism(
     hidden_size,

@@ -1,36 +1,42 @@
 """Inference-only Mixtral model."""
-from multiprocessing import Process, set_start_method
-from vllm.worker.worker import _init_distributed_environment
-from vllm.model_executor.parallel_utils.parallel_state import (
-    get_tensor_model_parallel_rank, get_tensor_model_parallel_world_size, get_tensor_model_parallel_group)
-from vllm.config import ParallelConfig
-from torch import nn
-import time
+import unittest
+
 import numpy as np
-import os
+from mpi4py import MPI
+from onnx import TensorProto, helper
 import torch
-from pathlib import Path
+import time
+
 import onnxruntime as ort
-from vllm import paged_attn
-torch.zeros(1).cuda()
 
-torch.manual_seed(0)
+np.random.seed(3)
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+comm = MPI.COMM_WORLD
+
+
+def get_rank():
+    return comm.Get_rank()
+
+
+def get_size():
+    return comm.Get_size()
+
+
+def print_out(*args):
+    if get_rank() == 0:
+        print(*args)
+
+
+rank = get_rank()
+tensor_parallel_size = get_size()
 
 input_ids_name = "input_ids"
-sequence_length_name = "seqlens_k"
+attn_mask_name = "attention_mask"
+pos_ids_name = "position_ids"
 
-#-----------------------settings-----------------------
-use_int4 = False
-
-tensor_parallel_size = 1 if use_int4 else 4
-logits_name = "logits" if use_int4 else "last_hidden_state"
-past_key_name = "present_key." if use_int4 else "past.key."
-past_value_name = "present_values." if use_int4 else "past.value."
-present_key_name = "past_key." if use_int4 else "present.key."
-present_value_name = "past_values." if use_int4 else "present.value."
-#-------------------------------------------------------
+logits_name = "logits"
+past_name = "past_key_values"
+present_name = "present"
 
 
 pt_to_np = {
@@ -40,49 +46,34 @@ pt_to_np = {
     "torch.float16": np.float16
 }
 
-def init_test_distributed_environment(tensor_parallel_size: int, rank: int,
-                                      distributed_init_port: str = "51408"):
-    parallel_config = ParallelConfig(1, tensor_parallel_size,
-                                     worker_use_ray=True)
-    distributed_init_method = f"tcp://127.0.0.1:{distributed_init_port}"
-    torch.cuda.set_device(rank)
-    _init_distributed_environment(
-        parallel_config, rank, distributed_init_method)
-
 def get_initial_inputs_and_outputs_for_bench(batch_size, sequence_length, tensor_parallel_size, device: torch.device, use_fp16: bool, use_buffer_share: bool):
     torch_dtype = torch.float16 if use_fp16 else torch.float32
 
     input_ids = torch.randint(0, 32000, (batch_size, sequence_length), device=device, dtype=torch.int64)
-    sequence_length = torch.ones(batch_size, device=device, dtype=torch.int64) * sequence_length
+    attention_mask = torch.ones(batch_size, sequence_length, device=device, dtype=torch.int64)
+    position_ids = torch.arange(0, sequence_length, device=device, dtype=torch.int64).repeat(batch_size, 1)
 
     inputs = {
         input_ids_name: input_ids.contiguous(),
-        sequence_length_name: sequence_length.contiguous(),
+        attn_mask_name: attention_mask.contiguous(),
+        pos_ids_name: position_ids.contiguous(),
     }
 
     batch_size, sequence_length = input_ids.shape
-    max_sequence_length = 1024 # subject to change
+    max_sequence_length = 10 * 1024 # subject to change
     num_heads, head_size = int(8 / tensor_parallel_size), 128
     for i in range(32):
         past_key = torch.zeros(batch_size, num_heads, max_sequence_length if use_buffer_share else 0, head_size, device=device, dtype=torch_dtype)
         past_value = torch.zeros(batch_size, num_heads, max_sequence_length if use_buffer_share else 0, head_size, device=device, dtype=torch_dtype)
         inputs.update({
-            past_key_name + f"{i}": past_key.contiguous(),
-            past_value_name + f"{i}": past_value.contiguous(),
+            past_name + f".{i}.key": past_key.contiguous(),
+            past_name + f".{i}.value": past_value.contiguous(),
         })
 
     logits = torch.zeros(batch_size, sequence_length, 32000, device=device, dtype=torch_dtype)
     outputs = {
         logits_name: logits.contiguous()
     }
-    if not use_buffer_share:
-        for i in range(32):
-            present_key = torch.zeros(batch_size, num_heads, sequence_length, head_size, device=device, dtype=torch_dtype)
-            present_value = torch.zeros(batch_size, num_heads, sequence_length, head_size, device=device, dtype=torch_dtype)
-            outputs.update({
-                present_key_name + f"{i}": present_key.contiguous(),
-                present_value_name + f"{i}": present_value.contiguous(),
-            })
 
     return inputs, outputs
 
@@ -122,7 +113,7 @@ def apply_io_binding(model: ort.InferenceSession, inputs: dict, outputs: dict, u
         name = output.name
         if use_buffer_share and "present" in name:
             # Bind KV cache outputs to KV cache inputs
-            v = inputs[name.replace("present", "past")]
+            v = inputs[name.replace("present", "past_key_values")]
             io_binding.bind_output(
                 name=name,
                 device_type=v.device.type,
@@ -147,12 +138,11 @@ def apply_io_binding(model: ort.InferenceSession, inputs: dict, outputs: dict, u
 def infer_model(tensor_parallel_size, rank, model_or_sess):
     device = torch.device(rank)
     use_fp16 = True
-    use_buffer_share = False # buffer sharing is not supported now
+    use_buffer_share = True # buffer sharing is not supported now
     eos_token_id = 50256 # never let it reach eos for benchmark
-    torch_dtype = torch.float16 if use_fp16 else torch.float32
-    for token_num in [2048]:
-        for batch_size in [2]:
-            for seq_len in [1024, 1024, 1024, 1024, 2048, 2048, 2048, 2048, 4096, 4096, 4096, 4096]:
+    for token_num in [1]:
+        for batch_size in [16]:
+            for seq_len in [4096]:
                 max_length = seq_len + token_num
                 if rank == 0:
                     print("batch size:", batch_size, "seq len:", seq_len, "token_num:", token_num)
@@ -199,7 +189,13 @@ def infer_model(tensor_parallel_size, rank, model_or_sess):
 
                     # Update inputs for next inference run
                     inputs[input_ids_name] = tokens_to_add.to(torch.int64)
-                    inputs[sequence_length_name] = torch.ones(batch_size, device=device, dtype=torch.int64) * (current_length)
+                    inputs[attn_mask_name] = torch.cat(
+                        [inputs[attn_mask_name], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1
+                    )
+                    inputs[pos_ids_name] = (
+                        torch.max(inputs[pos_ids_name], dim=1)[0].reshape(batch_size, 1) + 1
+                    )
+
                     current_length += 1
                     count += 1
 
@@ -214,55 +210,18 @@ def infer_model(tensor_parallel_size, rank, model_or_sess):
                         outputs[logits_name] = outputs[logits_name][:, :1, :].contiguous()
                     outputs[logits_name].zero_()
 
-                    if not use_buffer_share:
-                        for i in range(32):
-                            inputs[past_key_name + f"{i}"] = outputs[present_key_name + f"{i}"]
-                            inputs[past_value_name + f"{i}"] = outputs[present_value_name + f"{i}"]
+                # delete inputs and outputs
+                keys_i = list(inputs.keys())
+                keys_o = list(outputs.keys())
+                for k in keys_i:
+                    del inputs[k]
+                for k in keys_o:
+                    del outputs[k]
 
-                        new_sequence_length = current_length
-                        local_num_heads, head_size = int(8 / tensor_parallel_size), 128
-                        for i in range(32):
-                            present_key = torch.zeros(batch_size, local_num_heads, new_sequence_length, head_size, device=device, dtype=torch_dtype)
-                            present_value = torch.zeros(batch_size, local_num_heads, new_sequence_length, head_size, device=device, dtype=torch_dtype)
-                            outputs.update({
-                               present_key_name + f"{i}": present_key.contiguous(),
-                               present_value_name + f"{i}": present_value.contiguous(),
-                            })
+session_options = ort.SessionOptions()
+provider_opt = {"device_id": rank, }
+onnx_model_path = f"/wy/ORT_GENAI/wangye/mixtral/src/python/py/models/example-models/mixtral_rank_{rank}_world_2/model.onnx"
+sess = ort.InferenceSession(str(onnx_model_path), providers=[(
+    "CUDAExecutionProvider", provider_opt)], sess_options=session_options)
 
-def test_model_load(tensor_parallel_size, rank):
-    init_test_distributed_environment(tensor_parallel_size, rank)
-
-    os.environ['LOCAL_WORLD_SIZE'] = str(tensor_parallel_size)
-    os.environ['LOCAL_RANK'] = str(rank)
-    torch.cuda.set_device(rank)
-
-    session_options = ort.SessionOptions()
-    session_options.register_custom_ops_library(paged_attn.__file__)
-    provider_opt = {"device_id": rank, }
-
-    onnx_model_path = Path(f"./mixtral_fp16_tp4/mixtral_with_past_rank{rank}.onnx").absolute() if not use_int4 else Path(f"/home/jicwen/work/vllm/mixtral_infer/onnx_models_int4/mixtral_with_past_rank{rank}_int4.onnx").absolute()
-    sess = ort.InferenceSession(str(onnx_model_path), providers=[(
-        "CUDAExecutionProvider", provider_opt)], sess_options=session_options)
-
-    infer_model(tensor_parallel_size, rank, sess)
-
-
-def process_entry(tensor_parallel_size, rank):
-    test_model_load(tensor_parallel_size, rank)
-
-
-if __name__ == "__main__":
-    if tensor_parallel_size == 1:
-        test_model_load(tensor_parallel_size, 0)
-    else:
-        set_start_method("spawn", force=True)
-
-        processes = []
-        for rank in range(tensor_parallel_size):
-            p = Process(target=process_entry,
-                        args=(tensor_parallel_size, rank))
-            p.start()
-            processes.append(p)
-
-        for p in processes:
-            p.join()
+infer_model(tensor_parallel_size, rank, sess)
