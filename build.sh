@@ -19,4 +19,4 @@ elif [[ "$*" == *"--android"* ]]; then
 fi
 
 #requires python3.6 or higher
-python3 $DIR/tools/ci_build/build.py --build_dir $DIR/build/$DIR_OS --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 "$@"
+python3 $DIR/tools/ci_build/build.py --build_dir $DIR/build/$DIR_OS "$@"
