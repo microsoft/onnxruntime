@@ -143,12 +143,13 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           var block = local_id.x;
           var col = workgroup_id.y;
           var batch = workgroup_id.z;
-          var a_data_array: array<array<${a.type.value}, block_size / ${aComponents}>, ${dimAOuter}>;
+          var a_data_array: array<array<${a.type.value}, ${attributes.blockSize / aComponents}>, ${dimAOuter}>;
           ${a.indicesSet('a_indices', '0', 'batch')};
+          // Fetch A data into non-shared memory.
           for (var m: u32 = 0; m < ${dimAOuter}; m++) {
             ${a.indicesSet('a_indices', '1', 'm')};
-            for (var i: u32 = 0; i < block_size / ${aComponents}; i++) {
-              ${a.indicesSet('a_indices', '2', `(block_size / ${aComponents}) * block + i`)};
+            for (var i: u32 = 0; i < ${attributes.blockSize / aComponents}; i++) {
+              ${a.indicesSet('a_indices', '2', `(${attributes.blockSize / aComponents}) * block + i`)};
               a_data_array[m][i] = ${a.getByIndices('a_indices')};
             }
           }
