@@ -253,9 +253,8 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
 
       // FUTURE: This could be setup similarly to can_use_flatbuffer_for_initializers above if the external data file
       // is memory mapped and guaranteed to remain valid. This would avoid the copy.
-      // Use SafeInt to check for overflow. Use size_t in case this is being used on an x86 platform.
-      auto num_bytes = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), SafeInt<size_t>(1),
-                                       std::multiplies<size_t>());
+      auto num_bytes = fbs::utils::GetSizeInBytesFromFbsTensor(fbs_tensor);
+
       // pre-allocate so we can write directly to the string buffer
       std::string& raw_data = *initializer.mutable_raw_data();
       raw_data.resize(num_bytes);

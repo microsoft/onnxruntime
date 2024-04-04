@@ -8,6 +8,9 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/framework/float16.h"
+#include "core/framework/float8.h"
+// #include "core/common/safeint.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -314,6 +317,78 @@ bool IsOrtFormatModel(const PathString& filename) {
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
          fbs::InferenceSessionBufferHasIdentifier(bytes);
+}
+
+SafeInt<size_t> GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor) {
+  auto fbs_dims = tensor.dims();
+
+  auto num_elements = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), SafeInt<size_t>(1),
+                                       std::multiplies<size_t>());
+
+  size_t byte_size_of_one_element;
+
+  switch (tensor.data_type()) {
+    case fbs::TensorDataType::FLOAT:
+      byte_size_of_one_element = sizeof(float);
+      break;
+    case fbs::TensorDataType::UINT8:
+      byte_size_of_one_element = sizeof(uint8_t);
+      break;
+    case fbs::TensorDataType::INT8:
+      byte_size_of_one_element = sizeof(int8_t);
+      break;
+    case fbs::TensorDataType::UINT16:
+      byte_size_of_one_element = sizeof(uint16_t);
+      break;
+    case fbs::TensorDataType::INT16:
+      byte_size_of_one_element = sizeof(int16_t);
+      break;
+    case fbs::TensorDataType::INT32:
+      byte_size_of_one_element = sizeof(int32_t);
+      break;
+    case fbs::TensorDataType::INT64:
+      byte_size_of_one_element = sizeof(int64_t);
+      break;
+    case fbs::TensorDataType::STRING:
+      byte_size_of_one_element = sizeof(std::string);
+      break;
+    case fbs::TensorDataType::BOOL:
+      byte_size_of_one_element = sizeof(bool);
+      break;
+    case fbs::TensorDataType::FLOAT16:
+      byte_size_of_one_element = sizeof(MLFloat16);
+      break;
+    case fbs::TensorDataType::DOUBLE:
+      byte_size_of_one_element = sizeof(double);
+      break;
+    case fbs::TensorDataType::UINT32:
+      byte_size_of_one_element = sizeof(uint32_t);
+      break;
+    case fbs::TensorDataType::UINT64:
+      byte_size_of_one_element = sizeof(uint64_t);
+      break;
+    case fbs::TensorDataType::BFLOAT16:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case fbs::TensorDataType::FLOAT8E4M3FN:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+    case fbs::TensorDataType::FLOAT8E4M3FNUZ:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+    case fbs::TensorDataType::FLOAT8E5M2:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+    case fbs::TensorDataType::FLOAT8E5M2FNUZ:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+#endif
+    default:
+      ORT_THROW("Unsupported tensor data type for tensor ", tensor.name());
+  }
+  return num_elements * byte_size_of_one_element;
+
 }
 
 }  // namespace onnxruntime::fbs::utils

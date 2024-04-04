@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/path.h"
 #include "core/graph/graph_flatbuffers_utils.h"
+#include "core/framework/tensorprotoutils.h"
 
 #include "test/ir/flatbuffers_utils_test_generated.h"
 
@@ -165,7 +166,7 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializers() {
   initializers.emplace_back(
       CreateInitializer<std::string>("tensor_string", ONNX_NAMESPACE::TensorProto_DataType_STRING, {2, 2}));
 
-  // 32-bit
+  // 32-bit, 64 elements
   initializers.emplace_back(
       CreateInitializer<float>("tensor_f32", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {8, 8}));
 
@@ -173,7 +174,7 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializers() {
   initializers.emplace_back(
       CreateInitializer<uint8_t>("tensor_8", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {3, 43}));
 
-  // 64-bit
+  // 64-bit, 36 elements
   initializers.emplace_back(
       CreateInitializer<int64_t>("tensor_64", ONNX_NAMESPACE::TensorProto_DataType_INT64, {6, 6}));
 
@@ -183,6 +184,20 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializers() {
 
   return initializers;
 }
+
+template <typename T>
+std::vector<T> ConvertRawDataToTypedVector(ONNX_NAMESPACE::TensorProto initializer) {
+  std::vector<T> data;
+  data.resize(initializer.raw_data().size() / sizeof(T));
+  memcpy(data.data(), initializer.raw_data().data(), initializer.raw_data().size());
+  return data;
+}
+
+#define ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(EXPECTED, ACTUAL, FIELD) \
+  ASSERT_EQ(EXPECTED.FIELD.size(), ACTUAL.FIELD.size());              \
+  for (int j = 0; j < EXPECTED.FIELD.size(); ++j) {                   \
+    ASSERT_EQ(EXPECTED.FIELD[j], ACTUAL.FIELD[j]);                    \
+  }
 
 }  // namespace
 
@@ -201,10 +216,11 @@ TEST(GraphUtilsTest, ExternalWriteReadBasic) {
   for (const auto& initializer : initializers) {
     flatbuffers::Offset<fbs::Tensor> fbs_tensor;
     ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, Path(), fbs_tensor, writer));
+    fbs_tensors.push_back(fbs_tensor);
   }
 
-  // TODO: This could more accurately check the expected data size
-  ASSERT_GT(output_stream.tellp(), 0) << "No data written to external file.";
+  // TODO: might be 844 depending on whether it's 4 byte or 8 byte alignment
+  ASSERT_EQ(output_stream.tellp(), 840) << "Data written to the external file is incorrect.";
   output_stream.close();
   ASSERT_TRUE(output_stream.good()) << "Failed to close data file.";
 
@@ -234,7 +250,35 @@ TEST(GraphUtilsTest, ExternalWriteReadBasic) {
   //
   // TODO: Validate the loaded data!
   //
-  bool data_validated = false;
+  bool data_validated = true;
+
+  // initializers = expected, in the form of tensorproto
+  // loaded_initializers = actual, in the form of tensorproto
+  ASSERT_EQ(initializers.size(), loaded_initializers.size());
+
+  for (int i = 0; i < initializers.size(); i++) {
+    const auto& expected_initializer = initializers[i];
+    const auto& loaded_initializer = loaded_initializers[i];
+    // validate the loaded initializer
+    ASSERT_EQ(expected_initializer.name(), loaded_initializer.name());
+    ASSERT_EQ(expected_initializer.data_type(), loaded_initializer.data_type());
+    ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, dims());
+    if (loaded_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+      // extract expected tensor raw data
+      std::vector<uint8_t> expected_data;
+      Path model_path;
+      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(expected_initializer, model_path, expected_data));
+
+      ASSERT_EQ(expected_data.size(), loaded_initializer.raw_data().size()) << "expected initializer name " << expected_initializer.name() << " | loaded initializer name " << loaded_initializer.name();
+      std::vector<uint8_t> loaded_data(loaded_initializer.raw_data().begin(), loaded_initializer.raw_data().end());
+      for (int j = 0; j < expected_data.size(); ++j) {
+        ASSERT_EQ(expected_data[j], loaded_data[j]) << "expected initializer name " << expected_initializer.name() << " | loaded initializer name " << loaded_initializer.name();
+      }
+    } else {
+      // string type tensor
+      ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, string_data());
+    }
+  }
   ASSERT_TRUE(data_validated);
 }
 }  // namespace test
