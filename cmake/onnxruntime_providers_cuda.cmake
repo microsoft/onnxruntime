@@ -122,7 +122,7 @@
   endif()
   if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
-    # add to the lib onnxruntime_providers_cuda separatedly.
+    # added to the lib onnxruntime_providers_cuda separately.
     # onnxruntime_providers_cuda_ut can share all the object files with onnxruntime_providers_cuda except cuda_provider_interface.cc.
     set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
     list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})

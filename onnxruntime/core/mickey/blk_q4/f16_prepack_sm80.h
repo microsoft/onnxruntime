@@ -110,8 +110,8 @@ struct BlockwiseQuantization {
   static void prepack_weights(
       int rows,
       int columns,
-      const gsl::span<uint8_t const>& weights,     // <- int4 weights, column major
-      const gsl::span<uint8_t>& weights_prepacked  // <- int4 prepacked weights tensor, same size buffer
+      gsl::span<uint8_t const> weights,     // <- int4 weights, column major
+      gsl::span<uint8_t> weights_prepacked  // <- int4 prepacked weights tensor, same size buffer
   ) {
     ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0 &&
                     (rows % QuantBlocking::kRow) == 0 &&
@@ -171,10 +171,10 @@ struct BlockwiseQuantization {
   static void prepack_quant_scales(
       size_t rows,
       size_t columns,
-      const gsl::span<ElementT const>& scales,     // <- quant scales, column major layout
-      const gsl::span<ElementT>& scales_prepacked  // <- quant scales prepacked, same size buffer
+      gsl::span<ElementT const> scales,     // <- quant scales, column major layout
+      gsl::span<ElementT> scales_prepacked  // <- quant scales prepacked, same size buffer
   ) {
-    auto meta_shape = get_quant_meta_shape(rows, columns);
+    auto meta_shape = get_quant_meta_shape(static_cast<int>(rows), static_cast<int>(columns));
     ORT_ENFORCE(scales.size() == size_t(meta_shape.product()),
                 "Quantization scale tensor shape mismatch!");
     ORT_ENFORCE(scales_prepacked.size() == size_t(meta_shape.product()),
@@ -241,10 +241,10 @@ struct BlockwiseQuantization {
   static void prepack_quant_offsets(
       size_t rows,
       size_t columns,
-      const gsl::span<uint8_t const>& offsets,     // <- quant offsets, int4, column major layout
-      const gsl::span<uint8_t>& offsets_prepacked  // <- quant offsets prepacked, double size buffer
+      gsl::span<uint8_t const> offsets,     // <- quant offsets, int4, column major layout
+      gsl::span<uint8_t> offsets_prepacked  // <- quant offsets prepacked, double size buffer
   ) {
-    auto meta_shape = get_quant_meta_shape(rows, columns);
+    auto meta_shape = get_quant_meta_shape(static_cast<int>(rows), static_cast<int>(columns));
 
     ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0,
                 "Does not support odd number of rows or columns!");
