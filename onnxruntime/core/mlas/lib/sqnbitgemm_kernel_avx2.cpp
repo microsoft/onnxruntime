@@ -463,6 +463,181 @@ SQ4BitGemmM1Kernel_CompFp32(
     }
 }
 
+template<bool HasZeroPoint>
+MLAS_FORCEINLINE void
+Q4BitBlkDequantBBlkLen16(
+  float* dst_ptr,
+  const std::byte* quant_b_data_col_ptr,
+  const float* quant_b_scale_col_ptr,
+  const std::byte* quant_b_zero_point_col_ptr,
+  size_t CountK
+)
+{
+  // SubBlkLen=16 is only used for BlkLen=16. In this case we only need one k-loop.
+  // For BlkLen of 32 - 256, SubBlkLen will always 32 because we use _mm_loadu_si128
+  // to load 128 bits of 32 quantized features.
+  constexpr size_t SubBlkLen16 = 16;
+  constexpr size_t SubBlkStep8 = 8;
+  const std::byte* bptr = quant_b_data_col_ptr;
+  const float* sptr = quant_b_scale_col_ptr;
+  float* fp_data_ptr = dst_ptr;
+
+  [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
+  // only used if HasZeroPoint == true
+
+  for (size_t kk = 0; kk < CountK; kk += SubBlkLen16) {
+    // TODO: load with mask?
+    __m128i bvi4 = _mm_loadu_si64(bptr);
+    bptr += SubBlkStep8;
+
+    // Interleave lower and upper to form the final 8-bit unpacked values
+    __m128i load_mask_v = _mm_set1_epi8(0x0F);  // Mask to isolate the lower 4 bits
+    __m128i lower = _mm_and_si128(bvi4, load_mask_v);
+    __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi4, 4), load_mask_v);
+
+    // Interleave lower and upper to form 8-bit unpacked values
+    __m128i unpacked = _mm_unpacklo_epi8(lower, upper);
+
+    // Convert the unpacked 8-bit integers to 16-bit integers
+    __m256i bv_lo = _mm256_cvtepu8_epi32(unpacked);
+
+    // Extract the second 8 8-bit integers
+    __m128i unpacked_next_8 = _mm_srli_si128(unpacked, 8);
+
+    // Extend the 8-bit integers to 32-bit integers
+    __m256i bv_hi = _mm256_cvtepu8_epi32(unpacked_next_8);
+
+    // Subtract zero-point from the integers
+    if constexpr (HasZeroPoint) {
+      const std::byte zp_packed = quant_b_zero_point_col_ptr[QuantBZeroPointIdx / 2];
+      const std::byte zp_byte_masked =
+        (QuantBZeroPointIdx & 1) == 1 ? (zp_packed >> 4) : (zp_packed & std::byte{ 0x0F });
+      uint8_t zp_uint8 = std::to_integer<uint8_t>(zp_byte_masked);
+
+      // Subtract zero-point from the integers
+      __m256i zp = _mm256_set1_epi32(zp_uint8);
+      bv_lo = _mm256_sub_epi32(bv_lo, zp);
+      bv_hi = _mm256_sub_epi32(bv_hi, zp);
+    }
+    else {
+      // Subtract 8 from the integers
+      const __m256i eight = _mm256_set1_epi32(8);
+      bv_lo = _mm256_sub_epi32(bv_lo, eight);
+      bv_hi = _mm256_sub_epi32(bv_hi, eight);
+    }
+
+    // Convert to 32-bit int -> float 32
+    __m256 bvf_lo = _mm256_cvtepi32_ps(bv_lo);
+    __m256 bvf_hi = _mm256_cvtepi32_ps(bv_hi);
+
+    __m256 s = _mm256_set1_ps(*sptr++);
+    bvf_lo = _mm256_mul_ps(bvf_lo, s);
+    bvf_hi = _mm256_mul_ps(bvf_hi, s);
+
+    size_t kklen = std::min((size_t)SubBlkLen16, CountK - kk);
+    uint32_t store_mask = 0xffff >> (SubBlkLen16 - kklen);
+
+    // store 2 x 8 fp weights
+    // TODO: make dst_ptr stride multiple of 16
+    _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), bvf_lo);
+    fp_data_ptr += 8;
+    store_mask = store_mask >> 8;
+    if (store_mask != 0) {
+      _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), bvf_hi);
+      fp_data_ptr += 8;
+    }
+  }
+}
+
+template<bool HasZeroPoint>
+MLAS_FORCEINLINE void
+Q4BitBlkDequantBBlkLen32Plus(
+  size_t BlkLen,
+  float* dst_ptr,
+  const std::byte* quant_b_data_col_ptr,
+  const float* quant_b_scale_col_ptr,
+  const std::byte* quant_b_zero_point_col_ptr,
+  size_t CountK
+)
+{
+  // For BlkLen of 32 - 256, SubBlkLen will always 32 because we use _mm_loadu_si128
+  // to load 128 bits of 32 quantized features.
+  constexpr size_t SubBlkLen32 = 32;
+  const __m128i* bptr = (__m128i const*)quant_b_data_col_ptr; // 32 of 4bit weights in 128 bits
+  const float* sptr = quant_b_scale_col_ptr;
+  float* fp_data_ptr = dst_ptr;
+
+  [[maybe_unused]] size_t QuantBZeroPointIdx = 0; // only used if HasZeroPoint == true
+  [[maybe_unused]] uint8_t zp_uint8; // only used if HasZeroPoint == true
+
+  __m128i load_mask_v = _mm_set1_epi8(0x0F);
+
+  for (size_t k = 0; k < CountK; k += BlkLen) {
+    size_t ck = std::min(CountK - k, BlkLen);
+    if constexpr (HasZeroPoint) {
+      const std::byte zp_packed = quant_b_zero_point_col_ptr[QuantBZeroPointIdx / 2];
+      const std::byte zp_byte_masked =
+        (QuantBZeroPointIdx & 1) == 1 ? (zp_packed >> 4) : (zp_packed & std::byte{ 0x0F });
+      zp_uint8 = std::to_integer<uint8_t>(zp_byte_masked);
+      QuantBZeroPointIdx++;
+    }
+    for (size_t kk = 0; kk < ck; kk += SubBlkLen32) {
+      // TODO: load with mask?
+      __m128i bvi = _mm_loadu_si128(bptr++);
+      __m128i lower = _mm_and_si128(bvi, load_mask_v);
+      __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi, 4), load_mask_v);
+      __m128i u0 = _mm_unpacklo_epi8(lower, upper);
+      __m128i u1 = _mm_unpackhi_epi8(lower, upper);
+      // bytes hold 32 8bit weights
+      __m256i weight_epi8 = _mm256_set_m128i(u1, u0);
+
+      // Subtract zero-point from the integers
+      if constexpr (HasZeroPoint) {
+        weight_epi8 = _mm256_sub_epi8(weight_epi8, _mm256_set1_epi8(zp_uint8));
+      }
+      else {
+        const __m256i eight = _mm256_set1_epi8(8);
+        weight_epi8 = _mm256_sub_epi8(weight_epi8, eight);
+      }
+      __m256 s = _mm256_set1_ps(*sptr);
+
+      size_t kklen = std::min((size_t)SubBlkLen32, ck - kk);
+      uint32_t store_mask = 0xffffffff >> (SubBlkLen32 - kklen);
+      __m256i data_epi16_0 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_epi8, 0));
+      __m256i data_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(data_epi16_0, 0));
+      __m256 data_ps = _mm256_mul_ps(_mm256_cvtepi32_ps(data_epi32), s);
+      _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), data_ps);
+
+      fp_data_ptr += 8;
+      store_mask = store_mask >> 8;
+      if (store_mask != 0) {
+        data_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(data_epi16_0, 1));
+        data_ps = _mm256_mul_ps(_mm256_cvtepi32_ps(data_epi32), s);
+        _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), data_ps);
+
+        fp_data_ptr += 8;
+        store_mask = store_mask >> 8;
+        if (store_mask != 0) {
+          __m256i data_epi16_1 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_epi8, 1));
+          data_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(data_epi16_1, 0));
+          data_ps = _mm256_mul_ps(_mm256_cvtepi32_ps(data_epi32), s);
+          _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), data_ps);
+
+          fp_data_ptr += 8;
+          store_mask = store_mask >> 8;
+          if (store_mask != 0) {
+            data_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(data_epi16_1, 0));
+            data_ps = _mm256_mul_ps(_mm256_cvtepi32_ps(data_epi32), s);
+            _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), data_ps);
+            fp_data_ptr += 8;
+          }
+        }
+      }
+    } // kk
+    sptr++;
+  } // k
+}
+
 MLAS_FORCEINLINE void
 Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlkLen,
@@ -475,68 +650,100 @@ Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlockStrideQuantB
 )
 {
-    auto impl0_reference = [&]() {
-        constexpr size_t BlkBitWidth = 4;
-        constexpr size_t SubBlkLen = 16;
+  //auto impl0_reference = [&]() {
+  //  constexpr size_t BlkBitWidth = 4;
+  //  constexpr size_t SubBlkLen = 16;
 
-        float* Dst = FpData;
+  //  float* Dst = FpData;
 
-        const std::byte* QuantBDataCol = QuantBData;
-        const float* QuantBScaleCol = QuantBScale;
-        const std::byte* QuantBZeroPointCol = QuantBZeroPoint;
+  //  const std::byte* QuantBDataCol = QuantBData;
+  //  const float* QuantBScaleCol = QuantBScale;
+  //  const std::byte* QuantBZeroPointCol = QuantBZeroPoint;
 
-        for (size_t n = 0; n < CountN; n += 16) {
-            const size_t nnlen = std::min(CountN - n, size_t{16});
+  //  for (size_t n = 0; n < CountN; n += 16) {
+  //    const size_t nnlen = std::min(CountN - n, size_t{ 16 });
 
-            for (size_t nn = 0; nn < nnlen; ++nn) {
-                for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
-                    const size_t kklen = std::min(CountK - k, BlkLen);
+  //    for (size_t nn = 0; nn < nnlen; ++nn) {
+  //      for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
+  //        const size_t kklen = std::min(CountK - k, BlkLen);
 
-                    const std::byte* b_data =
-                        QuantBDataCol + k_blk_idx * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-                    const float b_s = QuantBScaleCol[k_blk_idx];
-                    const uint8_t b_z =
-                        (QuantBZeroPointCol != nullptr)
-                            ? ((k_blk_idx & 1) == 1)
-                                  ? std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] >> 4)
-                                  : std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] & std::byte{0x0F})
-                            : 8;
+  //        const std::byte* b_data =
+  //          QuantBDataCol + k_blk_idx * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+  //        const float b_s = QuantBScaleCol[k_blk_idx];
+  //        const uint8_t b_z =
+  //          (QuantBZeroPointCol != nullptr)
+  //          ? ((k_blk_idx & 1) == 1)
+  //          ? std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] >> 4)
+  //          : std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] & std::byte{ 0x0F })
+  //          : 8;
 
-                    for (size_t kk = 0; kk < kklen; ++kk) {
-                        const size_t packed_idx = kk % SubBlkLen;
+  //        for (size_t kk = 0; kk < kklen; ++kk) {
+  //          const size_t packed_idx = kk % SubBlkLen;
 
-                        const bool is_low_half = packed_idx < (SubBlkLen / 2);
-                        const size_t packed_byte_idx = packed_idx % (SubBlkLen / 2);
-                        const size_t packed_range_offset = (kk / SubBlkLen) * (SubBlkLen / 2);
+  //          const bool is_low_half = packed_idx < (SubBlkLen / 2);
+  //          const size_t packed_byte_idx = packed_idx % (SubBlkLen / 2);
+  //          const size_t packed_range_offset = (kk / SubBlkLen) * (SubBlkLen / 2);
 
-                        const std::byte b_packed = b_data[packed_range_offset + packed_byte_idx];
-                        const std::byte b_byte = is_low_half ? (b_packed & std::byte{0x0F}) : (b_packed >> 4);
-                        const float b_value = (std::to_integer<int8_t>(b_byte) - b_z) * b_s;
+  //          const std::byte b_packed = b_data[packed_range_offset + packed_byte_idx];
+  //          const std::byte b_byte = is_low_half ? (b_packed & std::byte{ 0x0F }) : (b_packed >> 4);
+  //          const float b_value = (std::to_integer<int8_t>(b_byte) - b_z) * b_s;
 
-                        Dst[(k + kk) * 16 + nn] = b_value;
-                    }
-                }
+  //          Dst[(k + kk) * 16 + nn] = b_value;
+  //        }
+  //      }
 
-                QuantBDataCol += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-                QuantBScaleCol += BlockStrideQuantB;
-                if (QuantBZeroPointCol != nullptr) {
-                    QuantBZeroPointCol += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
-                }
-            }
+  //      QuantBDataCol += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+  //      QuantBScaleCol += BlockStrideQuantB;
+  //      if (QuantBZeroPointCol != nullptr) {
+  //        QuantBZeroPointCol += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
+  //      }
+  //    }
 
-            // zero out any remaining columns
+  //    // zero out any remaining columns
 
-            if (nnlen < 16) {
-                for (size_t k = 0; k < CountK; ++k) {
-                    std::fill_n(Dst + (k * 16) + nnlen, 16 - nnlen, 0.0f);
-                }
-            }
+  //    if (nnlen < 16) {
+  //      for (size_t k = 0; k < CountK; ++k) {
+  //        std::fill_n(Dst + (k * 16) + nnlen, 16 - nnlen, 0.0f);
+  //      }
+  //    }
 
-            Dst += CountK * 16;
-        }
-    };
+  //    Dst += CountK * 16;
+  //  }
+  //  };
 
-    impl0_reference();
+  //impl0_reference();
+
+  constexpr size_t BlkBitWidth = 4;
+  float* dst_ptr = FpData;
+
+  const std::byte* quant_b_data_col_ptr = QuantBData;
+  const float* quant_b_scale_col_ptr = QuantBScale;
+  const std::byte* quant_b_zero_point_col_ptr = QuantBZeroPoint;
+
+  for (size_t n = 0; n < CountN; n++) {
+    if (BlkLen == 16) {
+      if (QuantBZeroPoint)
+        Q4BitBlkDequantBBlkLen16<true>(
+          dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, quant_b_zero_point_col_ptr, CountK);
+      else
+        Q4BitBlkDequantBBlkLen16<false>(
+          dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, nullptr, CountK);
+    }
+    else {
+      if (QuantBZeroPoint)
+        Q4BitBlkDequantBBlkLen32Plus<true>(
+          BlkLen, dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, quant_b_zero_point_col_ptr, CountK);
+      else
+        Q4BitBlkDequantBBlkLen32Plus<true>(
+          BlkLen, dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, nullptr, CountK);
+    }
+    dst_ptr += CountK;
+    quant_b_data_col_ptr += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    quant_b_scale_col_ptr += BlockStrideQuantB;
+    if (QuantBZeroPoint) {
+      quant_b_zero_point_col_ptr += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
+    }
+  }
 }
 
 //
