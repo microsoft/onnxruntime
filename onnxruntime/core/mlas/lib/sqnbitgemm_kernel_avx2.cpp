@@ -904,6 +904,124 @@ SQ4BitGemmM1Kernel_CompInt8_Impl(
   }
 }
 
+template <size_t NCols, bool HasZeroPoint>
+MLAS_FORCEINLINE void
+ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
+  size_t BlkLen,
+  const std::byte* QuantARowPtr,
+  const std::byte* QuantBDataColPtr,
+  const float* QuantBScaleColPtr,
+  const std::byte* QuantBZeroPointColPtr,
+  float* SumPtr,
+  size_t CountK,
+  size_t StrideQuantBData,
+  size_t StrideQuantBScale,
+  size_t StrideQuantBZeroPoint,
+  const float* BiasPtr
+)
+{
+  assert(BlkLen == 16);
+  constexpr size_t SubBlkLen = 16;
+  const __m256i zero = _mm256_setzero_si256();
+  const __m128i lowMask = _mm_set1_epi8(0xF);
+
+  constexpr size_t BlkBitWidth = 4;
+  constexpr size_t SubBlkStep = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, SubBlkLen);
+
+  float acc_lo[NCols] = { 0.0f };
+
+  const std::byte* ablob = QuantARowPtr;
+  const auto* b = QuantBDataColPtr;
+  const float* s = QuantBScaleColPtr;
+
+  [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
+  // only used if HasZeroPoint == true
+
+  for (size_t k = 0; k < CountK; k += BlkLen) {
+    size_t ck = std::min(CountK - k, BlkLen);
+
+    const float a_scale = Q8BlkScale(ablob);
+    ablob += sizeof(float);
+
+    float scale_v[NCols];
+    UnrolledLoop<NCols>([&](size_t i) {
+      scale_v[i] = (*(s + StrideQuantBScale * i)) * a_scale;
+      });
+
+    std::byte* bptr[NCols];
+    UnrolledLoop<NCols>([&](size_t i) {
+      bptr[i] = (std::byte*)(b + StrideQuantBData * i);
+      });
+
+    [[maybe_unused]] uint8_t offset[NCols];
+    // not ready for "Manual conversion to float" in neon yet. following neon to unpack to uint8_t.
+    if constexpr (HasZeroPoint) {
+      UnrolledLoop<NCols>([&](size_t i) {
+        const std::byte zp_packed =
+          QuantBZeroPointColPtr[i * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
+        const std::byte zp = ((QuantBZeroPointIdx & 1) == 1)
+          ? (zp_packed >> 4)
+          : (zp_packed & std::byte{ 0x0F });
+        offset[i] = std::to_integer<uint8_t>(zp);
+        });
+    }
+
+    // Load A row vector
+    uint32_t load_mask = 0xffff >> (SubBlkLen - ck);
+    __m256i a_bytes = _mm256_cvtepu8_epi16(_mm_maskz_loadu_epi8(__mmask16(load_mask), ablob));
+    ablob += BlkLen;
+
+    // Load 4 B column vectors (quantized to int4 blobs)
+    __m128i bvi[NCols];
+    UnrolledLoop<NCols>([&](size_t i) {
+      bvi[i] = _mm_loadu_si64((__m128i const*)bptr[i]);
+      bptr[i] += SubBlkStep;
+      });
+
+    // expand 4b into byte array
+    __m256i bytes[NCols];
+    UnrolledLoop<NCols>([&](size_t i) {
+      __m128i lower = _mm_and_si128(bvi[i], lowMask);
+      __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi[i], 4), lowMask);
+      bytes[i] = _mm256_cvtepu8_epi16(_mm_unpacklo_epi8(lower, upper));
+      });
+
+    // Subtract zero-point from the integers
+    if constexpr (HasZeroPoint) {
+      UnrolledLoop<NCols>([&](size_t i) {
+        bytes[i] = _mm256_sub_epi16(bytes[i], _mm256_set1_epi16(offset[i]));
+        });
+    }
+    else {
+      const __m256i eight = _mm256_set1_epi16(8);
+      UnrolledLoop<NCols>([&](size_t i) {
+        bytes[i] = _mm256_sub_epi16(bytes[i], eight);
+        });
+    }
+
+    UnrolledLoop<NCols>([&](size_t i) {
+      __m256i prod_epi32 = _mm256_madd_epi16(bytes[i], a_bytes);
+      prod_epi32 = _mm256_add_epi32(prod_epi32, _mm256_srli_si256(prod_epi32, 8));
+      prod_epi32 = _mm256_add_epi32(prod_epi32, _mm256_srli_si256(prod_epi32, 4));
+
+      // Extract the final sum
+      int dot_product = _mm256_extract_epi32(prod_epi32, 0) + _mm256_extract_epi32(prod_epi32, 4);
+      acc_lo[i] += dot_product * scale_v[i];
+      });
+
+    b += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    s++;
+    if constexpr (HasZeroPoint) {
+      QuantBZeroPointIdx += 1;
+    }
+  }
+
+  UnrolledLoop<NCols>([&](size_t i) {
+    SumPtr[i] += acc_lo[i];
+    SumPtr[i] += BiasPtr == nullptr ? 0.0f : BiasPtr[i];
+    });
+}
+
 template <size_t NCols, size_t SubBlkLen, bool HasZeroPoint>
 MLAS_FORCEINLINE void
 ComputeDotProducts_BlkBitWidth4_CompInt8(
@@ -921,6 +1039,12 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
 )
 {
   // avx2 works with 32 8bit feature in A in a subloop(kk)
+  if (SubBlkLen == 16) {
+    ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16<NCols, HasZeroPoint>(
+      BlkLen, QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr,
+      SumPtr, CountK, StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint, BiasPtr);
+    return;
+  }
   assert(SubBlkLen % 32 == 0);
   assert(BlkLen % SubBlkLen == 0);
   // ported from MlasQ8Q4GemmKernelAvx512f
@@ -973,7 +1097,6 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
 
     for (size_t kk = 0; kk < ck; kk += SubBlkLen) {
       // Load A row vector
-      // 
       size_t kklen = std::min((size_t)SubBlkLen, ck - kk);
       uint32_t load_mask = 0xffffffff >> (SubBlkLen - kklen);
       const __m256i a_bytes = _mm256_maskz_loadu_epi8(__mmask32(load_mask), (const __m256i*)ablob);
